@@ -1,37 +1,21 @@
-import math
 import pandas as pd
-import ccxt
 from datetime import datetime
+from modules.cryptano.common import calculate_rsi, exchange, format_price as fmt_p, price_precision_for_value
+from modules.cryptano.market_cache import load_markets_cached
 from modules.cryptano.price_action import check_live_confirmation
+from modules.cryptano.regime import detect_market_regime
+
 
 # ==========================================
 # БЛОК 1: Настройки и Импорты
 # ==========================================
-exchange = ccxt.bybit({'enableRateLimit': True})
 MIN_RR = 2.5
-
-# Умный форматер чисел (убирает визуальный шум до запятой для тяжелых монет)
-def fmt_p(val):
-    if val is None or pd.isna(val): return "Нет"
-    val = float(val)
-    if val >= 100: return f"{int(val)}" # Для BTC, ETH убираем копейки
-    if val >= 1: return f"{round(val, 2)}"
-    return f"{val}" # Для дешевых альткоинов оставляем точность
 
 def fmt_z(z): return f"{fmt_p(z['min'])}–{fmt_p(z['max'])}" if z else "Нет"
 
 # ==========================================
 # БЛОК 2: Базовые Индикаторы
 # ==========================================
-def calculate_rsi(df, period=14):
-    delta = df["close"].diff()
-    up = delta.clip(lower=0)
-    down = -delta.clip(upper=0)
-    ema_up = up.ewm(com=period - 1, adjust=False).mean()
-    ema_down = down.ewm(com=period - 1, adjust=False).mean()
-    rs = ema_up / ema_down
-    return 100 - (100 / (1 + rs))
-
 def calculate_atr(df, period=14):
     high_low = df["high"] - df["low"]
     high_cp = (df["high"] - df["close"].shift()).abs()
@@ -141,17 +125,11 @@ def analyze_coin(ticker_input: str) -> str:
         coin = ticker_input.upper().replace("USDT", "").replace("/", "").strip()
         symbol = f"{coin}/USDT"
         
-        markets = exchange.load_markets()
+        markets = load_markets_cached(exchange)
         if symbol not in markets:
             symbol_fut = f"{coin}/USDT:USDT"
             if symbol_fut in markets: symbol = symbol_fut
             else: return f"❌ Монета *{coin}* не найдена на Bybit."
-                
-        market_info = exchange.market(symbol)
-        price_precision = market_info.get('precision', {}).get('price', 4)
-        if isinstance(price_precision, float) and price_precision < 1:
-            price_precision = int(round(-math.log10(price_precision)))
-        elif not isinstance(price_precision, int): price_precision = 4
 
         ohlcv_4h = exchange.fetch_ohlcv(symbol, timeframe="4h", limit=100)
         df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"])
@@ -159,12 +137,21 @@ def analyze_coin(ticker_input: str) -> str:
         df_4h["atr"] = calculate_atr(df_4h)
 
         last_4h = df_4h.iloc[-1]
-        current_price = round(float(last_4h["close"]), price_precision)
+        raw_price = float(last_4h["close"])
+
+        price_precision = price_precision_for_value(raw_price)
+
+        # Округляем текущую цену согласно нашей точности
+        current_price = round(raw_price, price_precision)
         rsi_4h = int(round(last_4h["rsi"])) 
         atr = float(last_4h["atr"])
-        recent_vol = float(last_4h["volume"])
-        avg_vol = float(df_4h["volume"].iloc[-25:-1].mean())
+        
+        # --- ИСПРАВЛЕНИЕ БАГА С ОБЪЕМОМ ---
+        # Ищем максимальный всплеск объема за последние 16 часов (4 свечи), чтобы не пропустить памп
+        recent_vol = float(df_4h["volume"].iloc[-5:-1].max())
+        avg_vol = float(df_4h["volume"].iloc[-30:-5].mean())
         vol_ratio = round(recent_vol / avg_vol if avg_vol > 0 else 1.0, 2)
+        # ----------------------------------
 
         ohlcv_daily = exchange.fetch_ohlcv(symbol, timeframe="1d", limit=365)
         df_daily = pd.DataFrame(ohlcv_daily, columns=["timestamp", "open", "high", "low", "close", "volume"])
@@ -184,23 +171,45 @@ def analyze_coin(ticker_input: str) -> str:
         ma7 = last_d["ma7"]
         ma30 = last_d["ma30"]
         ma200 = last_d["ma200"]
-        rsi_daily = int(round(last_d["rsi"])) 
+        rsi_daily = int(round(last_d["rsi"])) if not pd.isna(last_d["rsi"]) else 50
+
+        # =========================================================
+        # 🌋 ЛОГИКА EXTREME MODE И АВТОПЕРЕХОДА (2 из 3)
+        # =========================================================
+        old_price = float(df_4h["close"].iloc[-20])
+        price_change_pct = ((current_price - old_price) / old_price) * 100
+
+        pump_triggers = 0
+        if price_change_pct > 15.0: pump_triggers += 1
+        if vol_ratio >= 2.0: pump_triggers += 1  # Смягчили до x2.0
+        if rsi_4h >= 75: pump_triggers += 1      # Смягчили до 75
+
+        dump_triggers = 0
+        if price_change_pct < -15.0: dump_triggers += 1
+        if vol_ratio >= 2.0: dump_triggers += 1
+        if rsi_4h <= 25: dump_triggers += 1
+
+        if pump_triggers >= 2:
+            return f"AUTO_PUMPDUMP:{coin}:ПАРАБОЛИЧЕСКИЙ ПАМП"
+        elif dump_triggers >= 2:
+            return f"AUTO_PUMPDUMP:{coin}:ПАНИЧЕСКИЙ ДАМП"
 
         # ==========================================
         # БЛОК 6: Определение Контекста Тренда (По MA)
         # ==========================================
-        # Если монета относительно новая и ma200 еще нет, считаем тренд по ma7 и ma30
         if not pd.isna(ma7) and not pd.isna(ma30):
+            # Если ma200 еще не отрисовалась, используем ma30 как глобальную базу
             ma200_val = ma200 if not pd.isna(ma200) else ma30
+            
             if rsi_4h <= 20 or rsi_daily <= 25:
                 market_mode, trend_label = "Capitulation", "🚨 TREND: Capitulation (Панический слив, шортить поздно!)"
-            elif current_price > ma7 and ma7 > ma30 and ma30 > ma200:
+            elif current_price > ma7 and ma7 > ma30 and ma30 >= ma200_val:
                 market_mode, trend_label = "Strong Bull", "🚀 TREND: Strong Bull (Сильный рост, работаем от откатов)"
-            elif current_price > ma30 and current_price < ma200:
+            elif current_price > ma30 and current_price <= ma200_val:
                 market_mode, trend_label = "Weak Bull", "📈 TREND: Weak Bull (Глобально медведи, но локально отскок)"
-            elif current_price < ma7 and ma7 < ma30 and ma30 < ma200:
+            elif current_price < ma7 and ma7 < ma30 and ma30 <= ma200_val:
                 market_mode, trend_label = "Strong Bear", "🩸 TREND: Strong Bear (работаем только от short setups)"
-            elif current_price < ma30 and current_price > ma200:
+            elif current_price < ma30 and current_price >= ma200_val:
                 market_mode, trend_label = "Weak Bear", "📉 TREND: Weak Bear (Слабый рынок, работаем от откатов)"
             else:
                 market_mode, trend_label = "Range", "↔️ TREND: Range Mode (Боковик, торгуем от границ канала)"
@@ -212,34 +221,35 @@ def analyze_coin(ticker_input: str) -> str:
         # ==========================================
         all_zones = get_all_zones(df_daily, price_precision, days=180)
         
-        # Фильтруем и сортируем зоны строго по пространственному расстоянию от цены
         supports = sorted([z for z in all_zones if z["max"] < current_price], key=lambda x: current_price - x["max"])
         resistances = sorted([z for z in all_zones if z["min"] > current_price], key=lambda x: x["min"] - current_price)
 
-        # 1. Local (Ближайший уровень ликвидности сверху и снизу)
         local_sup = supports[0] if len(supports) > 0 else None
         local_res = resistances[0] if len(resistances) > 0 else None
-
-        # 2. Swing (Следующий эшелон зон)
         swing_sup = supports[1] if len(supports) > 1 else None
         swing_res = resistances[1] if len(resistances) > 1 else None
-
-        # 3. Macro (Топ-3 сильнейших исторических зон по числу касаний в истории за год)
         macro_zones = sorted(all_zones, key=lambda x: x["score"], reverse=True)[:3]
 
-        # Расчет процентиля нахождения цены строго МЕЖДУ рабочими зонами
+        # ИСПРАВЛЕННАЯ ЛОГИКА ПОЗИЦИИ (Если монета на исторических хаях или дне)
         if local_sup and local_res:
             s_val = local_sup["max"]
             r_val = local_res["min"]
             range_position = ((current_price - s_val) / (r_val - s_val)) * 100
             dist_long = f"-{round(((current_price - s_val) / current_price) * 100)}"
             dist_short = round(((r_val - current_price) / current_price) * 100)
+        elif local_sup and not local_res:
+            range_position = 100  # Цена выше всех сопротивлений (ATH)
+            dist_long = f"-{round(((current_price - local_sup['max']) / current_price) * 100)}"
+            dist_short = 0
+        elif local_res and not local_sup:
+            range_position = 0    # Цена ниже всех поддержек (Дно)
+            dist_long = 0
+            dist_short = round(((local_res['min'] - current_price) / current_price) * 100)
         else:
             range_position, dist_long, dist_short = 50, 0, 0
 
-        # Корректный пространственный статус (Синхронизировано с Блоком 11: 30/70)
         if range_position <= 30: pos_text = f"🟢 Близко к зоне поддержки"
-        elif range_position >= 70: pos_text = f"🔴 Близко к зоне сопротивления"
+        elif range_position >= 70: pos_text = f"🔴 Близко к зоне сопротивления (Или на хаях)"
         else: pos_text = f"⛔ Между рабочими уровнями (No Trade Zone)"
 
         # ==========================================

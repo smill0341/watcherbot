@@ -1,5 +1,4 @@
 import os
-import json
 import time
 from datetime import datetime
 import requests
@@ -7,6 +6,7 @@ from bs4 import BeautifulSoup
 import pandas as pd
 from modules.playerpropsbasket.update_base import run_auto_update
 from dotenv import load_dotenv
+from modules.storage import load_json, save_json_atomic
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
@@ -153,16 +153,13 @@ def run_nba_monitor(bot, chat_id):
     Бесконечный фоновый цикл. Управляется через config.json
     """
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "config.json")
-    
-    print("==================================================")
-    print("  Бот-аналитик NBA (Player Props) инициализирован! ")
-    print("==================================================")
-    
+
+    print(" Бот NBA injures инициализирован! ")
+ 
     while True:
         try:
             if os.path.exists(config_path):
-                with open(config_path, "r", encoding="utf-8") as f:
-                    config = json.load(f)
+                config = load_json(config_path, default={})
                 
                 # Проверка автостопа
                 auto_stop = config.get("nba", {}).get("auto_stop", "06:00")
@@ -170,8 +167,7 @@ def run_nba_monitor(bot, chat_id):
                 
                 if current_time == auto_stop and config.get("nba", {}).get("status") == "RUNNING":
                     config["nba"]["status"] = "STOPPED"
-                    with open(config_path, "w", encoding="utf-8") as f:
-                        json.dump(config, f, indent=4)
+                    save_json_atomic(config_path, config, indent=4)
                     print(f"[NBA] ⏹ Автостоп в {auto_stop}. Статус → STOPPED.")
                     time.sleep(SLEEP_TIME)
                     continue

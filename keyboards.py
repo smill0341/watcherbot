@@ -28,12 +28,22 @@ def get_crypto_keyboard():
 
 def get_crypto_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("🔥 Перекупленные (RSI > 70)", "🥶 Перепроданные (RSI < 30)")
-    markup.add("💰 Аномальный объем", "🔄 Полный фильтр (RSI + Vol)")
-    markup.add("🤖 Автобот Старт", "⏹ Автобот Стоп")
-    markup.add("🔍 Анализ монеты")  
-    markup.add("📊 Результаты сигналов")
+    
+    # Ряд 1: Ручной разбор монеты в зависимости от фазы
+    markup.add("📈 Анализ Normal", "🎯 Анализ Pump/Dump")
+    
+    # Ряд 2: Ручные экспресс-скринеры всего рынка
+    markup.add("⚡️ Critical фильтр", "💎 Light фильтр")
+    
+    # Ряд 3: Доп фильтры и история сигналов
+    markup.add("🛠 Другие фильтры", "📊 Результаты")
+    
+    # Ряд 4: Управление фоновой автоматикой
+    markup.add("🤖 Автобот Старт", "📴 Автобот Стоп")
+    
+    # Ряд 5: Выход
     markup.add("⬅️ Назад в Главное меню")
+    
     return markup
 
 def get_history_keyboard():
@@ -46,4 +56,15 @@ def get_history_keyboard():
         types.InlineKeyboardButton("📅 Месяц", callback_data="hist_month"),
         types.InlineKeyboardButton("📅 Всё", callback_data="hist_all")
     )
+    return markup
+
+def get_other_filters_menu():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    
+    # Ряд 1: Nри старых фильтра
+    markup.add("🔥 RSI > 70", "🥶 RSI < 30", "💰 Volume > x2")
+    
+    # Ряд 2: Кнопка возврата в крипто-меню
+    markup.add("⬅️ Назад в меню Крипты")
+    
     return markup

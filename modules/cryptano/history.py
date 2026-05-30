@@ -1,15 +1,13 @@
-import json
 import os
 import datetime
 from signal import signal
-import ccxt
+from modules.cryptano.common import exchange
+from modules.cryptano.market_cache import load_markets_cached
+from modules.storage import load_json, save_json_atomic
 
 # Путь к файлу сигналов рядом с history.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SIGNALS_FILE = os.path.join(BASE_DIR, "signals.json")
-
-exchange = ccxt.bybit({'enableRateLimit': True})
-
 
 # ================= СОХРАНЕНИЕ СИГНАЛА =================
 
@@ -58,6 +56,9 @@ def check_and_update(bot, chat_id):
 
     bot.send_message(chat_id, f"⏳ Проверяю {len(open_signals)} открытых сигналов...")
 
+    # Загружаем структуру рынков ОДИН РАЗ перед проверкой (для скорости)
+    markets = load_markets_cached(exchange)
+
     updated = 0
     for signal in signals:
         if signal["status"] != "⏳":
@@ -72,8 +73,21 @@ def check_and_update(bot, chat_id):
             continue
 
         try:
-            ticker = exchange.fetch_ticker(f"{signal['coin']}/USDT")
+            coin = signal['coin']
+            symbol = f"{coin}/USDT"
+            
+            # --- УМНЫЙ ПОИСК СИМВОЛА (СПОТ ИЛИ ФЬЮЧЕРС) ---
+            if symbol not in markets:
+                symbol_fut = f"{coin}/USDT:USDT"
+                if symbol_fut in markets:
+                    symbol = symbol_fut  # Переключаемся на фьючерс
+                else:
+                    continue  # Если монеты нет ни там, ни там - тихо пропускаем
+
+            # Запрашиваем цену по правильному тикеру (спот или фьючерс)
+            ticker = exchange.fetch_ticker(symbol)
             last_price = ticker.get("last") or ticker.get("close")
+            
             if last_price is None:
                 print(f"[ИСТОРИЯ] Нет цены для {signal['coin']}, пропускаю")
                 continue
@@ -105,7 +119,6 @@ def check_and_update(bot, chat_id):
 
     _save_signals(signals)
     print(f"[ИСТОРИЯ] Обновлено сигналов: {updated}")
-
 # ================= ФОРМАТИРОВАНИЕ ИСТОРИИ =================
 
 def format_history(period: str) -> str:
@@ -185,15 +198,8 @@ def format_history(period: str) -> str:
 # ================= ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =================
 
 def _load_signals() -> list:
-    if not os.path.exists(SIGNALS_FILE):
-        return []
-    try:
-        with open(SIGNALS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
+    return load_json(SIGNALS_FILE, default=[]) or []
 
 
 def _save_signals(signals: list):
-    with open(SIGNALS_FILE, "w", encoding="utf-8") as f:
-        json.dump(signals, f, ensure_ascii=False, indent=2)
+    save_json_atomic(SIGNALS_FILE, signals, indent=2)

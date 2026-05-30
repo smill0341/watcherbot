@@ -1,9 +1,9 @@
 import os
-import json
 import requests
 import time
 from datetime import datetime
 from dotenv import load_dotenv
+from modules.storage import load_json, save_json_atomic
 
 # Явно указываем путь к .env
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -109,7 +109,7 @@ def check_live_matches(bot, chat_id, silent=False):
     }
     
     try:
-        response = requests.get(url, headers=headers).json()
+        response = requests.get(url, headers=headers, timeout=10).json()
         fixtures = response.get('response', [])
         
         total_live = len(fixtures)
@@ -141,7 +141,7 @@ def check_live_matches(bot, chat_id, silent=False):
                             
                             # === БЛОК: ФИЛЬТРАЦИЯ ПО ДАВЛЕНИЮ ===
                             stats_url = f"https://v3.football.api-sports.io/fixtures/statistics?fixture={fixture_id}"
-                            stats_res = requests.get(stats_url, headers=headers).json()
+                            stats_res = requests.get(stats_url, headers=headers, timeout=10).json()
                             stats_data = stats_res.get('response', [])
                             
                             if len(stats_data) >= 2:
@@ -230,15 +230,12 @@ def run_football_monitor(bot, chat_id):
     """
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "config.json")
     
-    print("==================================================")
-    print("  Бот-сканер НАИГРАННОГО ГОЛА инициализирован! ")
-    print("==================================================")
-    
+    print(" Бот-сканер НАИГРАННОГО ГОЛА инициализирован")
+
     while True:
         try:
             if os.path.exists(config_path):
-                with open(config_path, "r", encoding="utf-8") as f:
-                    config = json.load(f)
+                config = load_json(config_path, default={})
                 
                 # Проверка автостопа
                 auto_stop = config.get("football", {}).get("auto_stop", "00:00")
@@ -246,8 +243,7 @@ def run_football_monitor(bot, chat_id):
                 
                 if current_time == auto_stop and config.get("football", {}).get("status") == "RUNNING":
                     config["football"]["status"] = "STOPPED"
-                    with open(config_path, "w", encoding="utf-8") as f:
-                        json.dump(config, f, indent=4)
+                    save_json_atomic(config_path, config, indent=4)
                     print(f"[ФУТБОЛ] ⏹ Автостоп в {auto_stop}. Статус → STOPPED.")
                     time.sleep(SLEEP_TIME)
                     continue
