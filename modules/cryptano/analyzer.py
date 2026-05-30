@@ -4,10 +4,6 @@ from modules.cryptano.common import calculate_rsi, exchange, format_price as fmt
 from modules.cryptano.market_cache import load_markets_cached
 from modules.cryptano.price_action import check_live_confirmation
 from modules.cryptano.regime import detect_market_regime
-<<<<<<< HEAD
-=======
-
->>>>>>> ccc3761d1369e232f0893547f3ab05094b6b79b3
 
 # ==========================================
 # БЛОК 1: Настройки и Импорты
@@ -163,7 +159,7 @@ def analyze_coin(ticker_input: str) -> str:
         daily_turnover = last_daily_vol * last_daily_close 
         
         if daily_turnover < 1000000:
-             return f"⚠️ Монета *{coin}* отфильтрована: низкий ликвид (объем ${int(daily_turnover):,})"
+            return f"⚠️ Монета *{coin}* отфильтрована: низкий ликвид (объем ${int(daily_turnover):,})"
          
         df_daily["ma7"] = df_daily["close"].rolling(7).mean()
         df_daily["ma30"] = df_daily["close"].rolling(30).mean()
@@ -184,13 +180,8 @@ def analyze_coin(ticker_input: str) -> str:
 
         pump_triggers = 0
         if price_change_pct > 15.0: pump_triggers += 1
-<<<<<<< HEAD
         if vol_ratio >= 2.0: pump_triggers += 1  
-        if rsi_4h >= 75: pump_triggers += 1     
-=======
-        if vol_ratio >= 2.0: pump_triggers += 1  # Смягчили до x2.0
-        if rsi_4h >= 75: pump_triggers += 1      # Смягчили до 75
->>>>>>> ccc3761d1369e232f0893547f3ab05094b6b79b3
+        if rsi_4h >= 75: pump_triggers += 1
 
         dump_triggers = 0
         if price_change_pct < -15.0: dump_triggers += 1
@@ -284,9 +275,6 @@ def analyze_coin(ticker_input: str) -> str:
             f"━━━━━━━━━━━━━━━\n"
         )
 
-        # ==========================================
-        # БЛОК 9: Контекст и Уровни
-        # ==========================================
         # ==========================================
         # БЛОК 9: Контекст и Уровни
         # ==========================================

@@ -26,7 +26,6 @@
     "entry": 0.01,
     "target": 0.008,
     "stop": 0.012,
-<<<<<<< HEAD
     "status": "⏳",
     "result_percent": null
   },
@@ -87,8 +86,56 @@
     "entry": 0.23,
     "target": 0.17,
     "stop": 0.26,
-=======
->>>>>>> ccc3761d1369e232f0893547f3ab05094b6b79b3
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-05-30 21:40",
+    "coin": "BNB",
+    "type": "SHORT",
+    "entry": 711.6,
+    "target": 653.0,
+    "stop": 733.6,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-05-30 21:40",
+    "coin": "PORTAL",
+    "type": "SHORT",
+    "entry": 0.012,
+    "target": 0.008,
+    "stop": 0.014,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-05-30 21:40",
+    "coin": "ASTER",
+    "type": "SHORT",
+    "entry": 0.74,
+    "target": 0.68,
+    "stop": 0.77,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-05-30 21:40",
+    "coin": "SKYAI1",
+    "type": "LONG",
+    "entry": 0.18762,
+    "target": 0.21,
+    "stop": 0.16,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-05-30 21:40",
+    "coin": "STG",
+    "type": "SHORT",
+    "entry": 0.22,
+    "target": 0.17,
+    "stop": 0.25,
     "status": "⏳",
     "result_percent": null
   }

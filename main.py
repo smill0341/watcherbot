@@ -1,21 +1,10 @@
 import os
-<<<<<<< HEAD
-=======
 import threading
->>>>>>> ccc3761d1369e232f0893547f3ab05094b6b79b3
 import telebot
 from dotenv import load_dotenv
 import keyboards
-from modules.storage import load_json, save_json_atomic
-<<<<<<< HEAD
-from modules.cryptano.cryptano import process_crypto_command
-from modules.footballnogoal.football import check_live_matches
-from modules.playerpropsbasket.player_props import check_nba_injuries
-from modules.cryptano.history import check_and_update, format_history
-from modules.cryptano.analyzer import analyze_coin
-from modules.cryptano.pumpdump import check_manual_extreme
 from modules.scheduler import start_all_background_tasks
-=======
+from modules.storage import load_json, save_json_atomic
 from modules.cryptano.cryptano import auto_scheduler as run_crypto, process_crypto_command
 from modules.footballnogoal.football import run_football_monitor, check_live_matches
 from modules.playerpropsbasket.player_props import run_nba_monitor, check_nba_injuries
@@ -23,7 +12,6 @@ from modules.cryptano.history import check_and_update, format_history
 from modules.cryptano.analyzer import analyze_coin
 from modules.cryptano.pumpdump import check_manual_extreme
 from modules.cryptano.scanner import run_light_scanner, run_manual_light_scan
->>>>>>> ccc3761d1369e232f0893547f3ab05094b6b79b3
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TOKEN:
@@ -93,15 +81,7 @@ def handle_text(message):
         print("[MAIN LOG] Нажата кнопка 💎 Light фильтр. Вызываю scanner.py")
         bot.send_message(message.chat.id, "⏳ Запускаю легкий поиск уровней (Light)...")
         try:
-            # Импортируем и вызываем одноразовую функцию из правильного файла scanner.py
-<<<<<<< HEAD
-            import asyncio
-            from modules.cryptano.scanner import run_manual_light_scan
-            asyncio.run(run_manual_light_scan(bot, message.chat.id))
-=======
-            from modules.cryptano.scanner import run_manual_light_scan
             run_manual_light_scan(bot, message.chat.id)
->>>>>>> ccc3761d1369e232f0893547f3ab05094b6b79b3
             print("[MAIN LOG] Light сканер успешно отработал.")
         except Exception as e:
             print(f"[MAIN ERROR] Ошибка в Light сканере: {e}")
@@ -250,17 +230,12 @@ def handle_inline(call):
                     check_nba_injuries(bot, call.message.chat.id, silent=False)
 
 if __name__ == "__main__":
-<<<<<<< HEAD
-    start_all_background_tasks(bot, ADMIN_CHAT_ID)
-=======
-    # Крипто-бот с расширенными фильтрами и сигналами
-    threading.Thread(target=run_crypto, args=(bot, ADMIN_CHAT_ID), daemon=True).start()
-    
-    # УПРОЩЕННЫЙ автобот для легкого сканирования рынка (без сложных фильтров и сигналов) - просто чтобы всегда был кто-то, кто мониторит рынок и может быстро отреагировать на резкие движения
-    threading.Thread(target=run_light_scanner, args=(bot, ADMIN_CHAT_ID), daemon=True).start()
-    
-    # Спортивные мониторы 
-    threading.Thread(target=run_football_monitor, args=(bot, ADMIN_CHAT_ID), daemon=True).start()
-    threading.Thread(target=run_nba_monitor, args=(bot, ADMIN_CHAT_ID), daemon=True).start()
->>>>>>> ccc3761d1369e232f0893547f3ab05094b6b79b3
-    bot.polling(none_stop=True)
+    print("[MAIN LOG] Запускаю пусковой блок скрипта...")
+    if ADMIN_CHAT_ID:
+        start_all_background_tasks(bot, ADMIN_CHAT_ID)
+        print("[MAIN LOG] Все фоновые задачи (крипта, футбол, NBA) успешно запущены!")
+    else:
+        print("[MAIN WARNING] ВНИМАНИЕ: ADMIN_CHAT_ID не найден в .env. Фоновые потоки не запущены.")
+
+    print("[MAIN LOG] Бот успешно включен и слушает кнопки в Телеграм. Погнали!")
+    bot.infinity_polling()
