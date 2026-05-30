@@ -24,7 +24,11 @@ def load_markets_cached(exchange, ttl_seconds=CACHE_TTL_SECONDS):
         return markets
 
 
+<<<<<<< HEAD
 def get_top_usdt_coins_cached(exchange, limit=150, min_quote_volume=8_000_000.0, ttl_seconds=CACHE_TTL_SECONDS):
+=======
+def get_top_usdt_coins_cached(exchange, limit=100, min_quote_volume=5_000_000.0, ttl_seconds=CACHE_TTL_SECONDS):
+>>>>>>> ccc3761d1369e232f0893547f3ab05094b6b79b3
     cache_key = (limit, float(min_quote_volume))
     now = time.monotonic()
 
@@ -36,6 +40,7 @@ def get_top_usdt_coins_cached(exchange, limit=150, min_quote_volume=8_000_000.0,
         load_markets_cached(exchange, ttl_seconds=ttl_seconds)
         tickers = exchange.fetch_tickers()
 
+<<<<<<< HEAD
         # Черный список стейблкоинов и мусора
         stablecoins = ["USDC", "BUSD", "TUSD", "FDUSD", "DAI", "USDE"]
 
@@ -56,6 +61,18 @@ def get_top_usdt_coins_cached(exchange, limit=150, min_quote_volume=8_000_000.0,
 
                     if quote_volume > min_quote_volume:
                         usdt_pairs.append((symbol, quote_volume))
+=======
+        usdt_pairs = []
+        for symbol, ticker in tickers.items():
+            if symbol.endswith("/USDT:USDT") or symbol.endswith("/USDT"):
+                try:
+                    quote_volume = float(ticker.get("quoteVolume", 0) or 0)
+                except (ValueError, TypeError):
+                    quote_volume = 0.0
+
+                if quote_volume > min_quote_volume:
+                    usdt_pairs.append((symbol, quote_volume))
+>>>>>>> ccc3761d1369e232f0893547f3ab05094b6b79b3
 
         usdt_pairs.sort(key=lambda x: x[1], reverse=True)
         coins = [pair[0] for pair in usdt_pairs[:limit]]

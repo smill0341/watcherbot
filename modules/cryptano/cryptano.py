@@ -3,7 +3,11 @@ import time
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from telebot import types
+<<<<<<< HEAD
 from modules.cryptano.crypto_utils import calculate_rsi, exchange, get_top_100_coins, price_precision_for_value
+=======
+from modules.cryptano.common import calculate_rsi, exchange, get_top_100_coins, price_precision_for_value
+
 from modules.cryptano.history import save_signal
 from modules.cryptano.market_cache import load_markets_cached
 from modules.storage import load_json

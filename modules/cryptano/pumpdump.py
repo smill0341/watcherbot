@@ -1,7 +1,11 @@
 # modules/cryptano/pumpdump.py
 
 import pandas as pd
+<<<<<<< HEAD
 from modules.cryptano.crypto_utils import calculate_rsi, exchange, price_precision_from_market
+=======
+from modules.cryptano.common import calculate_rsi, exchange, price_precision_from_market
+>>>>>>> ccc3761d1369e232f0893547f3ab05094b6b79b3
 from modules.cryptano.market_cache import load_markets_cached
 
 def check_manual_extreme(coin, direction):
