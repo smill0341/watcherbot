@@ -26,8 +26,8 @@
     "entry": 0.01,
     "target": 0.008,
     "stop": 0.012,
-    "status": "⏳",
-    "result_percent": null
+    "status": "❌",
+    "result_percent": -20.0
   },
   {
     "date": "2026-05-30 16:46",
@@ -36,8 +36,8 @@
     "entry": 0.012,
     "target": 0.008,
     "stop": 0.014,
-    "status": "⏳",
-    "result_percent": null
+    "status": "❌",
+    "result_percent": -16.67
   },
   {
     "date": "2026-05-30 16:46",
@@ -76,8 +76,8 @@
     "entry": 0.012,
     "target": 0.008,
     "stop": 0.014,
-    "status": "⏳",
-    "result_percent": null
+    "status": "❌",
+    "result_percent": -16.67
   },
   {
     "date": "2026-05-30 17:52",
@@ -106,8 +106,8 @@
     "entry": 0.012,
     "target": 0.008,
     "stop": 0.014,
-    "status": "⏳",
-    "result_percent": null
+    "status": "❌",
+    "result_percent": -16.67
   },
   {
     "date": "2026-05-30 21:40",
@@ -136,6 +136,36 @@
     "entry": 0.22,
     "target": 0.17,
     "stop": 0.25,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-05-31 14:23",
+    "coin": "HOME",
+    "type": "SHORT",
+    "entry": 0.032,
+    "target": 0.027,
+    "stop": 0.035,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-05-31 14:23",
+    "coin": "TA",
+    "type": "SHORT",
+    "entry": 0.082,
+    "target": 0.066,
+    "stop": 0.093,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-05-31 14:26",
+    "coin": "TA",
+    "type": "SHORT",
+    "entry": 0.082,
+    "target": 0.066,
+    "stop": 0.092,
     "status": "⏳",
     "result_percent": null
   }

@@ -388,6 +388,6 @@ def analyze_coin(ticker_input: str) -> str:
         return f"❌ Произошла ошибка при анализе {ticker_input}: {e}"
         
     elapsed_time = time.time() - start_time
-    print(f"\n[ГЛУБОКИЙ АНАЛИЗ] 📊 Снайперский разбор завершен за {elapsed_time:.2f} сек.")
-    print(f"[ГЛУБОКИЙ АНАЛИЗ] 🌐 Запросов к API Bybit: {api_queries}\n")
+    print(f"\n[ПОЛНЫЙ АНАЛИЗ] 📊 Полный анализ завершен за {elapsed_time:.2f} сек.")
+    print(f"[ПОЛНЫЙ АНАЛИЗ] 🌐 Запросов к API Bybit: {api_queries}\n")
     return msg

@@ -37,7 +37,7 @@ def handle_text(message):
     if str(message.chat.id) != str(ADMIN_CHAT_ID): return
 
     # --- ГЛАВНОЕ МЕНЮ И СПОРТ ---
-    if message.text == "🪙 Крипта":
+    if message.text == "🪙 Critical фильтр":
         bot.send_message(message.chat.id, "🪙 Крипто-сканер:", reply_markup=keyboards.get_crypto_menu())
 
     elif message.text == "⬅️ Назад в Главное меню":

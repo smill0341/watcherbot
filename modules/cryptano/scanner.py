@@ -12,12 +12,12 @@ from modules.storage import load_json
 
 # ================= Настройки фильтров =================
 TIMEFRAME = "4h"
-FILTER_VOL_NORMAL = 1.6
+FILTER_VOL_NORMAL = 1.7
 FILTER_VOL_ANOMALY = 3.0
 FILTER_ZONE_BOTTOM = 15
 FILTER_ZONE_TOP = 85
-FILTER_RSI_OVERSOLD = 40
-SCAN_COINS_LIMIT = 150  # Количество топ-монет по объему для сканирования
+FILTER_RSI_OVERSOLD = 35
+SCAN_COINS_LIMIT = 100  # Количество топ-монет по объему для сканирования
 FILTER_RSI_OVERBOUGHT = 65
 COOLDOWN_HOURS = 4       # Не спамить одной монетой 4 часа после сигнала
 SCAN_INTERVAL = 1800      # Запуск сканирования каждые 30 минут (1800 сек)
@@ -103,8 +103,9 @@ def run_manual_light_scan(bot, admin_chat_id):
 
         symbols = get_top_coins(limit=SCAN_COINS_LIMIT)
         start_time = time.time()
-        api_queries = len(symbols) + 1
-        worker_count = min(MAX_LIGHT_SCAN_WORKERS, max(1, len(symbols)))
+        total_processed_coins = len(symbols) if symbols else 0
+        api_queries = total_processed_coins + 1
+        worker_count = min(MAX_LIGHT_SCAN_WORKERS, max(1, total_processed_coins))
         setups = []
 
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
@@ -123,24 +124,26 @@ def run_manual_light_scan(bot, admin_chat_id):
             local_max = setup.get('local_max', 0)
             local_min = setup.get('local_min', 0)
             pos = setup['pos_pct']
+            # Общие расчеты процентов изменения цены от локального минимума/максимума
+            pump_pct = ((current_price - local_min) / local_min) * 100 if local_min > 0 else 0
+            dump_pct = ((local_max - current_price) / local_max) * 100 if local_max > 0 else 0
 
             if pos >= FILTER_ZONE_TOP:
                 icon = "🔴"
                 zone = f"Зона ШОРТА ({pos:.0f}%)"
                 status_text = "Цена уперлась в потолок. Ищем паттерн на падение."
-                pump_pct = ((current_price - local_min) / local_min) * 100 if local_min > 0 else 0
                 price_text = f"💰 Цена: {current_price} (🚀 +{pump_pct:.0f}% от дна {local_min})"
             elif pos <= FILTER_ZONE_BOTTOM:
                 icon = "🟢"
                 zone = f"Зона ЛОНГА ({pos:.0f}%)"
                 status_text = "Цена на дне. Ждем паттерн на отскок вверх."
-                dump_pct = ((local_max - current_price) / local_max) * 100 if local_max > 0 else 0
                 price_text = f"💰 Цена: {current_price} (🔻 -{dump_pct:.0f}% от пика {local_max})"
             else:
                 icon = "🟡"
                 zone = f"Середина диапазона ({pos:.0f}%)"
                 status_text = "Аномальный объем в середине графика. Просто наблюдаем."
-                price_text = f"💰 Цена: {current_price}"
+                # Для середины показываем падение от пика как наиболее актуальное
+                price_text = f"💰 Цена: {current_price} (🔻 -{dump_pct:.0f}% от пика)"
 
             print(f"[SCANNER LOG] Найдена монета {coin_name}! Отправляю в Telegram.")
             msg = (
@@ -161,14 +164,14 @@ def run_manual_light_scan(bot, admin_chat_id):
             print("[SCANNER LOG] Монет по фильтру Light не найдено.")
             elapsed_time = time.time() - start_time
             print(f"\n[ЛАЙТ-РАДАР РУЧНОЙ] 📊 Скан завершен за {elapsed_time:.1f} сек.")
-            print(f"[ЛАЙТ-РАДАР РУЧНОЙ] 🪙 Монет обработано: {len(symbols)}")
+            print(f"[ЛАЙТ-РАДАР РУЧНОЙ] 🪙 Монет обработано: {total_processed_coins}")
             print(f"[ЛАЙТ-RADAR РУЧНОЙ] 🌐 Запросов к API Bybit: {api_queries}\n")
             bot.send_message(admin_chat_id, "ℹ️ По легким фильтрам интересных монет сейчас нет. Рынок спокойный.")
         else:
             print("[SCANNER LOG] Ручной сканер Light успешно завершил работу.")
             elapsed_time = time.time() - start_time
             print(f"\n[ЛАЙТ-РАДАР РУЧНОЙ] 📊 Скан завершен за {elapsed_time:.1f} сек.")
-            print(f"[ЛАЙТ-РАДАР РУЧНОЙ] 🪙 Монет обработано: {len(symbols)}")
+            print(f"[ЛАЙТ-РАДАР РУЧНОЙ] 🪙 Монет обработано: {total_processed_coins}")
             print(f"[ЛАЙТ-RADAR РУЧНОЙ] 🌐 Запросов к API Bybit: {api_queries}\n")
             bot.send_message(admin_chat_id, "✅ Ручной экспресс-скан Light завершен!")
             
@@ -203,7 +206,8 @@ def run_light_scanner(bot, admin_chat_id):
         try:
             coins = get_top_coins(limit=SCAN_COINS_LIMIT)
             start_time = time.time()
-            api_queries = len(coins) + 1
+            total_processed_coins = len(coins) if coins else 0
+            api_queries = total_processed_coins + 1
             now = datetime.datetime.now()
 
             eligible_symbols = []
@@ -232,24 +236,26 @@ def run_light_scanner(bot, admin_chat_id):
                 local_max = setup.get('local_max', 0)
                 local_min = setup.get('local_min', 0)
                 pos = setup['pos_pct']
+                # Общие расчеты процентов изменения цены от локального минимума/максимума
+                pump_pct = ((current_price - local_min) / local_min) * 100 if local_min > 0 else 0
+                dump_pct = ((local_max - current_price) / local_max) * 100 if local_max > 0 else 0
 
                 if pos >= FILTER_ZONE_TOP:
                     icon = "🔴"
                     zone = f"Зона ШОРТА ({pos:.0f}%)"
                     status_text = "Цена уперлась в потолок. Ищем паттерн на падение."
-                    pump_pct = ((current_price - local_min) / local_min) * 100 if local_min > 0 else 0
                     price_text = f"💰 Цена: {current_price} (🚀 +{pump_pct:.0f}% от дна {local_min})"
                 elif pos <= FILTER_ZONE_BOTTOM:
                     icon = "🟢"
                     zone = f"Зона ЛОНГА ({pos:.0f}%)"
                     status_text = "Цена на дне. Ждем паттерн на отскок вверх."
-                    dump_pct = ((local_max - current_price) / local_max) * 100 if local_max > 0 else 0
                     price_text = f"💰 Цена: {current_price} (🔻 -{dump_pct:.0f}% от пика {local_max})"
                 else:
                     icon = "🟡"
                     zone = f"Середина диапазона ({pos:.0f}%)"
                     status_text = "Аномальный объем в середине графика. Просто наблюдаем."
-                    price_text = f"💰 Цена: {current_price}"
+                    # Для середины показываем падение от пика как наиболее актуальное
+                    price_text = f"💰 Цена: {current_price} (🔻 -{dump_pct:.0f}% от пика)"
 
                 msg = (
                     f"🎯 light signal | #{coin_name} | {icon}\n"
@@ -269,7 +275,7 @@ def run_light_scanner(bot, admin_chat_id):
         finally:
             elapsed_time = time.time() - start_time
             print(f"\n[ЛАЙТ-РАДАР АВТО] 📊 Скан завершен за {elapsed_time:.1f} сек.")
-            print(f"[ЛАЙТ-РАДАР АВТО] 🪙 Монет обработано: {len(coins)}")
+            print(f"[ЛАЙТ-РАДАР АВТО] 🪙 Монет обработано: {total_processed_coins}")
             print(f"[ЛАЙТ-РАДАР АВТО] 🌐 Запросов к API Bybit: {api_queries}\n")
             _scan_lock.release()
 

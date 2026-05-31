@@ -25,14 +25,15 @@ MAX_SCAN_WORKERS = 8
 
 def scan_market(scan_type="auto"):
     if not _scan_lock.acquire(blocking=False):
-        print("⚠️ [КРИПТА] Сканирование уже идёт, пропускаю.")
+        print("⚠️ [Critical фильтр] Сканирование уже идёт, пропускаю.")
         return []
     try:
         coins = get_top_coins(limit=SCAN_COINS_LIMIT)
         start_time = time.time()
-        api_queries = len(coins) + 1
+        total_processed_coins = len(coins) if coins else 0
+        api_queries = total_processed_coins + 1
         
-        print(f"Начало сканирования рынка ({scan_type}). Всего ликвидных пар: {len(coins)}")
+        print(f"Начало сканирования рынка ({scan_type}). Всего ликвидных пар: {total_processed_coins}")
         
         # Сначала подгружаем структуру маркетов Bybit (один раз перед циклом, чтобы не спамить)
         markets = load_markets_cached(exchange)
@@ -88,7 +89,7 @@ def scan_market(scan_type="auto"):
             return None
 
         results = []
-        worker_count = min(MAX_SCAN_WORKERS, max(1, len(coins)))
+        worker_count = min(MAX_SCAN_WORKERS, max(1, total_processed_coins))
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
             futures = [executor.submit(analyze_symbol, symbol) for symbol in coins]
             for future in as_completed(futures):
@@ -101,8 +102,8 @@ def scan_market(scan_type="auto"):
     finally:
         elapsed_time = time.time() - start_time
         found_signals = len(results)
-        print(f"\n[Critical фильтр] 📊 Скан завершен за {elapsed_time:.1f} сек.")
-        print(f"[Critical фильтр] 🪙 Монет обработано: {len(coins)} | Найдено сетапов: {found_signals}")
+        print(f"\n [Critical фильтр] 📊 Скан завершен за {elapsed_time:.1f} сек.")
+        print(f"[Critical фильтр] 🪙 Монет обработано: {total_processed_coins} | Найдено сетапов: {found_signals}")
         print(f"[Critical фильтр] 🌐 Запросов к API Bybit: {api_queries}\n")
         _scan_lock.release()
 
@@ -208,29 +209,29 @@ def auto_scheduler(bot, admin_chat_id):
         try:
             config = load_json(config_path, default={})
             if config.get("crypto", {}).get("status") != "RUNNING":
-                print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [КРИПТА] Статус STOPPED — пропускаю скан.")
+                print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [Critical фильтр] Статус STOPPED — пропускаю скан.")
                 return
         except Exception as e:
-            print(f"[КРИПТА] ❌ Ошибка чтения конфига: {e} | Путь: {config_path}")
+            print(f"[Critical фильтр] ❌ Ошибка чтения конфига: {e} | Путь: {config_path}")
             return
 
-        print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [КРИПТА] Фоновый запуск сканирования рынка...")
+        print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [Critical фильтр] Фоновый запуск сканирования рынка...")
         res = scan_market(scan_type="auto")
         if res:
             msg = format_results(res, "⏰ Авто-находка: Сильный RSI + Аномальный объем!")
             try:
                 bot.send_message(admin_chat_id, msg, parse_mode="Markdown")
             except Exception as e:
-                print(f"[КРИПТА] ❌ Ошибка автоотправки: {e}")
+                print(f"[Critical фильтр] ❌ Ошибка автоотправки: {e}")
                 try:
-                    bot.send_message(admin_chat_id, f"❌ [КРИПТА] Ошибка:\n`{e}`", parse_mode="Markdown")
+                    bot.send_message(admin_chat_id, f"❌ [Critical фильтр] Ошибка:\n`{e}`", parse_mode="Markdown")
                 except:
                     pass
         else:
-            print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [КРИПТА] Совпадений не найдено.")
+            print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [Critical фильтр] Совпадений не найдено.")
 
     schedule.every(60).minutes.do(run_auto_scan)
-    print(f"[КРИПТА] ⏱ Планировщик запущен.")
+    print(f"[Critical фильтр] ⏱ Планировщик запущен.")
     
     while True:
         schedule.run_pending()

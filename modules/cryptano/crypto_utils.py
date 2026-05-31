@@ -15,22 +15,42 @@ def calculate_rsi(df, period=14):
 
 
 def get_top_coins(limit=150, min_volume=5000000):
-    """Получает топ ликвидных USDT-пар с биржи."""
+    """Исправленная версия получения топ ликвидных пар Bybit."""
     try:
+        print("[DIAGNOSTIC] Запуск get_top_coins...")
         tickers = exchange.fetch_tickers()
+        if not tickers:
+            print("[WARNING] Биржа вернула пустой список тикеров!")
+            return []
+            
+        print(f"[DIAGNOSTIC] Успешно получено {len(tickers)} тикеров с биржи.")
         liquid_coins = []
+        
         for symbol, ticker in tickers.items():
-            if symbol.endswith('/USDT') and ':' not in symbol:
-                # Безопасное извлечение: если None, превращаем в 0.0
-                raw_vol = ticker.get('quoteVolume')
-                quote_volume = float(raw_vol) if raw_vol is not None else 0.0
-
-                if quote_volume >= min_volume:
-                    liquid_coins.append((symbol, quote_volume))
+            if symbol.endswith('/USDT') or symbol.endswith('/USDT:USDT'):
+                # CCXT Standard: quoteVolume — это объем в USDT
+                quote_volume = ticker.get('quoteVolume')
+                base_volume = ticker.get('baseVolume') or ticker.get('volume') or 0.0
+                last_price = ticker.get('last') or 0.0
+                
+                # Защита: если quoteVolume пустой или подозрительно маленький (меньше базового), 
+                # рассчитываем долларовый объем вручную: объем_в_монетах * цена
+                if quote_volume is None or float(quote_volume) <= float(base_volume):
+                    calc_volume = float(base_volume) * float(last_price)
+                else:
+                    calc_volume = float(quote_volume)
+                
+                if calc_volume >= min_volume:
+                    liquid_coins.append((symbol, calc_volume))
+                    
+        print(f"[DIAGNOSTIC] Прошли фильтр по объему (>{min_volume}$): {len(liquid_coins)} монет.")
         liquid_coins.sort(key=lambda x: x[1], reverse=True)
-        return [coin[0] for coin in liquid_coins[:limit]]
+        
+        result = [coin[0] for coin in liquid_coins[:limit]]
+        print(f"[DIAGNOSTIC] Итоговый список для сканера содержит: {len(result)} монет.")
+        return result
     except Exception as e:
-        print(f"Ошибка получения топ монет: {e}")
+        print(f"[КРИТИЧЕСКАЯ ОШИБКА BYBIT] Не удалось получить тикеры: {e}")
         return []
 
 
