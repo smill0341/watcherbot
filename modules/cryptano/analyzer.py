@@ -1,3 +1,4 @@
+import time
 import pandas as pd
 from datetime import datetime
 from modules.cryptano.common import calculate_rsi, exchange, format_price as fmt_p, price_precision_for_value
@@ -121,6 +122,8 @@ def get_all_zones(df_daily, price_precision, days=180):
 def analyze_coin(ticker_input: str) -> str:
     msg = "" 
     try:
+        start_time = time.time()
+        api_queries = 2
         coin = ticker_input.upper().replace("USDT", "").replace("/", "").strip()
         symbol = f"{coin}/USDT"
         
@@ -384,4 +387,7 @@ def analyze_coin(ticker_input: str) -> str:
     except Exception as e:
         return f"❌ Произошла ошибка при анализе {ticker_input}: {e}"
         
+    elapsed_time = time.time() - start_time
+    print(f"\n[ГЛУБОКИЙ АНАЛИЗ] 📊 Снайперский разбор завершен за {elapsed_time:.2f} сек.")
+    print(f"[ГЛУБОКИЙ АНАЛИЗ] 🌐 Запросов к API Bybit: {api_queries}\n")
     return msg

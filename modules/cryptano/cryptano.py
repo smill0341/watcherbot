@@ -5,10 +5,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from telebot import types
 import threading
 
-from modules.cryptano.crypto_utils import calculate_rsi, exchange, get_top_100_coins, price_precision_for_value
+from modules.cryptano.crypto_utils import calculate_rsi, exchange, get_top_coins, price_precision_for_value
 from modules.cryptano.history import save_signal
+from modules.cryptano.indicators import get_cryptano_signal
 from modules.cryptano.market_cache import load_markets_cached
 from modules.storage import load_json
+
+SCAN_COINS_LIMIT = 200
 
 _scan_lock = threading.Lock()
 
@@ -20,31 +23,14 @@ TIMEFRAME = "4h"
 USE_FUTURES = True         
 MAX_SCAN_WORKERS = 8
 
-def calculate_atr(df, period=14):
-    high_low = df["high"] - df["low"]
-    high_cp = (df["high"] - df["close"].shift()).abs()
-    low_cp = (df["low"] - df["close"].shift()).abs()
-    tr = pd.concat([high_low, high_cp, low_cp], axis=1).max(axis=1)
-    return tr.rolling(window=period).mean()
-
-def calculate_pivot_points(df):
-    last_row = df.iloc[-2]
-    high = last_row["high"]
-    low = last_row["low"]
-    close = last_row["close"]
-    
-    pivot = (high + low + close) / 3
-    r1 = (2 * pivot) - low
-    s1 = (2 * pivot) - high
-    
-    return pivot, r1, s1
-
 def scan_market(scan_type="auto"):
     if not _scan_lock.acquire(blocking=False):
         print("⚠️ [КРИПТА] Сканирование уже идёт, пропускаю.")
         return []
     try:
-        coins = get_top_100_coins()
+        coins = get_top_coins(limit=SCAN_COINS_LIMIT)
+        start_time = time.time()
+        api_queries = len(coins) + 1
         
         print(f"Начало сканирования рынка ({scan_type}). Всего ликвидных пар: {len(coins)}")
         
@@ -71,11 +57,6 @@ def scan_market(scan_type="auto"):
                     
                 df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
                 
-                df["rsi"] = calculate_rsi(df)
-                df["atr"] = calculate_atr(df)
-                df["ma30"] = df["close"].rolling(window=30).mean()
-                df["ma200"] = df["close"].rolling(window=200).mean()
-                
                 last_row = df.iloc[-1]
                 current_price = float(last_row["close"])
                 # --- УМНОЕ ОКРУГЛЕНИЕ ЦЕН (ТВОЙ АЛГОРИТМ) ---
@@ -85,68 +66,22 @@ def scan_market(scan_type="auto"):
                     small_extra_decimals=2,
                 )
                 # ----------------------------------------------
-                rsi = float(last_row["rsi"])
-                atr = float(last_row["atr"])
-                ma30 = float(last_row["ma30"])
-                
-                recent_volume = df["volume"].iloc[-1]
-                avg_volume = df["volume"].iloc[-25:-5].mean()
-                vol_ratio = float(recent_volume / avg_volume if avg_volume > 0 else 1.0)
                 
                 coin_name = symbol.split("/")[0]
                 
-                is_rsi_high_trigger = (scan_type == "rsi_high" and rsi >= RSI_HIGH)
-                is_short_pump_trigger = (
-                    (scan_type in ["auto", "volume"] and rsi > 75.0 and vol_ratio >= 4.0)
-                    or is_rsi_high_trigger
+                signal_data = get_cryptano_signal(
+                    df=df,
+                    current_price=current_price,
+                    price_precision=price_precision,
+                    scan_type=scan_type,
+                    rsi_high=RSI_HIGH,
+                    rsi_low=RSI_LOW,
+                    volume_multiplier=VOLUME_MULTIPLIER
                 )
 
-                if is_short_pump_trigger:
-                    entry_market = current_price
-                    entry_limit = current_price + (atr * 1.5)
-                    stop_loss = entry_limit + (atr * 0.5)
-                    take_profit = ma30
-                    
-                    entry_market = round(entry_market, price_precision)
-                    entry_limit = round(entry_limit, price_precision)
-                    stop_loss = round(stop_loss, price_precision)
-                    take_profit = round(take_profit, price_precision)
-                    
-                    return {
-                        "coin": coin_name,
-                        "type": "SHORT_PUMP",
-                        "price": current_price,
-                        "rsi": rsi,
-                        "vol_ratio": vol_ratio,
-                        "entry_market": entry_market,
-                        "entry_limit": entry_limit,
-                        "take_profit": take_profit,
-                        "stop_loss": stop_loss
-                    }
-                    
-                pivot, r1, s1 = calculate_pivot_points(df)
-                
-                s1 = round(float(s1), price_precision)
-                r1 = round(float(r1), price_precision)
-                stop_loss_long = round(s1 * 0.95, price_precision)
-                
-                is_rsi_trigger = (scan_type in ["rsi", "rsi_low"] and rsi <= RSI_LOW)
-                is_vol_trigger = (scan_type == "volume" and vol_ratio >= VOLUME_MULTIPLIER)
-                is_auto_trigger = (scan_type == "auto" and rsi <= 35.0 and vol_ratio >= VOLUME_MULTIPLIER)
-                
-                if is_rsi_trigger or is_vol_trigger or is_auto_trigger:
-                    ma200 = float(last_row["ma200"]) if not pd.isna(last_row["ma200"]) else 0
-                    if current_price > s1 and current_price > ma200:
-                        return {
-                            "coin": coin_name,
-                            "type": "LONG_ROLLBACK",
-                            "price": current_price,
-                            "rsi": rsi,
-                            "vol_ratio": vol_ratio,
-                            "s1": s1,
-                            "r1": r1,
-                            "stop_loss": stop_loss_long
-                        }
+                if signal_data:
+                    signal_data["coin"] = coin_name
+                    return signal_data
                         
             except Exception as e:
                 print(f"Ошибка анализа {symbol}: {e}")
@@ -164,6 +99,11 @@ def scan_market(scan_type="auto"):
                 
         return results
     finally:
+        elapsed_time = time.time() - start_time
+        found_signals = len(results)
+        print(f"\n[Critical фильтр] 📊 Скан завершен за {elapsed_time:.1f} сек.")
+        print(f"[Critical фильтр] 🪙 Монет обработано: {len(coins)} | Найдено сетапов: {found_signals}")
+        print(f"[Critical фильтр] 🌐 Запросов к API Bybit: {api_queries}\n")
         _scan_lock.release()
 
 def format_results(results, title):
@@ -217,7 +157,7 @@ def get_crypto_keyboard():
 # ================= ГЛАВНАЯ ТОЧКА ВХОДА ДЛЯ MAIN.PY =================
 def process_crypto_command(text, bot, chat_id):
     print(f"[CRYPTANO LOG] Принята команда: '{text}'")
-    bot.send_message(chat_id, "⏳ Сканирую ТОП-100 монет, подожди 30-60 секунд...")
+    bot.send_message(chat_id, "⏳ Сканирую ТОП монет, ждите пару секунд...", parse_mode="Markdown")
     
     if text == "🔥 RSI > 70":
         print("[CRYPTANO] Запускаю сканирование перекупленности...")
@@ -290,7 +230,7 @@ def auto_scheduler(bot, admin_chat_id):
             print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [КРИПТА] Совпадений не найдено.")
 
     schedule.every(60).minutes.do(run_auto_scan)
-    print(f"[КРИПТА] ⏱ Планировщик запущен. Следующий скан через 60 минут.")
+    print(f"[КРИПТА] ⏱ Планировщик запущен.")
     
     while True:
         schedule.run_pending()

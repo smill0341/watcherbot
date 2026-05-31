@@ -230,12 +230,15 @@ def handle_inline(call):
                     check_nba_injuries(bot, call.message.chat.id, silent=False)
 
 if __name__ == "__main__":
-    print("[MAIN LOG] Запускаю пусковой блок скрипта...")
+    config = load_config()
+    if "crypto" in config:
+        config["crypto"]["status"] = "STOPPED"
+        save_config(config)
+
     if ADMIN_CHAT_ID:
         start_all_background_tasks(bot, ADMIN_CHAT_ID)
-        print("[MAIN LOG] Все фоновые задачи (крипта, футбол, NBA) успешно запущены!")
     else:
         print("[MAIN WARNING] ВНИМАНИЕ: ADMIN_CHAT_ID не найден в .env. Фоновые потоки не запущены.")
 
-    print("[MAIN LOG] Бот успешно включен и слушает кнопки в Телеграм. Погнали!")
+    print("✅ Бот включен. Сканеры спят и ждут команды 'Автобот Старт' в Telegram.")
     bot.infinity_polling()

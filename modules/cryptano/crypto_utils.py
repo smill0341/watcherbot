@@ -14,8 +14,24 @@ def calculate_rsi(df, period=14):
     return 100 - (100 / (1 + rs))
 
 
-def get_top_100_coins():
-    return get_top_usdt_coins_cached(exchange, limit=150, min_quote_volume=8_000_000.0)
+def get_top_coins(limit=150, min_volume=5000000):
+    """Получает топ ликвидных USDT-пар с биржи."""
+    try:
+        tickers = exchange.fetch_tickers()
+        liquid_coins = []
+        for symbol, ticker in tickers.items():
+            if symbol.endswith('/USDT') and ':' not in symbol:
+                # Безопасное извлечение: если None, превращаем в 0.0
+                raw_vol = ticker.get('quoteVolume')
+                quote_volume = float(raw_vol) if raw_vol is not None else 0.0
+
+                if quote_volume >= min_volume:
+                    liquid_coins.append((symbol, quote_volume))
+        liquid_coins.sort(key=lambda x: x[1], reverse=True)
+        return [coin[0] for coin in liquid_coins[:limit]]
+    except Exception as e:
+        print(f"Ошибка получения топ монет: {e}")
+        return []
 
 
 def price_precision_for_value(value, one_to_ten_decimals=3, small_extra_decimals=3):
