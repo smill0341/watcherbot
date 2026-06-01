@@ -1,8 +1,8 @@
 import threading
 
 # Import the background tasks
-from modules.cryptano.cryptano import auto_scheduler as run_crypto
-from modules.cryptano.scanner import run_light_scanner
+from master_bot.modules.cryptano.critical_filter import auto_scheduler as run_crypto
+from master_bot.modules.cryptano.light_filter import run_light_scanner
 from modules.footballnogoal.football import run_football_monitor
 from modules.playerpropsbasket.player_props import run_nba_monitor
 

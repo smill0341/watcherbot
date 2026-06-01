@@ -1,5 +1,5 @@
 import pandas as pd
-from modules.cryptano.crypto_utils import calculate_rsi
+from master_bot.modules.cryptano.utils.crypto_utils import calculate_rsi
 
 def get_market_state(df, current_price):
     """
@@ -108,11 +108,6 @@ def get_cryptano_signal(df, current_price, price_precision, scan_type, rsi_high,
         stop_loss = entry_limit + (atr * 0.5)
         take_profit = ma30
 
-        entry_market = round(entry_market, price_precision)
-        entry_limit = round(entry_limit, price_precision)
-        stop_loss = round(stop_loss, price_precision)
-        take_profit = round(take_profit, price_precision)
-
         return {
             "type": "SHORT_PUMP",
             "price": current_price,
@@ -125,9 +120,9 @@ def get_cryptano_signal(df, current_price, price_precision, scan_type, rsi_high,
         }
 
     pivot, r1, s1 = calculate_pivot_points(df)
-    s1 = round(float(s1), price_precision)
-    r1 = round(float(r1), price_precision)
-    stop_loss_long = round(s1 * 0.95, price_precision)
+    s1 = float(s1)
+    r1 = float(r1)
+    stop_loss_long = s1 * 0.95
 
     is_rsi_trigger = (scan_type in ["rsi", "rsi_low"] and rsi <= rsi_low)
     is_vol_trigger = (scan_type == "volume" and vol_ratio >= volume_multiplier)
@@ -197,7 +192,7 @@ def analyze_extreme_pattern(df, direction, current_price, price_precision):
         else:
             details.append("❌ Слом локальной структуры отсутствует")
 
-        sl_price = round(float(peak_candle["high"]), price_precision)
+        sl_price = float(peak_candle["high"])
 
     elif direction == "LONG":
         recent_df = df.tail(15)
@@ -242,7 +237,7 @@ def analyze_extreme_pattern(df, direction, current_price, price_precision):
         else:
             details.append("❌ Цена продолжает давить вниз")
 
-        sl_price = round(float(low_candle["low"]), price_precision)
+        sl_price = float(low_candle["low"])
 
     return {
         "score": score,

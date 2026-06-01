@@ -5,11 +5,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from telebot import types
 import threading
 
-from modules.cryptano.crypto_utils import calculate_rsi, exchange, get_top_coins, price_precision_for_value
+from master_bot.modules.cryptano.utils.common import format_price as fmt_p, price_precision_from_market
+from master_bot.modules.cryptano.utils.crypto_utils import calculate_rsi, exchange, get_top_coins
 from modules.cryptano.history import save_signal
-from modules.cryptano.indicators import get_cryptano_signal
-from modules.cryptano.market_cache import load_markets_cached
-from modules.storage import load_json
+from master_bot.modules.cryptano.utils.indicators import get_cryptano_signal
+from master_bot.modules.cryptano.utils.market_cache import load_markets_cached
+from master_bot.modules.cryptano.utils.storage import load_json
 
 SCAN_COINS_LIMIT = 200
 
@@ -60,13 +61,8 @@ def scan_market(scan_type="auto"):
                 
                 last_row = df.iloc[-1]
                 current_price = float(last_row["close"])
-                # --- УМНОЕ ОКРУГЛЕНИЕ ЦЕН (ТВОЙ АЛГОРИТМ) ---
-                price_precision = price_precision_for_value(
-                    current_price,
-                    one_to_ten_decimals=2,
-                    small_extra_decimals=2,
-                )
-                # ----------------------------------------------
+                market_info = markets[symbol]
+                price_precision = price_precision_from_market(market_info)
                 
                 coin_name = symbol.split("/")[0]
                 
@@ -121,23 +117,20 @@ def format_results(results, title):
         if r["type"] == "SHORT_PUMP":
             msg += (
                 f"🚨 *{r['coin']}* | КРИТИЧЕСКИЙ ПАМП (ШОРТ СЕТКОЙ)\n"
-                f"💰 Цена: {r['price']} | 📊 RSI: {r['rsi']:.1f} | Объем: x{r['vol_ratio']:.2f}\n"
-                f"🔴 Вход 1 (Рынок): {r['entry_market']}\n"
-                f"🔴 Вход 2 (Лимитка): {r['entry_limit']}\n"
-                f"🟢 Тейк-профит (MA30): {r['take_profit']}\n"
-                f"⚠️ Защитный Стоп: {r['stop_loss']}\n\n"
+                f"💰 Цена: {fmt_p(r['price'])} | 📊 RSI: {r['rsi']:.1f} | Объем: x{r['vol_ratio']:.2f}\n"
+                f"🔴 Вход 1 (Рынок): {fmt_p(r['entry_market'])}\n"
+                f"🔴 Вход 2 (Лимитка): {fmt_p(r['entry_limit'])}\n"
+                f"🟢 Тейк-профит (MA30): {fmt_p(r['take_profit'])}\n"
+                f"⚠️ Защитный Стоп: {fmt_p(r['stop_loss'])}\n\n"
             )
         else:
             msg += (
                 f"🦈 *{r['coin']}* | ЛОНГ НА ОТКАТЕ\n"
-                f"💰 Цена: {r['price']} | 📊 RSI: {r['rsi']:.1f} | Объем: x{r['vol_ratio']:.2f}\n"
-                f"🟢 Вход на откат (S1): {r['s1']}\n"
-                f"🔴 Выход (Цель R1): {r['r1']}\n"
-                f"⚠️ Защитный Стоп-лосс: {r['stop_loss']}\n\n"
+                f"💰 Цена: {fmt_p(r['price'])} | 📊 RSI: {r['rsi']:.1f} | Объем: x{r['vol_ratio']:.2f}\n"
+                f"🟢 Вход на откат (S1): {fmt_p(r['s1'])}\n"
+                f"🔴 Выход (Цель R1): {fmt_p(r['r1'])}\n"
+                f"⚠️ Защитный Стоп-лосс: {fmt_p(r['stop_loss'])}\n\n"
             )
-    
-    msg += f"━━━━━━━━━━━━━━━\n"
-    msg += f"📊 Итого: 🦈 Лонг: {long_count} | 🚨 Шорт: {short_count}"
     
     if long_count == 0:
         msg += "\n⚠️ Лонг-пар не найдено"

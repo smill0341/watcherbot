@@ -3,7 +3,7 @@ import requests
 import time
 from datetime import datetime
 from dotenv import load_dotenv
-from modules.storage import load_json, save_json_atomic
+from master_bot.modules.cryptano.utils.storage import load_json, save_json_atomic
 
 # Явно указываем путь к .env
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

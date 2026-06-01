@@ -2,8 +2,8 @@
 
 import time
 import pandas as pd
-from modules.cryptano.crypto_utils import calculate_rsi, exchange, price_precision_from_market
-from modules.cryptano.market_cache import load_markets_cached
+from master_bot.modules.cryptano.utils.common import calculate_rsi, exchange, format_price as fmt_p, price_precision_from_market
+from master_bot.modules.cryptano.utils.market_cache import load_markets_cached
 
 SCAN_COINS_LIMIT = 150
 
@@ -39,9 +39,9 @@ def check_manual_extreme(coin, direction):
         df["rsi"] = calculate_rsi(df)
 
         current_candle = df.iloc[-1] # Самая последняя свеча (онлайн)
-        current_price = round(float(current_candle["close"]), price_precision)
+        current_price = float(current_candle["close"])
         
-        from modules.cryptano.indicators import analyze_extreme_pattern
+        from master_bot.modules.cryptano.utils.indicators import analyze_extreme_pattern
         result = analyze_extreme_pattern(df, direction, current_price, price_precision)
 
         score = result["score"]
@@ -58,7 +58,7 @@ def check_manual_extreme(coin, direction):
         # Собираем отчет
         report = (
             f"🌋 *СЛЕДОВАНИЕ ЗА ЭКСТРИМОМ: {coin}*\n"
-            f"📈 Направление: *{direction}* | Цена онлайн: `{current_price}`\n"
+            f"📈 Направление: *{direction}* | Цена онлайн: `{fmt_p(current_price)}`\n"
             f"📊 Набрано: `{score} из 4 баллов` истощения\n"
             f"━━━━━━━━━━━━━━━\n"
             f" STATUS: *{verdict}*\n\n"
@@ -69,7 +69,7 @@ def check_manual_extreme(coin, direction):
             report += f" {d}\n"
         
         if (direction == "SHORT" and score >= 3) or (direction == "LONG" and score == 4):
-            report += f"\n🎯 *ПЛАН ВХОДА С РЫНКА:*\n• Вход: `{current_price}`\n• Стоп-лосс: `{sl_price}`\n⚠️ _Рекомендуется заходить уменьшенным объёмом!_"
+            report += f"\n🎯 *ПЛАН ВХОДА С РЫНКА:*\n• Вход: `{fmt_p(current_price)}`\n• Стоп-лосс: `{fmt_p(sl_price)}`\n⚠️ _Рекомендуется заходить уменьшенным объёмом!_"
         else:
             report += f"\n⏳ Тренд еще силен или паттерн не сформирован."
 

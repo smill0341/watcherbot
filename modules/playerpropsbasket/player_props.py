@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 import pandas as pd
 from modules.playerpropsbasket.update_base import run_auto_update
 from dotenv import load_dotenv
-from modules.storage import load_json, save_json_atomic
+from master_bot.modules.cryptano.utils.storage import load_json, save_json_atomic
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv(os.path.join(BASE_DIR, ".env"))

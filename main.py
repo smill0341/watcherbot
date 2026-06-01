@@ -1,17 +1,16 @@
 import os
-import threading
 import telebot
 from dotenv import load_dotenv
 import keyboards
-from modules.scheduler import start_all_background_tasks
-from modules.storage import load_json, save_json_atomic
-from modules.cryptano.cryptano import auto_scheduler as run_crypto, process_crypto_command
-from modules.footballnogoal.football import run_football_monitor, check_live_matches
-from modules.playerpropsbasket.player_props import run_nba_monitor, check_nba_injuries
+from master_bot.background_tasks import start_all_background_tasks
+from master_bot.modules.cryptano.utils.storage import load_json, save_json_atomic
+from master_bot.modules.cryptano.critical_filter import process_crypto_command
+from modules.footballnogoal.football import check_live_matches
+from modules.playerpropsbasket.player_props import check_nba_injuries
 from modules.cryptano.history import check_and_update, format_history
-from modules.cryptano.analyzer import analyze_coin
-from modules.cryptano.pumpdump import check_manual_extreme
-from modules.cryptano.scanner import run_light_scanner, run_manual_light_scan
+from master_bot.modules.cryptano.market_overview import analyze_coin
+from master_bot.modules.cryptano.trade_plan import check_manual_extreme
+from master_bot.modules.cryptano.light_filter import run_manual_light_scan
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TOKEN:
