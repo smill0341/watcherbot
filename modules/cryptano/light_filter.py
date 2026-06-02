@@ -212,18 +212,42 @@ def run_manual_light_scan(bot, admin_chat_id):
                         target_value = strong_resistance
                     target_pullback = fmt_p(target_value)
                     comment_body = f"Ждем рост к ~{target_pullback} для поиска шорта."
-            else:
-                icon = "⚖️"
-                zone_name = "MID-RANGE"
-                strategy_text = "Ожидаем движение."
-                target_zone = ""
-                target_value = current_price
-                target_pullback = fmt_p(current_price)
-                comment_body = "Цена в середине боковика. Точек входа нет."
+            else:  # trend_type == "FLAT"
+                # Середина уже отсечена фильтром (readiness_pct < 80). 
+                # Значит мы либо у верхней (pos >= 80), либо у нижней (pos <= 20) границы.
+                if pos >= 80:
+                    strategy_text = "Работа от верхней границы (Шорт)."
+                    target_zone = "SHORT ZONE"
+                    target_value = strong_resistance
+                    target_pullback = fmt_p(target_value)
+                    
+                    if readiness_pct >= 90:
+                        zone_name = "SHORT ZONE"
+                        icon = "🔴"
+                        comment_body = f"Цена в зоне. Ищем сетап в шорт у ~{target_pullback}."
+                    else:
+                        zone_name = "SHORT WATCH"
+                        icon = "🟡"
+                        comment_body = f"Цена подходит к зоне. Готовимся искать шорт у ~{target_pullback}."
+                        
+                else:
+                    strategy_text = "Работа от нижней границы (Лонг)."
+                    target_zone = "LONG ZONE"
+                    target_value = strong_support
+                    target_pullback = fmt_p(target_value)
+                    
+                    if readiness_pct >= 90:
+                        zone_name = "LONG ZONE"
+                        icon = "🟢"
+                        comment_body = f"Цена в зоне. Ищем сетап в лонг у ~{target_pullback}."
+                    else:
+                        zone_name = "LONG WATCH"
+                        icon = "🟡"
+                        comment_body = f"Цена подходит к зоне. Готовимся искать лонг у ~{target_pullback}."
 
 
             distance_pct = abs(current_price - target_value) / target_value * 100 if target_value > 0 else 0
-            distance_str = f"📍 До {target_zone}: {distance_pct:.0f}%\n" if readiness_pct < 90 else ""
+            distance_str = f"📍 До {target_zone}: {distance_pct:.0f}%\n\n" if readiness_pct < 90 else "\n"
 
             msg = (
                 f"⚡️ LIGHT SIGNAL | #{coin_name} | {icon}\n"
@@ -231,11 +255,11 @@ def run_manual_light_scan(bot, admin_chat_id):
                 f"{price_text}\n"
                 f"📊 Объем: x{setup['vol_ratio']:.1f}\n"
                 f"🌡 RSI: {setup['rsi']:.1f}\n"
-                f"{setup['trend']}\n"
-                f"⚡️ ЗОНА: {zone_name} ({readiness_pct:.0f}%)\n"
-                f"{distance_str}"
+                f"--------------------------------\n"
+                f"📊 Тренд: {setup['trend']}\n"
+                f"⚡️ СТАТУС: {zone_name} ({readiness_pct:.0f}%)\n\n"
                 f"👀 {strategy_text}\n"
-                f"{comment_body}\n"
+                f"{comment_body}\n\n"
                 f"❗️ НЕ сигнал на вход"
             )
             bot.send_message(admin_chat_id, msg, parse_mode="Markdown")
@@ -394,17 +418,41 @@ def run_light_scanner(bot, admin_chat_id):
                             target_value = strong_resistance
                         target_pullback = fmt_p(target_value)
                         comment_body = f"Ждем рост к ~{target_pullback} для поиска шорта."
-                else:
-                    icon = "⚖️"
-                    zone_name = "MID-RANGE"
-                    strategy_text = "Ожидаем движение."
-                    target_zone = ""
-                    target_value = current_price
-                    target_pullback = fmt_p(current_price)
-                    comment_body = "Цена в середине боковика. Точек входа нет."
+                else:  # trend_type == "FLAT"
+                    # Середина уже отсечена фильтром (readiness_pct < 80). 
+                    # Значит мы либо у верхней (pos >= 80), либо у нижней (pos <= 20) границы.
+                    if pos >= 80:
+                        strategy_text = "Работа от верхней границы (Шорт)."
+                        target_zone = "SHORT ZONE"
+                        target_value = strong_resistance
+                        target_pullback = fmt_p(target_value)
+                        
+                        if readiness_pct >= 90:
+                            zone_name = "SHORT ZONE"
+                            icon = "🔴"
+                            comment_body = f"Цена в зоне. Ищем сетап в шорт у ~{target_pullback}."
+                        else:
+                            zone_name = "SHORT WATCH"
+                            icon = "🟡"
+                            comment_body = f"Цена подходит к зоне. Готовимся искать шорт у ~{target_pullback}."
+                            
+                    else:
+                        strategy_text = "Работа от нижней границы (Лонг)."
+                        target_zone = "LONG ZONE"
+                        target_value = strong_support
+                        target_pullback = fmt_p(target_value)
+                        
+                        if readiness_pct >= 90:
+                            zone_name = "LONG ZONE"
+                            icon = "🟢"
+                            comment_body = f"Цена в зоне. Ищем сетап в лонг у ~{target_pullback}."
+                        else:
+                            zone_name = "LONG WATCH"
+                            icon = "🟡"
+                            comment_body = f"Цена подходит к зоне. Готовимся искать лонг у ~{target_pullback}."
 
                 distance_pct = abs(current_price - target_value) / target_value * 100 if target_value > 0 else 0
-                distance_str = f"📍 До {target_zone}: {distance_pct:.0f}%\n" if readiness_pct < 90 else ""
+                distance_str = f"📍 До {target_zone}: {distance_pct:.0f}%\n\n" if readiness_pct < 90 else "\n"
 
                 msg = (
                     f"⚡️ LIGHT SIGNAL | #{coin_name} | {icon}\n"
@@ -412,11 +460,11 @@ def run_light_scanner(bot, admin_chat_id):
                     f"{price_text}\n"
                     f"📊 Объем: x{setup['vol_ratio']:.1f}\n"
                     f"🌡 RSI: {setup['rsi']:.1f}\n"
-                    f"{setup['trend']}\n"
-                    f"⚡️ ЗОНА: {zone_name} ({readiness_pct:.0f}%)\n"
-                    f"{distance_str}"
+                    f"--------------------------------\n"
+                    f"📊 Тренд: {setup['trend']}\n"
+                    f"⚡️ СТАТУС: {zone_name} ({readiness_pct:.0f}%)\n\n"
                     f"👀 {strategy_text}\n"
-                    f"{comment_body}\n"
+                    f"{comment_body}\n\n"
                     f"❗️ НЕ сигнал на вход"
                 )
                 bot.send_message(admin_chat_id, msg, parse_mode="Markdown")
