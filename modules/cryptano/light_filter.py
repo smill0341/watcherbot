@@ -122,6 +122,8 @@ def run_manual_light_scan(bot, admin_chat_id):
                     setups.append(setup)
 
         for setup in setups:
+            if not setup:
+                continue
             coin_name = setup["coin"]
             found_something = True
 
@@ -157,64 +159,71 @@ def run_manual_light_scan(bot, admin_chat_id):
             else:
                 readiness_pct = max(pos, 100 - pos)
 
+            # Отсекаем монеты, которые находятся далеко от зоны входа (стадия WAIT)
+            if readiness_pct < 80:
+                continue
+
             # Формируем статус, иконку и комментарий
             if trend_type == "BULLISH":
-                if readiness_pct >= 85:
+                strategy_text = "Работа от откатов."
+                target_zone = "LONG ZONE"
+                if readiness_pct >= 90:
+                    zone_name = "LONG ZONE"
                     icon = "🟢"
-                    status = "Long Zone"
-                    comment = "👀 Цена в зоне покупок. Ищем сетап в лонг на младшем ТФ."
-                elif readiness_pct >= 65:
+                    target_value = strong_support
+                    target_pullback = fmt_p(target_value)
+                    comment_body = f"Цена в зоне. Ищем сетап в лонг у ~{target_pullback}."
+                elif readiness_pct >= 80:
+                    zone_name = "LONG WATCH"
                     icon = "🟡"
-                    status = "Long Interest"
-                    comment = "👀 Цена подходит к зоне покупок. Готовимся к поиску лонга."
+                    target_value = strong_support
+                    target_pullback = fmt_p(target_value)
+                    comment_body = f"Цена подходит к зоне. Готовимся искать лонг у ~{target_pullback}."
                 else:
+                    zone_name = "WAIT"
                     icon = "⏳"
-                    status = "Wait for Pullback"
                     if setup['vol_ratio'] > 2.0 and setup['rsi'] > 70.0:
-                        target_pullback = fmt_p(nearest_support)
-                        comment = f"👀 Сильный импульс. Ждем локальный ретест, не FOMO. Ближайшая поддержка {target_pullback}."
+                        target_value = nearest_support
                     else:
-                        target_pullback = fmt_p(strong_support)
-                        comment = f"👀 Цена на импульсе. Ждем откат к сильной поддержке {target_pullback}."
+                        target_value = strong_support
+                    target_pullback = fmt_p(target_value)
+                    comment_body = f"Ждем снижение к ~{target_pullback} для поиска лонга."
             elif trend_type == "BEARISH":
-                if readiness_pct >= 85:
+                strategy_text = "Работа от отскоков."
+                target_zone = "SHORT ZONE"
+                if readiness_pct >= 90:
+                    zone_name = "SHORT ZONE"
                     icon = "🔴"
-                    status = "Short Zone"
-                    comment = "👀 Цена в зоне продаж. Ищем сетап в шорт на младшем ТФ."
-                elif readiness_pct >= 65:
+                    target_value = strong_resistance
+                    target_pullback = fmt_p(target_value)
+                    comment_body = f"Цена в зоне. Ищем сетап в шорт у ~{target_pullback}."
+                elif readiness_pct >= 80:
+                    zone_name = "SHORT WATCH"
                     icon = "🟡"
-                    status = "Short Interest"
-                    comment = "👀 Цена подходит к зоне продаж. Готовимся к поиску шорта."
+                    target_value = strong_resistance
+                    target_pullback = fmt_p(target_value)
+                    comment_body = f"Цена подходит к зоне. Готовимся искать шорт у ~{target_pullback}."
                 else:
+                    zone_name = "WAIT"
                     icon = "⏳"
-                    status = "Wait for Bounce"
                     if setup['vol_ratio'] > 2.0 and setup['rsi'] < 30.0:
-                        target_bounce = fmt_p(nearest_resistance)
-                        comment = f"👀 Сильное падение. Ждем быстрый ретест. Ближайшее сопротивление {target_bounce}."
+                        target_value = nearest_resistance
                     else:
-                        target_bounce = fmt_p(strong_resistance)
-                        comment = f"👀 Цена на локальном дне. Ждем отскок к сильному сопротивлению {target_bounce}."
+                        target_value = strong_resistance
+                    target_pullback = fmt_p(target_value)
+                    comment_body = f"Ждем рост к ~{target_pullback} для поиска шорта."
             else:
-                if pos >= 85:
-                    icon = "🔴"
-                    status = "Short Zone"
-                    comment = "👀 Цена у верхней границы боковика."
-                elif pos >= 65:
-                    icon = "🟡"
-                    status = "Short Interest"
-                    comment = "👀 Подход к верхней границе боковика."
-                elif pos <= 15:
-                    icon = "🟢"
-                    status = "Long Zone"
-                    comment = "👀 Цена у нижней границы боковика."
-                elif pos <= 35:
-                    icon = "🟡"
-                    status = "Long Interest"
-                    comment = "👀 Подход к нижней границе боковика."
-                else:
-                    icon = "⚖️"
-                    status = "Mid-Range"
-                    comment = "👀 Цена в середине боковика. Точек входа нет."
+                icon = "⚖️"
+                zone_name = "MID-RANGE"
+                strategy_text = "Ожидаем движение."
+                target_zone = ""
+                target_value = current_price
+                target_pullback = fmt_p(current_price)
+                comment_body = "Цена в середине боковика. Точек входа нет."
+
+
+            distance_pct = abs(current_price - target_value) / target_value * 100 if target_value > 0 else 0
+            distance_str = f"📍 До {target_zone}: {distance_pct:.0f}%\n" if readiness_pct < 90 else ""
 
             msg = (
                 f"⚡️ LIGHT SIGNAL | #{coin_name} | {icon}\n"
@@ -222,11 +231,12 @@ def run_manual_light_scan(bot, admin_chat_id):
                 f"{price_text}\n"
                 f"📊 Объем: x{setup['vol_ratio']:.1f}\n"
                 f"🌡 RSI: {setup['rsi']:.1f}\n"
-                f"--------------------------------\n"
-                f"Тренд: {setup['trend']}\n"
-                f"⚡️ СТАТУС: {status} ({readiness_pct:.0f}% готовность)\n\n"
-                f"{comment}\n\n"
-                f"❗️ Это НЕ сигнал на вход."
+                f"{setup['trend']}\n"
+                f"⚡️ ЗОНА: {zone_name} ({readiness_pct:.0f}%)\n"
+                f"{distance_str}"
+                f"👀 {strategy_text}\n"
+                f"{comment_body}\n"
+                f"❗️ НЕ сигнал на вход"
             )
             bot.send_message(admin_chat_id, msg, parse_mode="Markdown")
             
@@ -332,64 +342,69 @@ def run_light_scanner(bot, admin_chat_id):
                 else:
                     readiness_pct = max(pos, 100 - pos)
 
-                # Формируем статус, иконку и комментарий
+                # Отсекаем монеты, которые находятся далеко от зоны входа (стадия WAIT)
+                if readiness_pct < 80:
+                    continue
+
                 if trend_type == "BULLISH":
-                    if readiness_pct >= 85:
+                    strategy_text = "Работа от откатов."
+                    target_zone = "LONG ZONE"
+                    if readiness_pct >= 90:
+                        zone_name = "LONG ZONE"
                         icon = "🟢"
-                        status = "Long Zone"
-                        comment = "👀 Цена в зоне покупок. Ищем сетап в лонг на младшем ТФ."
-                    elif readiness_pct >= 65:
+                        target_value = strong_support
+                        target_pullback = fmt_p(target_value)
+                        comment_body = f"Цена в зоне. Ищем сетап в лонг у ~{target_pullback}."
+                    elif readiness_pct >= 80:
+                        zone_name = "LONG WATCH"
                         icon = "🟡"
-                        status = "Long Interest"
-                        comment = "👀 Цена подходит к зоне покупок. Готовимся к поиску лонга."
+                        target_value = strong_support
+                        target_pullback = fmt_p(target_value)
+                        comment_body = f"Цена подходит к зоне. Готовимся искать лонг у ~{target_pullback}."
                     else:
+                        zone_name = "WAIT"
                         icon = "⏳"
-                        status = "Wait for Pullback"
                         if setup['vol_ratio'] > 2.0 and setup['rsi'] > 70.0:
-                            target_pullback = fmt_p(nearest_support)
-                            comment = f"👀 Сильный импульс. Ждем локальный ретест, не FOMO. Ближайшая поддержка {target_pullback}."
+                            target_value = nearest_support
                         else:
-                            target_pullback = fmt_p(strong_support)
-                            comment = f"👀 Цена на импульсе. Ждем откат к сильной поддержке {target_pullback}."
+                            target_value = strong_support
+                        target_pullback = fmt_p(target_value)
+                        comment_body = f"Ждем снижение к ~{target_pullback} для поиска лонга."
                 elif trend_type == "BEARISH":
-                    if readiness_pct >= 85:
+                    strategy_text = "Работа от отскоков."
+                    target_zone = "SHORT ZONE"
+                    if readiness_pct >= 90:
+                        zone_name = "SHORT ZONE"
                         icon = "🔴"
-                        status = "Short Zone"
-                        comment = "👀 Цена в зоне продаж. Ищем сетап в шорт на младшем ТФ."
-                    elif readiness_pct >= 65:
+                        target_value = strong_resistance
+                        target_pullback = fmt_p(target_value)
+                        comment_body = f"Цена в зоне. Ищем сетап в шорт у ~{target_pullback}."
+                    elif readiness_pct >= 80:
+                        zone_name = "SHORT WATCH"
                         icon = "🟡"
-                        status = "Short Interest"
-                        comment = "👀 Цена подходит к зоне продаж. Готовимся к поиску шорта."
+                        target_value = strong_resistance
+                        target_pullback = fmt_p(target_value)
+                        comment_body = f"Цена подходит к зоне. Готовимся искать шорт у ~{target_pullback}."
                     else:
+                        zone_name = "WAIT"
                         icon = "⏳"
-                        status = "Wait for Bounce"
                         if setup['vol_ratio'] > 2.0 and setup['rsi'] < 30.0:
-                            target_bounce = fmt_p(nearest_resistance)
-                            comment = f"👀 Сильное падение. Ждем быстрый ретест. Ближайшее сопротивление {target_bounce}."
+                            target_value = nearest_resistance
                         else:
-                            target_bounce = fmt_p(strong_resistance)
-                            comment = f"👀 Цена на локальном дне. Ждем отскок к сильному сопротивлению {target_bounce}."
+                            target_value = strong_resistance
+                        target_pullback = fmt_p(target_value)
+                        comment_body = f"Ждем рост к ~{target_pullback} для поиска шорта."
                 else:
-                    if pos >= 85:
-                        icon = "🔴"
-                        status = "Short Zone"
-                        comment = "👀 Цена у верхней границы боковика."
-                    elif pos >= 65:
-                        icon = "🟡"
-                        status = "Short Interest"
-                        comment = "👀 Подход к верхней границе боковика."
-                    elif pos <= 15:
-                        icon = "🟢"
-                        status = "Long Zone"
-                        comment = "👀 Цена у нижней границы боковика."
-                    elif pos <= 35:
-                        icon = "🟡"
-                        status = "Long Interest"
-                        comment = "👀 Подход к нижней границе боковика."
-                    else:
-                        icon = "⚖️"
-                        status = "Mid-Range"
-                        comment = "👀 Цена в середине боковика. Точек входа нет."
+                    icon = "⚖️"
+                    zone_name = "MID-RANGE"
+                    strategy_text = "Ожидаем движение."
+                    target_zone = ""
+                    target_value = current_price
+                    target_pullback = fmt_p(current_price)
+                    comment_body = "Цена в середине боковика. Точек входа нет."
+
+                distance_pct = abs(current_price - target_value) / target_value * 100 if target_value > 0 else 0
+                distance_str = f"📍 До {target_zone}: {distance_pct:.0f}%\n" if readiness_pct < 90 else ""
 
                 msg = (
                     f"⚡️ LIGHT SIGNAL | #{coin_name} | {icon}\n"
@@ -397,11 +412,12 @@ def run_light_scanner(bot, admin_chat_id):
                     f"{price_text}\n"
                     f"📊 Объем: x{setup['vol_ratio']:.1f}\n"
                     f"🌡 RSI: {setup['rsi']:.1f}\n"
-                    f"--------------------------------\n"
-                    f"Тренд: {setup['trend']}\n"
-                    f"⚡️ СТАТУС: {status} ({readiness_pct:.0f}% готовность)\n\n"
-                    f"{comment}\n\n"
-                    f"❗️ Это НЕ сигнал на вход."
+                    f"{setup['trend']}\n"
+                    f"⚡️ ЗОНА: {zone_name} ({readiness_pct:.0f}%)\n"
+                    f"{distance_str}"
+                    f"👀 {strategy_text}\n"
+                    f"{comment_body}\n"
+                    f"❗️ НЕ сигнал на вход"
                 )
                 bot.send_message(admin_chat_id, msg, parse_mode="Markdown")
 
