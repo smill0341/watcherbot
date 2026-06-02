@@ -1,5 +1,5 @@
 import pandas as pd
-from master_bot.modules.cryptano.utils.crypto_utils import calculate_rsi
+from modules.cryptano.utils.crypto_utils import calculate_rsi
 
 def get_market_state(df, current_price):
     """

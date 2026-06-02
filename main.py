@@ -2,15 +2,15 @@ import os
 import telebot
 from dotenv import load_dotenv
 import keyboards
-from master_bot.background_tasks import start_all_background_tasks
-from master_bot.modules.cryptano.utils.storage import load_json, save_json_atomic
-from master_bot.modules.cryptano.critical_filter import process_crypto_command
+from background_tasks import start_all_background_tasks
+from modules.cryptano.utils.storage import load_json, save_json_atomic
+from modules.cryptano.critical_filter import process_crypto_command
 from modules.footballnogoal.football import check_live_matches
 from modules.playerpropsbasket.player_props import check_nba_injuries
 from modules.cryptano.history import check_and_update, format_history
-from master_bot.modules.cryptano.market_overview import analyze_coin
-from master_bot.modules.cryptano.trade_plan import check_manual_extreme
-from master_bot.modules.cryptano.light_filter import run_manual_light_scan
+from modules.cryptano.market_overview import analyze_coin
+from modules.cryptano.trade_plan import check_manual_extreme
+from modules.cryptano.light_filter import run_manual_light_scan
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TOKEN:
@@ -36,7 +36,10 @@ def handle_text(message):
     if str(message.chat.id) != str(ADMIN_CHAT_ID): return
 
     # --- ГЛАВНОЕ МЕНЮ И СПОРТ ---
-    if message.text == "🪙 Critical фильтр":
+    if message.text == "🪙 Крипта":
+        bot.send_message(message.chat.id, "🪙 Крипто-сканер:", reply_markup=keyboards.get_crypto_menu())
+
+    elif message.text == "🪙 Critical фильтр":
         bot.send_message(message.chat.id, "🪙 Крипто-сканер:", reply_markup=keyboards.get_crypto_menu())
 
     elif message.text == "⬅️ Назад в Главное меню":

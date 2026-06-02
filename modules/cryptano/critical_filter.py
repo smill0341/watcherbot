@@ -5,12 +5,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from telebot import types
 import threading
 
-from master_bot.modules.cryptano.utils.common import format_price as fmt_p, price_precision_from_market
-from master_bot.modules.cryptano.utils.crypto_utils import calculate_rsi, exchange, get_top_coins
+from modules.cryptano.utils.common import format_price as fmt_p, price_precision_from_market
+from modules.cryptano.utils.crypto_utils import calculate_rsi, exchange, get_top_coins
 from modules.cryptano.history import save_signal
-from master_bot.modules.cryptano.utils.indicators import get_cryptano_signal
-from master_bot.modules.cryptano.utils.market_cache import load_markets_cached
-from master_bot.modules.cryptano.utils.storage import load_json
+from modules.cryptano.utils.indicators import get_cryptano_signal
+from modules.cryptano.utils.market_cache import load_markets_cached
+from modules.cryptano.utils.storage import load_json
 
 SCAN_COINS_LIMIT = 200
 

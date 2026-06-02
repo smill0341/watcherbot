@@ -2,7 +2,7 @@ import math
 
 import ccxt
 
-from master_bot.modules.cryptano.utils.market_cache import get_top_usdt_coins_cached
+from modules.cryptano.utils.market_cache import get_top_usdt_coins_cached
 
 
 exchange = ccxt.bybit({"enableRateLimit": True})

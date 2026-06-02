@@ -1,10 +1,10 @@
 import time
 import pandas as pd
 from datetime import datetime
-from master_bot.modules.cryptano.utils.common import calculate_rsi, exchange, format_price as fmt_p
-from master_bot.modules.cryptano.utils.market_cache import load_markets_cached
-from master_bot.modules.cryptano.utils.price_action import check_live_confirmation
-from master_bot.modules.cryptano.utils.regime import detect_market_regime
+from modules.cryptano.utils.common import calculate_rsi, exchange, format_price as fmt_p
+from modules.cryptano.utils.market_cache import load_markets_cached
+from modules.cryptano.utils.price_action import check_live_confirmation
+from modules.cryptano.utils.regime import detect_market_regime
 
 # ==========================================
 # БЛОК 1: Настройки и Импорты

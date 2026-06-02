@@ -1,9 +1,9 @@
 import os
 import datetime
 from signal import signal
-from master_bot.modules.cryptano.utils.common import exchange
-from master_bot.modules.cryptano.utils.market_cache import load_markets_cached
-from master_bot.modules.cryptano.utils.storage import load_json, save_json_atomic
+from modules.cryptano.utils.common import exchange
+from modules.cryptano.utils.market_cache import load_markets_cached
+from modules.cryptano.utils.storage import load_json, save_json_atomic
 
 # Путь к файлу сигналов рядом с history.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

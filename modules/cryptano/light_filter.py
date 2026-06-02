@@ -4,12 +4,12 @@ import threading
 import pandas as pd
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from master_bot.modules.cryptano.utils.common import format_price as fmt_p
-from master_bot.modules.cryptano.utils.crypto_utils import calculate_rsi, exchange, get_top_coins
-from master_bot.modules.cryptano.utils.market_cache import load_markets_cached
-from master_bot.modules.cryptano.utils.regime import detect_market_regime
-from master_bot.modules.cryptano.utils.indicators import get_market_state
-from master_bot.modules.cryptano.utils.storage import load_json
+from modules.cryptano.utils.common import format_price as fmt_p
+from modules.cryptano.utils.crypto_utils import calculate_rsi, exchange, get_top_coins
+from modules.cryptano.utils.market_cache import load_markets_cached
+from modules.cryptano.utils.regime import detect_market_regime
+from modules.cryptano.utils.indicators import get_market_state
+from modules.cryptano.utils.storage import load_json
 
 # ================= Настройки фильтров =================
 TIMEFRAME = "4h"
@@ -133,33 +133,30 @@ def run_manual_light_scan(bot, admin_chat_id):
 
             if pos >= FILTER_ZONE_TOP:
                 icon = "🔴"
-                zone = f"Зона ШОРТА ({pos:.0f}%)"
-                status_text = "Цена уперлась в потолок. Ищем паттерн на падение."
+                zone = f"🔴 Short Zone ({pos:.0f}%)"
                 price_text = f"💰 Цена: {fmt_p(current_price)} (🚀 +{pump_pct:.0f}% от дна {fmt_p(local_min)})"
             elif pos <= FILTER_ZONE_BOTTOM:
                 icon = "🟢"
-                zone = f"Зона ЛОНГА ({pos:.0f}%)"
-                status_text = "Цена на дне. Ждем паттерн на отскок вверх."
+                zone = f"🟢 Long Zone ({pos:.0f}%)"
                 price_text = f"💰 Цена: {fmt_p(current_price)} (🔻 -{dump_pct:.0f}% от пика {fmt_p(local_max)})"
             else:
                 icon = "🟡"
                 zone = f"Середина диапазона ({pos:.0f}%)"
-                status_text = "Аномальный объем в середине графика. Просто наблюдаем."
                 # Для середины показываем падение от пика как наиболее актуальное
                 price_text = f"💰 Цена: {fmt_p(current_price)} (🔻 -{dump_pct:.0f}% от пика)"
 
-            print(f"[SCANNER LOG] Найдена монета {coin_name}! Отправляю в Telegram.")
+            
             msg = (
-                f"🎯 light signal | #{coin_name} | {icon}\n"
+                f"⚡️ LIGHT SIGNAL | #{coin_name} | {icon}\n"
                 f"━━━━━━━━━━━━━━━\n"
                 f"{price_text}\n"
                 f"📊 Объем: x{setup['vol_ratio']:.1f}\n"
                 f"🌡 RSI: {setup['rsi']:.1f}\n"
                 f"--------------------------------\n"
                 f"Тренд: {setup['trend']}\n"
-                f"📍 Позиция: {zone}\n\n"
-                f"[ ⚡️ СТАТУС ]\n"
-                f"{status_text}"
+                f"⚡ СТАТУС: {zone}\n\n"
+                f"👀 Следим за движением объёма и разворотными паттернами.\n\n"
+                f"❗ Это НЕ сигнал на вход."
             )
             bot.send_message(admin_chat_id, msg, parse_mode="Markdown")
             
@@ -245,32 +242,29 @@ def run_light_scanner(bot, admin_chat_id):
 
                 if pos >= FILTER_ZONE_TOP:
                     icon = "🔴"
-                    zone = f"Зона ШОРТА ({pos:.0f}%)"
-                    status_text = "Цена уперлась в потолок. Ищем паттерн на падение."
+                    zone = f"🔴 Short Zone ({pos:.0f}%)"
                     price_text = f"💰 Цена: {fmt_p(current_price)} (🚀 +{pump_pct:.0f}% от дна {fmt_p(local_min)})"
                 elif pos <= FILTER_ZONE_BOTTOM:
                     icon = "🟢"
-                    zone = f"Зона ЛОНГА ({pos:.0f}%)"
-                    status_text = "Цена на дне. Ждем паттерн на отскок вверх."
+                    zone = f"🟢 Long Zone ({pos:.0f}%)"
                     price_text = f"💰 Цена: {fmt_p(current_price)} (🔻 -{dump_pct:.0f}% от пика {fmt_p(local_max)})"
                 else:
                     icon = "🟡"
                     zone = f"Середина диапазона ({pos:.0f}%)"
-                    status_text = "Аномальный объем в середине графика. Просто наблюдаем."
                     # Для середины показываем падение от пика как наиболее актуальное
                     price_text = f"💰 Цена: {fmt_p(current_price)} (🔻 -{dump_pct:.0f}% от пика)"
 
                 msg = (
-                    f"🎯 light signal | #{coin_name} | {icon}\n"
+                    f"⚡️ LIGHT SIGNAL | #{coin_name} | {icon}\n"
                     f"━━━━━━━━━━━━━━━\n"
                     f"{price_text}\n"
                     f"📊 Объем: x{setup['vol_ratio']:.1f}\n"
                     f"🌡 RSI: {setup['rsi']:.1f}\n"
                     f"--------------------------------\n"
                     f"Тренд: {setup['trend']}\n"
-                    f"📍 Позиция: {zone}\n\n"
-                    f"[ ⚡️ СТАТУС ]\n"
-                    f"{status_text}"
+                    f"⚡ СТАТУС: {zone}\n\n"
+                    f"👀 Следим за движением объёма и разворотными паттернами.\n\n"
+                    f"❗ Это НЕ сигнал на вход."
                 )
                 bot.send_message(admin_chat_id, msg, parse_mode="Markdown")
 

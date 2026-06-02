@@ -2,8 +2,8 @@
 
 import time
 import pandas as pd
-from master_bot.modules.cryptano.utils.common import calculate_rsi, exchange, format_price as fmt_p, price_precision_from_market
-from master_bot.modules.cryptano.utils.market_cache import load_markets_cached
+from modules.cryptano.utils.common import calculate_rsi, exchange, format_price as fmt_p, price_precision_from_market
+from modules.cryptano.utils.market_cache import load_markets_cached
 
 SCAN_COINS_LIMIT = 150
 
@@ -41,7 +41,7 @@ def check_manual_extreme(coin, direction):
         current_candle = df.iloc[-1] # Самая последняя свеча (онлайн)
         current_price = float(current_candle["close"])
         
-        from master_bot.modules.cryptano.utils.indicators import analyze_extreme_pattern
+        from modules.cryptano.utils.indicators import analyze_extreme_pattern
         result = analyze_extreme_pattern(df, direction, current_price, price_precision)
 
         score = result["score"]
