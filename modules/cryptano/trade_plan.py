@@ -51,7 +51,7 @@ def check_manual_extreme(coin, direction):
         if direction == "SHORT":
             verdict = "🔥 СИГНАЛ АКТИВЕН (3+ балла)!" if score >= 3 else "⛔️ ВХОДИТЬ РАНО"
         elif direction == "LONG":
-            verdict = "🔥 СИГНАЛ АКТИВЕН (4 из 4)!" if score == 4 else "⛔️ ОПАСНО (Требуется строго 4 из 4)"
+            verdict = "🔥 СИГНАЛ АКТИВЕН (4+ балла)!" if score >= 4 else "⛔️ ОПАСНО (Требуется минимум 4 из 5)"
         else:
             verdict = "❓ Направление неизвестно"
 
@@ -59,7 +59,7 @@ def check_manual_extreme(coin, direction):
         report = (
             f"🌋 *СЛЕДОВАНИЕ ЗА ЭКСТРИМОМ: {coin}*\n"
             f"📈 Направление: *{direction}* | Цена онлайн: `{fmt_p(current_price)}`\n"
-            f"📊 Набрано: `{score} из 4 баллов` истощения\n"
+            f"📊 Набрано: `{score} из 5 баллов` истощения\n"
             f"━━━━━━━━━━━━━━━\n"
             f" STATUS: *{verdict}*\n\n"
             f"🔍 *Анализ относительно пика/дна (M15):*\n"
@@ -68,7 +68,7 @@ def check_manual_extreme(coin, direction):
         for d in details:
             report += f" {d}\n"
         
-        if (direction == "SHORT" and score >= 3) or (direction == "LONG" and score == 4):
+        if (direction == "SHORT" and score >= 3) or (direction == "LONG" and score >= 4):
             report += f"\n🎯 *ПЛАН ВХОДА С РЫНКА:*\n• Вход: `{fmt_p(current_price)}`\n• Стоп-лосс: `{fmt_p(sl_price)}`\n⚠️ _Рекомендуется заходить уменьшенным объёмом!_"
         else:
             report += f"\n⏳ Тренд еще силен или паттерн не сформирован."

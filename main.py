@@ -71,7 +71,7 @@ def handle_text(message):
 
     elif message.text == "🎯 Анализ Pump/Dump":
         msg = bot.send_message(message.chat.id, 
-            "Введи монету и направление.\nФормат: `ALLO SHORT`", parse_mode="Markdown")
+            "Введи монету и направление.\nФормат: `BTC LONG или SHORT`", parse_mode="Markdown")
         bot.register_next_step_handler(msg, process_manual_extreme_check)  
         
     # --- ОСНОВНЫЕ СКАНЕРЫ ---
@@ -158,7 +158,7 @@ def process_manual_extreme_check(message):
     try:
         parts = message.text.strip().upper().split()
         if len(parts) != 2 or parts[1] not in ["LONG", "SHORT"]:
-            bot.send_message(message.chat.id, "❌ Неверный формат. Нужно: ALLO SHORT")
+            bot.send_message(message.chat.id, "❌ Неверный формат. Нужно: BTC LONG или SHORT")
             return
             
         coin = parts[0]

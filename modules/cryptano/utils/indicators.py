@@ -258,6 +258,32 @@ def analyze_extreme_pattern(df, direction, current_price, price_precision):
 
         sl_price = float(low_candle["low"])
 
+    # 5. Проверка дивергенции (история за 22 часа до текущих 15 свечей)
+    past_df = df.iloc[-90:-15]
+    
+    if len(past_df) < 10:
+        details.append("❌ Недостаточно истории для дивергенции")
+    else:
+        if direction == "SHORT":
+            past_peak_idx = past_df["high"].idxmax()
+            past_peak_candle = past_df.loc[past_peak_idx]
+            
+            if peak_candle["high"] > past_peak_candle["high"] and peak_candle["rsi"] < past_peak_candle["rsi"]:
+                score += 1
+                details.append("✅ Медвежья дивергенция (Новый пик выше, RSI ниже)")
+            else:
+                details.append("❌ Нет медвежьей дивергенции")
+                
+        elif direction == "LONG":
+            past_low_idx = past_df["low"].idxmin()
+            past_low_candle = past_df.loc[past_low_idx]
+            
+            if low_candle["low"] < past_low_candle["low"] and low_candle["rsi"] > past_low_candle["rsi"]:
+                score += 1
+                details.append("✅ Бычья дивергенция (Новое дно ниже, RSI выше)")
+            else:
+                details.append("❌ Нет бычьей дивергенции")
+
     return {
         "score": score,
         "details": details,
