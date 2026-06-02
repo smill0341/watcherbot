@@ -8,55 +8,86 @@ def get_market_state(df, current_price):
     Основано СТРОГО на логике из scanner.py
     """
     
-    # Считаем скользящие средние (Прямо из твоего кода)
-    df["ma7"] = df["close"].rolling(window=7).mean()
-    df["ma30"] = df["close"].rolling(window=30).mean()
-    df["ma200"] = df["close"].rolling(window=200).mean()
+    # Считаем EMA
+    df["ema9"] = df["close"].ewm(span=9, adjust=False).mean()
+    df["ema21"] = df["close"].ewm(span=21, adjust=False).mean()
+    df["ema200"] = df["close"].ewm(span=200, adjust=False).mean()
 
     last_row = df.iloc[-1]
-    ma7 = float(last_row["ma7"])
-    ma30 = float(last_row["ma30"])
-    ma200 = float(last_row["ma200"])
+    ema9 = float(last_row["ema9"])
+    ema21 = float(last_row["ema21"])
+    ema200 = float(last_row["ema200"])
 
-    # Считаем объем (Прямо из твоего кода)
+    # Считаем объем
     recent_volume = df["volume"].iloc[-1]
     avg_volume = df["volume"].iloc[-25:-5].mean()
     vol_ratio = float(recent_volume / avg_volume if avg_volume > 0 else 1.0)
 
     # Считаем канал и позицию (pos_pct)
+    # local_min/local_max (за 30 свечей) = сильные уровни
     recent_30 = df.tail(30)
-    local_max = float(recent_30["high"].max())
-    local_min = float(recent_30["low"].min())
-    range_size = local_max - local_min
+    strong_resistance = float(recent_30["high"].max())
+    strong_support = float(recent_30["low"].min())
+    range_size = strong_resistance - strong_support
     
     if range_size == 0:
-        pos_pct = 50.0 # Защита от деления на ноль
+        pos_pct = 50.0
     else:
-        pos_pct = ((current_price - local_min) / range_size) * 100
+        pos_pct = ((current_price - strong_support) / range_size) * 100
 
-    # Определяем тренд (Твоя последняя логика с эмодзи)
-    if not pd.isna(ma7) and not pd.isna(ma30) and not pd.isna(ma200):
-        if current_price > ma7 and ma7 > ma30 and ma30 > ma200:
-            trend = "📈 Сильный восходящий"
-        elif current_price > ma30 and current_price < ma200:
-            trend = "📈 Слабый восходящий"
-        elif current_price < ma7 and ma7 < ma30 and ma30 < ma200:
-            trend = "📉 Сильный нисходящий"
-        elif current_price < ma30 and current_price > ma200:
-            trend = "📉 Слабый нисходящий"
-        else:
-            trend = "📊 Боковик (Флэт)"
+    # Считаем ближайшие уровни за последние 7 свечей
+    recent_short = df.tail(7)
+    nearest_support = float(recent_short["low"].min())
+    nearest_resistance = float(recent_short["high"].max())
+
+    # Ищем структуру рынка: Swing Highs / Swing Lows
+    lookback = min(len(df), 50)
+    recent = df.tail(lookback).reset_index(drop=True)
+    swing_highs = []
+    swing_lows = []
+
+    for i in range(1, len(recent) - 1):
+        if recent.at[i, "high"] > recent.at[i - 1, "high"] and recent.at[i, "high"] > recent.at[i + 1, "high"]:
+            swing_highs.append(float(recent.at[i, "high"]))
+        if recent.at[i, "low"] < recent.at[i - 1, "low"] and recent.at[i, "low"] < recent.at[i + 1, "low"]:
+            swing_lows.append(float(recent.at[i, "low"]))
+
+    swing_highs = swing_highs[-2:]
+    swing_lows = swing_lows[-2:]
+    bullish_structure = (
+        len(swing_highs) == 2 and len(swing_lows) == 2 and
+        swing_highs[-1] > swing_highs[-2] and swing_lows[-1] > swing_lows[-2]
+    )
+    bearish_structure = (
+        len(swing_highs) == 2 and len(swing_lows) == 2 and
+        swing_highs[-1] < swing_highs[-2] and swing_lows[-1] < swing_lows[-2]
+    )
+
+    # Определяем глобальный и локальный тренд
+    bull_bias = current_price > ema200
+    bear_bias = current_price < ema200
+    local_up = ema9 > ema21
+    local_down = ema9 < ema21
+
+    if bull_bias and (local_up or bullish_structure):
+        trend = "📈 Глобальный Бычий"
+    elif bear_bias and (local_down or bearish_structure):
+        trend = "📉 Глобальный Медвежий"
     else:
-        trend = "📊 Недостаточно данных"
+        trend = "📊 Боковик"
 
-    # Возвращаем готовую упаковку с цифрами
     return {
         "trend": trend,
         "pos_pct": pos_pct,
         "vol_ratio": vol_ratio,
-        "ma30": ma30,
-        "local_min": local_min,
-        "local_max": local_max
+        "ema9": ema9,
+        "ema21": ema21,
+        "ema200": ema200,
+        "ma30": ema21,
+        "strong_support": strong_support,
+        "strong_resistance": strong_resistance,
+        "nearest_support": nearest_support,
+        "nearest_resistance": nearest_resistance
     }
 
 

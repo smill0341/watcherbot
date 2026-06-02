@@ -50,8 +50,10 @@ def _light_setup(symbol):
         pos_pct = market_data["pos_pct"]
         vol_ratio = market_data["vol_ratio"]
         ma30 = market_data["ma30"]
-        local_min = market_data["local_min"]
-        local_max = market_data["local_max"]
+        strong_support = market_data["strong_support"]
+        strong_resistance = market_data["strong_resistance"]
+        nearest_support = market_data["nearest_support"]
+        nearest_resistance = market_data["nearest_resistance"]
         
         if vol_ratio < FILTER_VOL_NORMAL:
             return None
@@ -81,8 +83,10 @@ def _light_setup(symbol):
             "rsi": rsi,
             "market_regime": market_regime,
             "current_price": current_price,
-            "local_min": local_min,
-            "local_max": local_max,
+            "strong_support": strong_support,
+            "strong_resistance": strong_resistance,
+            "nearest_support": nearest_support,
+            "nearest_resistance": nearest_resistance,
         }
     except Exception as e:
         # Убрал принт с ошибкой парсинга, чтобы не засорять терминал
@@ -122,30 +126,96 @@ def run_manual_light_scan(bot, admin_chat_id):
             found_something = True
 
             current_price = setup.get('current_price', 0)
-            local_max = setup.get('local_max', 0)
-            local_min = setup.get('local_min', 0)
+            strong_resistance = setup.get('strong_resistance', 0)
+            strong_support = setup.get('strong_support', 0)
+            nearest_support = setup.get('nearest_support', strong_support)
+            nearest_resistance = setup.get('nearest_resistance', strong_resistance)
             pos = setup['pos_pct']
             if 20 <= pos <= 80:
                 continue
             # Общие расчеты процентов изменения цены от локального минимума/максимума
-            pump_pct = ((current_price - local_min) / local_min) * 100 if local_min > 0 else 0
-            dump_pct = ((local_max - current_price) / local_max) * 100 if local_max > 0 else 0
+            pump_pct = ((current_price - strong_support) / strong_support) * 100 if strong_support > 0 else 0
+            dump_pct = ((strong_resistance - current_price) / strong_resistance) * 100 if strong_resistance > 0 else 0
 
-            if pos >= FILTER_ZONE_TOP:
-                icon = "🔴"
-                zone = f"🔴 Short Zone ({pos:.0f}%)"
-                price_text = f"💰 Цена: {fmt_p(current_price)} (🚀 +{pump_pct:.0f}% от дна {fmt_p(local_min)})"
-            elif pos <= FILTER_ZONE_BOTTOM:
-                icon = "🟢"
-                zone = f"🟢 Long Zone ({pos:.0f}%)"
-                price_text = f"💰 Цена: {fmt_p(current_price)} (🔻 -{dump_pct:.0f}% от пика {fmt_p(local_max)})"
+            # Формируем price_text для отображения
+            price_text = f"💰 Цена: {fmt_p(current_price)} (🔻 -{dump_pct:.0f}% от пика {fmt_p(strong_resistance)})"
+
+            # Определяем тренд
+            trend_str = setup['trend']
+            if "бычий" in trend_str.lower():
+                trend_type = "BULLISH"
+            elif "медвежий" in trend_str.lower():
+                trend_type = "BEARISH"
             else:
-                icon = "🟡"
-                zone = f"Середина диапазона ({pos:.0f}%)"
-                # Для середины показываем падение от пика как наиболее актуальное
-                price_text = f"💰 Цена: {fmt_p(current_price)} (🔻 -{dump_pct:.0f}% от пика)"
+                trend_type = "FLAT"
 
-            
+            # Рассчитываем readiness_pct
+            if trend_type == "BULLISH":
+                readiness_pct = 100 - pos
+            elif trend_type == "BEARISH":
+                readiness_pct = pos
+            else:
+                readiness_pct = max(pos, 100 - pos)
+
+            # Формируем статус, иконку и комментарий
+            if trend_type == "BULLISH":
+                if readiness_pct >= 85:
+                    icon = "🟢"
+                    status = "Long Zone"
+                    comment = "👀 Цена в зоне покупок. Ищем сетап в лонг на младшем ТФ."
+                elif readiness_pct >= 65:
+                    icon = "🟡"
+                    status = "Long Interest"
+                    comment = "👀 Цена подходит к зоне покупок. Готовимся к поиску лонга."
+                else:
+                    icon = "⏳"
+                    status = "Wait for Pullback"
+                    if setup['vol_ratio'] > 2.0 and setup['rsi'] > 70.0:
+                        target_pullback = fmt_p(nearest_support)
+                        comment = f"👀 Сильный импульс. Ждем локальный ретест, не FOMO. Ближайшая поддержка {target_pullback}."
+                    else:
+                        target_pullback = fmt_p(strong_support)
+                        comment = f"👀 Цена на импульсе. Ждем откат к сильной поддержке {target_pullback}."
+            elif trend_type == "BEARISH":
+                if readiness_pct >= 85:
+                    icon = "🔴"
+                    status = "Short Zone"
+                    comment = "👀 Цена в зоне продаж. Ищем сетап в шорт на младшем ТФ."
+                elif readiness_pct >= 65:
+                    icon = "🟡"
+                    status = "Short Interest"
+                    comment = "👀 Цена подходит к зоне продаж. Готовимся к поиску шорта."
+                else:
+                    icon = "⏳"
+                    status = "Wait for Bounce"
+                    if setup['vol_ratio'] > 2.0 and setup['rsi'] < 30.0:
+                        target_bounce = fmt_p(nearest_resistance)
+                        comment = f"👀 Сильное падение. Ждем быстрый ретест. Ближайшее сопротивление {target_bounce}."
+                    else:
+                        target_bounce = fmt_p(strong_resistance)
+                        comment = f"👀 Цена на локальном дне. Ждем отскок к сильному сопротивлению {target_bounce}."
+            else:
+                if pos >= 85:
+                    icon = "🔴"
+                    status = "Short Zone"
+                    comment = "👀 Цена у верхней границы боковика."
+                elif pos >= 65:
+                    icon = "🟡"
+                    status = "Short Interest"
+                    comment = "👀 Подход к верхней границе боковика."
+                elif pos <= 15:
+                    icon = "🟢"
+                    status = "Long Zone"
+                    comment = "👀 Цена у нижней границы боковика."
+                elif pos <= 35:
+                    icon = "🟡"
+                    status = "Long Interest"
+                    comment = "👀 Подход к нижней границе боковика."
+                else:
+                    icon = "⚖️"
+                    status = "Mid-Range"
+                    comment = "👀 Цена в середине боковика. Точек входа нет."
+
             msg = (
                 f"⚡️ LIGHT SIGNAL | #{coin_name} | {icon}\n"
                 f"━━━━━━━━━━━━━━━\n"
@@ -154,9 +224,9 @@ def run_manual_light_scan(bot, admin_chat_id):
                 f"🌡 RSI: {setup['rsi']:.1f}\n"
                 f"--------------------------------\n"
                 f"Тренд: {setup['trend']}\n"
-                f"⚡ СТАТУС: {zone}\n\n"
-                f"👀 Следим за движением объёма и разворотными паттернами.\n\n"
-                f"❗ Это НЕ сигнал на вход."
+                f"⚡️ СТАТУС: {status} ({readiness_pct:.0f}% готовность)\n\n"
+                f"{comment}\n\n"
+                f"❗️ Это НЕ сигнал на вход."
             )
             bot.send_message(admin_chat_id, msg, parse_mode="Markdown")
             
@@ -233,26 +303,93 @@ def run_light_scanner(bot, admin_chat_id):
                 coin_name = setup["coin"]
 
                 current_price = setup.get('current_price', 0)
-                local_max = setup.get('local_max', 0)
-                local_min = setup.get('local_min', 0)
+                strong_resistance = setup.get('strong_resistance', 0)
+                strong_support = setup.get('strong_support', 0)
+                nearest_support = setup.get('nearest_support', strong_support)
+                nearest_resistance = setup.get('nearest_resistance', strong_resistance)
                 pos = setup['pos_pct']
                 # Общие расчеты процентов изменения цены от локального минимума/максимума
-                pump_pct = ((current_price - local_min) / local_min) * 100 if local_min > 0 else 0
-                dump_pct = ((local_max - current_price) / local_max) * 100 if local_max > 0 else 0
+                pump_pct = ((current_price - strong_support) / strong_support) * 100 if strong_support > 0 else 0
+                dump_pct = ((strong_resistance - current_price) / strong_resistance) * 100 if strong_resistance > 0 else 0
 
-                if pos >= FILTER_ZONE_TOP:
-                    icon = "🔴"
-                    zone = f"🔴 Short Zone ({pos:.0f}%)"
-                    price_text = f"💰 Цена: {fmt_p(current_price)} (🚀 +{pump_pct:.0f}% от дна {fmt_p(local_min)})"
-                elif pos <= FILTER_ZONE_BOTTOM:
-                    icon = "🟢"
-                    zone = f"🟢 Long Zone ({pos:.0f}%)"
-                    price_text = f"💰 Цена: {fmt_p(current_price)} (🔻 -{dump_pct:.0f}% от пика {fmt_p(local_max)})"
+                # Формируем price_text для отображения
+                price_text = f"💰 Цена: {fmt_p(current_price)} (🔻 -{dump_pct:.0f}% от пика {fmt_p(strong_resistance)})"
+
+                # Определяем тренд
+                trend_str = setup['trend']
+                if "бычий" in trend_str.lower():
+                    trend_type = "BULLISH"
+                elif "медвежий" in trend_str.lower():
+                    trend_type = "BEARISH"
                 else:
-                    icon = "🟡"
-                    zone = f"Середина диапазона ({pos:.0f}%)"
-                    # Для середины показываем падение от пика как наиболее актуальное
-                    price_text = f"💰 Цена: {fmt_p(current_price)} (🔻 -{dump_pct:.0f}% от пика)"
+                    trend_type = "FLAT"
+
+                # Рассчитываем readiness_pct
+                if trend_type == "BULLISH":
+                    readiness_pct = 100 - pos
+                elif trend_type == "BEARISH":
+                    readiness_pct = pos
+                else:
+                    readiness_pct = max(pos, 100 - pos)
+
+                # Формируем статус, иконку и комментарий
+                if trend_type == "BULLISH":
+                    if readiness_pct >= 85:
+                        icon = "🟢"
+                        status = "Long Zone"
+                        comment = "👀 Цена в зоне покупок. Ищем сетап в лонг на младшем ТФ."
+                    elif readiness_pct >= 65:
+                        icon = "🟡"
+                        status = "Long Interest"
+                        comment = "👀 Цена подходит к зоне покупок. Готовимся к поиску лонга."
+                    else:
+                        icon = "⏳"
+                        status = "Wait for Pullback"
+                        if setup['vol_ratio'] > 2.0 and setup['rsi'] > 70.0:
+                            target_pullback = fmt_p(nearest_support)
+                            comment = f"👀 Сильный импульс. Ждем локальный ретест, не FOMO. Ближайшая поддержка {target_pullback}."
+                        else:
+                            target_pullback = fmt_p(strong_support)
+                            comment = f"👀 Цена на импульсе. Ждем откат к сильной поддержке {target_pullback}."
+                elif trend_type == "BEARISH":
+                    if readiness_pct >= 85:
+                        icon = "🔴"
+                        status = "Short Zone"
+                        comment = "👀 Цена в зоне продаж. Ищем сетап в шорт на младшем ТФ."
+                    elif readiness_pct >= 65:
+                        icon = "🟡"
+                        status = "Short Interest"
+                        comment = "👀 Цена подходит к зоне продаж. Готовимся к поиску шорта."
+                    else:
+                        icon = "⏳"
+                        status = "Wait for Bounce"
+                        if setup['vol_ratio'] > 2.0 and setup['rsi'] < 30.0:
+                            target_bounce = fmt_p(nearest_resistance)
+                            comment = f"👀 Сильное падение. Ждем быстрый ретест. Ближайшее сопротивление {target_bounce}."
+                        else:
+                            target_bounce = fmt_p(strong_resistance)
+                            comment = f"👀 Цена на локальном дне. Ждем отскок к сильному сопротивлению {target_bounce}."
+                else:
+                    if pos >= 85:
+                        icon = "🔴"
+                        status = "Short Zone"
+                        comment = "👀 Цена у верхней границы боковика."
+                    elif pos >= 65:
+                        icon = "🟡"
+                        status = "Short Interest"
+                        comment = "👀 Подход к верхней границе боковика."
+                    elif pos <= 15:
+                        icon = "🟢"
+                        status = "Long Zone"
+                        comment = "👀 Цена у нижней границы боковика."
+                    elif pos <= 35:
+                        icon = "🟡"
+                        status = "Long Interest"
+                        comment = "👀 Подход к нижней границе боковика."
+                    else:
+                        icon = "⚖️"
+                        status = "Mid-Range"
+                        comment = "👀 Цена в середине боковика. Точек входа нет."
 
                 msg = (
                     f"⚡️ LIGHT SIGNAL | #{coin_name} | {icon}\n"
@@ -262,9 +399,9 @@ def run_light_scanner(bot, admin_chat_id):
                     f"🌡 RSI: {setup['rsi']:.1f}\n"
                     f"--------------------------------\n"
                     f"Тренд: {setup['trend']}\n"
-                    f"⚡ СТАТУС: {zone}\n\n"
-                    f"👀 Следим за движением объёма и разворотными паттернами.\n\n"
-                    f"❗ Это НЕ сигнал на вход."
+                    f"⚡️ СТАТУС: {status} ({readiness_pct:.0f}% готовность)\n\n"
+                    f"{comment}\n\n"
+                    f"❗️ Это НЕ сигнал на вход."
                 )
                 bot.send_message(admin_chat_id, msg, parse_mode="Markdown")
 
