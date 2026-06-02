@@ -3,6 +3,7 @@ import datetime
 import threading
 import pandas as pd
 import os
+import ccxt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from modules.cryptano.utils.common import format_price as fmt_p
 from modules.cryptano.utils.crypto_utils import calculate_rsi, exchange, get_top_coins
@@ -105,6 +106,12 @@ def run_manual_light_scan(bot, admin_chat_id):
         found_something = False
         
         print("[SCANNER LOG] Начинаю перебор монет по единым условиям Light...")
+
+        exchange = ccxt.bybit({
+            'enableRateLimit': True,
+            'options': {'defaultType': 'spot'}
+        })
+        load_markets_cached(exchange, ttl_seconds=86400)
 
         symbols = get_top_coins(limit=SCAN_COINS_LIMIT)
         start_time = time.time()
@@ -308,6 +315,12 @@ def run_light_scanner(bot, admin_chat_id):
             continue
 
         try:
+            exchange = ccxt.bybit({
+                'enableRateLimit': True,
+                'options': {'defaultType': 'spot'}
+            })
+            load_markets_cached(exchange)
+
             coins = get_top_coins(limit=SCAN_COINS_LIMIT)
             start_time = time.time()
             total_processed_coins = len(coins) if coins else 0
@@ -422,7 +435,7 @@ def run_light_scanner(bot, admin_chat_id):
                     # Середина уже отсечена фильтром (readiness_pct < 80). 
                     # Значит мы либо у верхней (pos >= 80), либо у нижней (pos <= 20) границы.
                     if pos >= 80:
-                        strategy_text = "Работа от верхней границы (Шорт)."
+                        strategy_text = "Работа от верхней границы."
                         target_zone = "SHORT ZONE"
                         target_value = strong_resistance
                         target_pullback = fmt_p(target_value)
@@ -437,7 +450,7 @@ def run_light_scanner(bot, admin_chat_id):
                             comment_body = f"Цена подходит к зоне. Готовимся искать шорт у ~{target_pullback}."
                             
                     else:
-                        strategy_text = "Работа от нижней границы (Лонг)."
+                        strategy_text = "Работа от нижней границы."
                         target_zone = "LONG ZONE"
                         target_value = strong_support
                         target_pullback = fmt_p(target_value)

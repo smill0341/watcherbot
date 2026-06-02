@@ -2,7 +2,7 @@ import threading
 import time
 
 
-CACHE_TTL_SECONDS = 1800
+CACHE_TTL_SECONDS = 86400
 
 _cache_lock = threading.RLock()
 _markets_cache = {
@@ -24,7 +24,7 @@ def load_markets_cached(exchange, ttl_seconds=CACHE_TTL_SECONDS):
         return markets
 
 
-def get_top_usdt_coins_cached(exchange, limit=150, min_quote_volume=8_000_000.0, ttl_seconds=CACHE_TTL_SECONDS):
+def get_top_usdt_coins_cached(exchange, limit=150, min_quote_volume=8_000_000.0, ttl_seconds=3600):
     cache_key = (limit, float(min_quote_volume))
     now = time.monotonic()
 
@@ -33,7 +33,7 @@ def get_top_usdt_coins_cached(exchange, limit=150, min_quote_volume=8_000_000.0,
         if cached and cached["expires_at"] > now:
             return list(cached["value"])
 
-        load_markets_cached(exchange, ttl_seconds=ttl_seconds)
+        load_markets_cached(exchange, ttl_seconds=86400)
         tickers = exchange.fetch_tickers()
 
         # Черный список стейблкоинов и мусора
