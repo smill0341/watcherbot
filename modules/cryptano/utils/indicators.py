@@ -1,5 +1,6 @@
 import pandas as pd
 from modules.cryptano.utils.crypto_utils import calculate_rsi
+from modules.cryptano.utils.price_action import get_market_structure
 
 def get_market_state(df, current_price):
     """
@@ -24,10 +25,10 @@ def get_market_state(df, current_price):
     vol_ratio = float(recent_volume / avg_volume if avg_volume > 0 else 1.0)
 
     # Считаем канал и позицию (pos_pct)
-    # local_min/local_max (за 30 свечей) = сильные уровни
-    recent_30 = df.tail(30)
-    strong_resistance = float(recent_30["high"].max())
-    strong_support = float(recent_30["low"].min())
+    # Увеличен период поиска локальных уровней с 30 до 120 свечей
+    recent_120 = df.tail(120)
+    strong_resistance = float(recent_120["high"].max())
+    strong_support = float(recent_120["low"].min())
     range_size = strong_resistance - strong_support
     
     if range_size == 0:
@@ -40,28 +41,8 @@ def get_market_state(df, current_price):
     nearest_support = float(recent_short["low"].min())
     nearest_resistance = float(recent_short["high"].max())
 
-    # Ищем структуру рынка: Swing Highs / Swing Lows
-    lookback = min(len(df), 50)
-    recent = df.tail(lookback).reset_index(drop=True)
-    swing_highs = []
-    swing_lows = []
-
-    for i in range(1, len(recent) - 1):
-        if recent.at[i, "high"] > recent.at[i - 1, "high"] and recent.at[i, "high"] > recent.at[i + 1, "high"]:
-            swing_highs.append(float(recent.at[i, "high"]))
-        if recent.at[i, "low"] < recent.at[i - 1, "low"] and recent.at[i, "low"] < recent.at[i + 1, "low"]:
-            swing_lows.append(float(recent.at[i, "low"]))
-
-    swing_highs = swing_highs[-2:]
-    swing_lows = swing_lows[-2:]
-    bullish_structure = (
-        len(swing_highs) == 2 and len(swing_lows) == 2 and
-        swing_highs[-1] > swing_highs[-2] and swing_lows[-1] > swing_lows[-2]
-    )
-    bearish_structure = (
-        len(swing_highs) == 2 and len(swing_lows) == 2 and
-        swing_highs[-1] < swing_highs[-2] and swing_lows[-1] < swing_lows[-2]
-    )
+    # Ищем структуру рынка: Swing Highs / Swing Lows (вынесено в price_action.py)
+    structure = get_market_structure(df, lookback=120)
 
     # Определяем глобальный и локальный тренд
     bull_bias = current_price > ema200
@@ -69,12 +50,20 @@ def get_market_state(df, current_price):
     local_up = ema9 > ema21
     local_down = ema9 < ema21
 
-    if bull_bias and (local_up or bullish_structure):
+    if bull_bias and (local_up or structure == 'bullish'):
         trend = "📈 Глобальный Бычий"
-    elif bear_bias and (local_down or bearish_structure):
+    elif bear_bias and (local_down or structure == 'bearish'):
         trend = "📉 Глобальный Медвежий"
     else:
-        trend = "📊 Боковик"
+        # Цена под/над EMA200, но структура ranging или против тренда
+        dist_to_ema200 = abs(current_price - ema200) / ema200
+        # Если цена трется вокруг EMA200 (например, отклонение < 2%) — это истинный боковик
+        if dist_to_ema200 < 0.02:
+            trend = "📊 Боковик"
+        elif bull_bias:
+            trend = "📈 Глобальный Бычий"
+        else:
+            trend = "📉 Глобальный Медвежий"
 
     return {
         "trend": trend,

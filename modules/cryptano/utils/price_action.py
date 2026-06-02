@@ -1,5 +1,36 @@
 import pandas as pd
 
+def get_market_structure(df, lookback=120):
+    """
+    Анализирует переломы (Swing Highs / Swing Lows) и возвращает статус структуры:
+    'bullish', 'bearish' или 'ranging'.
+    """
+    recent = df.tail(lookback).reset_index(drop=True)
+    if len(recent) < 5:
+        return 'ranging'
+        
+    swing_highs = []
+    swing_lows = []
+
+    for i in range(1, len(recent) - 1):
+        if recent.at[i, "high"] > recent.at[i - 1, "high"] and recent.at[i, "high"] > recent.at[i + 1, "high"]:
+            swing_highs.append(float(recent.at[i, "high"]))
+        if recent.at[i, "low"] < recent.at[i - 1, "low"] and recent.at[i, "low"] < recent.at[i + 1, "low"]:
+            swing_lows.append(float(recent.at[i, "low"]))
+
+    if len(swing_highs) >= 2 and len(swing_lows) >= 2:
+        highs_bullish = swing_highs[-1] > swing_highs[-2]
+        lows_bullish = swing_lows[-1] > swing_lows[-2]
+        highs_bearish = swing_highs[-1] < swing_highs[-2]
+        lows_bearish = swing_lows[-1] < swing_lows[-2]
+        
+        if highs_bullish and lows_bullish:
+            return 'bullish'
+        elif highs_bearish and lows_bearish:
+            return 'bearish'
+            
+    return 'ranging'
+
 def check_live_confirmation(df, direction, zone_min, zone_max, vol_ratio):
     """
     Анализирует Price Action (последние свечи) для подтверждения входа.
