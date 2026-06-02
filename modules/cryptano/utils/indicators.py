@@ -2,7 +2,7 @@ import pandas as pd
 from modules.cryptano.utils.crypto_utils import calculate_rsi
 from modules.cryptano.utils.price_action import get_market_structure
 
-def get_market_state(df, current_price):
+def get_market_state(df, current_price, channel_lookback=120):
     """
     Принимает график (df) и текущую цену. 
     Возвращает готовые расчеты тренда, позиции в канале и объема.
@@ -25,10 +25,9 @@ def get_market_state(df, current_price):
     vol_ratio = float(recent_volume / avg_volume if avg_volume > 0 else 1.0)
 
     # Считаем канал и позицию (pos_pct)
-    # Увеличен период поиска локальных уровней с 30 до 120 свечей
-    recent_120 = df.tail(120)
-    strong_resistance = float(recent_120["high"].max())
-    strong_support = float(recent_120["low"].min())
+    recent_channel = df.tail(channel_lookback)
+    strong_resistance = float(recent_channel["high"].max())
+    strong_support = float(recent_channel["low"].min())
     range_size = strong_resistance - strong_support
     
     if range_size == 0:

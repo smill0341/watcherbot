@@ -46,9 +46,13 @@ def _light_setup(symbol):
         current_price = float(last_row["close"])
         rsi = float(last_row["rsi"])
 
-        market_data = get_market_state(df, current_price)
+        market_data = get_market_state(df, current_price, channel_lookback=40)
         trend = market_data["trend"]
         pos_pct = market_data["pos_pct"]
+        
+        if 20 < pos_pct < 80:
+            return None
+
         vol_ratio = market_data["vol_ratio"]
         ma30 = market_data["ma30"]
         strong_support = market_data["strong_support"]
@@ -93,36 +97,93 @@ def _light_setup(symbol):
         # Убрал принт с ошибкой парсинга, чтобы не засорять терминал
         return None
 
-def run_manual_light_scan(bot, admin_chat_id):
-    """ОДНОРАЗОВЫЙ ручной запуск легкого сканера по кнопке."""
-    print("[SCANNER LOG] Начало ручного экспресс-сканирования Light...")
-    
-    if not _scan_lock.acquire(blocking=False):
-        print("[SCANNER WARNING] Сканер занят фоновым потоком!")
-        bot.send_message(admin_chat_id, "⚠️ Сканер сейчас занят фоновым мониторингом. Подожди минуту.")
-        return
+def format_light_signal(setup):
+    coin_name = setup["coin"]
+    current_price = setup.get('current_price', 0)
+    strong_resistance = setup.get('strong_resistance', 0)
+    strong_support = setup.get('strong_support', 0)
+    nearest_support = setup.get('nearest_support', strong_support)
+    nearest_resistance = setup.get('nearest_resistance', strong_resistance)
+    pos = setup['pos_pct']
 
+    # Общие расчеты процентов изменения цены от локального минимума/максимума
+    pump_pct = ((current_price - strong_support) / strong_support) * 100 if strong_support > 0 else 0
+    dump_pct = ((strong_resistance - current_price) / strong_resistance) * 100 if strong_resistance > 0 else 0
+
+    # Формируем price_text для отображения
+    price_text = f"💰 Цена: {fmt_p(current_price)} (🔻 -{dump_pct:.0f}% от пика {fmt_p(strong_resistance)})"
+
+    # Формируем статус, иконку и комментарий на основе pos
+    if pos >= 80:
+        strategy_text = "Приоритет — Шорт от сопротивления."
+        target_zone = "SHORT ZONE"
+        zone_name = "SHORT ZONE"
+        icon = "🔴"
+        target_value = strong_resistance
+        target_pullback = fmt_p(target_value)
+        comment_body = f"Искать подтверждение разворота вблизи ~{target_pullback}."
+        readiness_pct = pos
+    else:
+        strategy_text = "Приоритет — Лонг от поддержки."
+        target_zone = "LONG ZONE"
+        zone_name = "LONG ZONE"
+        icon = "🟢"
+        target_value = strong_support
+        target_pullback = fmt_p(target_value)
+        comment_body = f"Искать подтверждение разворота вблизи ~{target_pullback}."
+        readiness_pct = 100 - pos
+
+    distance_pct = abs(current_price - target_value) / target_value * 100 if target_value > 0 else 0
+    distance_str = f"📍 До {target_zone}: {distance_pct:.0f}%\n\n" if readiness_pct < 90 else "\n"
+
+    msg = (
+        f"⚡️ LIGHT SIGNAL | #{coin_name} | {icon}\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"{price_text}\n"
+        f"📊 Объем: x{setup['vol_ratio']:.1f}\n"
+        f"🌡 RSI: {setup['rsi']:.1f}\n"
+        f"--------------------------------\n"
+        f"📊 Тренд: {setup['trend']}\n"
+        f"⚡️ СТАТУС: {zone_name} ({readiness_pct:.0f}%)\n\n"
+        f"👀 {strategy_text}\n"
+        f"{comment_body}\n\n"
+        f"❗️ НЕ сигнал на вход"
+    )
+    return msg
+
+def _execute_scan_cycle(bot, admin_chat_id, is_auto=False):
+    prefix = "[ЛАЙТ-РАДАР АВТО]" if is_auto else "[ЛАЙТ-РАДАР РУЧНОЙ]"
     try:
         found_something = False
         
-        print("[SCANNER LOG] Начинаю перебор монет по единым условиям Light...")
-
         exchange = ccxt.bybit({
             'enableRateLimit': True,
             'options': {'defaultType': 'spot'}
         })
         load_markets_cached(exchange, ttl_seconds=86400)
 
-        symbols = get_top_coins(limit=SCAN_COINS_LIMIT)
+        coins = get_top_coins(limit=SCAN_COINS_LIMIT)
         start_time = time.time()
-        total_processed_coins = len(symbols) if symbols else 0
+        total_processed_coins = len(coins) if coins else 0
         api_queries = total_processed_coins + 1
-        worker_count = min(MAX_LIGHT_SCAN_WORKERS, max(1, total_processed_coins))
+        now = datetime.datetime.now()
+
+        eligible_symbols = []
+        if is_auto:
+            for symbol in coins:
+                coin_name = symbol.split("/")[0]
+                if coin_name in cooldown_cache:
+                    if (now - cooldown_cache[coin_name]).total_seconds() < (COOLDOWN_HOURS * 3600):
+                        continue
+                eligible_symbols.append(symbol)
+        else:
+            eligible_symbols = coins
+
+        worker_count = min(MAX_LIGHT_SCAN_WORKERS, max(1, len(eligible_symbols)))
         setups = []
 
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
-            # Вызываем ЕДИНУЮ функцию
-            futures = [executor.submit(_light_setup, symbol) for symbol in symbols]
+            futures = [executor.submit(_light_setup, symbol) for symbol in eligible_symbols]
             for future in as_completed(futures):
                 setup = future.result()
                 if setup:
@@ -133,162 +194,49 @@ def run_manual_light_scan(bot, admin_chat_id):
                 continue
             coin_name = setup["coin"]
             found_something = True
-
-            current_price = setup.get('current_price', 0)
-            strong_resistance = setup.get('strong_resistance', 0)
-            strong_support = setup.get('strong_support', 0)
-            nearest_support = setup.get('nearest_support', strong_support)
-            nearest_resistance = setup.get('nearest_resistance', strong_resistance)
-            pos = setup['pos_pct']
-            if 20 <= pos <= 80:
-                continue
-            # Общие расчеты процентов изменения цены от локального минимума/максимума
-            pump_pct = ((current_price - strong_support) / strong_support) * 100 if strong_support > 0 else 0
-            dump_pct = ((strong_resistance - current_price) / strong_resistance) * 100 if strong_resistance > 0 else 0
-
-            # Формируем price_text для отображения
-            price_text = f"💰 Цена: {fmt_p(current_price)} (🔻 -{dump_pct:.0f}% от пика {fmt_p(strong_resistance)})"
-
-            # Определяем тренд
-            trend_str = setup['trend']
-            if "бычий" in trend_str.lower():
-                trend_type = "BULLISH"
-            elif "медвежий" in trend_str.lower():
-                trend_type = "BEARISH"
-            else:
-                trend_type = "FLAT"
-
-            # Рассчитываем readiness_pct
-            if trend_type == "BULLISH":
-                readiness_pct = 100 - pos
-            elif trend_type == "BEARISH":
-                readiness_pct = pos
-            else:
-                readiness_pct = max(pos, 100 - pos)
-
-            # Отсекаем монеты, которые находятся далеко от зоны входа (стадия WAIT)
-            if readiness_pct < 80:
-                continue
-
-            # Формируем статус, иконку и комментарий
-            if trend_type == "BULLISH":
-                strategy_text = "Работа от откатов."
-                target_zone = "LONG ZONE"
-                if readiness_pct >= 90:
-                    zone_name = "LONG ZONE"
-                    icon = "🟢"
-                    target_value = strong_support
-                    target_pullback = fmt_p(target_value)
-                    comment_body = f"Цена в зоне. Ищем сетап в лонг у ~{target_pullback}."
-                elif readiness_pct >= 80:
-                    zone_name = "LONG WATCH"
-                    icon = "🟡"
-                    target_value = strong_support
-                    target_pullback = fmt_p(target_value)
-                    comment_body = f"Цена подходит к зоне. Готовимся искать лонг у ~{target_pullback}."
-                else:
-                    zone_name = "WAIT"
-                    icon = "⏳"
-                    if setup['vol_ratio'] > 2.0 and setup['rsi'] > 70.0:
-                        target_value = nearest_support
-                    else:
-                        target_value = strong_support
-                    target_pullback = fmt_p(target_value)
-                    comment_body = f"Ждем снижение к ~{target_pullback} для поиска лонга."
-            elif trend_type == "BEARISH":
-                strategy_text = "Работа от отскоков."
-                target_zone = "SHORT ZONE"
-                if readiness_pct >= 90:
-                    zone_name = "SHORT ZONE"
-                    icon = "🔴"
-                    target_value = strong_resistance
-                    target_pullback = fmt_p(target_value)
-                    comment_body = f"Цена в зоне. Ищем сетап в шорт у ~{target_pullback}."
-                elif readiness_pct >= 80:
-                    zone_name = "SHORT WATCH"
-                    icon = "🟡"
-                    target_value = strong_resistance
-                    target_pullback = fmt_p(target_value)
-                    comment_body = f"Цена подходит к зоне. Готовимся искать шорт у ~{target_pullback}."
-                else:
-                    zone_name = "WAIT"
-                    icon = "⏳"
-                    if setup['vol_ratio'] > 2.0 and setup['rsi'] < 30.0:
-                        target_value = nearest_resistance
-                    else:
-                        target_value = strong_resistance
-                    target_pullback = fmt_p(target_value)
-                    comment_body = f"Ждем рост к ~{target_pullback} для поиска шорта."
-            else:  # trend_type == "FLAT"
-                # Середина уже отсечена фильтром (readiness_pct < 80). 
-                # Значит мы либо у верхней (pos >= 80), либо у нижней (pos <= 20) границы.
-                if pos >= 80:
-                    strategy_text = "Работа от верхней границы (Шорт)."
-                    target_zone = "SHORT ZONE"
-                    target_value = strong_resistance
-                    target_pullback = fmt_p(target_value)
-                    
-                    if readiness_pct >= 90:
-                        zone_name = "SHORT ZONE"
-                        icon = "🔴"
-                        comment_body = f"Цена в зоне. Ищем сетап в шорт у ~{target_pullback}."
-                    else:
-                        zone_name = "SHORT WATCH"
-                        icon = "🟡"
-                        comment_body = f"Цена подходит к зоне. Готовимся искать шорт у ~{target_pullback}."
-                        
-                else:
-                    strategy_text = "Работа от нижней границы (Лонг)."
-                    target_zone = "LONG ZONE"
-                    target_value = strong_support
-                    target_pullback = fmt_p(target_value)
-                    
-                    if readiness_pct >= 90:
-                        zone_name = "LONG ZONE"
-                        icon = "🟢"
-                        comment_body = f"Цена в зоне. Ищем сетап в лонг у ~{target_pullback}."
-                    else:
-                        zone_name = "LONG WATCH"
-                        icon = "🟡"
-                        comment_body = f"Цена подходит к зоне. Готовимся искать лонг у ~{target_pullback}."
-
-
-            distance_pct = abs(current_price - target_value) / target_value * 100 if target_value > 0 else 0
-            distance_str = f"📍 До {target_zone}: {distance_pct:.0f}%\n\n" if readiness_pct < 90 else "\n"
-
-            msg = (
-                f"⚡️ LIGHT SIGNAL | #{coin_name} | {icon}\n"
-                f"━━━━━━━━━━━━━━━\n"
-                f"{price_text}\n"
-                f"📊 Объем: x{setup['vol_ratio']:.1f}\n"
-                f"🌡 RSI: {setup['rsi']:.1f}\n"
-                f"--------------------------------\n"
-                f"📊 Тренд: {setup['trend']}\n"
-                f"⚡️ СТАТУС: {zone_name} ({readiness_pct:.0f}%)\n\n"
-                f"👀 {strategy_text}\n"
-                f"{comment_body}\n\n"
-                f"❗️ НЕ сигнал на вход"
-            )
-            bot.send_message(admin_chat_id, msg, parse_mode="Markdown")
             
-        if not found_something:
-            print("[SCANNER LOG] Монет по фильтру Light не найдено.")
-            elapsed_time = time.time() - start_time
-            print(f"\n[ЛАЙТ-РАДАР РУЧНОЙ] 📊 Скан завершен за {elapsed_time:.1f} сек.")
-            print(f"[ЛАЙТ-РАДАР РУЧНОЙ] 🪙 Монет обработано: {total_processed_coins}")
-            print(f"[ЛАЙТ-RADAR РУЧНОЙ] 🌐 Запросов к API Bybit: {api_queries}\n")
-            bot.send_message(admin_chat_id, "ℹ️ По легким фильтрам интересных монет сейчас нет. Рынок спокойный.")
+            msg = format_light_signal(setup)
+            bot.send_message(admin_chat_id, msg, parse_mode="Markdown")
+
+            if is_auto:
+                cooldown_cache[coin_name] = now
+                
+        elapsed_time = time.time() - start_time
+        
+        if not is_auto:
+            if not found_something:
+                print("[SCANNER LOG] Монет по фильтру Light не найдено.")
+                print(f"\n{prefix} 📊 Скан завершен за {elapsed_time:.1f} сек.")
+                print(f"{prefix} 🪙 Монет обработано: {total_processed_coins} | Найдено сетапов: {len(setups)}")
+                print(f"{prefix} 🌐 Запросов к API Bybit: {api_queries}\n")
+                bot.send_message(admin_chat_id, "ℹ️ По легким фильтрам интересных монет сейчас нет. Рынок спокойный.")
+            else:
+                print("[SCANNER LOG] Ручной сканер Light успешно завершил работу.")
+                print(f"\n{prefix} 📊 Скан завершен за {elapsed_time:.1f} сек.")
+                print(f"{prefix} 🪙 Монет обработано: {total_processed_coins} | Найдено сетапов: {len(setups)}")
+                print(f"{prefix} 🌐 Запросов к API Bybit: {api_queries}\n")
+                bot.send_message(admin_chat_id, "✅ Ручной экспресс-скан Light завершен!")
         else:
-            print("[SCANNER LOG] Ручной сканер Light успешно завершил работу.")
-            elapsed_time = time.time() - start_time
-            print(f"\n[ЛАЙТ-РАДАР РУЧНОЙ] 📊 Скан завершен за {elapsed_time:.1f} сек.")
-            print(f"[ЛАЙТ-РАДАР РУЧНОЙ] 🪙 Монет обработано: {total_processed_coins}")
-            print(f"[ЛАЙТ-RADAR РУЧНОЙ] 🌐 Запросов к API Bybit: {api_queries}\n")
-            bot.send_message(admin_chat_id, "✅ Ручной экспресс-скан Light завершен!")
+            print(f"\n{prefix} 📊 Скан завершен за {elapsed_time:.1f} сек.")
+            print(f"{prefix} 🪙 Монет обработано: {total_processed_coins} | Найдено сетапов: {len(setups)}")
+            print(f"{prefix} 🌐 Запросов к API Bybit: {api_queries}\n")
             
     except Exception as e:
-        print(f"[SCANNER ERROR] Ошибка внутри ручного Light-скана: {e}")
+        print(f"[SCANNER ERROR] Ошибка внутри Light-скана: {e}")
         bot.send_message(admin_chat_id, f"❌ Ошибка при сканировании: {e}")
+
+def run_manual_light_scan(bot, admin_chat_id):
+    """ОДНОРАЗОВЫЙ ручной запуск легкого сканера по кнопке."""
+    print("[SCANNER LOG] Начало ручного экспресс-сканирования Light...")
+    
+    if not _scan_lock.acquire(blocking=False):
+        print("[SCANNER WARNING] Сканер занят фоновым потоком!")
+        bot.send_message(admin_chat_id, "⚠️ Сканер сейчас занят фоновым мониторингом. Подожди минуту.")
+        return
+
+    try:
+        print("[SCANNER LOG] Начинаю перебор монет по единым условиям Light...")
+        _execute_scan_cycle(bot, admin_chat_id, is_auto=False)
     finally:
         _scan_lock.release()
 
@@ -315,179 +263,8 @@ def run_light_scanner(bot, admin_chat_id):
             continue
 
         try:
-            exchange = ccxt.bybit({
-                'enableRateLimit': True,
-                'options': {'defaultType': 'spot'}
-            })
-            load_markets_cached(exchange)
-
-            coins = get_top_coins(limit=SCAN_COINS_LIMIT)
-            start_time = time.time()
-            total_processed_coins = len(coins) if coins else 0
-            api_queries = total_processed_coins + 1
-            now = datetime.datetime.now()
-
-            eligible_symbols = []
-            for symbol in coins:
-                coin_name = symbol.split("/")[0]
-                if coin_name in cooldown_cache:
-                    if (now - cooldown_cache[coin_name]).total_seconds() < (COOLDOWN_HOURS * 3600):
-                        continue
-                eligible_symbols.append(symbol)
-
-            worker_count = min(MAX_LIGHT_SCAN_WORKERS, max(1, len(eligible_symbols)))
-            setups = []
-
-            with ThreadPoolExecutor(max_workers=worker_count) as executor:
-                # Вызываем ТУ ЖЕ САМУЮ ЕДИНУЮ функцию
-                futures = [executor.submit(_light_setup, symbol) for symbol in eligible_symbols]
-                for future in as_completed(futures):
-                    setup = future.result()
-                    if setup:
-                        setups.append(setup)
-
-            for setup in setups:
-                coin_name = setup["coin"]
-
-                current_price = setup.get('current_price', 0)
-                strong_resistance = setup.get('strong_resistance', 0)
-                strong_support = setup.get('strong_support', 0)
-                nearest_support = setup.get('nearest_support', strong_support)
-                nearest_resistance = setup.get('nearest_resistance', strong_resistance)
-                pos = setup['pos_pct']
-                # Общие расчеты процентов изменения цены от локального минимума/максимума
-                pump_pct = ((current_price - strong_support) / strong_support) * 100 if strong_support > 0 else 0
-                dump_pct = ((strong_resistance - current_price) / strong_resistance) * 100 if strong_resistance > 0 else 0
-
-                # Формируем price_text для отображения
-                price_text = f"💰 Цена: {fmt_p(current_price)} (🔻 -{dump_pct:.0f}% от пика {fmt_p(strong_resistance)})"
-
-                # Определяем тренд
-                trend_str = setup['trend']
-                if "бычий" in trend_str.lower():
-                    trend_type = "BULLISH"
-                elif "медвежий" in trend_str.lower():
-                    trend_type = "BEARISH"
-                else:
-                    trend_type = "FLAT"
-
-                # Рассчитываем readiness_pct
-                if trend_type == "BULLISH":
-                    readiness_pct = 100 - pos
-                elif trend_type == "BEARISH":
-                    readiness_pct = pos
-                else:
-                    readiness_pct = max(pos, 100 - pos)
-
-                # Отсекаем монеты, которые находятся далеко от зоны входа (стадия WAIT)
-                if readiness_pct < 80:
-                    continue
-
-                if trend_type == "BULLISH":
-                    strategy_text = "Работа от откатов."
-                    target_zone = "LONG ZONE"
-                    if readiness_pct >= 90:
-                        zone_name = "LONG ZONE"
-                        icon = "🟢"
-                        target_value = strong_support
-                        target_pullback = fmt_p(target_value)
-                        comment_body = f"Цена в зоне. Ищем сетап в лонг у ~{target_pullback}."
-                    elif readiness_pct >= 80:
-                        zone_name = "LONG WATCH"
-                        icon = "🟡"
-                        target_value = strong_support
-                        target_pullback = fmt_p(target_value)
-                        comment_body = f"Цена подходит к зоне. Готовимся искать лонг у ~{target_pullback}."
-                    else:
-                        zone_name = "WAIT"
-                        icon = "⏳"
-                        if setup['vol_ratio'] > 2.0 and setup['rsi'] > 70.0:
-                            target_value = nearest_support
-                        else:
-                            target_value = strong_support
-                        target_pullback = fmt_p(target_value)
-                        comment_body = f"Ждем снижение к ~{target_pullback} для поиска лонга."
-                elif trend_type == "BEARISH":
-                    strategy_text = "Работа от отскоков."
-                    target_zone = "SHORT ZONE"
-                    if readiness_pct >= 90:
-                        zone_name = "SHORT ZONE"
-                        icon = "🔴"
-                        target_value = strong_resistance
-                        target_pullback = fmt_p(target_value)
-                        comment_body = f"Цена в зоне. Ищем сетап в шорт у ~{target_pullback}."
-                    elif readiness_pct >= 80:
-                        zone_name = "SHORT WATCH"
-                        icon = "🟡"
-                        target_value = strong_resistance
-                        target_pullback = fmt_p(target_value)
-                        comment_body = f"Цена подходит к зоне. Готовимся искать шорт у ~{target_pullback}."
-                    else:
-                        zone_name = "WAIT"
-                        icon = "⏳"
-                        if setup['vol_ratio'] > 2.0 and setup['rsi'] < 30.0:
-                            target_value = nearest_resistance
-                        else:
-                            target_value = strong_resistance
-                        target_pullback = fmt_p(target_value)
-                        comment_body = f"Ждем рост к ~{target_pullback} для поиска шорта."
-                else:  # trend_type == "FLAT"
-                    # Середина уже отсечена фильтром (readiness_pct < 80). 
-                    # Значит мы либо у верхней (pos >= 80), либо у нижней (pos <= 20) границы.
-                    if pos >= 80:
-                        strategy_text = "Работа от верхней границы."
-                        target_zone = "SHORT ZONE"
-                        target_value = strong_resistance
-                        target_pullback = fmt_p(target_value)
-                        
-                        if readiness_pct >= 90:
-                            zone_name = "SHORT ZONE"
-                            icon = "🔴"
-                            comment_body = f"Цена в зоне. Ищем сетап в шорт у ~{target_pullback}."
-                        else:
-                            zone_name = "SHORT WATCH"
-                            icon = "🟡"
-                            comment_body = f"Цена подходит к зоне. Готовимся искать шорт у ~{target_pullback}."
-                            
-                    else:
-                        strategy_text = "Работа от нижней границы."
-                        target_zone = "LONG ZONE"
-                        target_value = strong_support
-                        target_pullback = fmt_p(target_value)
-                        
-                        if readiness_pct >= 90:
-                            zone_name = "LONG ZONE"
-                            icon = "🟢"
-                            comment_body = f"Цена в зоне. Ищем сетап в лонг у ~{target_pullback}."
-                        else:
-                            zone_name = "LONG WATCH"
-                            icon = "🟡"
-                            comment_body = f"Цена подходит к зоне. Готовимся искать лонг у ~{target_pullback}."
-
-                distance_pct = abs(current_price - target_value) / target_value * 100 if target_value > 0 else 0
-                distance_str = f"📍 До {target_zone}: {distance_pct:.0f}%\n\n" if readiness_pct < 90 else "\n"
-
-                msg = (
-                    f"⚡️ LIGHT SIGNAL | #{coin_name} | {icon}\n"
-                    f"━━━━━━━━━━━━━━━\n"
-                    f"{price_text}\n"
-                    f"📊 Объем: x{setup['vol_ratio']:.1f}\n"
-                    f"🌡 RSI: {setup['rsi']:.1f}\n"
-                    f"--------------------------------\n"
-                    f"📊 Тренд: {setup['trend']}\n"
-                    f"⚡️ СТАТУС: {zone_name} ({readiness_pct:.0f}%)\n\n"
-                    f"👀 {strategy_text}\n"
-                    f"{comment_body}\n\n"
-                    f"❗️ НЕ сигнал на вход"
-                )
-                bot.send_message(admin_chat_id, msg, parse_mode="Markdown")
-
-                cooldown_cache[coin_name] = now
+            _execute_scan_cycle(bot, admin_chat_id, is_auto=True)
         finally:
-            elapsed_time = time.time() - start_time
-            print(f"\n[ЛАЙТ-РАДАР АВТО] 📊 Скан завершен за {elapsed_time:.1f} сек.")
-            print(f"[ЛАЙТ-РАДАР АВТО] 🪙 Монет обработано: {total_processed_coins}")
-            print(f"[ЛАЙТ-РАДАР АВТО] 🌐 Запросов к API Bybit: {api_queries}\n")
             _scan_lock.release()
 
         time.sleep(SCAN_INTERVAL)
