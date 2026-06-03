@@ -40,6 +40,7 @@ def scan_market(scan_type="auto"):
         markets = load_markets_cached(exchange)
 
         def analyze_symbol(symbol):
+            time.sleep(0.1)
             try:
                 # 1. Если монеты нет на бирже вообще - пропускаем
                 if symbol not in markets:

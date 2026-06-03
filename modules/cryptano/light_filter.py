@@ -32,6 +32,7 @@ def _light_setup(symbol):
     """
     Единая функция анализа (Радар) для автобота и ручного сканера.
     """
+    time.sleep(0.1)
     try:
         coin_name = symbol.split("/")[0]
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=250)
@@ -170,6 +171,11 @@ def _execute_scan_cycle(bot, admin_chat_id, is_auto=False):
 
         eligible_symbols = []
         if is_auto:
+            # Очистка старых записей из кэша (утечка памяти)
+            keys_to_delete = [k for k, v in cooldown_cache.items() if (now - v).total_seconds() >= (COOLDOWN_HOURS * 3600)]
+            for k in keys_to_delete:
+                del cooldown_cache[k]
+
             for symbol in coins:
                 coin_name = symbol.split("/")[0]
                 if coin_name in cooldown_cache:

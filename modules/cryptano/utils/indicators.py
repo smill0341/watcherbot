@@ -189,27 +189,33 @@ def analyze_extreme_pattern(df, direction, current_price, price_precision):
 
         if is_pin or is_engulf:
             score += 1
-            details.append("✅ Разворотный паттерн на самом пике пампа")
+            details.append("✅ Есть разворотная свеча")
         else:
-            details.append("❌ На пике не было явной разворотной свечи")
+            details.append("❌ Нет разворотной свечи")
 
+        avg_vol = df["volume"].mean()
+        vol_mult = float(df.iloc[-1]["volume"] / avg_vol if avg_vol > 0 else 1.0)
         if df.iloc[-1]["volume"] < peak_candle["volume"]:
             score += 1
-            details.append("✅ Объемы покупателей иссякли после пика")
+            details.append(f"✅ Объемы остывают: x{vol_mult:.1f}")
         else:
-            details.append("❌ Объемы все еще аномально высокие")
+            details.append(f"❌ Объемы не остыли: x{vol_mult:.1f}")
 
-        if df.iloc[-1]["rsi"] < peak_candle["rsi"] and peak_candle["rsi"] > 70:
+        current_rsi = float(df.iloc[-1]["rsi"])
+        if current_rsi < 40:
+            details.append(f"❌ RSI уже низко: {current_rsi:.1f}")
+        elif current_rsi < peak_candle["rsi"] and peak_candle["rsi"] > 70:
             score += 1
-            details.append(f"✅ RSI упал от пика ({peak_candle['rsi']:.1f} -> {df.iloc[-1]['rsi']:.1f})")
+            details.append(f"✅ RSI остыл после перегрева: {current_rsi:.1f}")
         else:
-            details.append(f"❌ RSI не показывает разворот ({df.iloc[-1]['rsi']:.1f})")
+            details.append(f"❌ RSI еще не перегрет: {current_rsi:.1f}")
 
-        if current_price < peak_candle["low"]:
+        level_price = float(peak_candle["low"])
+        if current_price < level_price:
             score += 1
-            details.append("✅ Слом структуры (Пробит лой пиковой свечи)")
+            details.append(f"✅ Есть слом структуры: <{level_price:.1f}")
         else:
-            details.append("❌ Слом локальной структуры отсутствует")
+            details.append(f"❌ Нет слома: пробой <{level_price:.1f}")
 
         sl_price = float(peak_candle["high"])
 
@@ -233,36 +239,40 @@ def analyze_extreme_pattern(df, direction, current_price, price_precision):
 
         if is_hammer or is_bull_engulf:
             score += 1
-            details.append("✅ Разворотный паттерн (Молот/Поглощение) на дне")
+            details.append("✅ Есть разворотная свеча")
         else:
-            details.append("❌ На дне не было явной разворотной свечи")
+            details.append("❌ Нет разворотной свечи")
 
         avg_vol = df["volume"].mean()
+        vol_mult = float(df.iloc[-1]["volume"] / avg_vol if avg_vol > 0 else 1.0)
         if low_candle["volume"] > (avg_vol * 2.5):
             score += 1
-            details.append("✅ Кульминация продаж (Кит выкупил дно на объеме)")
+            details.append(f"✅ Объемы остывают: x{vol_mult:.1f}")
         else:
-            details.append("❌ Нет кульминационного объема на дне")
+            details.append(f"❌ Объемы не остыли: x{vol_mult:.1f}")
 
-        if df.iloc[-1]["rsi"] > low_candle["rsi"] and low_candle["rsi"] < 30:
+        current_rsi = float(df.iloc[-1]["rsi"])
+        if current_rsi > 60:
+            details.append(f"❌ RSI все еще высокий: {current_rsi:.1f}")
+        elif current_rsi > low_candle["rsi"] and low_candle["rsi"] < 30:
             score += 1
-            details.append(f"✅ RSI отскочил от дна ({low_candle['rsi']:.1f} -> {df.iloc[-1]['rsi']:.1f})")
+            details.append(f"✅ RSI выходит из перепроданности: {current_rsi:.1f}")
         else:
-            details.append(f"❌ RSI все еще на дне ({df.iloc[-1]['rsi']:.1f})")
+            details.append(f"❌ RSI еще не на дне: {current_rsi:.1f}")
 
-        if current_price > low_candle["close"] and df.iloc[-1]["low"] >= low_candle["low"]:
+        level_price = float(low_candle["high"])
+        if current_price > level_price:
             score += 1
-            details.append("✅ Формируется база (Дно больше не обновляется)")
+            details.append(f"✅ Есть слом структуры: >{level_price:.1f}")
         else:
-            details.append("❌ Цена продолжает давить вниз")
+            details.append(f"❌ Нет слома: пробой >{level_price:.1f}")
 
         sl_price = float(low_candle["low"])
 
     # 5. Проверка дивергенции (история за 22 часа до текущих 15 свечей)
-    past_df = df.iloc[-90:-15]
-    
-    if len(past_df) < 10:
-        details.append("❌ Недостаточно истории для дивергенции")
+    past_df = df.iloc[-90:-15].dropna(subset=['rsi'])
+
+    if len(past_df) < 10:        details.append("❌ Недостаточно истории для дивергенции")
     else:
         if direction == "SHORT":
             past_peak_idx = past_df["high"].idxmax()
@@ -270,9 +280,9 @@ def analyze_extreme_pattern(df, direction, current_price, price_precision):
             
             if peak_candle["high"] > past_peak_candle["high"] and peak_candle["rsi"] < past_peak_candle["rsi"]:
                 score += 1
-                details.append("✅ Медвежья дивергенция (Новый пик выше, RSI ниже)")
+                details.append("✅ Есть дивергенция")
             else:
-                details.append("❌ Нет медвежьей дивергенции")
+                details.append("❌ Дивергенции нет")
                 
         elif direction == "LONG":
             past_low_idx = past_df["low"].idxmin()
@@ -280,9 +290,9 @@ def analyze_extreme_pattern(df, direction, current_price, price_precision):
             
             if low_candle["low"] < past_low_candle["low"] and low_candle["rsi"] > past_low_candle["rsi"]:
                 score += 1
-                details.append("✅ Бычья дивергенция (Новое дно ниже, RSI выше)")
+                details.append("✅ Есть дивергенция")
             else:
-                details.append("❌ Нет бычьей дивергенции")
+                details.append("❌ Дивергенции нет")
 
     return {
         "score": score,

@@ -11,6 +11,8 @@ from modules.cryptano.history import check_and_update, format_history
 from modules.cryptano.market_overview import analyze_coin
 from modules.cryptano.trade_plan import check_manual_extreme
 from modules.cryptano.light_filter import run_manual_light_scan
+from modules.cryptano.live_scan import manage_watchlist, show_watchlist, run_live_scanner
+import threading
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TOKEN:
@@ -34,6 +36,17 @@ def start(message):
 @bot.message_handler(content_types=['text'])
 def handle_text(message):
     if str(message.chat.id) != str(ADMIN_CHAT_ID): return
+
+    text = message.text
+    chat_id = message.chat.id
+
+    # Перехват команд Снайпера (+BTC, -BTC)
+    if manage_watchlist(text, bot, chat_id):
+        return
+        
+    if text in ["🎯 Мой Watchlist", "Watchlist"]:
+        show_watchlist(bot, chat_id)
+        return
 
     # --- ГЛАВНОЕ МЕНЮ И СПОРТ ---
     if message.text == "🪙 Крипта":
@@ -69,7 +82,7 @@ def handle_text(message):
         msg = bot.send_message(message.chat.id, "Введи чистый тикер монеты для стандартного анализа (например: BTC или SOL):")
         bot.register_next_step_handler(msg, process_normal_analysis)
 
-    elif message.text == "🎯 Анализ Pump/Dump":
+    elif message.text == "🔍 Check":
         msg = bot.send_message(message.chat.id, 
             "Введи монету и направление.\nФормат: `BTC LONG или SHORT`", parse_mode="Markdown")
         bot.register_next_step_handler(msg, process_manual_extreme_check)  
@@ -239,6 +252,8 @@ if __name__ == "__main__":
 
     if ADMIN_CHAT_ID:
         start_all_background_tasks(bot, ADMIN_CHAT_ID)
+        sniper_thread = threading.Thread(target=run_live_scanner, args=(bot, ADMIN_CHAT_ID), daemon=True)
+        sniper_thread.start()
     else:
         print("[MAIN WARNING] ВНИМАНИЕ: ADMIN_CHAT_ID не найден в .env. Фоновые потоки не запущены.")
 
