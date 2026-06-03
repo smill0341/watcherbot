@@ -3,16 +3,16 @@ import datetime
 import os
 import threading
 import re
-from modules.cryptano.trade_plan import check_manual_extreme
+from modules.cryptano.watcher_plan import check_manual_extreme
 from modules.cryptano.utils.storage import load_json, save_json_atomic
 
-# ================= НАСТРОЙКИ СНАЙПЕРА =================
+# ================= НАСТРОЙКИ WATCHER =================
 WATCHLIST_FILE = os.path.join(os.path.dirname(__file__), "watchlist.json")
-SNIPER_INTERVAL = 900  # Интервал проверок: 900 секунд (15 минут)
+WATCH_INTERVAL = 900  # Интервал проверок: 900 секунд (15 минут)
 COOLDOWN_HOURS = 4     # Заморозка повторных сигналов по монете
 
-sniper_cooldown_cache = {}
-_sniper_lock = threading.Lock()
+watcher_cooldown_cache = {}
+_watcher_lock = threading.Lock()
 
 def _load_watchlist():
     return load_json(WATCHLIST_FILE, default={})
@@ -20,10 +20,10 @@ def _load_watchlist():
 def _save_watchlist(data):
     save_json_atomic(WATCHLIST_FILE, data)
 
-def extract_sniper_data(report):
+def extract_watcher_data(report):
     """
-    Парсит длинный отчет из trade_plan и достает только самое важное
-    для короткого снайперского алерта.
+    Парсит длинный отчет из watcher_plan и достает только самое важное
+    для короткого watcher алерта.
     """
     if "🔥 СИГНАЛ АКТИВЕН" not in report:
         return None
@@ -79,8 +79,8 @@ def manage_watchlist(command, bot, chat_id):
         mode_text = "Любое" if direction == "ANY" else direction
         bot.send_message(
             chat_id, 
-            f"🎯 Монета *{coin}* добавлена в Sniper Watchlist.\n"
-            f"Ожидаемое направление: *{mode_text}*", 
+            f"✅ *{coin}* добавлена в watchlist.\n"
+            f"Режим: *{mode_text}*", 
             parse_mode="Markdown"
         )
         return True
@@ -89,7 +89,7 @@ def manage_watchlist(command, bot, chat_id):
         if coin in wl:
             del wl[coin]
             _save_watchlist(wl)
-            bot.send_message(chat_id, f"❌ Монета *{coin}* удалена из Sniper Watchlist.", parse_mode="Markdown")
+            bot.send_message(chat_id, f"❌ Монета *{coin}* удалена из watchlist.", parse_mode="Markdown")
         else:
             bot.send_message(chat_id, f"⚠️ Монеты *{coin}* нет в списке.", parse_mode="Markdown")
         return True
@@ -100,10 +100,10 @@ def show_watchlist(bot, chat_id):
     """Показывает текущий список слежения"""
     wl = _load_watchlist()
     if not wl:
-        bot.send_message(chat_id, "🎯 Твой Sniper Watchlist пуст.\nДобавь монеты командой `+BTC` или `+ETH SHORT`", parse_mode="Markdown")
+        bot.send_message(chat_id, "📋 Мой watchlist пуст.\nДобавь монеты командой `+BTC` или `+ETH SHORT`", parse_mode="Markdown")
         return
     
-    msg = "🎯 **Твой Sniper Watchlist:**\n\n"
+    msg = "📋 **Мой watchlist:**\n\n"
     for coin, data in wl.items():
         mode_text = "ANY (Лонг и Шорт)" if data['direction'] == "ANY" else data['direction']
         msg += f"• *{coin}* | Режим: `{mode_text}`\n"
@@ -113,25 +113,25 @@ def show_watchlist(bot, chat_id):
 
 def run_live_scanner(bot, admin_chat_id):
     """
-    Главный фоновый цикл Снайпера. Проверяет монеты раз в 15 минут.
+    Главный фоновый цикл Watcher. Проверяет монеты раз в 15 минут.
     """
-    print("  🎯 Sniper (Live Scan) инициализирован!")
+    print(" 📡 Watcher live scan инициализирован!")
     
     while True:
         try:
             wl = _load_watchlist()
             if not wl:
-                time.sleep(SNIPER_INTERVAL)
+                time.sleep(WATCH_INTERVAL)
                 continue
 
             now = datetime.datetime.now()
 
             # Очистка старых записей из кэша (защита от утечки памяти)
-            keys_to_delete = [k for k, v in sniper_cooldown_cache.items() if (now - v).total_seconds() >= (COOLDOWN_HOURS * 3600)]
+            keys_to_delete = [k for k, v in watcher_cooldown_cache.items() if (now - v).total_seconds() >= (COOLDOWN_HOURS * 3600)]
             for k in keys_to_delete:
-                del sniper_cooldown_cache[k]
+                del watcher_cooldown_cache[k]
 
-            if not _sniper_lock.acquire(blocking=False):
+            if not _watcher_lock.acquire(blocking=False):
                 time.sleep(30)
                 continue
 
@@ -143,7 +143,7 @@ def run_live_scanner(bot, admin_chat_id):
                     for d in directions_to_check:
                         cache_key = f"{coin}_{d}"
                         
-                        if cache_key in sniper_cooldown_cache:
+                        if cache_key in watcher_cooldown_cache:
                             continue  # Монета в кулдауне, пропускаем
                         
                         # Вызываем готовую логику из trade_plan.py
@@ -152,22 +152,22 @@ def run_live_scanner(bot, admin_chat_id):
                         if not report or report.startswith("❌") or report.startswith("⚠️"):
                             continue
                         
-                        sniper_data = extract_sniper_data(report)
+                        watcher_data = extract_watcher_data(report)
                         
-                        if sniper_data:
+                        if watcher_data:
                             # Сигнал подтвержден! Формируем боевой алерт.
-                            icon = "🟢" if sniper_data['direction'] == "LONG" else "🔴"
+                            icon = "🟢" if watcher_data['direction'] == "LONG" else "🔴"
                             msg = (
-                                f"🎯 **SNIPER ALERT | {coin}** {icon}\n"
-                                f"📈 Приоритет: **{sniper_data['direction']}** ({sniper_data['score']})\n\n"
-                                f"💰 Текущая цена: `{sniper_data['price']}`\n"
-                                f"🛡 Рекомендуемый Стоп: `{sniper_data['sl']}`\n\n"
+                                f"📡 **WATCHER ALERT | {coin}** {icon}\n"
+                                f"📈 Приоритет: **{watcher_data['direction']}** ({watcher_data['score']})\n\n"
+                                f"💰 Текущая цена: `{watcher_data['price']}`\n"
+                                f"🛡 Рекомендуемый Стоп: `{watcher_data['sl']}`\n\n"
                                 f"⚡️ Условия разворота подтверждены. Точка входа активна!"
                             )
                             bot.send_message(admin_chat_id, msg, parse_mode="Markdown")
                             
                             # Замораживаем, чтобы не спамить
-                            sniper_cooldown_cache[cache_key] = now
+                            watcher_cooldown_cache[cache_key] = now
                             break  # Если нашли Лонг, Шорт уже не проверяем (и наоборот)
 
                         # Микро-пауза между запросами разных монет, чтобы не злить биржу
@@ -175,12 +175,12 @@ def run_live_scanner(bot, admin_chat_id):
                 
                 # Пульс для консоли
                 current_time = datetime.datetime.now().strftime("%H:%M:%S")
-                print(f"[{current_time}] 🎯 [SNIPER] Скан завершен. Монет в прицеле: {len(wl)}")
+                print(f"[{current_time}] 📡 [WATCHER] Скан завершен. Монет в прицеле: {len(wl)}")
                         
             finally:
-                _sniper_lock.release()
+                _watcher_lock.release()
 
         except Exception as e:
-            print(f"[SNIPER ERROR] Ошибка в цикле live_scan: {e}")
+            print(f"[WATCHER ERROR] Ошибка в цикле live_scan: {e}")
         
-        time.sleep(SNIPER_INTERVAL)
+        time.sleep(WATCH_INTERVAL)

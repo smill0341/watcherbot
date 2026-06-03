@@ -1,4 +1,4 @@
-# modules/cryptano/pumpdump.py
+# modules/cryptano/watcher_plan.py
 
 import time
 import pandas as pd
@@ -56,7 +56,7 @@ def check_manual_extreme(coin, direction):
             elif score >= 4:
                 verdict = "🔥 Есть подтверждение входа"
             elif score >= 2:
-                verdict = "👀 Сетап формируется"
+                verdict = ""
             else:
                 verdict = "⛔️ Рано для входа"
         elif direction == "LONG":
@@ -65,7 +65,7 @@ def check_manual_extreme(coin, direction):
             elif score >= 4:
                 verdict = "🔥 Есть подтверждение входа"
             elif score >= 2:
-                verdict = "👀 Сетап формируется"
+                verdict = ""
             else:
                 verdict = "⛔️ Рано для входа"
         else:
@@ -73,11 +73,12 @@ def check_manual_extreme(coin, direction):
     
         icon = "🔴" if direction == "SHORT" else "🟢"
         
-        report = f"{icon} *{coin} | CHECK {direction}*\n\n"
+        report = f"{icon} *{coin} | WATCHER {direction}*\n\n"
         report += f"💰 Цена: `{fmt_p(current_price)}`\n"
         report += f"📊 Готовность: `{score}/5`\n\n"
-        report += f"*{verdict}*\n\n"
-        report += "👀 *Чек-лист сетапа:*\n"
+        if verdict:
+            report += f"*{verdict}*\n\n"
+        report += "🛠 *Метрики:*\n"
         
         for d in details:
             report += f"{d}\n"
@@ -99,8 +100,8 @@ def check_manual_extreme(coin, direction):
                 report += f"\n⏳ Пока наблюдаем. Ждем дополнительные подтверждения сетапа."
 
         elapsed_time = time.time() - start_time
-        print(f"\n[ЭКСТРЕМУМ-АНАЛИЗ] 📊 Проверка {coin} завершена за {elapsed_time:.2f} сек.")
-        print(f"[ЭКСТРЕМУМ-АНАЛИЗ] 🌐 Запросов к API Bybit: {api_queries}\n")
+        print(f"\n[WATCHER PLAN] 📊 Проверка {coin} завершена за {elapsed_time:.2f} сек.")
+        print(f"[WATCHER PLAN] 🌐 Запросов к API Bybit: {api_queries}\n")
 
         return report
 

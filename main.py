@@ -9,7 +9,7 @@ from modules.footballnogoal.football import check_live_matches
 from modules.playerpropsbasket.player_props import check_nba_injuries
 from modules.cryptano.history import check_and_update, format_history
 from modules.cryptano.market_overview import analyze_coin
-from modules.cryptano.trade_plan import check_manual_extreme
+from modules.cryptano.watcher_plan import check_manual_extreme
 from modules.cryptano.light_filter import run_manual_light_scan
 from modules.cryptano.live_scan import manage_watchlist, show_watchlist, run_live_scanner
 import threading
@@ -55,7 +55,7 @@ def handle_text(message):
     elif message.text == "🪙 Critical фильтр":
         bot.send_message(message.chat.id, "🪙 Крипто-сканер:", reply_markup=keyboards.get_crypto_menu())
 
-    elif message.text == "⬅️ Назад в Главное меню":
+    elif message.text == "⬅️ Главное меню":
         bot.send_message(message.chat.id, "Главное меню:", reply_markup=keyboards.get_main_menu())
 
     elif message.text in ["🏀 NBA", "⚽️ Футбол"]:
@@ -82,7 +82,7 @@ def handle_text(message):
         msg = bot.send_message(message.chat.id, "Введи чистый тикер монеты для стандартного анализа (например: BTC или SOL):")
         bot.register_next_step_handler(msg, process_normal_analysis)
 
-    elif message.text == "🔍 Check":
+    elif message.text == "🔍 Watcher Plan":
         msg = bot.send_message(message.chat.id, 
             "Введи монету и направление.\nФормат: `BTC LONG или SHORT`", parse_mode="Markdown")
         bot.register_next_step_handler(msg, process_manual_extreme_check)  

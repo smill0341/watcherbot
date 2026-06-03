@@ -30,7 +30,7 @@ def get_crypto_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     
     # Ряд 1: Ручной разбор монеты в зависимости от фазы
-    markup.add("📈 Анализ Normal", "🔍 Check")
+    markup.add("📈 Анализ Normal", "🔍 Watcher Plan")
     
     # Ряд 2: Ручные экспресс-скринеры всего рынка
     markup.add("⚡️ Critical фильтр", "💎 Light фильтр")
