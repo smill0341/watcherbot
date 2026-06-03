@@ -78,7 +78,7 @@ def check_manual_extreme(coin, direction):
         report += f"📊 Готовность: `{score}/5`\n\n"
         if verdict:
             report += f"*{verdict}*\n\n"
-        report += "🛠 *Метрики:*\n"
+        report += "👀 *Metrics:*\n"
         
         for d in details:
             report += f"{d}\n"
