@@ -223,10 +223,8 @@ def analyze_coin(ticker_input: str) -> str:
         if vol_ratio >= 2.0: dump_triggers += 1
         if rsi_4h <= 25: dump_triggers += 1
 
-        if pump_triggers >= 2:
-            return f"AUTO_PUMPDUMP:{coin}:ПАРАБОЛИЧЕСКИЙ ПАМП"
-        elif dump_triggers >= 2:
-            return f"AUTO_PUMPDUMP:{coin}:ПАНИЧЕСКИЙ ДАМП"
+        is_pump = pump_triggers >= 2
+        is_dump = dump_triggers >= 2
 
         # ==========================================
         # БЛОК 6: Определение Контекста Тренда (По MA)
@@ -240,21 +238,30 @@ def analyze_coin(ticker_input: str) -> str:
             # Приоритет 1: Цена выше MA200 = Глобальный бычий фон
             elif current_price > ma200_val:
                 if current_price > ma7 and ma7 > ma30 and ma30 >= ma200_val:
-                    market_mode, trend_label = "Strong Bull", "🚀 TREND: Strong Bull (Сильный рост, работаем от откатов)"
+                    market_mode = "Strong Bull"
                 else:
                     market_mode = "Bullish Pullback"
-                    local_impulse = " (Начался локальный отскок)" if current_price > ma7 and rsi_4h > 50 else ""
-                    trend_label = f"📈 TREND: Bullish Pullback (Глобально быки, глубокая коррекция){local_impulse}"
             # Приоритет 2: Цена ниже MA200 = Глобальный медвежий фон
             elif current_price < ma200_val:
                 if current_price < ma7 and ma7 < ma30 and ma30 <= ma200_val:
-                    market_mode, trend_label = "Strong Bear", "🩸 TREND: Strong Bear (работаем только от short setups)"
+                    market_mode = "Strong Bear"
                 else:
-                    market_mode, trend_label = "Weak Bear", "📉 TREND: Weak Bear (Слабый рынок, работаем от откатов)"
+                    market_mode = "Weak Bear"
             else:
-                market_mode, trend_label = "Range", "↔️ TREND: Range Mode (Боковик, торгуем от границ канала)"
+                market_mode = "Range"
         else:
-            market_mode, trend_label = "Range", "↔️ TREND: Недостаточно истории для MA"
+            market_mode = "Range"
+
+        trend_map = {
+            "Strong Bull": "📈 Бычий.",
+            "Bullish Pullback": "📈 Бычий. Локально коррекция.",
+            "Strong Bear": "📉 Медвежий.",
+            "Weak Bear": "📉 Медвежий.",
+            "Range": "⚖️ Боковик.",
+            "Capitulation": "📉 Медвежий.",
+            "Bearish Rally": "📉 Медвежий. Локально отскок."
+        }
+        trend_label = trend_map.get(market_mode, "⚖️ Боковик.")
 
         # ==========================================
         # БЛОК 7: Пространственная Иерархия Зон
@@ -325,7 +332,7 @@ def analyze_coin(ticker_input: str) -> str:
             short_dist_text = f"{fmt_p(dist_s)}% (далеко)"
 
         if range_position <= 30: pos_text = f"🟢 Близко к зоне поддержки"
-        elif range_position >= 70: pos_text = f"🔴 Близко к зоне сопротивления (Или на хаях)"
+        elif range_position >= 70: pos_text = f"🔴 Близко к сопротивлению"
         else: pos_text = f"⛔ Между рабочими уровнями (No Trade Zone)"
 
         # ==========================================
@@ -343,16 +350,30 @@ def analyze_coin(ticker_input: str) -> str:
             if vol < 3.0: return "🔥 Высокий"
             return "🌋 Аномальный (Кульминация)"
 
+        if is_dump:
+            header_title = "🔍 HYPE | DUMP 🚨"
+            price_label = "📉 Сильный импульс вниз."
+        elif is_pump:
+            header_title = "🔍 HYPE | PUMP 🚨"
+            price_label = "📈 Сильный импульс вверх."
+        else:
+            header_title = "🔍 HYPE | OVERVIEW"
+            price_label = trend_label
+
         msg = (
-            f"🔍 *{coin} | АНАЛИЗ*\n"
-            f"💰 Цена: `{clean_price(fmt_p(current_price))}` | {trend_label}\n"
+            f"{header_title}\n"
+            f"💰 Цена: {clean_price(fmt_p(current_price))} | {price_label}\n\n"
             f"📊 *СОСТОЯНИЕ РЫНКА:*\n"
             f"• RSI: `{rsi_daily}-{rsi_4h}` (d1, h4) → {get_rsi_label(rsi_4h)}\n"
             f"• Объём: `x{vol_ratio}` → {get_vol_label(vol_ratio)}\n\n"
-            f"📊 *ТРЕНД (MA D1):*\n"
-            f"🔴 MA7: `{clean_price(fmt_p(ma7))}` | 🔴 MA30: `{clean_price(fmt_p(ma30))}` | 🔴 MA200: `{clean_price(fmt_p(ma200))}`\n"
-            f"━━━━━━━━━━━━━━━\n"
         )
+
+        if not (is_pump or is_dump):
+            msg += (
+                f"📊 *ДНЕВНЫЕ МЕТРИКИ:*\n"
+                f"🔴 MA7: `{clean_price(fmt_p(ma7))}` | 🔴 MA30: `{clean_price(fmt_p(ma30))}` | 🔴 MA200: `{clean_price(fmt_p(ma200))}`\n"
+                f"━━━━━━━━━━━━━━━\n"
+            )
 
         # ==========================================
         # БЛОК 9: Контекст и Уровни
@@ -361,111 +382,105 @@ def analyze_coin(ticker_input: str) -> str:
         macro_sorted = sorted(macro_zones, key=lambda x: x["max"])
         macro_text = " | ".join([f"`{fmt_z(z)}`" for z in macro_sorted]) if macro_sorted else "Формируется"
 
-        msg += (
-            f"🔮 *КОНТЕКСТ РЫНКА*\n"
-            f"📍 Позиция: `{int(range_position)}%` | {pos_text}\n\n"
-            f"📌 *КЛЮЧЕВЫЕ УРОВНИ*\n"
-            f"🔹 Local: `{clean_price(fmt_z(local_sup))}` | `{clean_price(fmt_z(local_res))}`\n"
-            f"🔹 Swing: `{clean_price(fmt_z(swing_sup))}` | `{clean_price(fmt_z(swing_res))}`\n"
-            f"🔹 Macro: {macro_text}\n"
-            f"📍 До long-зоны: `{long_dist_text}` | 📍 До short-зоны: `{short_dist_text}`\n\n"
-        )
-
-        if "Bull" in market_mode:
-            msg += f"📈 Сценарий: Тренд восходящий. Ждем скидку и ищем лонги от `{clean_price(fmt_z(local_sup))}`\n❌ Отмена: потеря уровня `{clean_price(fmt_p(local_sup['min']))}`\n"
-        elif "Bear" in market_mode:
-            msg += f"📉 Сценарий: Давление продавца сохраняется. Вероятен тест зоны `{clean_price(fmt_z(local_sup))}`\n❌ Отмена: закреп выше `{clean_price(fmt_p(local_res['max']))}`\n"
-        elif "Capitulation" in market_mode:
-            msg += f"🚨 Сценарий: Паника на рынке. Шортить поздно. Ищем признаки остановки и защиты у макро уровней.\n"
-        else:
-            msg += f"↔️ Сценарий: Чистый боковик. Работаем строго от границ: лонг у `{clean_price(fmt_p(local_sup['max']))}`, шорт у `{clean_price(fmt_p(local_res['min']))}`\n"
-
-        msg += "\n🎯 *ПЛАН*\n\n"
-
-        no_trade_zone = 30 <= range_position <= 70
-        long_zone = range_position < 30
-        short_zone = range_position > 70
-
-        if long_zone:
-            # LONG IDEA выводим только при приближении к зоне поддержки
-            l_entry = local_sup["max"]
-            l_sl = local_sup["min"] - atr
-            l_tp1 = local_res["min"] if local_res else l_entry * 1.05
-            l_tp2 = swing_res["min"] if swing_res else l_tp1 * 1.05
-            if l_tp2 <= l_tp1:
-                l_tp2 = l_tp1 * 1.05
-            l_rr = round((l_tp1 - l_entry) / (l_entry - l_sl), 1) if l_entry > l_sl else 0
-            
-            l_qual, l_conf, l_reasons = evaluate_setup("LONG", current_price, rsi_4h, vol_ratio, market_mode, range_position, l_rr, local_sup["score"])
-            
+        if not (is_pump or is_dump):
             msg += (
-                f"🟢 *LONG IDEA* Зона: `{clean_price(fmt_z(local_sup))}`\n"
-                f"🎯 TP1: `{clean_price(fmt_p(l_tp1))}` | 🎯 TP2: `{clean_price(fmt_p(l_tp2))}` | 🛡 SL: `{clean_price(fmt_p(l_sl))}`\n"
-                f"📊 Setup Quality: `{l_qual}/100` | 📊 Entry Confirmation: `{l_conf}/100`\n"
+                f"📍 ПОЗИЦИЯ: {int(range_position)}% | {pos_text}\n\n"
+                f"📌 *КЛЮЧЕВЫЕ УРОВНИ*\n"
+                f"🔹 Local: `{clean_price(fmt_z(local_sup))}` | `{clean_price(fmt_z(local_res))}`\n"
+                f"🔹 Swing: `{clean_price(fmt_z(swing_sup))}` | `{clean_price(fmt_z(swing_res))}`\n"
+                f"🔹 Macro: {macro_text}\n\n"
             )
-            if l_conf >= 65:
-                msg += "✅ СЕТАП АКТИВЕН: Отличные условия для входа.\n\n"
-            else:
-                msg += "⛔ *Сейчас входа нет:*\n"
-                for r in l_reasons: msg += f"  {r}\n"
-                msg += "\n"
-
-        if short_zone:
-            # SHORT IDEA выводим только при приближении к зоне сопротивления
-            s_entry = local_res["min"]
-            s_sl = local_res["max"] + atr
-            s_tp1 = local_sup["max"] if local_sup else s_entry * 0.95
-            s_tp2 = swing_sup["max"] if swing_sup else s_tp1 * 0.95
-            if s_tp2 >= s_tp1:
-                s_tp2 = s_tp1 * 0.95
-            s_rr = round((s_entry - s_tp1) / (s_sl - s_entry), 1) if s_sl > s_entry else 0
-            
-            s_qual, s_conf, s_reasons = evaluate_setup("SHORT", current_price, rsi_4h, vol_ratio, market_mode, range_position, s_rr, local_res["score"])
-            
-            msg += (
-                f"🔴 *SHORT IDEA* Зона: `{clean_price(fmt_z(local_res))}`\n"
-                f"🎯 TP1: `{clean_price(fmt_p(s_tp1))}` | 🎯 TP2: `{clean_price(fmt_p(s_tp2))}` | 🛡 SL: `{clean_price(fmt_p(s_sl))}`\n"
-                f"📊 Setup Quality: `{s_qual}/100` | 📊 Entry Confirmation: `{s_conf}/100`\n"
-            )
-            if s_conf >= 65:
-                msg += "✅ СЕТАП АКТИВЕН: Отличные условия для входа.\n\n"
-            else:
-                msg += "⛔ *Сейчас входа нет:*\n"
-                for r in s_reasons: msg += f"  {r}\n"
-                msg += "\n"
-
-        # ==========================================
-        # БЛОК 11: Финальный Приоритет (Price Action Снайпер)
-        # ==========================================
-        msg += "━━━━━━━━━━━━━━━\n🧭 *ЧТО ДЕЛАТЬ СЕЙЧАС*\n"
-        if no_trade_zone:
-            msg += f"⛔ ЖДАТЬ. Цена в середине диапазона. | 📍 До лонга: `{long_dist_text}` | 📍 До шорта: `{short_dist_text}`\n"
-        elif range_position > 70 and local_res:
-            # Запускаем микро-анализ для Шорта
-            is_conf, score, details = check_live_confirmation(df_4h, "SHORT", local_res['min'], local_res['max'], vol_ratio)
-            
-            if is_conf:
-                msg += f"🔴 *SHORT SETUP ACTIVE (ВХОД РАЗРЕШЕН)*\n"
-            else:
-                msg += f"⛔ *ПОДТВЕРЖДЕНИЯ НЕТ (Ждем форму свечи)*\n"
-                
-            msg += f"📍 Зона: `{fmt_z(local_res)}`\n🔍 *Live Confirmation ({score}/3):*\n"
-            for d in details: msg += f"  {d}\n"
-            
-        elif range_position < 30 and local_sup:
-            # Запускаем микро-анализ для Лонга
-            is_conf, score, details = check_live_confirmation(df_4h, "LONG", local_sup['min'], local_sup['max'], vol_ratio)
-            
-            if is_conf:
-                msg += f"🟢 *LONG SETUP ACTIVE (ВХОД РАЗРЕШЕН)*\n"
-            else:
-                msg += f"⛔ *ПОДТВЕРЖДЕНИЯ НЕТ (Ждем форму свечи)*\n"
-                
-            msg += f"📍 Зона: `{fmt_z(local_sup)}`\n🔍 *Live Confirmation ({score}/3):*\n"
-            for d in details: msg += f"  {d}\n"
-            
         else:
-            msg += "⚠️ Наблюдение за структурой на текущих отметках.\n"
+            msg += (
+                f"📌 *КЛЮЧЕВЫЕ УРОВНИ*\n"
+                f"🔹 Macro: {macro_text}\n"
+                f"━━━━━━━━━━━━━━━\n"
+            )
+
+        if is_dump:
+            msg += "➡️ Передано в Watcher.\n"
+        elif is_pump:
+            msg += "➡️ Передано в Watcher.\n"
+        else:
+            no_trade_zone = 30 <= range_position <= 70
+            idea_present = not no_trade_zone
+
+            if not idea_present:
+                msg += "🎯 ТОРГОВЫЙ ПЛАН: Вне рынка (Нет интересных точек входа)\n"
+            else:
+                if dist_l <= dist_s:
+                    main_dir = "LONG"
+                    alt_dir = "SHORT"
+                else:
+                    main_dir = "SHORT"
+                    alt_dir = "LONG"
+
+                if main_dir == "LONG":
+                    # LONG IDEA формируется при приближении к зоне поддержки
+                    l_entry = local_sup["max"]
+                    l_sl = local_sup["min"] - atr
+                    l_tp1 = local_res["min"] if local_res else l_entry * 1.05
+                    l_tp2 = swing_res["min"] if swing_res else l_tp1 * 1.05
+                    if l_tp2 <= l_tp1:
+                        l_tp2 = l_tp1 * 1.05
+                    l_rr = round((l_tp1 - l_entry) / (l_entry - l_sl), 1) if l_entry > l_sl else 0
+
+                    l_qual, l_conf, l_reasons = evaluate_setup("LONG", current_price, rsi_4h, vol_ratio, market_mode, range_position, l_rr, local_sup["score"])
+                    risk_label = "(По тренду / Сильный)" if l_qual >= 65 else "(Контртренд / Риск высокий)"
+
+                    msg += (
+                        f"🎯 LONG IDEA {risk_label}\n"
+                        f"📍 Вход: {clean_price(fmt_p(l_entry))}\n"
+                        f"🛡 СТОП (SL): {clean_price(fmt_p(l_sl))}\n"
+                        f"💰 ЦЕЛИ (TP): {clean_price(fmt_p(l_tp1))} | {clean_price(fmt_p(l_tp2))}\n"
+                    )
+                else:
+                    # SHORT IDEA формируется при приближении к зоне сопротивления
+                    s_entry = local_res["min"]
+                    s_sl = local_res["max"] + atr
+                    s_tp1 = local_sup["max"] if local_sup else s_entry * 0.95
+                    s_tp2 = swing_sup["max"] if swing_sup else s_tp1 * 0.95
+                    if s_tp2 >= s_tp1:
+                        s_tp2 = s_tp1 * 0.95
+                    s_rr = round((s_entry - s_tp1) / (s_sl - s_entry), 1) if s_sl > s_entry else 0
+
+                    s_qual, s_conf, s_reasons = evaluate_setup("SHORT", current_price, rsi_4h, vol_ratio, market_mode, range_position, s_rr, local_res["score"])
+                    risk_label = "(По тренду / Сильный)" if s_qual >= 65 else "(Контртренд / Риск высокий)"
+
+                    msg += (
+                        f"🎯 SHORT IDEA {risk_label}\n"
+                        f"📍 Вход: {clean_price(fmt_p(s_entry))}\n"
+                        f"🛡 СТОП (SL): {clean_price(fmt_p(s_sl))}\n"
+                        f"💰 ЦЕЛИ (TP): {clean_price(fmt_p(s_tp1))} | {clean_price(fmt_p(s_tp2))}\n"
+                    )
+
+                # ==========================================
+                # БЛОК 11: Триггер входа
+                # ==========================================
+                msg += "━━━━━━━━━━━━━━━\n"
+                if main_dir == "SHORT" and local_res:
+                    is_conf, score, details = check_live_confirmation(df_4h, "SHORT", local_res['min'], local_res['max'], vol_ratio)
+                elif main_dir == "LONG" and local_sup:
+                    is_conf, score, details = check_live_confirmation(df_4h, "LONG", local_sup['min'], local_sup['max'], vol_ratio)
+                else:
+                    is_conf, score, details = False, 0, []
+
+                trigger_status = "✅ ЕСТЬ ПОДТВЕРЖДЕНИЕ" if is_conf else "⛔ ЖДЕМ ПОДТВЕРЖДЕНИЯ"
+                vol_ok = any(d.startswith("✅ Volume Spike") for d in details)
+                rejection_ok = any(d.startswith("✅ Rejection Candle") for d in details)
+                hold_ok = any(d.startswith("✅ Удержание уровня") for d in details)
+
+                msg += f"🧭 ТРИГГЕР ВХОДА: {trigger_status}\n"
+                msg += f"• Объем (x1.5+): {'✅ Да' if vol_ok else f'❌ Нет (сейчас x{vol_ratio})'}\n"
+                msg += f"• Форма свечи: {'✅ Реверс-бар' if rejection_ok else '❌ Нет Rejection'}\n"
+                msg += f"• Защита уровня: {'✅ Уровень удерживают' if hold_ok else '❌ Нет удержания'}\n\n"
+
+                if alt_dir == "SHORT":
+                    res_zone = f"{clean_price(fmt_p(local_res['min']))} - {clean_price(fmt_p(local_res['max']))}" if local_res else "Не определена"
+                    msg += f"🎯 SHORT IDEA: Искать в зоне {res_zone}\n"
+                else:
+                    sup_zone = f"{clean_price(fmt_p(local_sup['min']))} - {clean_price(fmt_p(local_sup['max']))}" if local_sup else "Не определена"
+                    msg += f"🎯 LONG IDEA: Искать в зоне {sup_zone}\n"
 
     except Exception as e:
         return f"❌ Произошла ошибка при анализе {ticker_input}: {e}"

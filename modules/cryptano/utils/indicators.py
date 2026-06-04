@@ -2,6 +2,10 @@ import pandas as pd
 from modules.cryptano.utils.crypto_utils import calculate_rsi
 from modules.cryptano.utils.price_action import get_market_structure
 
+VOL_LIMIT = 2.5
+RSI_LOW = 30
+RSI_HIGH = 70
+
 def get_market_state(df, current_price, channel_lookback=120):
     """
     Принимает график (df) и текущую цену. 
@@ -168,6 +172,7 @@ def analyze_extreme_pattern(df, direction, current_price, price_precision):
     score = 0
     details = []
     sl_price = 0.0
+    tp1_price = 0.0
 
     if direction == "SHORT":
         recent_df = df.tail(15)
@@ -194,21 +199,32 @@ def analyze_extreme_pattern(df, direction, current_price, price_precision):
             details.append("❌ Нет разворотной свечи")
 
         avg_vol = df["volume"].mean()
-        vol_mult = float(df.iloc[-1]["volume"] / avg_vol if avg_vol > 0 else 1.0)
-        if df.iloc[-1]["volume"] < peak_candle["volume"]:
-            score += 1
-            details.append(f"✅ Объемы остывают: x{vol_mult:.1f}")
-        else:
-            details.append(f"❌ Объемы не остыли: x{vol_mult:.1f}")
+        peak_vol_mult = float(peak_candle["volume"] / avg_vol if avg_vol > 0 else 1.0)
+        current_vol_mult = float(df.iloc[-1]["volume"] / avg_vol if avg_vol > 0 else 1.0)
 
-        current_rsi = float(df.iloc[-1]["rsi"])
-        if current_rsi < 40:
-            details.append(f"❌ RSI уже низко: {current_rsi:.1f}")
-        elif current_rsi < peak_candle["rsi"] and peak_candle["rsi"] > 70:
-            score += 1
-            details.append(f"✅ RSI остыл после перегрева: {current_rsi:.1f}")
+        if peak_vol_mult > 0:
+            drop_percent = ((peak_vol_mult - current_vol_mult) / peak_vol_mult) * 100
         else:
-            details.append(f"❌ RSI еще не перегрет: {current_rsi:.1f}")
+            drop_percent = 0
+
+        if peak_vol_mult >= VOL_LIMIT and drop_percent >= 60:
+            score += 1
+            details.append(f"✅ Объёмы остывают: x{peak_vol_mult:.1f} -> x{current_vol_mult:.1f} ↓")
+        elif peak_vol_mult >= VOL_LIMIT and drop_percent < 60:
+            details.append(f"❌ Обьемы еще большие: x{peak_vol_mult:.1f} -> x{current_vol_mult:.1f} ↑")
+        else:
+            details.append(f"❌ Нет объёма, ждём движений: x{peak_vol_mult:.1f} -> x{current_vol_mult:.1f} ≈")
+
+        current_rsi = round(float(df.iloc[-1]["rsi"]), 1)
+        peak_rsi = round(float(peak_candle["rsi"]), 1)
+
+        if peak_rsi >= RSI_HIGH and current_rsi < peak_rsi:
+            score += 1
+            details.append(f"✅ RSI развернулся: {peak_rsi:.1f} -> {current_rsi:.1f} ↓")
+        elif peak_rsi >= RSI_HIGH and current_rsi >= peak_rsi:
+            details.append(f"❌ RSI давит дальше: {peak_rsi:.1f} -> {current_rsi:.1f} ↑")
+        else:
+            details.append(f"❌ RSI без экстрима: {peak_rsi:.1f} -> {current_rsi:.1f} ≈")
 
         level_price = float(peak_candle["low"])
         if current_price < level_price:
@@ -218,6 +234,9 @@ def analyze_extreme_pattern(df, direction, current_price, price_precision):
             details.append(f"❌ Нет слома: пробой <{level_price:.1f}")
 
         sl_price = float(peak_candle["high"])
+        impulse_low = float(df.loc[:peak_idx].tail(90)["low"].min())
+        wave_size = sl_price - impulse_low
+        tp1_price = round(sl_price - (wave_size * 0.382), price_precision)
 
     elif direction == "LONG":
         recent_df = df.tail(15)
@@ -244,21 +263,32 @@ def analyze_extreme_pattern(df, direction, current_price, price_precision):
             details.append("❌ Нет разворотной свечи")
 
         avg_vol = df["volume"].mean()
-        vol_mult = float(df.iloc[-1]["volume"] / avg_vol if avg_vol > 0 else 1.0)
-        if low_candle["volume"] > (avg_vol * 2.5):
-            score += 1
-            details.append(f"✅ Объемы остывают: x{vol_mult:.1f}")
-        else:
-            details.append(f"❌ Объемы не остыли: x{vol_mult:.1f}")
+        peak_vol_mult = float(low_candle["volume"] / avg_vol if avg_vol > 0 else 1.0)
+        current_vol_mult = float(df.iloc[-1]["volume"] / avg_vol if avg_vol > 0 else 1.0)
 
-        current_rsi = float(df.iloc[-1]["rsi"])
-        if current_rsi > 60:
-            details.append(f"❌ RSI все еще высокий: {current_rsi:.1f}")
-        elif current_rsi > low_candle["rsi"] and low_candle["rsi"] < 30:
-            score += 1
-            details.append(f"✅ RSI выходит из перепроданности: {current_rsi:.1f}")
+        if peak_vol_mult > 0:
+            drop_percent = ((peak_vol_mult - current_vol_mult) / peak_vol_mult) * 100
         else:
-            details.append(f"❌ RSI еще не на дне: {current_rsi:.1f}")
+            drop_percent = 0
+
+        if peak_vol_mult >= VOL_LIMIT and drop_percent >= 60:
+            score += 1
+            details.append(f"✅ Объёмы остывают: x{peak_vol_mult:.1f} -> x{current_vol_mult:.1f} ↓")
+        elif peak_vol_mult >= VOL_LIMIT and drop_percent < 60:
+            details.append(f"❌ Обьемы еще большие: x{peak_vol_mult:.1f} -> x{current_vol_mult:.1f} ↑")
+        else:
+            details.append(f"❌ Нет объёма, ждём движений: x{peak_vol_mult:.1f} -> x{current_vol_mult:.1f} ≈")
+
+        current_rsi = round(float(df.iloc[-1]["rsi"]), 1)
+        peak_rsi = round(float(low_candle["rsi"]), 1)
+
+        if peak_rsi <= RSI_LOW and current_rsi > peak_rsi:
+            score += 1
+            details.append(f"✅ RSI развернулся: {peak_rsi:.1f} -> {current_rsi:.1f} ↑")
+        elif peak_rsi <= RSI_LOW and current_rsi <= peak_rsi:
+            details.append(f"❌ RSI давит дальше: {peak_rsi:.1f} -> {current_rsi:.1f} ↓")
+        else:
+            details.append(f"❌ RSI без экстрима: {peak_rsi:.1f} -> {current_rsi:.1f} ≈")
 
         level_price = float(low_candle["high"])
         if current_price > level_price:
@@ -268,34 +298,53 @@ def analyze_extreme_pattern(df, direction, current_price, price_precision):
             details.append(f"❌ Нет слома: пробой >{level_price:.1f}")
 
         sl_price = float(low_candle["low"])
+        impulse_high = float(df.loc[:low_idx].tail(90)["high"].max())
+        wave_size = impulse_high - sl_price
+        tp1_price = round(sl_price + (wave_size * 0.382), price_precision)
 
     # 5. Проверка дивергенции (история за 22 часа до текущих 15 свечей)
     past_df = df.iloc[-90:-15].dropna(subset=['rsi'])
 
-    if len(past_df) < 10:        details.append("❌ Недостаточно истории для дивергенции")
+    if len(past_df) < 10:
+        details.append("❌ Недостаточно истории для дивергенции")
     else:
         if direction == "SHORT":
             past_peak_idx = past_df["high"].idxmax()
             past_peak_candle = past_df.loc[past_peak_idx]
             
-            if peak_candle["high"] > past_peak_candle["high"] and peak_candle["rsi"] < past_peak_candle["rsi"]:
+            price1 = round(float(past_peak_candle["high"]), price_precision)
+            rsi1 = round(float(past_peak_candle["rsi"]), 1)
+            price2 = round(float(peak_candle["high"]), price_precision)
+            rsi2 = round(float(peak_candle["rsi"]), 1)
+            
+            if price2 > price1 and rsi2 < rsi1:
                 score += 1
-                details.append("✅ Есть дивергенция")
+                details.append(f"✅ Есть дивергенция: {price1:.{price_precision}f}/{rsi1:.1f} -> {price2:.{price_precision}f}/{rsi2:.1f} ↓")
+            elif price2 > price1 and rsi2 >= rsi1:
+                details.append(f"❌ Нет дивергенции: {price1:.{price_precision}f}/{rsi1:.1f} -> {price2:.{price_precision}f}/{rsi2:.1f} ↑")
             else:
-                details.append("❌ Дивергенции нет")
+                details.append(f"❌ Дивергенция не сформирована: {price1:.{price_precision}f}/{rsi1:.1f} -> {price2:.{price_precision}f}/{rsi2:.1f} ≈")
                 
         elif direction == "LONG":
             past_low_idx = past_df["low"].idxmin()
             past_low_candle = past_df.loc[past_low_idx]
             
-            if low_candle["low"] < past_low_candle["low"] and low_candle["rsi"] > past_low_candle["rsi"]:
+            price1 = round(float(past_low_candle["low"]), price_precision)
+            rsi1 = round(float(past_low_candle["rsi"]), 1)
+            price2 = round(float(low_candle["low"]), price_precision)
+            rsi2 = round(float(low_candle["rsi"]), 1)
+            
+            if price2 < price1 and rsi2 > rsi1:
                 score += 1
-                details.append("✅ Есть дивергенция")
+                details.append(f"✅ Есть дивергенция: {price1:.{price_precision}f}/{rsi1:.1f} -> {price2:.{price_precision}f}/{rsi2:.1f} ↑")
+            elif price2 < price1 and rsi2 <= rsi1:
+                details.append(f"❌ Нет дивергенции: {price1:.{price_precision}f}/{rsi1:.1f} -> {price2:.{price_precision}f}/{rsi2:.1f} ↓")
             else:
-                details.append("❌ Дивергенции нет")
+                details.append(f"❌ Дивергенция не сформирована: {price1:.{price_precision}f}/{rsi1:.1f} -> {price2:.{price_precision}f}/{rsi2:.1f} ≈")
 
     return {
         "score": score,
         "details": details,
         "sl_price": sl_price,
+        "tp1_price": tp1_price,
     }

@@ -47,6 +47,7 @@ def check_manual_extreme(coin, direction):
         score = result["score"]
         details = result["details"]
         sl_price = result["sl_price"]
+        tp1_price = result.get("tp1_price", 0.0)
 
         current_rsi = float(current_candle["rsi"])
     
@@ -90,7 +91,7 @@ def check_manual_extreme(coin, direction):
         is_long_ready = (direction == "LONG" and score >= 4 and current_rsi <= 60 and structure_broken)
 
         if is_short_ready or is_long_ready:
-            report += f"\n🎯 *ПЛАН ВХОДА С РЫНКА:*\n• Вход: `{fmt_p(current_price)}`\n• Стоп-лосс: `{fmt_p(sl_price)}`"
+            report += f"\n🎯 *ПЛАН ВХОДА С РЫНКА:*\n• Вход: `{fmt_p(current_price)}`\n• Стоп-лосс: `{fmt_p(sl_price)}`\n• Тейк-профит 1: `{fmt_p(tp1_price)}` (Fibo 38.2%)"
         else:
             if (direction == "SHORT" and current_rsi < 40) or (direction == "LONG" and current_rsi > 60):
                 report += f"\n⏳ Пока наблюдаем. Вход запоздал, ждем безопасный откат."
