@@ -5,6 +5,7 @@ from modules.cryptano.utils.common import calculate_rsi, exchange, format_price 
 from modules.cryptano.utils.market_cache import load_markets_cached
 from modules.cryptano.utils.price_action import check_live_confirmation
 from modules.cryptano.utils.regime import detect_market_regime
+from modules.cryptano.watcher_plan import check_manual_extreme
 
 # ==========================================
 # БЛОК 1: Настройки и Импорты
@@ -180,7 +181,6 @@ def analyze_coin(ticker_input: str) -> str:
         rsi_4h = int(round(last_4h["rsi"])) 
         atr = float(last_4h["atr"])
         
-        # --- ИСПРАВЛЕНИЕ БАГА С ОБЪЕМОМ ---
         # Ищем максимальный всплеск объема за последние 16 часов (4 свечи), чтобы не пропустить памп
         recent_vol = float(df_4h["volume"].iloc[-5:-1].max())
         avg_vol = float(df_4h["volume"].iloc[-30:-5].mean())
@@ -351,13 +351,13 @@ def analyze_coin(ticker_input: str) -> str:
             return "🌋 Аномальный (Кульминация)"
 
         if is_dump:
-            header_title = "🔍 HYPE | DUMP 🚨"
+            header_title = f"🔍 {coin} | DUMP 🚨"
             price_label = "📉 Сильный импульс вниз."
         elif is_pump:
-            header_title = "🔍 HYPE | PUMP 🚨"
+            header_title = f"🔍 {coin} | PUMP 🚨"
             price_label = "📈 Сильный импульс вверх."
         else:
-            header_title = "🔍 HYPE | OVERVIEW"
+            header_title = f"🔍 {coin} | OVERVIEW"
             price_label = trend_label
 
         msg = (
@@ -398,9 +398,17 @@ def analyze_coin(ticker_input: str) -> str:
             )
 
         if is_dump:
-            msg += "➡️ Передано в Watcher.\n"
+            msg += "➡️ Запущен глубокий анализ Watcher...\n━━━━━━━━━━━━━━━\n"
+            # При дампе логично искать точку разворота вверх (LONG)
+            watcher_report = check_manual_extreme(coin, "LONG")
+            if watcher_report:
+                msg += f"{watcher_report}\n"
         elif is_pump:
-            msg += "➡️ Передано в Watcher.\n"
+            msg += "➡️ Запущен глубокий анализ Watcher...\n━━━━━━━━━━━━━━━\n"
+            # При пампе логично искать точку разворота вниз (SHORT)
+            watcher_report = check_manual_extreme(coin, "SHORT")
+            if watcher_report:
+                msg += f"{watcher_report}\n"
         else:
             no_trade_zone = 30 <= range_position <= 70
             idea_present = not no_trade_zone
