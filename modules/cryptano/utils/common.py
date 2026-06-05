@@ -5,7 +5,10 @@ import ccxt
 from modules.cryptano.utils.market_cache import get_top_usdt_coins_cached
 
 
-exchange = ccxt.bybit({"enableRateLimit": True})
+exchange = ccxt.bybit({
+    "enableRateLimit": True,
+    "options": {"defaultType": "spot"}
+})
 
 
 def calculate_rsi(df, period=14):

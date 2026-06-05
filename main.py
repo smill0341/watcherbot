@@ -1,5 +1,6 @@
 import os
 import telebot
+import logging
 from dotenv import load_dotenv
 import keyboards
 from background_tasks import start_all_background_tasks
@@ -129,12 +130,23 @@ def handle_text(message):
 
 
 def process_normal_analysis(message):
+    # 1. ЗАЩИТА ОТ "ЗАЛИПАНИЯ": Позволяем выйти в меню, если передумали
+    if message.text in ["⬅️ Главное меню", "🪙 Крипта", "🛠 Другие фильтры"]:
+        handle_text(message) # Возвращаем в обработчик главного меню
+        return
+
     try:
         coin = message.text.strip().upper()
         bot.send_message(message.chat.id, f"⏳ Запрашиваю данные Bybit и строю уровни для {coin}...")
         
         # Получаем отчет из анализатора
         report = analyze_coin(coin) 
+        
+        # 2. ЗАЦИКЛИВАНИЕ ПРИ ОШИБКЕ ВВОДА: Если монета не найдена на бирже
+        if report and str(report).startswith("❌"):
+            msg = bot.send_message(message.chat.id, f"{report}\n\nПопробуй ввести тикер еще раз (например: BTC):")
+            bot.register_next_step_handler(msg, process_normal_analysis) # Зацикливаем ожидание
+            return
         
         # --- АВТОМАТИЧЕСКИЙ ПЕРЕХОД В PUMP/DUMP ---
         if report and str(report).startswith("AUTO_PUMPDUMP:"):
@@ -165,13 +177,21 @@ def process_normal_analysis(message):
         bot.send_message(message.chat.id, report, parse_mode="Markdown")
         
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Ошибка анализа: {e}")
+        # 3. ЗАЦИКЛИВАНИЕ ПРИ СИСТЕМНОЙ ОШИБКЕ
+        msg = bot.send_message(message.chat.id, f"❌ Ошибка анализа: {e}\n\nПопробуй ввести тикер еще раз:")
+        bot.register_next_step_handler(msg, process_normal_analysis) # Зацикливаем ожидание
 
 def process_manual_extreme_check(message):
+    # Позволяем выйти из режима ввода, если передумали и нажали кнопку меню
+    if message.text in ["⬅️ Главное меню", "🪙 Крипта", "🛠 Другие фильтры"]:
+        handle_text(message)
+        return
+        
     try:
         parts = message.text.strip().upper().split()
         if len(parts) != 2 or parts[1] not in ["LONG", "SHORT"]:
-            bot.send_message(message.chat.id, "❌ Неверный формат. Нужно: BTC LONG или SHORT")
+            msg = bot.send_message(message.chat.id, "❌ Неверный формат. Нужно: BTC LONG или SHORT\n\nПопробуй ввести еще раз (или нажми кнопку меню для выхода):")
+            bot.register_next_step_handler(msg, process_manual_extreme_check) # Зацикливаем
             return
             
         coin = parts[0]
@@ -180,9 +200,17 @@ def process_manual_extreme_check(message):
         bot.send_message(message.chat.id, f"⏳ Ожидайте, делаю анализ для {coin}...")
         
         report = check_manual_extreme(coin, direction)
+        
+        # Если монета не найдена или другая ошибка от анализатора
+        if report and str(report).startswith("❌"):
+            msg = bot.send_message(message.chat.id, f"{report}\n\nПопробуй ввести другой тикер и направление:")
+            bot.register_next_step_handler(msg, process_manual_extreme_check) # Зацикливаем
+            return
+
         bot.send_message(message.chat.id, report, parse_mode="Markdown")
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Ошибка: {e}")
+        msg = bot.send_message(message.chat.id, f"❌ Ошибка: {e}\n\nПопробуй ввести данные еще раз:")
+        bot.register_next_step_handler(msg, process_manual_extreme_check) # Зацикливаем
 
 def handle_coin_analysis(message):
     if str(message.chat.id) != str(ADMIN_CHAT_ID): return
@@ -258,4 +286,4 @@ if __name__ == "__main__":
         print("[MAIN WARNING] ВНИМАНИЕ: ADMIN_CHAT_ID не найден в .env. Фоновые потоки не запущены.")
 
     print("✅ Бот включен. Сканеры спят и ждут команды 'Автобот Старт' в Telegram.")
-    bot.infinity_polling()
+    bot.infinity_polling(timeout=15, long_polling_timeout=5, logger_level=logging.ERROR)

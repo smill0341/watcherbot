@@ -2,6 +2,7 @@
 
 import time
 import pandas as pd
+import gc
 from modules.cryptano.utils.common import calculate_rsi, exchange, format_price as fmt_p, price_precision_from_market
 from modules.cryptano.utils.market_cache import load_markets_cached
 
@@ -103,6 +104,9 @@ def check_manual_extreme(coin, direction):
         elapsed_time = time.time() - start_time
         print(f"\n[WATCHER PLAN] 📊 Проверка {coin} завершена за {elapsed_time:.2f} сек.")
         print(f"[WATCHER PLAN] 🌐 Запросов к API Bybit: {api_queries}\n")
+
+        del df
+        gc.collect()
 
         return report
 

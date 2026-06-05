@@ -5,6 +5,7 @@ import threading
 import re
 from modules.cryptano.watcher_plan import check_manual_extreme
 from modules.cryptano.utils.storage import load_json, save_json_atomic
+import json
 
 # ================= НАСТРОЙКИ WATCHER =================
 WATCHLIST_FILE = os.path.join(os.path.dirname(__file__), "watchlist.json")
@@ -15,7 +16,16 @@ watcher_cooldown_cache = {}
 _watcher_lock = threading.Lock()
 
 def _load_watchlist():
-    return load_json(WATCHLIST_FILE, default={})
+    try:
+        with open(WATCHLIST_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        time.sleep(0.5)
+        try:
+            with open(WATCHLIST_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
 
 def _save_watchlist(data):
     save_json_atomic(WATCHLIST_FILE, data)

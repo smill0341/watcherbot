@@ -1,5 +1,6 @@
 import time
 import pandas as pd
+import gc
 from datetime import datetime
 from modules.cryptano.utils.common import calculate_rsi, exchange, format_price as fmt_p
 from modules.cryptano.utils.market_cache import load_markets_cached
@@ -496,4 +497,11 @@ def analyze_coin(ticker_input: str) -> str:
     elapsed_time = time.time() - start_time
     print(f"\n[ПОЛНЫЙ АНАЛИЗ] 📊 Полный анализ завершен за {elapsed_time:.2f} сек.")
     print(f"[ПОЛНЫЙ АНАЛИЗ] 🌐 Запросов к API Bybit: {api_queries}\n")
+    
+    try:
+        del df_1h, df_4h, df_daily
+    except UnboundLocalError:
+        pass
+    gc.collect()
+    
     return msg
