@@ -107,16 +107,19 @@ def calculate_pivot_points(df):
 def get_cryptano_signal(df, current_price, price_precision, scan_type, rsi_high, rsi_low, volume_multiplier):
     df["rsi"] = calculate_rsi(df)
     df["atr"] = calculate_atr(df)
-    df["ma30"] = df["close"].rolling(window=30).mean()
-    df["ma200"] = df["close"].rolling(window=200).mean()
+    
+    # ИСПОЛЬЗУЕМ EMA ДЛЯ ОТЗЫВЧИВОСТИ РЫНКА
+    df["ema30"] = df["close"].ewm(span=30, adjust=False).mean()
+    df["ema200"] = df["close"].ewm(span=200, adjust=False).mean()
 
     last_row = df.iloc[-1]
     rsi = float(last_row["rsi"])
     atr = float(last_row["atr"])
-    ma30 = float(last_row["ma30"])
+    ema30 = float(last_row["ema30"])
 
-    recent_volume = df["volume"].iloc[-1]
-    avg_volume = df["volume"].iloc[-25:-5].mean()
+    # ИЩЕМ РЕАЛЬНЫЙ ОБЪЕМ (берем максимум из 3 последних ЗАКРЫТЫХ свечей)
+    recent_volume = float(df["volume"].iloc[-4:-1].max())
+    avg_volume = float(df["volume"].iloc[-30:-5].mean())
     vol_ratio = float(recent_volume / avg_volume if avg_volume > 0 else 1.0)
 
     is_rsi_high_trigger = (scan_type == "rsi_high" and rsi >= rsi_high)
@@ -129,7 +132,7 @@ def get_cryptano_signal(df, current_price, price_precision, scan_type, rsi_high,
         entry_market = current_price
         entry_limit = current_price + (atr * 1.5)
         stop_loss = entry_limit + (atr * 0.5)
-        take_profit = ma30
+        take_profit = ema30 # Целимся в EMA30 вместо SMA30
 
         return {
             "type": "SHORT_PUMP",
@@ -152,8 +155,8 @@ def get_cryptano_signal(df, current_price, price_precision, scan_type, rsi_high,
     is_auto_trigger = (scan_type == "auto" and rsi <= 35.0 and vol_ratio >= volume_multiplier)
 
     if is_rsi_trigger or is_vol_trigger or is_auto_trigger:
-        ma200 = float(last_row["ma200"]) if not pd.isna(last_row["ma200"]) else 0
-        if current_price > s1 and current_price > ma200:
+        # УБРАЛИ ЛОВУШКУ MA200: Теперь бот ловит дно даже при жестком падении
+        if current_price > s1: 
             return {
                 "type": "LONG_ROLLBACK",
                 "price": current_price,
