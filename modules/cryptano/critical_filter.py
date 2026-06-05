@@ -28,10 +28,18 @@ def scan_market(scan_type="auto"):
     if not _scan_lock.acquire(blocking=False):
         print("⚠️ [Critical фильтр] Сканирование уже идёт, пропускаю.")
         return []
+        
+    # БЕЗОПАСНАЯ ИНИЦИАЛИЗАЦИЯ
+    results = []
+    total_processed_coins = 0
+    api_queries = 0
+    start_time = time.time()
+    
     try:
         coins = get_top_coins(limit=SCAN_COINS_LIMIT)
-        start_time = time.time()
-        total_processed_coins = len(coins) if coins else 0
+        if not coins:
+             return []
+        total_processed_coins = len(coins)
         api_queries = total_processed_coins + 1
         
         print(f"Начало сканирования рынка ({scan_type}). Всего ликвидных пар: {total_processed_coins}")
@@ -79,12 +87,16 @@ def scan_market(scan_type="auto"):
 
                 if signal_data:
                     signal_data["coin"] = coin_name
+                    del df
                     return signal_data
                         
             except Exception as e:
                 print(f"Ошибка анализа {symbol}: {e}")
+            # Очищаем если дошли сюда
+            if 'df' in locals():
+                del df
             return None
-
+        
         results = []
         worker_count = min(MAX_SCAN_WORKERS, max(1, total_processed_coins))
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
