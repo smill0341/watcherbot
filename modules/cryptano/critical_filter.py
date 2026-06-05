@@ -17,9 +17,9 @@ SCAN_COINS_LIMIT = 200
 _scan_lock = threading.Lock()
 
 # ================= Настройки фильтров =================
-RSI_HIGH = 70              
-RSI_LOW = 30               
-VOLUME_MULTIPLIER = 2.0    
+RSI_HIGH = 75              
+RSI_LOW = 25             
+VOLUME_MULTIPLIER = 4.0    
 TIMEFRAME = "4h"  
 USE_FUTURES = True         
 MAX_SCAN_WORKERS = 8
@@ -116,40 +116,48 @@ def scan_market(scan_type="auto"):
         print(f"[Critical фильтр] 🌐 Запросов к API Bybit: {api_queries}\n")
         _scan_lock.release()
 
-def format_results(results, title):
+def format_results(results, title=""):
     if not results:
-        return f"📋 **{title}**\n\nВ данный момент подходящих монет не найдено."
-    
-    long_count = sum(1 for r in results if r.get("type") == "LONG_ROLLBACK")
-    short_count = sum(1 for r in results if r.get("type") == "SHORT_PUMP")
-    
-    now = datetime.datetime.now().strftime("%d.%m.%y, %H:%M")
-    msg = f"📋 **{title}**\n🕐 {now}\n\n"
-    
+        return f"🤷‍♂️ По фильтру *{title}* ничего не найдено."
+
+    msg = f"🚨 *{title}*\nНайдено монет: {len(results)}\n\n"
     for r in results:
-        if r["type"] == "SHORT_PUMP":
+        coin = r["coin"]
+        sig_type = r["type"]
+        price = r["price"]
+        rsi = r["rsi"]
+        vol_ratio = r["vol_ratio"]
+        sl = r.get("stop_loss", 0)
+
+        # Функция для красивого отображения цен (убирает лишние нули)
+        fmt_p = lambda x: f"{x:.5f}".rstrip('0').rstrip('.') if x < 1 else str(round(x, 4))
+
+        if sig_type == "SHORT_PUMP":
+            tp1 = r.get("take_profit", 0)
+            tp2 = r.get("take_profit_2", 0)
             msg += (
-                f"🚨 *{r['coin']}* | КРИТИЧЕСКИЙ ПАМП (ШОРТ СЕТКОЙ)\n"
-                f"💰 Цена: {fmt_p(r['price'])} | 📊 RSI: {r['rsi']:.1f} | Объем: x{r['vol_ratio']:.2f}\n"
-                f"🔴 Вход 1 (Рынок): {fmt_p(r['entry_market'])}\n"
-                f"🔴 Вход 2 (Лимитка): {fmt_p(r['entry_limit'])}\n"
-                f"🟢 Тейк-профит (MA30): {fmt_p(r['take_profit'])}\n"
-                f"⚠️ Защитный Стоп: {fmt_p(r['stop_loss'])}\n\n"
+                f"🔴 *{coin}* | 📉 SHORT (Памп)\n"
+                f"💵 Текущая цена: {fmt_p(price)}\n"
+                f"📊 RSI: {rsi:.1f} | Объем: x{vol_ratio:.1f}\n"
+                f"🎯 TP1 (Fib 0.382): {fmt_p(tp1)}\n"
+                f"🎯 TP2 (Fib 0.500): {fmt_p(tp2)}\n"
+                f"🛑 SL (За Хай): {fmt_p(sl)}\n"
+                f"━━━━━━━━━━━━━━━\n"
             )
-        else:
+        elif sig_type == "LONG_ROLLBACK":
+            entry = r.get("entry_limit", price)
+            tp1 = r.get("take_profit", 0)
+            tp2 = r.get("take_profit_2", 0)
             msg += (
-                f"🦈 *{r['coin']}* | ЛОНГ НА ОТКАТЕ\n"
-                f"💰 Цена: {fmt_p(r['price'])} | 📊 RSI: {r['rsi']:.1f} | Объем: x{r['vol_ratio']:.2f}\n"
-                f"🟢 Вход на откат (S1): {fmt_p(r['s1'])}\n"
-                f"🔴 Выход (Цель R1): {fmt_p(r['r1'])}\n"
-                f"⚠️ Защитный Стоп-лосс: {fmt_p(r['stop_loss'])}\n\n"
+                f"🟢 *{coin}* | 📈 LONG (Дамп)\n"
+                f"💵 Текущая цена: {fmt_p(price)}\n"
+                f"📊 RSI: {rsi:.1f} | Объем: x{vol_ratio:.1f}\n"
+                f"🛒 Вход (Fib 0.618): {fmt_p(entry)}\n"
+                f"🎯 TP1 (Fib 0.382): {fmt_p(tp1)}\n"
+                f"🎯 TP2 (Fib 0.500): {fmt_p(tp2)}\n"
+                f"🛑 SL (За Лой): {fmt_p(sl)}\n"
+                f"━━━━━━━━━━━━━━━\n"
             )
-    
-    if long_count == 0:
-        msg += "\n⚠️ Лонг-пар не найдено"
-    if short_count == 0:
-        msg += "\n⚠️ Шорт-пар не найдено"
-        
     return msg
 
 def get_crypto_keyboard():

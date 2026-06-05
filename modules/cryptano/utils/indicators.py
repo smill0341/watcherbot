@@ -104,68 +104,85 @@ def calculate_pivot_points(df):
     return pivot, r1, s1
 
 
-def get_cryptano_signal(df, current_price, price_precision, scan_type, rsi_high, rsi_low, volume_multiplier):
+def get_cryptano_signal(df, current_price, price_precision, scan_type, rsi_high=75, rsi_low=25, volume_multiplier=4.0):
     df["rsi"] = calculate_rsi(df)
-    df["atr"] = calculate_atr(df)
     
-    # ИСПОЛЬЗУЕМ EMA ДЛЯ ОТЗЫВЧИВОСТИ РЫНКА
-    df["ema30"] = df["close"].ewm(span=30, adjust=False).mean()
-    df["ema200"] = df["close"].ewm(span=200, adjust=False).mean()
-
     last_row = df.iloc[-1]
     rsi = float(last_row["rsi"])
-    atr = float(last_row["atr"])
-    ema30 = float(last_row["ema30"])
 
-    # ИЩЕМ РЕАЛЬНЫЙ ОБЪЕМ (берем максимум из 3 последних ЗАКРЫТЫХ свечей)
-    recent_volume = float(df["volume"].iloc[-4:-1].max())
-    avg_volume = float(df["volume"].iloc[-30:-5].mean())
-    vol_ratio = float(recent_volume / avg_volume if avg_volume > 0 else 1.0)
+    # 1. ПРОВЕРКА ОБЪЕМОВ И ЗАТУХАНИЯ ПАНИКИ
+    # Ищем пиковый объем на последних 5 закрытых свечах
+    recent_closed_vols = df["volume"].iloc[-6:-1]
+    max_vol = float(recent_closed_vols.max())
+    avg_volume = float(df["volume"].iloc[-30:-6].mean())
+    
+    vol_ratio = float(max_vol / avg_volume if avg_volume > 0 else 1.0)
+    
+    # Проверка затухания: текущий объем должен быть МЕНЬШЕ пикового.
+    # Это подтверждает, что аномалия прошла пик и продавцы/покупатели выдохлись.
+    current_vol = float(df["volume"].iloc[-1])
+    is_volume_fading = current_vol < max_vol
 
+    # 🔴 ЛОГИКА ДЛЯ ПАМПА (SHORT)
     is_rsi_high_trigger = (scan_type == "rsi_high" and rsi >= rsi_high)
     is_short_pump_trigger = (
-        (scan_type in ["auto", "volume"] and rsi > 75.0 and vol_ratio >= 4.0)
+        (scan_type in ["auto", "volume"] and rsi >= rsi_high and vol_ratio >= volume_multiplier and is_volume_fading)
         or is_rsi_high_trigger
     )
 
     if is_short_pump_trigger:
-        entry_market = current_price
-        entry_limit = current_price + (atr * 1.5)
-        stop_loss = entry_limit + (atr * 0.5)
-        take_profit = ema30 # Целимся в EMA30 вместо SMA30
+        # Ищем экстремумы импульса за последние 50 свечей
+        impulse_low = float(df.tail(50)["low"].min())
+        impulse_high = float(df.tail(50)["high"].max()) # Это самый пик пампа
+        wave_size = impulse_high - impulse_low
+        
+        # Считаем уровни отката Фибоначчи ВНИЗ
+        fib_0382 = impulse_high - (wave_size * 0.382)
+        fib_0500 = impulse_high - (wave_size * 0.5)
+
+        # Жесткий стоп-лосс: прячем на 3% ВЫШЕ абсолютного пика пампа
+        stop_loss = impulse_high * 1.03 
 
         return {
             "type": "SHORT_PUMP",
             "price": current_price,
             "rsi": rsi,
             "vol_ratio": vol_ratio,
-            "entry_market": entry_market,
-            "entry_limit": entry_limit,
-            "take_profit": take_profit,
+            "entry_market": current_price, 
+            "take_profit": fib_0382, # Главная цель: откат 0.382
+            "take_profit_2": fib_0500, # Вторая цель: откат 0.5
             "stop_loss": stop_loss,
         }
 
-    pivot, r1, s1 = calculate_pivot_points(df)
-    s1 = float(s1)
-    r1 = float(r1)
-    stop_loss_long = s1 * 0.95
-
+    # 🟢 ЛОГИКА ДЛЯ ДАМПА (LONG)
     is_rsi_trigger = (scan_type in ["rsi", "rsi_low"] and rsi <= rsi_low)
-    is_vol_trigger = (scan_type == "volume" and vol_ratio >= volume_multiplier)
-    is_auto_trigger = (scan_type == "auto" and rsi <= 35.0 and vol_ratio >= volume_multiplier)
+    is_vol_trigger = (scan_type == "volume" and vol_ratio >= volume_multiplier and is_volume_fading)
+    is_auto_trigger = (scan_type == "auto" and rsi <= rsi_low and vol_ratio >= volume_multiplier and is_volume_fading)
 
     if is_rsi_trigger or is_vol_trigger or is_auto_trigger:
-        # УБРАЛИ ЛОВУШКУ MA200: Теперь бот ловит дно даже при жестком падении
-        if current_price > s1: 
-            return {
-                "type": "LONG_ROLLBACK",
-                "price": current_price,
-                "rsi": rsi,
-                "vol_ratio": vol_ratio,
-                "s1": s1,
-                "r1": r1,
-                "stop_loss": stop_loss_long,
-            }
+        # Ищем экстремумы импульса за последние 50 свечей
+        impulse_high = float(df.tail(50)["high"].max())
+        impulse_low = float(df.tail(50)["low"].min()) # Это абсолютное дно дампа
+        wave_size = impulse_high - impulse_low
+        
+        # Считаем уровни отскока Фибоначчи ВВЕРХ
+        fib_0382 = impulse_low + (wave_size * 0.382)
+        fib_0500 = impulse_low + (wave_size * 0.5)
+        fib_0618 = impulse_low + (wave_size * 0.618)
+
+        # Жесткий стоп-лосс: прячем на 3% НИЖЕ абсолютного дна. Пробьет — значит скам.
+        stop_loss = impulse_low * 0.97 
+
+        return {
+            "type": "LONG_ROLLBACK",
+            "price": current_price,
+            "rsi": rsi,
+            "vol_ratio": vol_ratio,
+            "entry_limit": fib_0618 if fib_0618 < current_price else current_price, # Золотой карман
+            "take_profit": fib_0382, # Главная цель: отскок 0.382
+            "take_profit_2": fib_0500, # Вторая цель: отскок 0.5
+            "stop_loss": stop_loss,
+        }
 
     return None
 
