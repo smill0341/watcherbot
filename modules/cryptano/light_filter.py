@@ -15,12 +15,12 @@ from modules.cryptano.history import save_signal
 
 # ================= Настройки фильтров =================
 TIMEFRAME = "4h"
-FILTER_VOL_NORMAL = 1.7
-FILTER_VOL_ANOMALY = 3.0
-FILTER_ZONE_BOTTOM = 15
-FILTER_ZONE_TOP = 85
+FILTER_VOL_NORMAL = 1.5
+FILTER_VOL_ANOMALY = 2.0
+FILTER_ZONE_BOTTOM = 25
+FILTER_ZONE_TOP = 80
 FILTER_RSI_OVERSOLD = 35
-SCAN_COINS_LIMIT = 100  # Количество топ-монет по объему для сканирования
+SCAN_COINS_LIMIT = 150  # Количество топ-монет по объему для сканирования
 FILTER_RSI_OVERBOUGHT = 65
 COOLDOWN_HOURS = 4       # Не спамить одной монетой 4 часа после сигнала
 SCAN_INTERVAL = 1800      # Запуск сканирования каждые 30 минут (1800 сек)
@@ -50,9 +50,33 @@ def _light_setup(symbol):
 
         market_data = get_market_state(df, current_price, channel_lookback=40)
         trend = market_data["trend"]
+        trend_code = market_data.get("trend_code", "RANGE")
         pos_pct = market_data["pos_pct"]
         
-        if 20 < pos_pct < 80:
+        # === ДИНАМИЧЕСКАЯ МАТРИЦА НАСТРОЕК ===
+        if trend_code == "BULL":
+            filter_rsi_oversold = 45
+            filter_rsi_overbought = 80
+            filter_vol_normal = 1.5
+            filter_zone_bottom = 25
+            filter_zone_top = 75
+            trend = f"{trend} (🟢 Приоритет LONG)"
+        elif trend_code == "BEAR":
+            filter_rsi_oversold = 25
+            filter_rsi_overbought = 65
+            filter_vol_normal = 2.0
+            filter_zone_bottom = 15
+            filter_zone_top = 85
+            trend = f"{trend} (🔴 Приоритет SHORT)"
+        else:  # RANGE
+            filter_rsi_oversold = 35
+            filter_rsi_overbought = 65
+            filter_vol_normal = 1.3
+            filter_zone_bottom = 25
+            filter_zone_top = 75
+        # =====================================
+        
+        if filter_zone_bottom < pos_pct < filter_zone_top:
             return None
 
         vol_ratio = market_data["vol_ratio"]
@@ -62,12 +86,12 @@ def _light_setup(symbol):
         nearest_support = market_data["nearest_support"]
         nearest_resistance = market_data["nearest_resistance"]
         
-        if vol_ratio < FILTER_VOL_NORMAL:
+        if vol_ratio < filter_vol_normal:
             return None
 
         # --- Мягкие условия Радара ---
-        is_near_support = (pos_pct <= FILTER_ZONE_BOTTOM) and (rsi <= FILTER_RSI_OVERSOLD)
-        is_near_res = (pos_pct >= FILTER_ZONE_TOP) and (rsi >= FILTER_RSI_OVERBOUGHT)
+        is_near_support = (pos_pct <= filter_zone_bottom) and (rsi <= filter_rsi_oversold)
+        is_near_res = (pos_pct >= filter_zone_top) and (rsi >= filter_rsi_overbought)
         is_anomaly = (vol_ratio >= FILTER_VOL_ANOMALY) and (rsi > 60 or rsi < 40)
 
         if is_near_support:

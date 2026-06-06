@@ -54,22 +54,30 @@ def get_market_state(df, current_price, channel_lookback=120):
     local_down = ema9 < ema21
 
     if bull_bias and (local_up or structure == 'bullish'):
-        trend = "📈 Глобальный Бычий"
+        trend_code = "BULL"
+        trend_text = "📈 Глобальный Бычий"
     elif bear_bias and (local_down or structure == 'bearish'):
-        trend = "📉 Глобальный Медвежий"
+        trend_code = "BEAR"
+        trend_text = "📉 Глобальный Медвежий"
     else:
         # Цена под/над EMA200, но структура ranging или против тренда
         dist_to_ema200 = abs(current_price - ema200) / ema200
         # Если цена трется вокруг EMA200 (например, отклонение < 2%) — это истинный боковик
         if dist_to_ema200 < 0.02:
-            trend = "📊 Боковик"
+            trend_code = "RANGE"
+            trend_text = "📊 Боковик"
         elif bull_bias:
-            trend = "📈 Глобальный Бычий"
+            trend_code = "BULL"
+            trend_text = "📈 Глобальный Бычий"
         else:
-            trend = "📉 Глобальный Медвежий"
+            trend_code = "BEAR"
+            trend_text = "📉 Глобальный Медвежий"
+
+
 
     return {
-        "trend": trend,
+        "trend": trend_text,
+        "trend_code": trend_code,
         "pos_pct": pos_pct,
         "vol_ratio": vol_ratio,
         "ema9": ema9,

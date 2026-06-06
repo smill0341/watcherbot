@@ -4,11 +4,10 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from telebot import types
 import threading
-
 from modules.cryptano.utils.common import format_price as fmt_p, price_precision_from_market
 from modules.cryptano.utils.crypto_utils import calculate_rsi, exchange, get_top_coins
 from modules.cryptano.history import save_signal
-from modules.cryptano.utils.indicators import get_cryptano_signal
+from modules.cryptano.utils.indicators import get_cryptano_signal, get_market_state
 from modules.cryptano.utils.market_cache import load_markets_cached
 from modules.cryptano.utils.storage import load_json
 
@@ -17,8 +16,8 @@ SCAN_COINS_LIMIT = 200
 _scan_lock = threading.Lock()
 
 # ================= Настройки фильтров =================
-RSI_HIGH = 75              
-RSI_LOW = 25             
+RSI_HIGH = 70              
+RSI_LOW = 30             
 VOLUME_MULTIPLIER = 4.0    
 TIMEFRAME = "4h"  
 USE_FUTURES = True         
@@ -75,14 +74,33 @@ def scan_market(scan_type="auto"):
                 
                 coin_name = symbol.split("/")[0]
                 
+                # Узнаем текущий режим рынка для этой монеты
+                market_data = get_market_state(df, current_price)
+                trend_code = market_data.get("trend_code", "RANGE")
+                
+                # === ДИНАМИЧЕСКИЕ НАСТРОЙКИ CRITICAL ===
+                if trend_code == "BULL":
+                    crit_rsi_low = 35
+                    crit_rsi_high = 85
+                    crit_vol = 2.0
+                elif trend_code == "BEAR":
+                    crit_rsi_low = 20
+                    crit_rsi_high = 70
+                    crit_vol = 2.5
+                else: # RANGE
+                    crit_rsi_low = 25
+                    crit_rsi_high = 75
+                    crit_vol = 3.0
+                # =======================================
+                
                 signal_data = get_cryptano_signal(
                     df=df,
                     current_price=current_price,
                     price_precision=price_precision,
                     scan_type=scan_type,
-                    rsi_high=RSI_HIGH,
-                    rsi_low=RSI_LOW,
-                    volume_multiplier=VOLUME_MULTIPLIER
+                    rsi_high=crit_rsi_high,
+                    rsi_low=crit_rsi_low,
+                    volume_multiplier=crit_vol
                 )
 
                 if signal_data:

@@ -9,5 +9,49 @@
     "stop": 0.072751,
     "status": "⏳",
     "result_percent": null
+  },
+  {
+    "date": "2026-06-06 14:07",
+    "coin": "HBAR",
+    "type": "LONG",
+    "source": "LIGHT",
+    "entry": 0.07862,
+    "target": 0.0994,
+    "stop": 0.072751,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-06 17:21",
+    "coin": "HOLO",
+    "type": "LONG",
+    "source": "LIGHT",
+    "entry": 0.0559,
+    "target": 0.07413,
+    "stop": 0.0494665,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-06 21:21",
+    "coin": "HOLO",
+    "type": "LONG",
+    "source": "CRITICAL",
+    "entry": 0.05595,
+    "target": 0.06073758,
+    "stop": 0.050507899999999994,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-06 21:27",
+    "coin": "TA",
+    "type": "LONG",
+    "source": "LIGHT",
+    "entry": 0.08123,
+    "target": 0.11451,
+    "stop": 0.06762099999999999,
+    "status": "⏳",
+    "result_percent": null
   }
 ]
