@@ -221,13 +221,15 @@ def _execute_scan_cycle(bot, admin_chat_id, is_auto=False):
                     setup["source"] = "LIGHT"  # Бирка радара
                     
                     # ИСПРАВЛЕННАя ЛОГИКА (Цели и стопы на своих местах)
-                    if setup["pos_pct"] >= 80:
+                    # ИСПРАВЛЕННАЯ ЛОГИКА АДАПТИРОВАННАЯ ПОД ДИНАМИЧЕСКИЕ ЗОНЫ
+                    if setup["pos_pct"] > 50:  # Всё, что в верхней части канала — это шорт-зоны
                         setup["type"] = "SHORT_PUMP"
                         setup["take_profit"] = setup.get("strong_support", 0) # Для шорта цель ВНИЗУ
                         setup["stop_loss"] = setup.get("strong_resistance", 0) * 1.05 # Стоп за хай
-                    else:
+                    else:                      # Всё, что в нижней части — это лонг-зоны
                         setup["type"] = "LONG_ROLLBACK"
                         setup["take_profit"] = setup.get("strong_resistance", 0) # Для лонга цель ВВЕРХУ
+                        setup["stop_loss"] = setup.get("strong_support", 0) * 0.95 # Стоп за дно
                         setup["stop_loss"] = setup.get("strong_support", 0) * 0.95 # Стоп за дно
                         
                     setup["price"] = setup.get("current_price", 0)

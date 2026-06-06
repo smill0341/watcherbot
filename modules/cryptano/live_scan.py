@@ -125,13 +125,15 @@ def run_live_scanner(bot, admin_chat_id):
     """
     Главный фоновый цикл Watcher. Проверяет монеты раз в 15 минут.
     """
-    print(" 📡 Watcher live scan инициализирован!")
+    print(f" 📡 Watcher live scan инициализирован! Первый запуск через {WATCH_INTERVAL // 60} минут.")
     
     while True:
+        # Пауза стоит СНАЧАЛА, поэтому бот не сканирует сразу при запуске
+        time.sleep(WATCH_INTERVAL)
+        
         try:
             wl = _load_watchlist()
             if not wl:
-                time.sleep(WATCH_INTERVAL)
                 continue
 
             now = datetime.datetime.now()
@@ -192,5 +194,4 @@ def run_live_scanner(bot, admin_chat_id):
 
         except Exception as e:
             print(f"[WATCHER ERROR] Ошибка в цикле live_scan: {e}")
-        
-        time.sleep(WATCH_INTERVAL)
+    
