@@ -3,6 +3,7 @@ import telebot
 import logging
 from dotenv import load_dotenv
 import keyboards
+from telebot import types
 from background_tasks import start_all_background_tasks
 from modules.cryptano.utils.storage import load_json, save_json_atomic
 from modules.cryptano.critical_filter import process_crypto_command
@@ -13,6 +14,7 @@ from modules.cryptano.market_overview import analyze_coin
 from modules.cryptano.watcher_plan import check_manual_extreme
 from modules.cryptano.light_filter import run_manual_light_scan
 from modules.cryptano.live_scan import manage_watchlist, show_watchlist, run_live_scanner
+from modules.cryptano.history import check_and_update, format_history, generate_report_file
 import threading
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -222,29 +224,30 @@ def handle_coin_analysis(message):
 def handle_inline(call):
     if call.data.startswith("hist_"):
         period = call.data.replace("hist_", "")
-        msg = format_history(period)
+        short_msg = format_history(period)
         
-        # Безопасная нарезка длинного сообщения (лимит ТГ - 4096 символов)
-        if len(msg) > 3800:
-            parts = []
-            current_part = ""
-            for line in msg.split('\n'):
-                if len(current_part) + len(line) > 3800:
-                    parts.append(current_part)
-                    current_part = line + "\n"
-                else:
-                    current_part += line + "\n"
-            if current_part:
-                parts.append(current_part)
-                
-            for part in parts:
-                try:
-                    bot.send_message(call.message.chat.id, part, parse_mode="Markdown")
-                except Exception:
-                    # Если Маркдаун разорвался посередине, отправляем как обычный текст
-                    bot.send_message(call.message.chat.id, part)
+        # Создаем кнопку для скачивания файла
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("📄 Скачать полный отчет (.txt)", callback_data=f"getrep_{period}"))
+        
+        bot.send_message(call.message.chat.id, short_msg, parse_mode="Markdown", reply_markup=markup)
+        return
+
+    # НОВЫЙ БЛОК: Отправка самого файла по клику на кнопку
+    if call.data.startswith("getrep_"):
+        period = call.data.replace("getrep_", "")
+        bot.send_message(call.message.chat.id, "⏳ Формирую отчет, секунду...")
+        
+        filepath = generate_report_file(period)
+        if filepath and os.path.exists(filepath):
+            with open(filepath, 'rb') as f:
+                bot.send_document(call.message.chat.id, f, caption="📂 Подробная статистика по сделкам")
+            try:
+                os.remove(filepath) # Удаляем с сервера после отправки
+            except:
+                pass
         else:
-            bot.send_message(call.message.chat.id, msg, parse_mode="Markdown")
+            bot.send_message(call.message.chat.id, "🤷‍♂️ Ошибка: нет данных для формирования отчета.")
         return
 
     if call.data == "status_football":

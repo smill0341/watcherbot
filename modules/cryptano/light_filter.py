@@ -11,6 +11,7 @@ from modules.cryptano.utils.market_cache import load_markets_cached
 from modules.cryptano.utils.regime import detect_market_regime
 from modules.cryptano.utils.indicators import get_market_state
 from modules.cryptano.utils.storage import load_json
+from modules.cryptano.history import save_signal
 
 # ================= Настройки фильтров =================
 TIMEFRAME = "4h"
@@ -193,6 +194,21 @@ def _execute_scan_cycle(bot, admin_chat_id, is_auto=False):
             for future in as_completed(futures):
                 setup = future.result()
                 if setup:
+                    setup["source"] = "LIGHT"  # Бирка радара
+                    
+                    # ИСПРАВЛЕННАя ЛОГИКА (Цели и стопы на своих местах)
+                    if setup["pos_pct"] >= 80:
+                        setup["type"] = "SHORT_PUMP"
+                        setup["take_profit"] = setup.get("strong_support", 0) # Для шорта цель ВНИЗУ
+                        setup["stop_loss"] = setup.get("strong_resistance", 0) * 1.05 # Стоп за хай
+                    else:
+                        setup["type"] = "LONG_ROLLBACK"
+                        setup["take_profit"] = setup.get("strong_resistance", 0) # Для лонга цель ВВЕРХУ
+                        setup["stop_loss"] = setup.get("strong_support", 0) * 0.95 # Стоп за дно
+                        
+                    setup["price"] = setup.get("current_price", 0)
+                    
+                    save_signal(setup)         # Сохранение в базу
                     setups.append(setup)
 
         for setup in setups:

@@ -104,6 +104,7 @@ def scan_market(scan_type="auto"):
             for future in as_completed(futures):
                 result = future.result()
                 if result:
+                    result["source"] = "CRITICAL"
                     results.append(result)
                     save_signal(result)
                 
