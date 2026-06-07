@@ -49,65 +49,86 @@ def _light_setup(symbol):
         rsi = float(last_row["rsi"])
 
         market_data = get_market_state(df, current_price, channel_lookback=40)
-        trend = market_data["trend"]
+        trend_text = market_data["trend"]
         trend_code = market_data.get("trend_code", "RANGE")
         pos_pct = market_data["pos_pct"]
-        
-        # === ДИНАМИЧЕСКАЯ МАТРИЦА НАСТРОЕК ===
-        if trend_code == "BULL":
-            filter_rsi_oversold = 45
-            filter_rsi_overbought = 80
-            filter_vol_normal = 1.5
-            filter_zone_bottom = 25
-            filter_zone_top = 75
-            trend = f"{trend} (🟢 Приоритет LONG)"
-        elif trend_code == "BEAR":
-            filter_rsi_oversold = 25
-            filter_rsi_overbought = 65
-            filter_vol_normal = 2.0
-            filter_zone_bottom = 15
-            filter_zone_top = 85
-            trend = f"{trend} (🔴 Приоритет SHORT)"
-        else:  # RANGE
-            filter_rsi_oversold = 35
-            filter_rsi_overbought = 65
-            filter_vol_normal = 1.3
-            filter_zone_bottom = 25
-            filter_zone_top = 75
-        # =====================================
-        
-        if filter_zone_bottom < pos_pct < filter_zone_top:
-            return None
-
         vol_ratio = market_data["vol_ratio"]
-        ma30 = market_data["ma30"]
-        strong_support = market_data["strong_support"]
-        strong_resistance = market_data["strong_resistance"]
+        
         nearest_support = market_data["nearest_support"]
         nearest_resistance = market_data["nearest_resistance"]
-        
-        if vol_ratio < filter_vol_normal:
-            return None
+        strong_support = market_data["strong_support"]
+        strong_resistance = market_data["strong_resistance"]
+        ma30 = market_data["ma30"]
 
-        # --- Мягкие условия Радара ---
-        is_near_support = (pos_pct <= filter_zone_bottom) and (rsi <= filter_rsi_oversold)
-        is_near_res = (pos_pct >= filter_zone_top) and (rsi >= filter_rsi_overbought)
-        is_anomaly = (vol_ratio >= FILTER_VOL_ANOMALY) and (rsi > 60 or rsi < 40)
-
-        if is_near_support:
-            setup_info = f"Near Support (Bottom {pos_pct:.0f}%)"
-        elif is_near_res:
-            setup_info = f"Near Resistance (Top {pos_pct:.0f}%)"
-        elif is_anomaly:
-            setup_info = "Volume Anomaly / Momentum"
+        # 1. Определяем направление по каналу (в твоем коде 100% - дно, 0% - хай)
+        if pos_pct > 50:
+            scan_direction = "LONG"
+            # Расстояние до ближайшей поддержки в процентах
+            distance_to_level = ((current_price - nearest_support) / current_price) * 100 if current_price > 0 else 999
         else:
+            scan_direction = "SHORT"
+            # Расстояние до ближайшего сопротивления в процентах
+            distance_to_level = ((nearest_resistance - current_price) / current_price) * 100 if current_price > 0 else 999
+
+        # 2. Адаптивная матрица порогов под текущий тренд и направление
+        if trend_code == "BULL":
+            if scan_direction == "LONG":
+                req_rsi_max = 50       # В бычке лонг берем легко (RSI до 50)
+                req_rsi_min = 0
+                req_vol = 1.5          # Обычный объем
+                risk_tag = "✅ ПРИОРИТЕТ (По тренду)"
+            else:
+                req_rsi_max = 100
+                req_rsi_min = 78       # Шорт в бычке — только экстремум
+                req_vol = 2.3          # Высокий объем для контртренда
+                risk_tag = "⚠️ КОНТРТРЕНД (Шорт на сильном рынке)"
+        
+        elif trend_code == "BEAR":
+            if scan_direction == "SHORT":
+                req_rsi_max = 100
+                req_rsi_min = 52       # В медвежке шорт берем легко
+                req_vol = 1.5
+                risk_tag = "✅ ПРИОРИТЕТ (По тренду)"
+            else:
+                req_rsi_max = 28       # Лонг в медвежке — только пролив/паника
+                req_rsi_min = 0
+                req_vol = 2.3          # Высокий объем для контртренда
+                risk_tag = "⚠️ КОНТРТРЕНД (Ловим отскок / пролив)"
+        
+        else:  # RANGE / FLAT
+            risk_tag = "🟡 БОКОВИК (Работа от границ)"
+            req_vol = 1.3
+            if scan_direction == "LONG":
+                req_rsi_max = 35
+                req_rsi_min = 0
+            else:
+                req_rsi_max = 100
+                req_rsi_min = 65
+
+        # 3. Проверка фильтра по объемам
+        if vol_ratio < req_vol:
             return None
+
+        # 4. Проверка RSI и дистанции до уровня (запас 3.5% времени на анализ)
+        if scan_direction == "LONG":
+            if rsi > req_rsi_max or distance_to_level > 3.5:
+                return None
+            setup_info = f"Near Support (Bottom {pos_pct:.0f}%)"
+        else:
+            if rsi < req_rsi_min or distance_to_level > 3.5:
+                return None
+            setup_info = f"Near Resistance (Top {pos_pct:.0f}%)"
 
         market_regime = detect_market_regime(current_price, rsi, vol_ratio, ma30)
 
+        # Передаем все новые вычисленные данные дальше в форматтер сигналов
         return {
             "coin": coin_name,
-            "trend": trend,
+            "trend": trend_text,
+            "trend_code": trend_code,
+            "scan_direction": scan_direction,
+            "distance_to_level": distance_to_level,
+            "risk_tag": risk_tag,
             "setup_info": setup_info,
             "pos_pct": pos_pct,
             "vol_ratio": vol_ratio,
@@ -120,7 +141,6 @@ def _light_setup(symbol):
             "nearest_resistance": nearest_resistance,
         }
     except Exception as e:
-        # Убрал принт с ошибкой парсинга, чтобы не засорять терминал
         return None
 
 def format_light_signal(setup):
@@ -131,48 +151,47 @@ def format_light_signal(setup):
     nearest_support = setup.get('nearest_support', strong_support)
     nearest_resistance = setup.get('nearest_resistance', strong_resistance)
     pos = setup['pos_pct']
+    
+    scan_direction = setup.get("scan_direction", "LONG" if pos > 50 else "SHORT")
+    distance_to_level = setup.get("distance_to_level", 0)
+    risk_tag = setup.get("risk_tag", "🟡 Рабочий риск")
 
     # Общие расчеты процентов изменения цены от локального минимума/максимума
     pump_pct = ((current_price - strong_support) / strong_support) * 100 if strong_support > 0 else 0
     dump_pct = ((strong_resistance - current_price) / strong_resistance) * 100 if strong_resistance > 0 else 0
 
-    # Формируем price_text для отображения
-    price_text = f"💰 Цена: {fmt_p(current_price)} (🔻 -{dump_pct:.0f}% от пика {fmt_p(strong_resistance)})"
-
-    # Формируем статус, иконку и комментарий на основе pos
-    if pos >= 80:
+    # Адаптивное форматирование текста на основе реального направления рынка
+    if scan_direction == "SHORT":
         strategy_text = "Приоритет — Шорт от сопротивления."
-        target_zone = "SHORT ZONE"
         zone_name = "SHORT ZONE"
         icon = "🔴"
-        target_value = strong_resistance
-        target_pullback = fmt_p(target_value)
-        comment_body = f"Искать подтверждение разворота вблизи ~{target_pullback}."
-        readiness_pct = pos
+        comment_body = (
+            f"📍 Уровень сопротивления: ~{fmt_p(nearest_resistance)}\n"
+            f"🎯 До уровня: {distance_to_level:.1f}%"
+        )
+        readiness_pct = 100 - pos  # Переворачиваем шкалу для удобства восприятия в ТГ
     else:
         strategy_text = "Приоритет — Лонг от поддержки."
-        target_zone = "LONG ZONE"
         zone_name = "LONG ZONE"
         icon = "🟢"
-        target_value = strong_support
-        target_pullback = fmt_p(target_value)
-        comment_body = f"Искать подтверждение разворота вблизи ~{target_pullback}."
-        readiness_pct = 100 - pos
-
-    distance_pct = abs(current_price - target_value) / target_value * 100 if target_value > 0 else 0
-    distance_str = f"📍 До {target_zone}: {distance_pct:.0f}%\n\n" if readiness_pct < 90 else "\n"
+        comment_body = (
+            f"📍 Уровень поддержки: ~{fmt_p(nearest_support)}\n"
+            f"🎯 До уровня: {distance_to_level:.1f}%"
+        )
+        readiness_pct = pos
 
     msg = (
         f"⚡️ LIGHT SIGNAL | #{coin_name} | {icon}\n"
         f"━━━━━━━━━━━━━━━\n"
-        f"{price_text}\n"
+        f"💰 Цена: {fmt_p(current_price)} (🔻 -{dump_pct:.0f}% от пика {fmt_p(strong_resistance)})\n"
         f"📊 Объем: x{setup['vol_ratio']:.1f}\n"
         f"🌡 RSI: {setup['rsi']:.1f}\n"
         f"--------------------------------\n"
         f"📊 Тренд: {setup['trend']}\n"
         f"⚡️ СТАТУС: {zone_name} ({readiness_pct:.0f}%)\n\n"
         f"👀 {strategy_text}\n"
-        f"{comment_body}\n\n"
+        f"{comment_body}\n"
+        f"⚖️ Риск: {risk_tag}\n\n"
         f"❗️ НЕ сигнал на вход"
     )
     return msg
