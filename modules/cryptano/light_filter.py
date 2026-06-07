@@ -31,17 +31,16 @@ _scan_lock = threading.Lock()
 
 def _light_setup(symbol):
     """
-    Единая функция анализа (Радар) для автобота и ручного сканера.
+    Единая функция анализа (Радар) с умной матрицей и возвратом причин отбраковки.
     """
     time.sleep(0.1)
     try:
         coin_name = symbol.split("/")[0]
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=250)
         if len(ohlcv) < 35:
-            return None
+            return 'reject_data' # Не хватает данных свечей
 
         df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
-
         df["rsi"] = calculate_rsi(df)
 
         last_row = df.iloc[-1]
@@ -60,68 +59,66 @@ def _light_setup(symbol):
         strong_resistance = market_data["strong_resistance"]
         ma30 = market_data["ma30"]
 
-        # 1. Определяем направление по каналу (в твоем коде 100% - дно, 0% - хай)
+        # 1. Определяем направление по каналу
         if pos_pct > 50:
             scan_direction = "LONG"
-            # Расстояние до ближайшей поддержки в процентах
             distance_to_level = ((current_price - nearest_support) / current_price) * 100 if current_price > 0 else 999
         else:
             scan_direction = "SHORT"
-            # Расстояние до ближайшего сопротивления в процентах
             distance_to_level = ((nearest_resistance - current_price) / current_price) * 100 if current_price > 0 else 999
 
-        # 2. Адаптивная матрица порогов под текущий тренд и направление
+        # 2. Адаптивная матрица порогов под текущий тренд
         if trend_code == "BULL":
             if scan_direction == "LONG":
-                req_rsi_max = 50       # В бычке лонг берем легко (RSI до 50)
-                req_rsi_min = 0
-                req_vol = 1.5          # Обычный объем
+                req_rsi_max, req_rsi_min = 45, 0
+                req_vol = 0.6
+                req_dist = 5.0
                 risk_tag = "✅ ПРИОРИТЕТ (По тренду)"
             else:
-                req_rsi_max = 100
-                req_rsi_min = 78       # Шорт в бычке — только экстремум
-                req_vol = 2.3          # Высокий объем для контртренда
+                req_rsi_max, req_rsi_min = 100, 80
+                req_vol = 1.8
+                req_dist = 4.0
                 risk_tag = "⚠️ КОНТРТРЕНД (Шорт на сильном рынке)"
-        
+                
         elif trend_code == "BEAR":
             if scan_direction == "SHORT":
-                req_rsi_max = 100
-                req_rsi_min = 52       # В медвежке шорт берем легко
-                req_vol = 1.5
+                req_rsi_max, req_rsi_min = 100, 55
+                req_vol = 0.6
+                req_dist = 5.0
                 risk_tag = "✅ ПРИОРИТЕТ (По тренду)"
             else:
-                req_rsi_max = 28       # Лонг в медвежке — только пролив/паника
-                req_rsi_min = 0
-                req_vol = 2.3          # Высокий объем для контртренда
+                req_rsi_max, req_rsi_min = 25, 0
+                req_vol = 1.8
+                req_dist = 4.0
                 risk_tag = "⚠️ КОНТРТРЕНД (Ловим отскок / пролив)"
-        
+                
         else:  # RANGE / FLAT
             risk_tag = "🟡 БОКОВИК (Работа от границ)"
-            req_vol = 1.3
+            req_vol = 0.5
+            req_dist = 5.0
             if scan_direction == "LONG":
-                req_rsi_max = 35
-                req_rsi_min = 0
+                req_rsi_max, req_rsi_min = 40, 0
             else:
-                req_rsi_max = 100
-                req_rsi_min = 65
+                req_rsi_max, req_rsi_min = 100, 60
 
-        # 3. Проверка фильтра по объемам
+        # 3. Фильтрация с возвратом ТОЧНОЙ причины (для сводного лога)
         if vol_ratio < req_vol:
-            return None
+            return 'reject_volume'
+            
+        if rsi > req_rsi_max or rsi < req_rsi_min:
+            return 'reject_rsi'
+            
+        if distance_to_level > req_dist:
+            return 'reject_distance'
 
-        # 4. Проверка RSI и дистанции до уровня (запас 3.5% времени на анализ)
+        # Если дошли сюда, сигнал идеален
         if scan_direction == "LONG":
-            if rsi > req_rsi_max or distance_to_level > 3.5:
-                return None
             setup_info = f"Near Support (Bottom {pos_pct:.0f}%)"
         else:
-            if rsi < req_rsi_min or distance_to_level > 3.5:
-                return None
             setup_info = f"Near Resistance (Top {pos_pct:.0f}%)"
 
         market_regime = detect_market_regime(current_price, rsi, vol_ratio, ma30)
 
-        # Передаем все новые вычисленные данные дальше в форматтер сигналов
         return {
             "coin": coin_name,
             "trend": trend_text,
@@ -141,7 +138,7 @@ def _light_setup(symbol):
             "nearest_resistance": nearest_resistance,
         }
     except Exception as e:
-        return None
+        return 'reject_error'
 
 def format_light_signal(setup):
     coin_name = setup["coin"]
@@ -231,34 +228,46 @@ def _execute_scan_cycle(bot, admin_chat_id, is_auto=False):
 
         worker_count = min(MAX_LIGHT_SCAN_WORKERS, max(1, len(eligible_symbols)))
         setups = []
+        
+        # === Инициализация словаря для сбора статистики отказов ===
+        reject_stats = {'volume': 0, 'rsi': 0, 'distance': 0, 'data': 0, 'error': 0}
 
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
             futures = [executor.submit(_light_setup, symbol) for symbol in eligible_symbols]
             for future in as_completed(futures):
                 setup = future.result()
-                if setup:
-                    setup["source"] = "LIGHT"  # Бирка радара
+                
+                # --- ЛОГИКА СБОРА СТАТИСТИКИ (И ЖЕСТКАЯ ПРОВЕРКА ТИПА) ---
+                if not isinstance(setup, dict):
+                    # Если вернулся не словарь (а строка 'reject_...' или None), считаем статистику и пропускаем
+                    if isinstance(setup, str) and setup.startswith('reject_'):
+                        reason = setup.split('_')[1]
+                        if reason in reject_stats:
+                            reject_stats[reason] += 1
+                    else:
+                        reject_stats['error'] += 1
+                    continue
+                # --------------------------------------------------------
+
+                # Теперь Питон (и твой редактор кода) на 100% уверен, что setup — это словарь
+                setup["source"] = "LIGHT"  # Бирка радара
+                
+                # ИСПРАВЛЕННАЯ ЛОГИКА АДАПТИРОВАННАЯ ПОД ДИНАМИЧЕСКИЕ ЗОНЫ
+                if setup["pos_pct"] > 50:  # Всё, что в верхней части канала — это шорт-зоны
+                    setup["type"] = "SHORT_PUMP"
+                    setup["take_profit"] = setup.get("strong_support", 0) # Для шорта цель ВНИЗУ
+                    setup["stop_loss"] = setup.get("strong_resistance", 0) * 1.05 # Стоп за хай
+                else:                      # Всё, что в нижней части — это лонг-зоны
+                    setup["type"] = "LONG_ROLLBACK"
+                    setup["take_profit"] = setup.get("strong_resistance", 0) # Для лонга цель ВВЕРХУ
+                    setup["stop_loss"] = setup.get("strong_support", 0) * 0.95 # Стоп за дно
                     
-                    # ИСПРАВЛЕННАя ЛОГИКА (Цели и стопы на своих местах)
-                    # ИСПРАВЛЕННАЯ ЛОГИКА АДАПТИРОВАННАЯ ПОД ДИНАМИЧЕСКИЕ ЗОНЫ
-                    if setup["pos_pct"] > 50:  # Всё, что в верхней части канала — это шорт-зоны
-                        setup["type"] = "SHORT_PUMP"
-                        setup["take_profit"] = setup.get("strong_support", 0) # Для шорта цель ВНИЗУ
-                        setup["stop_loss"] = setup.get("strong_resistance", 0) * 1.05 # Стоп за хай
-                    else:                      # Всё, что в нижней части — это лонг-зоны
-                        setup["type"] = "LONG_ROLLBACK"
-                        setup["take_profit"] = setup.get("strong_resistance", 0) # Для лонга цель ВВЕРХУ
-                        setup["stop_loss"] = setup.get("strong_support", 0) * 0.95 # Стоп за дно
-                        setup["stop_loss"] = setup.get("strong_support", 0) * 0.95 # Стоп за дно
-                        
-                    setup["price"] = setup.get("current_price", 0)
-                    
-                    save_signal(setup)         # Сохранение в базу
-                    setups.append(setup)
+                setup["price"] = setup.get("current_price", 0)
+                
+                save_signal(setup)         # Сохранение в базу
+                setups.append(setup)
 
         for setup in setups:
-            if not setup:
-                continue
             coin_name = setup["coin"]
             found_something = True
             
@@ -270,28 +279,34 @@ def _execute_scan_cycle(bot, admin_chat_id, is_auto=False):
                 
         elapsed_time = time.time() - start_time
         
+        # --- ФОРМИРОВАНИЕ СТРОКИ СТАТИСТИКИ ---
+        stats_str = f"🚫 Отбраковано -> Объем: {reject_stats['volume']} | RSI: {reject_stats['rsi']} | Дистанция: {reject_stats['distance']} | Нехватка данных: {reject_stats['data']}"
+        
         if not is_auto:
             if not found_something:
                 print("[SCANNER LOG] Монет по фильтру Light не найдено.")
                 print(f"\n{prefix} 📊 Скан завершен за {elapsed_time:.1f} сек.")
                 print(f"{prefix} 🪙 Монет обработано: {total_processed_coins} | Найдено сетапов: {len(setups)}")
+                print(f"{prefix} {stats_str}")
                 print(f"{prefix} 🌐 Запросов к API Bybit: {api_queries}\n")
                 bot.send_message(admin_chat_id, "ℹ️ По легким фильтрам интересных монет сейчас нет. Рынок спокойный.")
             else:
                 print("[SCANNER LOG] Ручной сканер Light успешно завершил работу.")
                 print(f"\n{prefix} 📊 Скан завершен за {elapsed_time:.1f} сек.")
                 print(f"{prefix} 🪙 Монет обработано: {total_processed_coins} | Найдено сетапов: {len(setups)}")
+                print(f"{prefix} {stats_str}")
                 print(f"{prefix} 🌐 Запросов к API Bybit: {api_queries}\n")
                 bot.send_message(admin_chat_id, "✅ Ручной экспресс-скан Light завершен!")
         else:
             print(f"\n{prefix} 📊 Скан завершен за {elapsed_time:.1f} сек.")
             print(f"{prefix} 🪙 Монет обработано: {total_processed_coins} | Найдено сетапов: {len(setups)}")
+            print(f"{prefix} {stats_str}")
             print(f"{prefix} 🌐 Запросов к API Bybit: {api_queries}\n")
             
     except Exception as e:
         print(f"[SCANNER ERROR] Ошибка внутри Light-скана: {e}")
         bot.send_message(admin_chat_id, f"❌ Ошибка при сканировании: {e}")
-
+        
 def run_manual_light_scan(bot, admin_chat_id):
     """ОДНОРАЗОВЫЙ ручной запуск легкого сканера по кнопке."""
     print("[SCANNER LOG] Начало ручного экспресс-сканирования Light...")

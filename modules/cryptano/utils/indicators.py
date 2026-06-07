@@ -26,7 +26,15 @@ def get_market_state(df, current_price, channel_lookback=120):
     # Считаем объем
     recent_volume = df["volume"].iloc[-1]
     avg_volume = df["volume"].iloc[-25:-5].mean()
-    vol_ratio = float(recent_volume / avg_volume if avg_volume > 0 else 1.0)
+    
+    from datetime import datetime
+    elapsed_minutes = datetime.utcnow().minute
+    if elapsed_minutes == 0:
+        elapsed_minutes = 1
+        
+    expected_progress = elapsed_minutes / 60.0
+    adjusted_ratio = float(recent_volume / (avg_volume * expected_progress) if avg_volume > 0 else 1.0)
+    vol_ratio = adjusted_ratio
 
     # Считаем канал и позицию (pos_pct)
     recent_channel = df.tail(channel_lookback)
@@ -39,8 +47,8 @@ def get_market_state(df, current_price, channel_lookback=120):
     else:
         pos_pct = ((current_price - strong_support) / range_size) * 100
 
-    # Считаем ближайшие уровни за последние 7 свечей
-    recent_short = df.tail(7)
+    # Считаем ближайшие уровни за последние 20 свечей
+    recent_short = df.tail(20)
     nearest_support = float(recent_short["low"].min())
     nearest_resistance = float(recent_short["high"].max())
 
