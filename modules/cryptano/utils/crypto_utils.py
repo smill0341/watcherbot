@@ -2,10 +2,20 @@ import math
 import ccxt
 from modules.cryptano.utils.market_cache import get_top_usdt_coins_cached
 
+# ================= НАСТРОЙКИ СКАНЕРА =================
+MARKET_TYPE = "swap"        # "spot" — Спот (обычный), "swap" — Фьючерсы (деривативы)
+MAX_COINS_LIMIT = 150       # Максимальное количество тикеров для анализа
+
+# Автоматический подбор оптимального объема в зависимости от рынка
+# На фьючерсах (swap) ликвидность выше из-за плеч, ставим 15 млн. На споте (spot) достаточно 1-2 млн.
+MIN_DAILY_VOLUME = 10000000 if MARKET_TYPE == "swap" else 1000000
+# =====================================================
+
 exchange = ccxt.bybit({
     "enableRateLimit": True,
-    "options": {"defaultType": "spot"}
+    "options": {"defaultType": MARKET_TYPE}
 })
+
 
 def calculate_rsi(df, period=14):
     delta = df["close"].diff()
@@ -17,7 +27,7 @@ def calculate_rsi(df, period=14):
     return 100 - (100 / (1 + rs))
 
 
-def get_top_coins(limit=150, min_volume=5000000):
+def get_top_coins(limit=MAX_COINS_LIMIT, min_volume=MIN_DAILY_VOLUME):
     """Исправленная версия получения топ ликвидных пар Bybit."""
     try:
         print("[DIAGNOSTIC] Запуск get_top_coins...")

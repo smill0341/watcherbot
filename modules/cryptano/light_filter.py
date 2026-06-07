@@ -13,7 +13,7 @@ from modules.cryptano.utils.indicators import get_market_state
 from modules.cryptano.utils.storage import load_json
 from modules.cryptano.history import save_signal
 
-# ================= Настройки фильтров =================
+# ================= Настройки фильтров ================= 
 TIMEFRAME = "4h"
 FILTER_VOL_NORMAL = 1.5
 FILTER_VOL_ANOMALY = 2.0
