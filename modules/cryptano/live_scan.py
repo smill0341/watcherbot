@@ -164,28 +164,18 @@ def run_live_scanner(bot, admin_chat_id):
                         if not report or report.startswith("❌") or report.startswith("⚠️"):
                             continue
                         
-                        watcher_data = extract_watcher_data(report)
-                        
-                        if watcher_data:
-                            # Сигнал подтвержден! Формируем боевой алерт.
-                            icon = "🟢" if watcher_data['direction'] == "LONG" else "🔴"
-                            msg = (
-                                f"📡 **WATCHER ALERT | {coin}** {icon}\n"
-                                f"📈 Приоритет: **{watcher_data['direction']}** ({watcher_data['score']})\n\n"
-                                f"💰 Текущая цена: `{watcher_data['price']}`\n"
-                                f"🛡 Рекомендуемый Стоп: `{watcher_data['sl']}`\n\n"
-                                f"⚡️ Условия разворота подтверждены. Точка входа активна!"
-                            )
-                            bot.send_message(admin_chat_id, msg, parse_mode="Markdown")
+                        if "🔥 СИГНАЛ АКТИВЕН" in report:
+                            # Сигнал подтвержден! Пересылаем готовый отчет
+                            bot.send_message(admin_chat_id, report, parse_mode="Markdown")
                             
                             # Замораживаем, чтобы не спамить
                             watcher_cooldown_cache[cache_key] = now
-                            break  # Если нашли Лонг, Шорт уже не проверяем (и наоборот)
+                            break  # Если нашли одну сторону, вторую не проверяем
 
-                        # Микро-пауза между запросами разных монет, чтобы не злить биржу
+                        # Микро-пауза между запросами разных монет (внутри цикла for)
                         time.sleep(1) 
                 
-                # Пульс для консоли
+                # Пульс для консоли (после завершения цикла for по всем монетам)
                 current_time = datetime.datetime.now().strftime("%H:%M:%S")
                 print(f"[{current_time}] 📡 [WATCHER] Скан завершен. Монет в прицеле: {len(wl)}")
                         
@@ -194,4 +184,3 @@ def run_live_scanner(bot, admin_chat_id):
 
         except Exception as e:
             print(f"[WATCHER ERROR] Ошибка в цикле live_scan: {e}")
-    

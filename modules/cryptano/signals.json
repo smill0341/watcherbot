@@ -108,5 +108,49 @@
     "stop": 0.1780695,
     "status": "⏳",
     "result_percent": null
+  },
+  {
+    "date": "2026-06-07 14:21",
+    "coin": "BSB",
+    "type": "LONG",
+    "source": "LIGHT",
+    "entry": 0.261,
+    "target": 0.3553,
+    "stop": 0.17631999999999998,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-07 14:22",
+    "coin": "MU",
+    "type": "LONG",
+    "source": "CRITICAL",
+    "entry": 885.8,
+    "target": 932.96856,
+    "stop": 810.8326999999999,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-07 14:59",
+    "coin": "BSB",
+    "type": "LONG",
+    "source": "LIGHT",
+    "entry": 0.2692,
+    "target": 0.3553,
+    "stop": 0.17631999999999998,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-07 16:59",
+    "coin": "SIREN",
+    "type": "SHORT",
+    "source": "CRITICAL",
+    "entry": 1.30592,
+    "target": 1.00410434,
+    "stop": 1.3699000000000001,
+    "status": "⏳",
+    "result_percent": null
   }
 ]

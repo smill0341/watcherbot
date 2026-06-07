@@ -51,55 +51,41 @@ def check_manual_extreme(coin, direction):
         tp1_price = result.get("tp1_price", 0.0)
 
         current_rsi = float(current_candle["rsi"])
-    
-        if direction == "SHORT":
-            if current_rsi < 40:
-                verdict = "⛔️ Шорт запоздал (ждем откат)"
-            elif score >= 4:
-                verdict = "🔥 Есть подтверждение входа"
-            elif score >= 2:
-                verdict = ""
-            else:
-                verdict = "⛔️ Рано для входа"
-        elif direction == "LONG":
-            if current_rsi > 60:
-                verdict = "⛔️ Лонг запоздал (ждем откат)"
-            elif score >= 4:
-                verdict = "🔥 Есть подтверждение входа"
-            elif score >= 2:
-                verdict = ""
-            else:
-                verdict = "⛔️ Рано для входа"
-        else:
-            verdict = "❓ Направление неизвестно"
-    
+        
+        # 1. Слом структуры (BOS) дает +1 балл, а не блокирует
+        structure_broken = any("✅ Есть слом структуры" in d for d in details)
+        if structure_broken:
+            score += 1
+            
+        # 2. Порог входа (MIN_SCORE = 3)
+        MIN_SCORE = 3
+
+        # 3. Мягкий RSI для M15
+        rsi_ok = False
+        if direction == "SHORT" and current_rsi >= 60:
+            rsi_ok = True
+        elif direction == "LONG" and current_rsi <= 40:
+            rsi_ok = True
+
+        is_ready = score >= MIN_SCORE and rsi_ok
+        
+        verdict = "🔥 СИГНАЛ АКТИВЕН" if is_ready else "⏳ Наблюдение (Ждем условия)"
         icon = "🔴" if direction == "SHORT" else "🟢"
+        bos_str = "" if structure_broken else " (BOS missing)"
         
         report = f"{icon} *{coin} | WATCHER {direction}*\n\n"
         report += f"💰 Цена: `{fmt_p(current_price)}`\n"
-        report += f"📊 Готовность: `{score}/5`\n\n"
-        if verdict:
-            report += f"*{verdict}*\n\n"
+        report += f"📊 Готовность: `{score}/5{bos_str}`\n\n"
+        report += f"*{verdict}*\n\n"
         report += "👀 *Metrics:*\n"
         
         for d in details:
             report += f"{d}\n"
             
-        # Проверяем, выполнен ли слом структуры (ищем зеленую галочку в строке структуры)
-        structure_broken = any("✅ Есть слом структуры" in d for d in details)
-        
-        is_short_ready = (direction == "SHORT" and score >= 4 and current_rsi >= 40 and structure_broken)
-        is_long_ready = (direction == "LONG" and score >= 4 and current_rsi <= 60 and structure_broken)
-
-        if is_short_ready or is_long_ready:
+        if is_ready:
             report += f"\n🎯 *ПЛАН ВХОДА С РЫНКА:*\n• Вход: `{fmt_p(current_price)}`\n• Стоп-лосс: `{fmt_p(sl_price)}`\n• Тейк-профит 1: `{fmt_p(tp1_price)}` (Fibo 38.2%)"
         else:
-            if (direction == "SHORT" and current_rsi < 40) or (direction == "LONG" and current_rsi > 60):
-                report += f"\n⏳ Пока наблюдаем. Вход запоздал, ждем безопасный откат."
-            elif not structure_broken:
-                report += f"\n⏳ Пока наблюдаем. Ждем критическое условие — слом структуры."
-            else:
-                report += f"\n⏳ Пока наблюдаем. Ждем дополнительные подтверждения сетапа."
+            report += f"\n⏳ Пока наблюдаем. Не хватает баллов (нужно 3) или RSI не в зоне (нужно <40 для лонга, >60 для шорта)."
 
         elapsed_time = time.time() - start_time
         print(f"\n[WATCHER PLAN] 📊 Проверка {coin} завершена за {elapsed_time:.2f} сек.")

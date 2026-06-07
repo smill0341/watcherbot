@@ -141,6 +141,7 @@ def _light_setup(symbol):
         return 'reject_error'
 
 def format_light_signal(setup):
+  
     coin_name = setup["coin"]
     current_price = setup.get('current_price', 0)
     strong_resistance = setup.get('strong_resistance', 0)
@@ -150,45 +151,36 @@ def format_light_signal(setup):
     pos = setup['pos_pct']
     
     scan_direction = setup.get("scan_direction", "LONG" if pos > 50 else "SHORT")
-    distance_to_level = setup.get("distance_to_level", 0)
-    risk_tag = setup.get("risk_tag", "🟡 Рабочий риск")
+    
+    # Чистим название тренда
+    trend_clean = setup['trend'].replace("Глобальный ", "").replace("Глобальная ", "")
 
-    # Общие расчеты процентов изменения цены от локального минимума/максимума
     pump_pct = ((current_price - strong_support) / strong_support) * 100 if strong_support > 0 else 0
     dump_pct = ((strong_resistance - current_price) / strong_resistance) * 100 if strong_resistance > 0 else 0
 
-    # Адаптивное форматирование текста на основе реального направления рынка
+    # Формируем логику строк Приоритет/Риск
     if scan_direction == "SHORT":
-        strategy_text = "Приоритет — Шорт от сопротивления."
-        zone_name = "SHORT ZONE"
         icon = "🔴"
-        comment_body = (
-            f"📍 Уровень сопротивления: ~{fmt_p(nearest_resistance)}\n"
-            f"🎯 До уровня: {distance_to_level:.1f}%"
-        )
-        readiness_pct = 100 - pos  # Переворачиваем шкалу для удобства восприятия в ТГ
+        zone_name = "ШОРТ-ЗОНА"
+        price_context = f"🔻 -{dump_pct:.0f}% от хая"
+        action_main = f"👀 Приоритет: Шорт от сопротивления ~{fmt_p(nearest_resistance)}"
+        action_risk = f"⚖️ Риск: Лонг от поддержки ~{fmt_p(nearest_support)}"
     else:
-        strategy_text = "Приоритет — Лонг от поддержки."
-        zone_name = "LONG ZONE"
         icon = "🟢"
-        comment_body = (
-            f"📍 Уровень поддержки: ~{fmt_p(nearest_support)}\n"
-            f"🎯 До уровня: {distance_to_level:.1f}%"
-        )
-        readiness_pct = pos
+        zone_name = "ЛОНГ-ЗОНА"
+        price_context = f"📈 +{pump_pct:.0f}% от дна"
+        action_main = f"👀 Приоритет: Лонг от поддержки ~{fmt_p(nearest_support)}"
+        action_risk = f"⚖️ Риск: Шорт от сопротивления ~{fmt_p(nearest_resistance)}"
 
     msg = (
-        f"⚡️ LIGHT SIGNAL | #{coin_name} | {icon}\n"
+        f"⚡️ LIGHT СЕТАП | #{coin_name} {icon}\n"
         f"━━━━━━━━━━━━━━━\n"
-        f"💰 Цена: {fmt_p(current_price)} (🔻 -{dump_pct:.0f}% от пика {fmt_p(strong_resistance)})\n"
-        f"📊 Объем: x{setup['vol_ratio']:.1f}\n"
-        f"🌡 RSI: {setup['rsi']:.1f}\n"
+        f"💰 Цена: {fmt_p(current_price)} ({price_context})\n"
+        f"📊 Объем: x{setup['vol_ratio']:.1f}  |  🌡 RSI: {setup['rsi']:.1f}\n"
         f"--------------------------------\n"
-        f"📊 Тренд: {setup['trend']}\n"
-        f"⚡️ СТАТУС: {zone_name} ({readiness_pct:.0f}%)\n\n"
-        f"👀 {strategy_text}\n"
-        f"{comment_body}\n"
-        f"⚖️ Риск: {risk_tag}\n\n"
+        f"{trend_clean} | {icon} {zone_name}\n\n"
+        f"{action_main}\n"
+        f"{action_risk}\n\n"
         f"❗️ НЕ сигнал на вход"
     )
     return msg

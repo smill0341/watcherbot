@@ -1,10 +1,21 @@
 import pandas as pd
 from modules.cryptano.utils.crypto_utils import calculate_rsi
 from modules.cryptano.utils.price_action import get_market_structure
+import time
 
-VOL_LIMIT = 2.5
-RSI_LOW = 30
-RSI_HIGH = 70
+# ================= Настройки фильтров ================= 
+
+# ================= НАСТРОЙКИ ИНДИКАТОРОВ =================
+VOL_LIMIT = 2.5        # Порог для базового статуса "Аномальный объем"
+RSI_LOW = 30           # Порог для базового статуса "Перепроданность"
+RSI_HIGH = 70          # Порог для базового статуса "Перекупленность"
+
+# --- Настройки периодов для уровней и тренда ---
+LEVELS_PERIOD = 20     # Сколько последних свечей берем для поиска ближайших поддержки/сопротивления
+CHANNEL_PERIOD = 40    # Период для расчета глобального канала (откуда берется pos_pct)
+MA_PERIOD = 30         # Период скользящей средней (MA) для определения глобального тренда
+
+# ======================================================
 
 def get_market_state(df, current_price, channel_lookback=120):
     """
@@ -27,12 +38,22 @@ def get_market_state(df, current_price, channel_lookback=120):
     recent_volume = df["volume"].iloc[-1]
     avg_volume = df["volume"].iloc[-25:-5].mean()
     
-    from datetime import datetime
-    elapsed_minutes = datetime.utcnow().minute
-    if elapsed_minutes == 0:
-        elapsed_minutes = 1
+    
+    
+    # 1. Автоматически определяем размер свечи в минутах (вычитаем время открытия двух соседних свечей)
+    tf_ms = df["timestamp"].iloc[-1] - df["timestamp"].iloc[-2]
+    tf_minutes = tf_ms / 60000.0 if tf_ms > 0 else 60.0
+    
+    # 2. Вычисляем, сколько минут прошло с момента ОТКРЫТИЯ текущей свечи
+    elapsed_ms = (time.time() * 1000) - df["timestamp"].iloc[-1]
+    elapsed_minutes = elapsed_ms / 60000.0
+    
+    if elapsed_minutes <= 0:
+        elapsed_minutes = 1.0
         
-    expected_progress = elapsed_minutes / 60.0
+    # 3. Считаем честный прогресс свечи (min нужен, чтобы прогресс не превысил 100%, если свеча только закрылась)
+    expected_progress = min(elapsed_minutes / tf_minutes, 1.0)
+    
     adjusted_ratio = float(recent_volume / (avg_volume * expected_progress) if avg_volume > 0 else 1.0)
     vol_ratio = adjusted_ratio
 
