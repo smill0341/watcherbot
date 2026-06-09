@@ -61,11 +61,13 @@ def _light_setup(symbol):
 
         # 1. Определяем направление по каналу
         if pos_pct > 50:
-            scan_direction = "LONG"
-            distance_to_level = ((current_price - nearest_support) / current_price) * 100 if current_price > 0 else 999
-        else:
+            # Цена в верхней части (у потолка). Ищем шорт от сопротивления.
             scan_direction = "SHORT"
             distance_to_level = ((nearest_resistance - current_price) / current_price) * 100 if current_price > 0 else 999
+        else:
+            # Цена в нижней части (у дна). Ищем лонг от поддержки.
+            scan_direction = "LONG"
+            distance_to_level = ((current_price - nearest_support) / current_price) * 100 if current_price > 0 else 999 if current_price > 0 else 999
 
         # 2. Адаптивная матрица порогов под текущий тренд
         if trend_code == "BULL":

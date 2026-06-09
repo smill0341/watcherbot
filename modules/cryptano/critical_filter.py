@@ -148,18 +148,19 @@ def format_results(results, title=""):
         vol_ratio = r["vol_ratio"]
         sl = r.get("stop_loss", 0)
 
-        # Функция для красивого отображения цен (убирает лишние нули)
         fmt_p = lambda x: f"{x:.5f}".rstrip('0').rstrip('.') if x < 1 else str(round(x, 4))
 
         if sig_type == "SHORT_PUMP":
             tp1 = r.get("take_profit", 0)
             tp2 = r.get("take_profit_2", 0)
+            tp3 = r.get("take_profit_3", 0)
             msg += (
-                f"🔴 *{coin}* | 📉 SHORT (Памп)\n"
+                f"🔴 *{coin}* | SHORT (Памп)\n"
                 f"💵 Текущая цена: {fmt_p(price)}\n"
                 f"📊 RSI: {rsi:.1f} | Объем: x{vol_ratio:.1f}\n"
-                f"🎯 TP1 (Fib 0.382): {fmt_p(tp1)}\n"
-                f"🎯 TP2 (Fib 0.500): {fmt_p(tp2)}\n"
+                f"🎯 TP1 : {fmt_p(tp1)}\n"
+                f"🎯 TP2 : {fmt_p(tp2)}\n"
+                f"🎯 TP3 : {fmt_p(tp3)}\n"
                 f"🛑 SL (За Хай): {fmt_p(sl)}\n"
                 f"━━━━━━━━━━━━━━━\n"
             )
@@ -167,13 +168,15 @@ def format_results(results, title=""):
             entry = r.get("entry_limit", price)
             tp1 = r.get("take_profit", 0)
             tp2 = r.get("take_profit_2", 0)
+            tp3 = r.get("take_profit_3", 0)
             msg += (
-                f"🟢 *{coin}* | 📈 LONG (Дамп)\n"
+                f"🟢 *{coin}* | LONG (Дамп)\n"
                 f"💵 Текущая цена: {fmt_p(price)}\n"
                 f"📊 RSI: {rsi:.1f} | Объем: x{vol_ratio:.1f}\n"
-                f"🛒 Вход (Fib 0.618): {fmt_p(entry)}\n"
-                f"🎯 TP1 (Fib 0.382): {fmt_p(tp1)}\n"
-                f"🎯 TP2 (Fib 0.500): {fmt_p(tp2)}\n"
+                f"🛒 Вход: {fmt_p(entry)}\n"
+                f"🎯 TP1 : {fmt_p(tp1)}\n"
+                f"🎯 TP2 : {fmt_p(tp2)}\n"
+                f"🎯 TP3 : {fmt_p(tp3)}\n"
                 f"🛑 SL (За Лой): {fmt_p(sl)}\n"
                 f"━━━━━━━━━━━━━━━\n"
             )
@@ -208,7 +211,7 @@ def process_crypto_command(text, bot, chat_id):
     elif text == "⚡️ Critical фильтр":
         print("[CRYPTANO] Запускаю полный критический фильтр (RSI + Volume)...")
         res = scan_market(scan_type="auto")
-        bot.send_message(chat_id, format_results(res, "Полный фильтр: RSI + Объемы"), parse_mode="Markdown")
+        bot.send_message(chat_id, format_results(res, "CRITICAL FILTR"), parse_mode="Markdown")
 
     else:
         print(f"[CRYPTANO WARNING] Команда '{text}' пришла, но не распознана!")
@@ -250,8 +253,27 @@ def auto_scheduler(bot, admin_chat_id):
 
         print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [Critical фильтр] Фоновый запуск сканирования рынка...")
         res = scan_market(scan_type="auto")
+        
         if res:
             msg = format_results(res, "⏰ Авто-находка: Сильный RSI + Аномальный объем!")
+            
+            # 🆕 АВТО-ДОБАВЛЕНИЕ В WATCHER
+            # Импортируем локально, чтобы избежать ошибки циклического импорта
+            from modules.cryptano.live_scan import auto_add_to_watchlist 
+            
+            added_coins = []
+            for r in res:
+                coin = r["coin"]
+                # Если Critical нашел SHORT_PUMP, то Watcher должен искать SHORT
+                direction = "SHORT" if r["type"] == "SHORT_PUMP" else "LONG"
+                
+                if auto_add_to_watchlist(coin, direction):
+                    added_coins.append(coin)
+            
+            if added_coins:
+                msg += f"\n🤖 *Переданы в Watcher:* {', '.join(added_coins)}"
+            # -----------------------------------------
+
             try:
                 bot.send_message(admin_chat_id, msg, parse_mode="Markdown")
             except Exception as e:

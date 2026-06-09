@@ -1,6 +1,7 @@
 import pandas as pd
 from modules.cryptano.utils.crypto_utils import calculate_rsi
 from modules.cryptano.utils.price_action import get_market_structure
+from modules.cryptano.utils.common import format_price as fmt_p
 import time
 
 # ================= Настройки фильтров ================= 
@@ -168,12 +169,12 @@ def get_cryptano_signal(df, current_price, price_precision, scan_type, rsi_high=
     )
 
     if is_short_pump_trigger:
-        # Ищем экстремумы импульса за последние 50 свечей
-        impulse_low = float(df.tail(50)["low"].min())
-        impulse_high = float(df.tail(50)["high"].max()) # Это самый пик пампа
+        # Ищем экстремумы импульса за последние 15 свечей
+        impulse_low = float(df.tail(15)["low"].min())
+        impulse_high = float(df.tail(15)["high"].max()) # Это самый пик пампа
         wave_size = impulse_high - impulse_low
         
-        # Считаем уровни отката Фибоначчи ВНИЗ
+        fib_0236 = impulse_high - (wave_size * 0.236)
         fib_0382 = impulse_high - (wave_size * 0.382)
         fib_0500 = impulse_high - (wave_size * 0.5)
 
@@ -186,8 +187,9 @@ def get_cryptano_signal(df, current_price, price_precision, scan_type, rsi_high=
             "rsi": rsi,
             "vol_ratio": vol_ratio,
             "entry_market": current_price, 
-            "take_profit": fib_0382, # Главная цель: откат 0.382
-            "take_profit_2": fib_0500, # Вторая цель: откат 0.5
+            "take_profit": fib_0236,
+            "take_profit_2": fib_0382,
+            "take_profit_3": fib_0500,
             "stop_loss": stop_loss,
         }
 
@@ -197,12 +199,13 @@ def get_cryptano_signal(df, current_price, price_precision, scan_type, rsi_high=
     is_auto_trigger = (scan_type == "auto" and rsi <= rsi_low and vol_ratio >= volume_multiplier and is_volume_fading)
 
     if is_rsi_trigger or is_vol_trigger or is_auto_trigger:
-        # Ищем экстремумы импульса за последние 50 свечей
-        impulse_high = float(df.tail(50)["high"].max())
-        impulse_low = float(df.tail(50)["low"].min()) # Это абсолютное дно дампа
+
+        # Ищем экстремумы импульса за последние 15 свечей
+        impulse_high = float(df.tail(15)["high"].max())
+        impulse_low = float(df.tail(15)["low"].min()) # Это абсолютное дно дампа
         wave_size = impulse_high - impulse_low
         
-        # Считаем уровни отскока Фибоначчи ВВЕРХ
+        fib_0236 = impulse_low + (wave_size * 0.236)
         fib_0382 = impulse_low + (wave_size * 0.382)
         fib_0500 = impulse_low + (wave_size * 0.5)
         fib_0618 = impulse_low + (wave_size * 0.618)
@@ -216,8 +219,9 @@ def get_cryptano_signal(df, current_price, price_precision, scan_type, rsi_high=
             "rsi": rsi,
             "vol_ratio": vol_ratio,
             "entry_limit": fib_0618 if fib_0618 < current_price else current_price, # Золотой карман
-            "take_profit": fib_0382, # Главная цель: отскок 0.382
-            "take_profit_2": fib_0500, # Вторая цель: отскок 0.5
+            "take_profit": fib_0236,
+            "take_profit_2": fib_0382,
+            "take_profit_3": fib_0500,
             "stop_loss": stop_loss,
         }
 
@@ -225,183 +229,143 @@ def get_cryptano_signal(df, current_price, price_precision, scan_type, rsi_high=
 
 
 def analyze_extreme_pattern(df, direction, current_price, price_precision):
-    """Анализ экстремального паттерна на M15. Возвращает только числа и детали."""
-    score = 0
-    details = []
+    """
+    Анализ разворота на основе SFP (Свип ликвидности) и Разворотных свечей.
+    Возвращает четкие флаги триггеров и фильтров вместо старой системы баллов.
+    """
+    if len(df) < 16:
+        return {
+            "trigger_fired": False, "rsi_filter_passed": False, "volume_climax": False,
+            "trigger_type": "НЕТ", "sl_price": 0.0, "tp1_price": 0.0, "tp2_price": 0.0, "tp3_price": 0.0,
+            "rsi_value": 50.0, "vol_ratio": 1.0
+        }
+
+    # Последняя свеча (которую мы оцениваем на наличие разворота)
+    current_candle = df.iloc[-1]
+    # Предыдущие 15 свечей для поиска локальных максимумов/минимумов
+    context_df = df.iloc[-16:-1]
+    
+    candle_open = float(current_candle["open"])
+    candle_high = float(current_candle["high"])
+    candle_low = float(current_candle["low"])
+    candle_close = float(current_candle["close"])
+    
+    current_rsi = float(current_candle["rsi"]) if "rsi" in current_candle else 50.0
+    
+    avg_vol = context_df["volume"].mean()
+    current_vol = float(current_candle["volume"])
+    vol_ratio = current_vol / avg_vol if avg_vol > 0 else 1.0
+    
+    # Бонус-усилитель: Кульминация объема (объем > х4 от среднего)
+    volume_climax = vol_ratio >= 4.0
+
+    trigger_fired = False
+    rsi_filter_passed = False
+    trigger_type = "НЕТ"
     sl_price = 0.0
-    tp1_price = 0.0
+    tp1_price = tp2_price = tp3_price = 0.0
+
+    body = abs(candle_close - candle_open)
+    if body == 0: body = 0.000001
 
     if direction == "SHORT":
-        recent_df = df.tail(15)
-        peak_idx = recent_df["high"].idxmax()
-        peak_candle = df.loc[peak_idx]
-
-        body = abs(peak_candle["close"] - peak_candle["open"])
-        upper_shadow = peak_candle["high"] - max(peak_candle["close"], peak_candle["open"])
-        is_pin = upper_shadow > (body * 1.5)
-
-        is_engulf = False
-        if peak_idx + 1 < len(df):
-            next_c = df.loc[peak_idx + 1]
-            is_engulf = (
-                (peak_candle["close"] > peak_candle["open"]) and
-                (next_c["close"] < next_c["open"]) and
-                (next_c["close"] < peak_candle["open"])
-            )
-
-        if is_pin or is_engulf:
-            score += 1
-            details.append("✅ Есть разворотная свеча")
-        else:
-            details.append("❌ Нет разворотной свечи")
-
-        avg_vol = df["volume"].mean()
-        peak_vol_mult = float(peak_candle["volume"] / avg_vol if avg_vol > 0 else 1.0)
-        current_vol_mult = float(df.iloc[-1]["volume"] / avg_vol if avg_vol > 0 else 1.0)
-
-        if peak_vol_mult > 0:
-            drop_percent = ((peak_vol_mult - current_vol_mult) / peak_vol_mult) * 100
-        else:
-            drop_percent = 0
-
-        if peak_vol_mult >= VOL_LIMIT and drop_percent >= 60:
-            score += 1
-            details.append(f"✅ Объёмы остывают: x{peak_vol_mult:.1f} -> x{current_vol_mult:.1f} ↓")
-        elif peak_vol_mult >= VOL_LIMIT and drop_percent < 60:
-            details.append(f"❌ Обьемы еще большие: x{peak_vol_mult:.1f} -> x{current_vol_mult:.1f} ↑")
-        else:
-            details.append(f"❌ Нет объёма, ждём движений: x{peak_vol_mult:.1f} -> x{current_vol_mult:.1f} ≈")
-
-        current_rsi = round(float(df.iloc[-1]["rsi"]), 1)
-        peak_rsi = round(float(peak_candle["rsi"]), 1)
-
-        if peak_rsi >= RSI_HIGH and current_rsi < peak_rsi:
-            score += 1
-            details.append(f"✅ RSI развернулся: {peak_rsi:.1f} -> {current_rsi:.1f} ↓")
-        elif peak_rsi >= RSI_HIGH and current_rsi >= peak_rsi:
-            details.append(f"❌ RSI давит дальше: {peak_rsi:.1f} -> {current_rsi:.1f} ↑")
-        else:
-            details.append(f"❌ RSI без экстрима: {peak_rsi:.1f} -> {current_rsi:.1f} ≈")
-
-        level_price = float(peak_candle["low"])
-        if current_price < level_price:
-            score += 1
-            details.append(f"✅ Есть слом структуры: <{level_price:.1f}")
-        else:
-            details.append(f"❌ Нет слома: пробой <{level_price:.1f}")
-
-        sl_price = float(peak_candle["high"])
-        impulse_low = float(df.loc[:peak_idx].tail(90)["low"].min())
+        local_high = float(context_df["high"].max())
+        
+        # 1. ТРИГГЕР: SFP (Цена пробила прошлый хай, но закрылась ниже него)
+        is_sfp = (candle_high > local_high) and (candle_close < local_high)
+        
+        # 2. АЛЬТ. ТРИГГЕР: Пинбар (Верхняя тень в 1.5 раза больше тела)
+        upper_shadow = candle_high - max(candle_close, candle_open)
+        is_pinbar = upper_shadow > (body * 1.5)
+        
+        if is_sfp:
+            trigger_fired = True
+            trigger_type = "SFP (Ложный пробой максимума)"
+            # 🔥 Мягкий фильтр: пробой уровня сам по себе сильный сигнал
+            rsi_filter_passed = current_rsi >= 65.0  
+        elif is_pinbar:
+            trigger_fired = True
+            trigger_type = "Агрессивный Пинбар"
+            # 🧊 Жесткий фильтр: просто тень без пробоя требует сильного перегрева
+            rsi_filter_passed = current_rsi >= 72.0  
+            
+        # РАСЧЕТ ЦЕЛЕЙ
+        sl_price = candle_high if trigger_fired else local_high
+        impulse_low = float(df.tail(90)["low"].min())
         wave_size = sl_price - impulse_low
-        tp1_price = round(sl_price - (wave_size * 0.382), price_precision)
+        
+        tp1_price = round(sl_price - (wave_size * 0.236), price_precision)
+        tp2_price = round(sl_price - (wave_size * 0.382), price_precision)
+        tp3_price = round(sl_price - (wave_size * 0.500), price_precision)
 
     elif direction == "LONG":
-        recent_df = df.tail(15)
-        low_idx = recent_df["low"].idxmin()
-        low_candle = df.loc[low_idx]
-
-        body = abs(low_candle["close"] - low_candle["open"])
-        lower_shadow = min(low_candle["close"], low_candle["open"]) - low_candle["low"]
+        local_low = float(context_df["low"].min())
+        
+        # 1. ТРИГГЕР: SFP (Цена пробила прошлое дно, но закрылась выше него)
+        is_sfp = (candle_low < local_low) and (candle_close > local_low)
+        
+        # 2. АЛЬТ. ТРИГГЕР: Молот (Нижняя тень в 1.5 раза больше тела)
+        lower_shadow = min(candle_close, candle_open) - candle_low
         is_hammer = lower_shadow > (body * 1.5)
-
-        is_bull_engulf = False
-        if low_idx + 1 < len(df):
-            next_c = df.loc[low_idx + 1]
-            is_bull_engulf = (
-                (low_candle["close"] < low_candle["open"]) and
-                (next_c["close"] > next_c["open"]) and
-                (next_c["close"] > low_candle["open"])
-            )
-
-        if is_hammer or is_bull_engulf:
-            score += 1
-            details.append("✅ Есть разворотная свеча")
-        else:
-            details.append("❌ Нет разворотной свечи")
-
-        avg_vol = df["volume"].mean()
-        peak_vol_mult = float(low_candle["volume"] / avg_vol if avg_vol > 0 else 1.0)
-        current_vol_mult = float(df.iloc[-1]["volume"] / avg_vol if avg_vol > 0 else 1.0)
-
-        if peak_vol_mult > 0:
-            drop_percent = ((peak_vol_mult - current_vol_mult) / peak_vol_mult) * 100
-        else:
-            drop_percent = 0
-
-        if peak_vol_mult >= VOL_LIMIT and drop_percent >= 60:
-            score += 1
-            details.append(f"✅ Объёмы остывают: x{peak_vol_mult:.1f} -> x{current_vol_mult:.1f} ↓")
-        elif peak_vol_mult >= VOL_LIMIT and drop_percent < 60:
-            details.append(f"❌ Обьемы еще большие: x{peak_vol_mult:.1f} -> x{current_vol_mult:.1f} ↑")
-        else:
-            details.append(f"❌ Нет объёма, ждём движений: x{peak_vol_mult:.1f} -> x{current_vol_mult:.1f} ≈")
-
-        current_rsi = round(float(df.iloc[-1]["rsi"]), 1)
-        peak_rsi = round(float(low_candle["rsi"]), 1)
-
-        if peak_rsi <= RSI_LOW and current_rsi > peak_rsi:
-            score += 1
-            details.append(f"✅ RSI развернулся: {peak_rsi:.1f} -> {current_rsi:.1f} ↑")
-        elif peak_rsi <= RSI_LOW and current_rsi <= peak_rsi:
-            details.append(f"❌ RSI давит дальше: {peak_rsi:.1f} -> {current_rsi:.1f} ↓")
-        else:
-            details.append(f"❌ RSI без экстрима: {peak_rsi:.1f} -> {current_rsi:.1f} ≈")
-
-        level_price = float(low_candle["high"])
-        if current_price > level_price:
-            score += 1
-            details.append(f"✅ Есть слом структуры: >{level_price:.1f}")
-        else:
-            details.append(f"❌ Нет слома: пробой >{level_price:.1f}")
-
-        sl_price = float(low_candle["low"])
-        impulse_high = float(df.loc[:low_idx].tail(90)["high"].max())
+        
+        if is_sfp:
+            trigger_fired = True
+            trigger_type = "SFP (Ложный пробой минимума)"
+            # 🔥 Мягкий фильтр: ложный пробой дна
+            rsi_filter_passed = current_rsi <= 35.0  
+        elif is_hammer:
+            trigger_fired = True
+            trigger_type = "Агрессивный Молот"
+            # 🧊 Жесткий фильтр: обычный молот
+            rsi_filter_passed = current_rsi <= 28.0  
+            
+        # РАСЧЕТ ЦЕЛЕЙ
+        sl_price = candle_low if trigger_fired else local_low
+        impulse_high = float(df.tail(90)["high"].max())
         wave_size = impulse_high - sl_price
-        tp1_price = round(sl_price + (wave_size * 0.382), price_precision)
+        
+        tp1_price = round(sl_price + (wave_size * 0.236), price_precision)
+        tp2_price = round(sl_price + (wave_size * 0.382), price_precision)
+        tp3_price = round(sl_price + (wave_size * 0.500), price_precision)
 
-    # 5. Проверка дивергенции (история за 22 часа до текущих 15 свечей)
-    past_df = df.iloc[-90:-15].dropna(subset=['rsi'])
-
-    if len(past_df) < 10:
-        details.append("❌ Недостаточно истории для дивергенции")
-    else:
-        if direction == "SHORT":
-            past_peak_idx = past_df["high"].idxmax()
-            past_peak_candle = past_df.loc[past_peak_idx]
+    elif direction == "LONG":
+        local_low = float(context_df["low"].min())
+        
+        # 1. ТРИГГЕР: SFP (Цена пробила прошлое дно, но закрылась выше него)
+        is_sfp = (candle_low < local_low) and (candle_close > local_low)
+        
+        # 2. АЛЬТ. ТРИГГЕР: Молот (Нижняя тень в 1.5 раза больше тела)
+        lower_shadow = min(candle_close, candle_open) - candle_low
+        is_hammer = lower_shadow > (body * 1.5)
+        
+        if is_sfp:
+            trigger_fired = True
+            trigger_type = "SFP (Ложный пробой минимума)"
+        elif is_hammer:
+            trigger_fired = True
+            trigger_type = "Агрессивный Молот"
             
-            price1 = round(float(past_peak_candle["high"]), price_precision)
-            rsi1 = round(float(past_peak_candle["rsi"]), 1)
-            price2 = round(float(peak_candle["high"]), price_precision)
-            rsi2 = round(float(peak_candle["rsi"]), 1)
-            
-            if price2 > price1 and rsi2 < rsi1:
-                score += 1
-                details.append(f"✅ Есть дивергенция: {price1:.{price_precision}f}/{rsi1:.1f} -> {price2:.{price_precision}f}/{rsi2:.1f} ↓")
-            elif price2 > price1 and rsi2 >= rsi1:
-                details.append(f"❌ Нет дивергенции: {price1:.{price_precision}f}/{rsi1:.1f} -> {price2:.{price_precision}f}/{rsi2:.1f} ↑")
-            else:
-                details.append(f"❌ Дивергенция не сформирована: {price1:.{price_precision}f}/{rsi1:.1f} -> {price2:.{price_precision}f}/{rsi2:.1f} ≈")
-                
-        elif direction == "LONG":
-            past_low_idx = past_df["low"].idxmin()
-            past_low_candle = past_df.loc[past_low_idx]
-            
-            price1 = round(float(past_low_candle["low"]), price_precision)
-            rsi1 = round(float(past_low_candle["rsi"]), 1)
-            price2 = round(float(low_candle["low"]), price_precision)
-            rsi2 = round(float(low_candle["rsi"]), 1)
-            
-            if price2 < price1 and rsi2 > rsi1:
-                score += 1
-                details.append(f"✅ Есть дивергенция: {price1:.{price_precision}f}/{rsi1:.1f} -> {price2:.{price_precision}f}/{rsi2:.1f} ↑")
-            elif price2 < price1 and rsi2 <= rsi1:
-                details.append(f"❌ Нет дивергенции: {price1:.{price_precision}f}/{rsi1:.1f} -> {price2:.{price_precision}f}/{rsi2:.1f} ↓")
-            else:
-                details.append(f"❌ Дивергенция не сформирована: {price1:.{price_precision}f}/{rsi1:.1f} -> {price2:.{price_precision}f}/{rsi2:.1f} ≈")
+        # 3. ЖЕСТКИЙ ФИЛЬТР RSI
+        rsi_filter_passed = current_rsi <= 28.0
+        
+        # РАСЧЕТ ЦЕЛЕЙ
+        sl_price = candle_low if trigger_fired else local_low
+        impulse_high = float(df.tail(90)["high"].max())
+        wave_size = impulse_high - sl_price
+        
+        tp1_price = round(sl_price + (wave_size * 0.236), price_precision)
+        tp2_price = round(sl_price + (wave_size * 0.382), price_precision)
+        tp3_price = round(sl_price + (wave_size * 0.500), price_precision)
 
     return {
-        "score": score,
-        "details": details,
+        "trigger_fired": trigger_fired,
+        "rsi_filter_passed": rsi_filter_passed,
+        "volume_climax": volume_climax,
+        "trigger_type": trigger_type,
         "sl_price": sl_price,
         "tp1_price": tp1_price,
+        "tp2_price": tp2_price,
+        "tp3_price": tp3_price,
+        "rsi_value": round(current_rsi, 1),
+        "vol_ratio": round(vol_ratio, 1)
     }

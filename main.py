@@ -201,7 +201,7 @@ def process_manual_extreme_check(message):
         
         bot.send_message(message.chat.id, f"⏳ Ожидайте, делаю анализ для {coin}...")
         
-        report = check_manual_extreme(coin, direction)
+        _, report = check_manual_extreme(coin, direction)
         
         # Если монета не найдена или другая ошибка от анализатора
         if report and str(report).startswith("❌"):

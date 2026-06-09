@@ -12,8 +12,24 @@ WATCHLIST_FILE = os.path.join(os.path.dirname(__file__), "watchlist.json")
 WATCH_INTERVAL = 900  # Интервал проверок: 900 секунд (15 минут)
 COOLDOWN_HOURS = 4     # Заморозка повторных сигналов по монете
 
+# 🆕 НОВЫЕ РУБИЛЬНИКИ АВТОМАТИЗАЦИИ
+AUTO_ADD_FROM_CRITICAL = True   # Разрешить Critical фильтру самому добавлять монеты
+AUTO_REMOVE_AFTER_SIGNAL = True # Удалять монету из Watchlist после успешного сигнала
+
 watcher_cooldown_cache = {}
 _watcher_lock = threading.Lock()
+
+def auto_add_to_watchlist(coin, direction):
+    """Вызывается из critical_filter.py для автоматического добавления монет"""
+    if not AUTO_ADD_FROM_CRITICAL:
+        return False
+        
+    wl = _load_watchlist()
+    if coin not in wl:
+        wl[coin] = {"direction": direction, "added_at": datetime.datetime.now().isoformat()}
+        _save_watchlist(wl)
+        return True
+    return False
 
 def _load_watchlist():
     try:
@@ -33,28 +49,28 @@ def _save_watchlist(data):
 def extract_watcher_data(report):
     """
     Парсит длинный отчет из watcher_plan и достает только самое важное
-    для короткого watcher алерта.
+    для короткого watcher алерта. Безопасен для новой SFP логики.
     """
-    if "🔥 СИГНАЛ АКТИВЕН" not in report:
+    if "ВХОД! УСЛОВИЯ ВЫПОЛНЕНЫ" not in report:
         return None
     
-    # Регулярки для вытаскивания данных из текста отчета
-    price_match = re.search(r"Цена онлайн: `([^`]+)`", report)
+    # Регулярки для вытаскивания данных из нового формата текста
+    price_match = re.search(r"Текущая цена:\s*([\d.]+)", report)
     price = price_match.group(1) if price_match else "N/A"
     
-    dir_match = re.search(r"Направление: \*([^*]+)\*", report)
+    dir_match = re.search(r"WATCHER\s*(SHORT|LONG)", report)
     direction = dir_match.group(1) if dir_match else "N/A"
     
-    score_match = re.search(r"Набрано: `(\d+ из \d+ баллов)`", report)
-    score_str = score_match.group(1) if score_match else "4+ из 5"
+    trigger_match = re.search(r"Триггер:\s*([^\n]+)", report)
+    trigger_str = trigger_match.group(1).strip() if trigger_match else "SFP"
     
-    sl_match = re.search(r"Стоп-лосс: `([^`]+)`", report)
+    sl_match = re.search(r"Стоп-лосс:\s*([\d.]+)", report)
     sl = sl_match.group(1) if sl_match else "N/A"
     
     return {
         "price": price,
         "direction": direction,
-        "score": score_str,
+        "score": trigger_str,  # Вместо баллов передаем тип триггера (SFP/Пинбар)
         "sl": sl
     }
 
@@ -148,7 +164,11 @@ def run_live_scanner(bot, admin_chat_id):
                 continue
 
             try:
-                for coin, data in wl.items():
+                # 🆕 Список для монет, которые отработали и подлежат удалению
+                coins_to_remove = []
+
+                # 🆕 Безопасная итерация через list(), чтобы словарь не менял размер в процессе
+                for coin, data in list(wl.items()):
                     # Если ANY - проверяем оба направления. Иначе - только заданное.
                     directions_to_check = ["LONG", "SHORT"] if data["direction"] == "ANY" else [data["direction"]]
                     
@@ -158,26 +178,46 @@ def run_live_scanner(bot, admin_chat_id):
                         if cache_key in watcher_cooldown_cache:
                             continue  # Монета в кулдауне, пропускаем
                         
-                        # Вызываем готовую логику из trade_plan.py
-                        report = check_manual_extreme(coin, d)
+                        # Вызываем готовую логику
+                        is_ready, report = check_manual_extreme(coin, d)
                         
                         if not report or report.startswith("❌") or report.startswith("⚠️"):
                             continue
                         
-                        if "🔥 СИГНАЛ АКТИВЕН" in report:
+                        if is_ready:
                             # Сигнал подтвержден! Пересылаем готовый отчет
                             bot.send_message(admin_chat_id, report, parse_mode="Markdown")
                             
                             # Замораживаем, чтобы не спамить
                             watcher_cooldown_cache[cache_key] = now
+                            
+                            # 🆕 Отмечаем монету на удаление, если включена настройка
+                            if AUTO_REMOVE_AFTER_SIGNAL:
+                                coins_to_remove.append(coin)
+                                
                             break  # Если нашли одну сторону, вторую не проверяем
 
                         # Микро-пауза между запросами разных монет (внутри цикла for)
                         time.sleep(1) 
                 
-                # Пульс для консоли (после завершения цикла for по всем монетам)
+                # 🆕 Авто-удаление отработавших монет
+                if coins_to_remove:
+                    # Загружаем свежий список, чтобы не затереть ручные добавления за время скана
+                    current_wl = _load_watchlist()
+                    # Используем set, чтобы избежать дублей (если вдруг монета добавилась дважды)
+                    unique_coins_to_remove = set(coins_to_remove)
+                    
+                    for c in unique_coins_to_remove:
+                        if c in current_wl:
+                            del current_wl[c]
+                            
+                    _save_watchlist(current_wl)
+                    print(f"[WATCHER] 🗑 Отработавшие монеты удалены из списка: {', '.join(unique_coins_to_remove)}")
+                
+                # Пульс для консоли
                 current_time = datetime.datetime.now().strftime("%H:%M:%S")
-                print(f"[{current_time}] 📡 [WATCHER] Скан завершен. Монет в прицеле: {len(wl)}")
+                # Выводим длину заново загруженного списка (уже без удаленных)
+                print(f"[{current_time}] 📡 [WATCHER] Скан завершен. Монет в прицеле: {len(_load_watchlist())}")
                         
             finally:
                 _watcher_lock.release()

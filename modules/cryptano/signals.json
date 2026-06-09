@@ -117,8 +117,8 @@
     "entry": 0.261,
     "target": 0.3553,
     "stop": 0.17631999999999998,
-    "status": "⏳",
-    "result_percent": null
+    "status": "✅",
+    "result_percent": 36.13
   },
   {
     "date": "2026-06-07 14:22",
@@ -128,8 +128,8 @@
     "entry": 885.8,
     "target": 932.96856,
     "stop": 810.8326999999999,
-    "status": "⏳",
-    "result_percent": null
+    "status": "✅",
+    "result_percent": 5.32
   },
   {
     "date": "2026-06-07 14:59",
@@ -139,8 +139,8 @@
     "entry": 0.2692,
     "target": 0.3553,
     "stop": 0.17631999999999998,
-    "status": "⏳",
-    "result_percent": null
+    "status": "✅",
+    "result_percent": 31.98
   },
   {
     "date": "2026-06-07 16:59",
@@ -150,6 +150,347 @@
     "entry": 1.30592,
     "target": 1.00410434,
     "stop": 1.3699000000000001,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-07 18:15",
+    "coin": "ESPORTS",
+    "type": "SHORT",
+    "source": "CRITICAL",
+    "entry": 0.06655,
+    "target": 0.05906998,
+    "stop": 0.0781976,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-07 19:56",
+    "coin": "BSB",
+    "type": "SHORT",
+    "source": "CRITICAL",
+    "entry": 0.3988,
+    "target": 0.3231668,
+    "stop": 0.42044600000000004,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-07 19:56",
+    "coin": "ESPORTS",
+    "type": "SHORT",
+    "source": "CRITICAL",
+    "entry": 0.07132,
+    "target": 0.05906998,
+    "stop": 0.0781976,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-07 20:29",
+    "coin": "SIREN",
+    "type": "SHORT",
+    "source": "CRITICAL",
+    "entry": 1.32424,
+    "target": 1.01958524,
+    "stop": 1.3957015000000002,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-07 20:29",
+    "coin": "ESPORTS",
+    "type": "SHORT",
+    "source": "CRITICAL",
+    "entry": 0.0688,
+    "target": 0.05906998,
+    "stop": 0.0781976,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-07 23:16",
+    "coin": "ESPORTS",
+    "type": "SHORT",
+    "source": "CRITICAL",
+    "entry": 0.07089,
+    "target": 0.06722908,
+    "stop": 0.077868,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-07 23:33",
+    "coin": "ESPORTS",
+    "type": "SHORT",
+    "source": "CRITICAL",
+    "entry": 0.07236,
+    "target": 0.06722908,
+    "stop": 0.077868,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-07 23:39",
+    "coin": "ESPORTS",
+    "type": "SHORT",
+    "source": "CRITICAL",
+    "entry": 0.07304,
+    "target": 0.06722908,
+    "stop": 0.077868,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-07 23:49",
+    "coin": "HOME",
+    "type": "LONG",
+    "source": "LIGHT",
+    "entry": 0.030561,
+    "target": 0.062672,
+    "stop": 0.02759275,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-07 23:49",
+    "coin": "ESPORTS",
+    "type": "SHORT",
+    "source": "LIGHT",
+    "entry": 0.07386,
+    "target": 0.03181,
+    "stop": 0.07971600000000001,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-07 23:49",
+    "coin": "BLESS",
+    "type": "SHORT",
+    "source": "LIGHT",
+    "entry": 0.007625,
+    "target": 0.00394,
+    "stop": 0.00812175,
+    "status": "❌",
+    "result_percent": -6.51
+  },
+  {
+    "date": "2026-06-07 23:49",
+    "coin": "DASH",
+    "type": "SHORT",
+    "source": "LIGHT",
+    "entry": 36.79,
+    "target": 29.46,
+    "stop": 42.6825,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-08 17:15",
+    "coin": "PIPPIN",
+    "type": "SHORT",
+    "source": "CRITICAL",
+    "entry": 0.01991,
+    "target": 0.01957912,
+    "stop": 0.0224952,
+    "status": "❌",
+    "result_percent": -12.98
+  },
+  {
+    "date": "2026-06-08 17:15",
+    "coin": "VELVET",
+    "type": "SHORT",
+    "source": "CRITICAL",
+    "entry": 0.36423,
+    "target": 0.3134028,
+    "stop": 0.3757234,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-08 17:22",
+    "coin": "VELVET",
+    "type": "SHORT",
+    "source": "LIGHT",
+    "entry": 0.36371,
+    "target": 0.09084,
+    "stop": 0.3864,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-08 17:22",
+    "coin": "PENGU",
+    "type": "SHORT",
+    "source": "LIGHT",
+    "entry": 0.006909,
+    "target": 0.005822,
+    "stop": 0.00796635,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-08 17:22",
+    "coin": "PUMPFUN",
+    "type": "SHORT",
+    "source": "LIGHT",
+    "entry": 0.0016108,
+    "target": 0.0013053,
+    "stop": 0.001947855,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-08 20:24",
+    "coin": "BEAT",
+    "type": "SHORT",
+    "source": "CRITICAL",
+    "entry": 4.3613,
+    "target": 3.97389,
+    "stop": 4.7791999999999994,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-08 20:24",
+    "coin": "VELVET",
+    "type": "SHORT",
+    "source": "CRITICAL",
+    "entry": 0.37205,
+    "target": 0.34229628,
+    "stop": 0.41097000000000006,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-08 21:03",
+    "coin": "XRP",
+    "type": "SHORT",
+    "source": "LIGHT",
+    "entry": 1.1759,
+    "target": 1.049,
+    "stop": 1.3536599999999999,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-08 21:03",
+    "coin": "TON",
+    "type": "SHORT",
+    "source": "LIGHT",
+    "entry": 1.8012,
+    "target": 1.4379,
+    "stop": 2.2166550000000003,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-08 21:03",
+    "coin": "PIPPIN",
+    "type": "SHORT",
+    "source": "LIGHT",
+    "entry": 0.02686,
+    "target": 0.01226,
+    "stop": 0.0285495,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-08 21:03",
+    "coin": "PUMPFUN",
+    "type": "SHORT",
+    "source": "LIGHT",
+    "entry": 0.001642,
+    "target": 0.0013053,
+    "stop": 0.001947855,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-08 21:03",
+    "coin": "BIO",
+    "type": "SHORT",
+    "source": "LIGHT",
+    "entry": 0.03363,
+    "target": 0.02437,
+    "stop": 0.039291000000000006,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-08 21:47",
+    "coin": "BEAT",
+    "type": "SHORT",
+    "source": "CRITICAL",
+    "entry": 4.387,
+    "target": 3.97389,
+    "stop": 4.7791999999999994,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-08 22:33",
+    "coin": "HOME",
+    "type": "LONG",
+    "source": "LIGHT",
+    "entry": 0.02959,
+    "target": 0.062672,
+    "stop": 0.02690115,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-08 22:47",
+    "coin": "BEAT",
+    "type": "SHORT",
+    "source": "CRITICAL",
+    "entry": 4.3716,
+    "target": 3.97389,
+    "stop": 4.7791999999999994,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-08 23:03",
+    "coin": "TAO",
+    "type": "SHORT",
+    "source": "LIGHT",
+    "entry": 217.42,
+    "target": 183.22,
+    "stop": 263.214,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-08 23:47",
+    "coin": "BEAT",
+    "type": "SHORT",
+    "source": "CRITICAL",
+    "entry": 4.3557,
+    "target": 3.9993779999999997,
+    "stop": 4.7791999999999994,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-08 23:47",
+    "coin": "SOLAYER",
+    "type": "SHORT",
+    "source": "CRITICAL",
+    "entry": 0.07963,
+    "target": 0.07903964000000001,
+    "stop": 0.0870041,
+    "status": "⏳",
+    "result_percent": null
+  },
+  {
+    "date": "2026-06-09 11:38",
+    "coin": "POWER",
+    "type": "SHORT",
+    "source": "LIGHT",
+    "entry": 0.0922,
+    "target": 0.056,
+    "stop": 0.097734,
     "status": "⏳",
     "result_percent": null
   }

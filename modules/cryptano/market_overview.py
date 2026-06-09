@@ -401,13 +401,13 @@ def analyze_coin(ticker_input: str) -> str:
         if is_dump:
             msg += "➡️ Запущен глубокий анализ Watcher...\n━━━━━━━━━━━━━━━\n"
             # При дампе логично искать точку разворота вверх (LONG)
-            watcher_report = check_manual_extreme(coin, "LONG")
+            _, watcher_report = check_manual_extreme(coin, "LONG")
             if watcher_report:
                 msg += f"{watcher_report}\n"
         elif is_pump:
             msg += "➡️ Запущен глубокий анализ Watcher...\n━━━━━━━━━━━━━━━\n"
             # При пампе логично искать точку разворота вниз (SHORT)
-            watcher_report = check_manual_extreme(coin, "SHORT")
+            _, watcher_report = check_manual_extreme(coin, "SHORT")
             if watcher_report:
                 msg += f"{watcher_report}\n"
         else:

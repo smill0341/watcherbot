@@ -3,6 +3,7 @@
 import time
 import pandas as pd
 import gc
+import traceback
 from modules.cryptano.utils.common import calculate_rsi, exchange, format_price as fmt_p, price_precision_from_market
 from modules.cryptano.utils.market_cache import load_markets_cached
 
@@ -11,7 +12,7 @@ SCAN_COINS_LIMIT = 150
 def check_manual_extreme(coin, direction):
     """
     Делает умный срез графика M15. Ищет пик/дно в последних свечах 
-    и проверяет, не произошел ли разворот относительно этого пика.
+    и проверяет, не произошел ли разворот на основе SFP (ликвидности).
     """
     try:
         start_time = time.time()
@@ -20,21 +21,25 @@ def check_manual_extreme(coin, direction):
         coin = coin.upper().replace("USDT", "").replace("/", "").strip()
         symbol = f"{coin}/USDT"
         
+        print(f"\n[WATCHER DEBUG] 🚀 Запуск ручного анализа: {symbol} | Направление: {direction}")
+        
         markets = load_markets_cached(exchange)
         if symbol not in markets:
             symbol_fut = f"{coin}/USDT:USDT"
             if symbol_fut in markets:
                 symbol = symbol_fut
             else:
-                return f"❌ Монета *{coin}* не найдена на Bybit."
+                print(f"[WATCHER DEBUG] ❌ Ошибка: {symbol} не найдена на бирже.")
+                return False, f"❌ Монета *{coin}* не найдена на Bybit."
 
         market_info = markets[symbol]
         price_precision = price_precision_from_market(market_info)
 
-        # Берем 30 свечей (7.5 часов истории)
+        print(f"[WATCHER DEBUG] 📥 Скачиваем M15 свечи для {symbol}...")
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe="15m", limit=120)
-        if len(ohlcv) < 10:
-            return f"⚠️ Недостаточно данных по монете {coin} на M15."
+        if len(ohlcv) < 16:
+            print(f"[WATCHER DEBUG] ⚠️ Недостаточно данных ({len(ohlcv)} свечей)")
+            return False, f"⚠️ Недостаточно данных по монете {coin} на M15."
 
         df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
         df["rsi"] = calculate_rsi(df)
@@ -42,59 +47,71 @@ def check_manual_extreme(coin, direction):
         current_candle = df.iloc[-1] # Самая последняя свеча (онлайн)
         current_price = float(current_candle["close"])
         
+        # Отрезаем незакрытую (живую) свечу, работаем только с фактами
+        df_closed = df.iloc[:-1]
+        
+        print("[WATCHER DEBUG] 🧠 Вызов индикаторов analyze_extreme_pattern...")
         from modules.cryptano.utils.indicators import analyze_extreme_pattern
-        result = analyze_extreme_pattern(df, direction, current_price, price_precision)
+        # Получаем новые ключи статусов
+        result = analyze_extreme_pattern(df_closed, direction, current_price, price_precision)
+        
+        print(f"[WATCHER DEBUG] 📊 Результат от индикаторов: {result}")
 
-        score = result["score"]
-        details = result["details"]
-        sl_price = result["sl_price"]
+        trigger_fired = result.get("trigger_fired", False)
+        rsi_filter_passed = result.get("rsi_filter_passed", False)
+        volume_climax = result.get("volume_climax", False)
+        trigger_type = result.get("trigger_type", "НЕТ")
+        rsi_value = result.get("rsi_value", 50.0)
+        vol_ratio = result.get("vol_ratio", 1.0)
+
+        sl_price = result.get("sl_price", 0.0)
         tp1_price = result.get("tp1_price", 0.0)
+        tp2_price = result.get("tp2_price", 0.0)
+        tp3_price = result.get("tp3_price", 0.0)
 
-        current_rsi = float(current_candle["rsi"])
+        # 🚀 ГЛАВНОЕ ПРАВИЛО ВХОДА: Есть триггер (SFP/Пинбар) И пройден фильтр RSI
+        is_ready = trigger_fired and rsi_filter_passed
         
-        # 1. Слом структуры (BOS) дает +1 балл, а не блокирует
-        structure_broken = any("✅ Есть слом структуры" in d for d in details)
-        if structure_broken:
-            score += 1
-            
-        # 2. Порог входа (MIN_SCORE = 3)
-        MIN_SCORE = 3
-
-        # 3. Мягкий RSI для M15
-        rsi_ok = False
-        if direction == "SHORT" and current_rsi >= 60:
-            rsi_ok = True
-        elif direction == "LONG" and current_rsi <= 40:
-            rsi_ok = True
-
-        is_ready = score >= MIN_SCORE and rsi_ok
-        
-        verdict = "🔥 СИГНАЛ АКТИВЕН" if is_ready else "⏳ Наблюдение (Ждем условия)"
         icon = "🔴" if direction == "SHORT" else "🟢"
-        bos_str = "" if structure_broken else " (BOS missing)"
+        status_text = "ВХОД! УСЛОВИЯ ВЫПОЛНЕНЫ" if is_ready else "ЖДЕМ (Слабость не подтверждена)"
         
-        report = f"{icon} *{coin} | WATCHER {direction}*\n\n"
-        report += f"💰 Цена: `{fmt_p(current_price)}`\n"
-        report += f"📊 Готовность: `{score}/5{bos_str}`\n\n"
-        report += f"*{verdict}*\n\n"
-        report += "👀 *Metrics:*\n"
+        report = f"{icon} {coin} | WATCHER {direction}\n\n"
+        report += f"💰 Текущая цена: {fmt_p(current_price)}\n"
+        report += f"📊 Статус: {status_text}\n\n"
         
-        for d in details:
-            report += f"{d}\n"
-            
+        report += f" 👀 Metrics:\n"
+        
+        # 1. Триггер
+        trigger_icon = "⚡️" if trigger_fired else "⏳"
+        report += f"{trigger_icon} Триггер: {trigger_type}\n"
+        
+        # 2. RSI Предохранитель
+        rsi_icon = "🔥" if rsi_filter_passed else "🧊"
+        rsi_status = "Пройден" if rsi_filter_passed else "Остыл/Не дошел"
+        report += f"{rsi_icon} RSI: {rsi_value} ({rsi_status})\n"
+        
+        # 3. Объемный усилитель
+        vol_icon = "💥" if volume_climax else "📊"
+        vol_text = f"Аномалия x{vol_ratio}" if volume_climax else f"Обычный x{vol_ratio}"
+        report += f"{vol_icon} Объем: {vol_text}\n\n"
+        
         if is_ready:
-            report += f"\n🎯 *ПЛАН ВХОДА С РЫНКА:*\n• Вход: `{fmt_p(current_price)}`\n• Стоп-лосс: `{fmt_p(sl_price)}`\n• Тейк-профит 1: `{fmt_p(tp1_price)}` (Fibo 38.2%)"
-        else:
-            report += f"\n⏳ Пока наблюдаем. Не хватает баллов (нужно 3) или RSI не в зоне (нужно <40 для лонга, >60 для шорта)."
+            report += f"📝 WATCHER PLAN:\n"
+            report += f"• Entry: ({fmt_p(current_price)})\n"
+            report += f"• TP1: {fmt_p(tp1_price)}\n"
+            report += f"• TP2: {fmt_p(tp2_price)}\n"
+            report += f"• TP3: {fmt_p(tp3_price)}\n"
+            report += f"• Sl: {fmt_p(sl_price)}\n"
 
         elapsed_time = time.time() - start_time
-        print(f"\n[WATCHER PLAN] 📊 Проверка {coin} завершена за {elapsed_time:.2f} сек.")
-        print(f"[WATCHER PLAN] 🌐 Запросов к API Bybit: {api_queries}\n")
+        print(f"[WATCHER DEBUG] ✅ Проверка {coin} успешно завершена за {elapsed_time:.2f} сек.\n")
 
         del df
         gc.collect()
 
-        return report
+        return is_ready, report
 
     except Exception as e:
-        return f"❌ Ошибка ручного экспресс-анализа {coin}: {e}"
+        print(f"\n[WATCHER ERROR] ❌ КРИТИЧЕСКАЯ ОШИБКА В РУЧНОМ СКАНЕ ({coin}): {e}")
+        traceback.print_exc()  # Печатает полный стек вызовов ошибки в терминал
+        return False, f"❌ Ошибка ручного экспресс-анализа {coin}: {e}"
