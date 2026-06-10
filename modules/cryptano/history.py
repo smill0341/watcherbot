@@ -31,9 +31,11 @@ def save_signal(signal: dict):
         "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
         "coin": signal.get("coin"),
         "type": signal_type,
-        "source": signal.get("source", "CRITICAL"), # <--- БИРКА РАДАРА
+        "source": signal.get("source", "CRITICAL"), 
         "entry": entry,
         "target": target,
+        "target_2": signal.get("target_2"), # 👈 Сохраняем TP2
+        "target_3": signal.get("target_3"), # 👈 Сохраняем TP3
         "stop": stop,
         "status": "⏳",
         "result_percent": None
@@ -170,9 +172,11 @@ def format_history(period: str) -> str:
 
     crit = [s for s in filtered if s.get("source", "CRITICAL") == "CRITICAL"]
     light = [s for s in filtered if s.get("source") == "LIGHT"]
+    watcher = [s for s in filtered if s.get("source") == "WATCHER"]
 
     msg = f"📊 *Результаты — {p_name}*\n\n"
     msg += get_stats_block("🚨 *CRITICAL FILTER*", crit)
+    msg += get_stats_block("🎯 *WATCHER PLAN*", watcher)
     msg += get_stats_block("⚡️ *LIGHT FILTER*", light)
 
     open_signals = [s for s in filtered if s.get("status") == "⏳"]
@@ -236,6 +240,7 @@ def generate_report_file(period: str) -> str | None:
 
     crit = [s for s in filtered if s.get("source", "CRITICAL") == "CRITICAL"]
     light = [s for s in filtered if s.get("source") == "LIGHT"]
+    watcher = [s for s in filtered if s.get("source") == "WATCHER"]
     open_signals = [s for s in filtered if s.get("status") == "⏳"]
 
     # Собираем текст
@@ -243,6 +248,7 @@ def generate_report_file(period: str) -> str | None:
     lines.append(f"================ ПОЛНЫЙ ОТЧЕТ ({p_name.upper()}) ================\n\n")
     
     lines.append(get_stats_block("--- [ CRITICAL СТАТИСТИКА ] ---", crit))
+    lines.append(get_stats_block("--- [ WATCHER СТАТИСТИКА ] ---", watcher))
     lines.append(get_stats_block("--- [ LIGHT СТАТИСТИКА ] ---", light))
     
     lines.append(f"Всего открытых сделок: {len(open_signals)}\n")
@@ -276,13 +282,25 @@ def generate_report_file(period: str) -> str | None:
                 stype = s.get('type', '-').ljust(5)
                 status = s.get('status', '⏳')
                 entry = str(s.get('entry', 0))
-                target = str(s.get('target', 0))
-                full_date = s.get('date', '')
                 
+                # НОВЫЕ ПЕРЕМЕННЫЕ: Достаем все 3 тейка и метку источника
+                tp1 = str(s.get('target', 0))
+                tp2 = s.get('target_2')
+                tp3 = s.get('target_3')
+                full_date = s.get('date', '')
+                source_tag = s.get('source', 'CRITICAL')
+                
+                # Склеиваем тейки для красивого вывода
+                if tp2 and tp3:
+                    target_str = f"{tp1} | {tp2} | {tp3}"
+                else:
+                    target_str = tp1
+                
+                # Собираем карточку без задвоений
                 res += f"Время: {full_date}\n"
-                res += f"[{status}] {c} | {stype}\n"
+                res += f"[{status}] {c} | {stype} ({source_tag})\n"
                 res += f"| Вход: {entry}\n"
-                res += f"| Цель: {target}\n"
+                res += f"| Цели: {target_str}\n"
                 
                 if status in ["✅", "❌"]:
                     pct = s.get('result_percent', 0)
@@ -294,6 +312,7 @@ def generate_report_file(period: str) -> str | None:
         return res
 
     lines.append(format_list("CRITICAL FILTER", crit))
+    lines.append(format_list("WATCHER PLAN", watcher))
     lines.append(format_list("LIGHT FILTER", light))
 
     full_text = "".join(lines)

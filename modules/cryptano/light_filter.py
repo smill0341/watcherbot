@@ -3,8 +3,8 @@ import datetime
 import threading
 import pandas as pd
 import os
-import ccxt
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from modules.cryptano.utils.common import format_price as fmt_p
 from modules.cryptano.utils.crypto_utils import calculate_rsi, exchange, get_top_coins
 from modules.cryptano.utils.market_cache import load_markets_cached
@@ -15,15 +15,9 @@ from modules.cryptano.history import save_signal
 
 # ================= Настройки фильтров ================= 
 TIMEFRAME = "4h"
-FILTER_VOL_NORMAL = 1.5
-FILTER_VOL_ANOMALY = 2.0
-FILTER_ZONE_BOTTOM = 25
-FILTER_ZONE_TOP = 80
-FILTER_RSI_OVERSOLD = 35
-SCAN_COINS_LIMIT = 150  # Количество топ-монет по объему для сканирования
-FILTER_RSI_OVERBOUGHT = 65
-COOLDOWN_HOURS = 4       # Не спамить одной монетой 4 часа после сигнала
-SCAN_INTERVAL = 1800      # Запуск сканирования каждые 30 минут (1800 сек)
+SCAN_COINS_LIMIT = 150    # Количество топ-монет по объему для сканирования
+COOLDOWN_HOURS = 4         # Не спамить одной монетой 4 часа после сигнала
+SCAN_INTERVAL = 1800        # Запуск сканирования каждые 30 минут (1800 сек)
 MAX_LIGHT_SCAN_WORKERS = 8
 
 cooldown_cache = {}
@@ -63,11 +57,13 @@ def _light_setup(symbol):
         if pos_pct > 50:
             # Цена в верхней части (у потолка). Ищем шорт от сопротивления.
             scan_direction = "SHORT"
+            # 🛠 ИСПРАВЛЕНО: Убрано дублирование if current_price > 0
             distance_to_level = ((nearest_resistance - current_price) / current_price) * 100 if current_price > 0 else 999
         else:
             # Цена в нижней части (у дна). Ищем лонг от поддержки.
             scan_direction = "LONG"
-            distance_to_level = ((current_price - nearest_support) / current_price) * 100 if current_price > 0 else 999 if current_price > 0 else 999
+            # 🛠 ИСПРАВЛЕНО: Убрано дублирование if current_price > 0
+            distance_to_level = ((current_price - nearest_support) / current_price) * 100 if current_price > 0 else 999
 
         # 2. Адаптивная матрица порогов под текущий тренд
         if trend_code == "BULL":
@@ -143,7 +139,6 @@ def _light_setup(symbol):
         return 'reject_error'
 
 def format_light_signal(setup):
-  
     coin_name = setup["coin"]
     current_price = setup.get('current_price', 0)
     strong_resistance = setup.get('strong_resistance', 0)
@@ -192,10 +187,8 @@ def _execute_scan_cycle(bot, admin_chat_id, is_auto=False):
     try:
         found_something = False
         
-        exchange = ccxt.bybit({
-            'enableRateLimit': True,
-            'options': {'defaultType': 'spot'}
-        })
+        # 🛠 ИСПРАВЛЕНО: Убрали локальную инициализацию ccxt.bybit, 
+        # теперь используем глобальный exchange из импортов, чтобы не получить бан API
         load_markets_cached(exchange, ttl_seconds=86400)
 
         coins = get_top_coins(limit=SCAN_COINS_LIMIT)
@@ -243,10 +236,8 @@ def _execute_scan_cycle(bot, admin_chat_id, is_auto=False):
                     continue
                 # --------------------------------------------------------
 
-                # Теперь Питон (и твой редактор кода) на 100% уверен, что setup — это словарь
                 setup["source"] = "LIGHT"  # Бирка радара
                 
-                # ИСПРАВЛЕННАЯ ЛОГИКА АДАПТИРОВАННАЯ ПОД ДИНАМИЧЕСКИЕ ЗОНЫ
                 if setup["pos_pct"] > 50:  # Всё, что в верхней части канала — это шорт-зоны
                     setup["type"] = "SHORT_PUMP"
                     setup["take_profit"] = setup.get("strong_support", 0) # Для шорта цель ВНИЗУ

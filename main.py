@@ -47,15 +47,12 @@ def handle_text(message):
     if manage_watchlist(text, bot, chat_id):
         return
         
-    if text in ["🎯 Мой Watchlist", "Watchlist"]:
+    if text in ["🎯Watchlist", "Watchlist"]:
         show_watchlist(bot, chat_id)
         return
 
     # --- ГЛАВНОЕ МЕНЮ И СПОРТ ---
     if message.text == "🪙 Крипта":
-        bot.send_message(message.chat.id, "🪙 Крипто-сканер:", reply_markup=keyboards.get_crypto_menu())
-
-    elif message.text == "🪙 Critical фильтр":
         bot.send_message(message.chat.id, "🪙 Крипто-сканер:", reply_markup=keyboards.get_crypto_menu())
 
     elif message.text == "⬅️ Главное меню":
@@ -67,35 +64,39 @@ def handle_text(message):
         bot.send_message(message.chat.id, f"{message.text}: {config[sport]['status']}",
                          reply_markup=keyboards.get_sport_menu(sport))
 
-    # --- УПРАВЛЕНИЕ АВТОБОТОМ ---
-    elif message.text == "🤖 Автобот Старт":
+    # --- УПРАВЛЕНИЕ АВТОБОТОМ И FASTTRADE ---
+    elif message.text == "🤖 Автобот":
         config = load_config()
-        config["crypto"]["status"] = "RUNNING"
-        save_config(config)
-        bot.send_message(message.chat.id, "✅ Автобот запущен.")
+        status = config.get("crypto", {}).get("status", "STOPPED")
+        current_mode = config.get("crypto", {}).get("market_mode", "swap").upper()
+        bot.send_message(
+            message.chat.id, 
+            f"🤖 **Автобот:** `{status}`\n⚙️ **Рынок:** `{current_mode}`", 
+            reply_markup=keyboards.get_autobot_menu(config),
+            parse_mode="Markdown"
+        )
 
-    elif message.text == "📴 Автобот Стоп":
+    elif message.text == "⚡ FastTrade":
         config = load_config()
-        config["crypto"]["status"] = "STOPPED"
-        save_config(config)
-        bot.send_message(message.chat.id, "⏹ Автобот остановлен.")
+        ft_status = "ON" if config.get("crypto", {}).get("fasttrade", True) else "OFF"
+        bot.send_message(message.chat.id, f"⚡ FastTrade: {ft_status}", reply_markup=keyboards.get_fasttrade_menu())
     
-    # --- РУЧНЫЕ АНАЛИЗАТОРЫ (Normal и Pump/Dump) ---
-    elif message.text == "📈 Анализ Normal":
+    # --- РУЧНЫЕ АНАЛИЗАТОРЫ ---
+    elif message.text == "📈 Анализ":
         msg = bot.send_message(message.chat.id, "Введи чистый тикер монеты для стандартного анализа (например: BTC или SOL):")
         bot.register_next_step_handler(msg, process_normal_analysis)
 
-    elif message.text == "🔍 Watcher Plan":
+    elif message.text == "👀 Watcher":
         msg = bot.send_message(message.chat.id, 
             "Введи монету и направление.\nФормат: `BTC LONG или SHORT`", parse_mode="Markdown")
         bot.register_next_step_handler(msg, process_manual_extreme_check)  
         
     # --- ОСНОВНЫЕ СКАНЕРЫ ---
-    elif message.text == "⚡️ Critical фильтр":
-        print("[MAIN LOG] Нажата кнопка ⚡️ Critical фильтр. Передаю в cryptano.py")
-        process_crypto_command(message.text, bot, message.chat.id)
+    elif message.text == "🚀 Critical фильтр":
+        print("[MAIN LOG] Нажата кнопка 🚀 Critical фильтр. Передаю в cryptano.py")
+        process_crypto_command("⚡️ Critical фильтр", bot, message.chat.id) # Передаем старый текст для обратной совместимости в фильтре
 
-    elif message.text == "💎 Light 👑 фильтр" or message.text == "💎 Light фильтр":
+    elif message.text == "💎 Light фильтр":
         print("[MAIN LOG] Нажата кнопка 💎 Light фильтр. Вызываю scanner.py")
         bot.send_message(message.chat.id, "⏳ Запускаю легкий поиск уровней (Light)...")
         try:
@@ -121,14 +122,13 @@ def handle_text(message):
             reply_markup=keyboards.get_crypto_menu()
         )    
 
-    # Исправленный список 
     elif message.text in ["🔥 RSI > 70", "🥶 RSI < 30", "💰 Volume > x2"]:
         process_crypto_command(message.text, bot, message.chat.id)
 
     # --- РЕЗУЛЬТАТЫ ---
     elif message.text == "📊 Результаты":
         check_and_update(bot, message.chat.id)
-        bot.send_message(message.chat.id, "Выбери период:", reply_markup=keyboards.get_history_keyboard())  
+        bot.send_message(message.chat.id, "Выбери период:", reply_markup=keyboards.get_history_keyboard())
 
 
 def process_normal_analysis(message):
@@ -222,32 +222,94 @@ def handle_coin_analysis(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_inline(call):
-    if call.data.startswith("hist_"):
-        period = call.data.replace("hist_", "")
-        short_msg = format_history(period)
+    # =========================================================
+    # БЛОК 1: УПРАВЛЕНИЕ АВТОБОТОМ (ВКЛ / ВЫКЛ)
+    # =========================================================
+    if call.data in ["start_autobot", "stop_autobot"]:
+        config = load_config()
+        if "crypto" not in config: config["crypto"] = {}
         
-        # Создаем кнопку для скачивания файла
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("📄 Скачать полный отчет (.txt)", callback_data=f"getrep_{period}"))
-        
-        bot.send_message(call.message.chat.id, short_msg, parse_mode="Markdown", reply_markup=markup)
+        if call.data == "start_autobot":
+            config["crypto"]["status"] = "RUNNING"
+            config["crypto"]["fasttrade"] = True  # ПРАВИЛО: При старте Автобота принудительно включаем FastTrade
+            save_config(config)
+            
+            # Обновляем текст кнопки на актуальный статус
+            bot.edit_message_text(
+                f"🤖 Автобот: RUNNING", 
+                call.message.chat.id, 
+                call.message.message_id, 
+                reply_markup=keyboards.get_autobot_menu()
+            )
+            bot.send_message(
+                call.message.chat.id, 
+                "🚀 **Автобот запущен!**\nФильтры начнут включаться по каскадному расписанию.\n⚡️ Режим **FastTrade** автоматически переведен в **ВКЛ**.", 
+                parse_mode="Markdown"
+            )
+        else:
+            config["crypto"]["status"] = "STOPPED"
+            save_config(config)
+            
+            bot.edit_message_text(
+                f"🤖 Автобот: STOPPED", 
+                call.message.chat.id, 
+                call.message.message_id, 
+                reply_markup=keyboards.get_autobot_menu()
+            )
+            bot.send_message(
+                call.message.chat.id, 
+                "⏹ **Автобот остановлен.**\nВсе фоновые проверки полностью прекращены. Автоматика спит."
+            )
         return
 
-    # НОВЫЙ БЛОК: Отправка самого файла по клику на кнопку
-    if call.data.startswith("getrep_"):
-        period = call.data.replace("getrep_", "")
-        bot.send_message(call.message.chat.id, "⏳ Формирую отчет, секунду...")
+    # =========================================================
+    # БЛОК 2: УПРАВЛЕНИЕ РЕЖИМОМ FASTTRADE (СКАЛЬПИНГ ТОП-20)
+    # =========================================================
+    if call.data in ["start_fasttrade", "stop_fasttrade"]:
+        config = load_config()
+        if "crypto" not in config: config["crypto"] = {}
         
-        filepath = generate_report_file(period)
-        if filepath and os.path.exists(filepath):
-            with open(filepath, 'rb') as f:
-                bot.send_document(call.message.chat.id, f, caption="📂 Подробная статистика по сделкам")
-            try:
-                os.remove(filepath) # Удаляем с сервера после отправки
-            except:
-                pass
+        if call.data == "start_fasttrade":
+            config["crypto"]["fasttrade"] = True
+            save_config(config)
+            
+            bot.edit_message_text(
+                f"⚡ FastTrade: ON", 
+                call.message.chat.id, 
+                call.message.message_id, 
+                reply_markup=keyboards.get_fasttrade_menu()
+            )
+            bot.send_message(
+                call.message.chat.id, 
+                "⚡ **FastTrade включен.**\nГенератор монет добавит первые 20 волатильных пар через 10 минут после старта Автобота."
+            )
         else:
-            bot.send_message(call.message.chat.id, "🤷‍♂️ Ошибка: нет данных для формирования отчета.")
+            config["crypto"]["fasttrade"] = False
+            save_config(config)
+            
+            # 🧹 РЕЖИМ ДВОРНИКА: Мгновенно выметаем скальпинг-монеты из watchlist.json, не дожидаясь таймеров
+            try:
+                wl_path = os.path.join("modules", "cryptano", "watchlist.json")
+                wl = load_json(wl_path, default={})
+                # Ищем монеты, добавленные генератором пампа/дампа
+                keys_to_delete = [k for k, v in wl.items() if v.get("source") in ["MOMENTUM_PUMP", "MOMENTUM_DUMP"]]
+                for k in keys_to_delete:
+                    del wl[k]
+                save_json_atomic(wl_path, wl)
+                print(f"[FASTTRADE] 🧹 Мгновенная очистка кнопкой. Удалено {len(keys_to_delete)} монет.")
+            except Exception as e:
+                print(f"[ERROR] Ошибка мгновенной очистки watchlist: {e}")
+                
+            bot.edit_message_text(
+                f"⚡ FastTrade: OFF", 
+                call.message.chat.id, 
+                call.message.message_id, 
+                reply_markup=keyboards.get_fasttrade_menu()
+            )
+            bot.send_message(
+                call.message.chat.id, 
+                "🧹 **FastTrade выключен.**\nСкальпинг-монеты лидеров дня мгновенно удалены из списка слежения Watcher."
+            )
         return
 
     if call.data == "status_football":
@@ -274,17 +336,53 @@ def handle_inline(call):
 
                 if action == "start" and sport == "nba":
                     check_nba_injuries(bot, call.message.chat.id, silent=False)
+                    
+    # =========================================================
+    # БЛОК: ПЕРЕКЛЮЧЕНИЕ РЫНКА (СПОТ / ФЬЮЧЕРСЫ)
+    # =========================================================
+    if call.data in ["market_spot", "market_swap"]:
+        new_mode = "spot" if call.data == "market_spot" else "swap"
+        
+        config = load_config()
+        if "crypto" not in config: config["crypto"] = {}
+        config["crypto"]["market_mode"] = new_mode
+        save_config(config)
+        
+        # Вызываем нашу новую функцию из Единого Центра
+        from modules.cryptano.utils.crypto_utils import switch_market_mode
+        switch_market_mode(new_mode)
+        
+        status = config["crypto"].get("status", "STOPPED")
+        bot.edit_message_text(
+            f"🤖 **Автобот:** `{status}`\n⚙️ **Рынок:** `{new_mode.upper()}`", 
+            call.message.chat.id, 
+            call.message.message_id, 
+            reply_markup=keyboards.get_autobot_menu(config),
+            parse_mode="Markdown"
+        )
+        
+        mode_ru = "СПОТ" if new_mode == "spot" else "ФЬЮЧЕРСЫ"
+        bot.send_message(
+            call.message.chat.id, 
+            f"✅ **Рынок переключен на {mode_ru}.**\nВсе сканеры, генератор и Watcher теперь анализируют этот рынок.",
+            parse_mode="Markdown"
+        )
+        return               
 
 if __name__ == "__main__":
     config = load_config()
-    if "crypto" in config:
+    if "crypto" not in config:
+        config["crypto"] = {"status": "STOPPED", "fasttrade": False}
+    else:
         config["crypto"]["status"] = "STOPPED"
-        save_config(config)
+        # Если ключа fasttrade вообще не было в файле, создаем его как выключенный по умолчанию
+        if "fasttrade" not in config["crypto"]:
+            config["crypto"]["fasttrade"] = False
+            
+    save_config(config)
 
     if ADMIN_CHAT_ID:
         start_all_background_tasks(bot, ADMIN_CHAT_ID)
-        sniper_thread = threading.Thread(target=run_live_scanner, args=(bot, ADMIN_CHAT_ID), daemon=True)
-        sniper_thread.start()
     else:
         print("[MAIN WARNING] ВНИМАНИЕ: ADMIN_CHAT_ID не найден в .env. Фоновые потоки не запущены.")
 

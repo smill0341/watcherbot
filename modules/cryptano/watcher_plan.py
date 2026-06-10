@@ -103,6 +103,26 @@ def check_manual_extreme(coin, direction):
             report += f"• TP3: {fmt_p(tp3_price)}\n"
             report += f"• Sl: {fmt_p(sl_price)}\n"
 
+            # ----------------------------------------------------
+            # НОВЫЙ БЛОК: Сохраняем сигнал Ватчера в общую историю
+            # ----------------------------------------------------
+            try:
+                from modules.cryptano.history import save_signal
+                signal_data = {
+                    "coin": coin,
+                    "type": "SHORT_PUMP" if direction == "SHORT" else "LONG_ROLLBACK", 
+                    "price": current_price,
+                    "take_profit": tp1_price,  # TP1: главная цель для подсчета ✅
+                    "target_2": tp2_price,     # TP2: для полного отчета .txt
+                    "target_3": tp3_price,     # TP3: для полного отчета .txt
+                    "stop_loss": sl_price,
+                    "source": "WATCHER"        # Бирка для фильтрации в отчете
+                }
+                save_signal(signal_data)
+            except Exception as e:
+                print(f"[WATCHER ERROR] Не удалось сохранить сигнал в историю: {e}")
+            # ----------------------------------------------------
+
         elapsed_time = time.time() - start_time
         print(f"[WATCHER DEBUG] ✅ Проверка {coin} успешно завершена за {elapsed_time:.2f} сек.\n")
 

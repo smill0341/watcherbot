@@ -154,7 +154,7 @@ def run_nba_monitor(bot, chat_id):
     """
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "config.json")
 
-    print(" Бот NBA injures инициализирован! ")
+    print("🏀 NBA Bot 'Injures' инициализирован")
  
     while True:
         try:

@@ -230,7 +230,7 @@ def run_football_monitor(bot, chat_id):
     """
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "config.json")
     
-    print(" Бот-сканер НАИГРАННОГО ГОЛА инициализирован")
+    print("⚽ Football Bot 'No Goal in 2nd time' инициализирован!")
 
     while True:
         try:

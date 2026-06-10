@@ -1,20 +1,42 @@
 import math
 import ccxt
+import os
 from modules.cryptano.utils.market_cache import get_top_usdt_coins_cached
+from modules.cryptano.utils.storage import load_json
 
-# ================= НАСТРОЙКИ СКАНЕРА =================
-MARKET_TYPE = "swap"        # "spot" — Спот (обычный), "swap" — Фьючерсы (деривативы)
-MAX_COINS_LIMIT = 150       # Максимальное количество тикеров для анализа
+# Читаем конфиг при старте (по умолчанию ставим swap/фьючерсы)
+CONFIG_FILE = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "config.json"))
+_config = load_json(CONFIG_FILE, default={})
+MARKET_TYPE = _config.get("crypto", {}).get("market_mode", "swap")
+MAX_COINS_LIMIT = 150
 
-# Автоматический подбор оптимального объема в зависимости от рынка
-# На фьючерсах (swap) ликвидность выше из-за плеч, ставим 15 млн. На споте (spot) достаточно 1-2 млн.
+# Динамический порог объема (Фьючи = 10 млн, Спот = 1 млн)
 MIN_DAILY_VOLUME = 10000000 if MARKET_TYPE == "swap" else 1000000
-# =====================================================
 
+# === ЕДИНАЯ ТОЧКА ВХОДА К BYBIT ===
 exchange = ccxt.bybit({
     "enableRateLimit": True,
     "options": {"defaultType": MARKET_TYPE}
 })
+
+def switch_market_mode(new_mode):
+    """Мгновенно переключает рынок для ВСЕХ сканеров бота с защитой от None"""
+    global MARKET_TYPE, MIN_DAILY_VOLUME
+    MARKET_TYPE = new_mode
+    
+    # ЗАЩИТА: Если options по какой-то причине None, создаем пустой словарь
+    if exchange.options is None:
+        exchange.options = {}
+        
+    # Безопасно меняем тип рынка
+    exchange.options['defaultType'] = new_mode
+    
+    # Меняем порог объема
+    MIN_DAILY_VOLUME = 10000000 if new_mode == "swap" else 1000000
+    
+    # Принудительно очищаем кэш рынков, чтобы Bybit отдал правильные тикеры
+    exchange.load_markets(reload=True) 
+    print(f"[CRYPTO_UTILS] 🔄 Рынок успешно переключен на: {new_mode.upper()}")
 
 
 def calculate_rsi(df, period=14):

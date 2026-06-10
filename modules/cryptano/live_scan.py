@@ -26,7 +26,11 @@ def auto_add_to_watchlist(coin, direction):
         
     wl = _load_watchlist()
     if coin not in wl:
-        wl[coin] = {"direction": direction, "added_at": datetime.datetime.now().isoformat()}
+        wl[coin] = {
+            "direction": direction, 
+            "added_at": datetime.datetime.now().isoformat(),
+            "source": "Critical"  # 🆕 Отметка авто-добавления
+        }
         _save_watchlist(wl)
         return True
     return False
@@ -99,7 +103,11 @@ def manage_watchlist(command, bot, chat_id):
     wl = _load_watchlist()
 
     if action == '+':
-        wl[coin] = {"direction": direction, "added_at": datetime.datetime.now().isoformat()}
+        wl[coin] = {
+            "direction": direction, 
+            "added_at": datetime.datetime.now().isoformat(),
+            "source": "Manual"  # 🆕 Отметка ручного добавления
+        }
         _save_watchlist(wl)
         
         mode_text = "Любое" if direction == "ANY" else direction
@@ -131,8 +139,14 @@ def show_watchlist(bot, chat_id):
     
     msg = "📋 **Мой watchlist:**\n\n"
     for coin, data in wl.items():
-        mode_text = "ANY (Лонг и Шорт)" if data['direction'] == "ANY" else data['direction']
-        msg += f"• *{coin}* | Режим: `{mode_text}`\n"
+        # Форматируем направление (ANY, Short, Long)
+        direction_text = data['direction'].capitalize() if data['direction'] != "ANY" else "ANY"
+        
+        # Получаем источник (если старая монета без метки - пишем Manual)
+        source = data.get('source', 'Manual')
+        
+        # Новый компактный дизайн вывода
+        msg += f"• {coin} | {direction_text} | {source}\n"
     
     msg += "\n_Для удаления напиши: `-ТИКЕР` (например, `-BTC`)_"
     bot.send_message(chat_id, msg, parse_mode="Markdown")
