@@ -16,14 +16,20 @@ def _get_lock(path):
         return _path_locks[abs_path]
 
 
-def load_json(path, default=None):
-    lock = _get_lock(path)
-    with lock:
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except FileNotFoundError:
-            return default
+def load_json(file_path, default=None):
+    """Безопасная загрузка JSON. Не крашится при пустых или битых файлах."""
+    if default is None:
+        default = {}
+        
+    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+        return default
+        
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        # Если файл поврежден, возвращаем пустоту, чтобы бот продолжал работу
+        return default
 
 
 def save_json_atomic(path, data, indent=4, ensure_ascii=False):

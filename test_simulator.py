@@ -1,160 +1,283 @@
 import pandas as pd
-from datetime import datetime
-import sys
+import numpy as np
+import os
+from backtesting import Backtest, Strategy
+from modules.cryptano.utils.crypto_utils import exchange
+from modules.cryptano.utils.storage import load_json
 
-# Импорты твоих оригинальных функций
-from modules.cryptano.utils.common import exchange, price_precision_from_market
-from modules.cryptano.utils.indicators import get_market_state, get_cryptano_signal, analyze_extreme_pattern
-from modules.cryptano.utils.crypto_utils import calculate_rsi
+# =========================================================
+# 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
+# =========================================================
+TARGET_COIN = "XLM"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
 
-if __name__ == "__main__":
-    COIN = "BSB"
-    START_TIME = "2026-06-07 00:00"
-    END_TIME = "2026-06-08 23:59"
-    
-    symbol = f"{COIN.upper()}/USDT:USDT"
-    print(f"🚀 ЗАПУСК ПОЛНОГО КОНВЕЙЕРА: CRITICAL (4h) -> WATCHER (15m) | {symbol}")
-    
-    start_dt = datetime.strptime(START_TIME, "%Y-%m-%d %H:%M")
-    end_dt = datetime.strptime(END_TIME, "%Y-%m-%d %H:%M")
-    start_ts = int(start_dt.timestamp() * 1000)
-    end_ts = int(end_dt.timestamp() * 1000)
-    
-    try:
-        # =========================================================
-        # 0. ИНИЦИАЛИЗАЦИЯ БИРЖИ И МАРКЕТОВ (Железобетонно)
-        # =========================================================
-        print("📥 Загружаю спецификации рынков Bybit...")
-        markets_data = exchange.load_markets()
-        exchange.markets = markets_data  # Принудительно пишем в объект биржи
-        
-        market_info = exchange.markets.get(symbol, {}) if exchange.markets else {}
-        if not market_info:
-            print(f"❌ Ошибка: Не нашли информацию по монете {symbol} в рынках биржа.")
-            sys.exit()
-            
-        price_precision = price_precision_from_market(market_info)
-        
-        # =========================================================
-        # ФАЗА 1: РАБОТАЕТ CRITICAL (ИЩЕМ ПЕРВЫЙ СИГНАЛ)
-        # =========================================================
-        print("\n" + "="*50)
-        print(" 🕵️ ФАЗА 1: СКАНИРОВАНИЕ CRITICAL (4h)")
-        print("="*50)
-        
-        fetch_since_4h = start_ts - (250 * 4 * 60 * 60 * 1000) 
-        ohlcv_4h = exchange.fetch_ohlcv(symbol, timeframe="4h", since=fetch_since_4h, limit=300)
-        df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"])
-        
-        critical_trigger_time = None
-        target_min = 0.0
-        
-        for i in range(200, len(df_4h) + 1):
-            df_slice = df_4h.iloc[:i].copy()
-            current_ts = df_slice["timestamp"].iloc[-1]
-            
-            if current_ts < start_ts: continue
-            if current_ts > end_ts: break
-                
-            current_price = float(df_slice["close"].iloc[-1])
-            time_str = datetime.fromtimestamp(current_ts / 1000).strftime('%Y-%m-%d %H:%M')
-            
-            market_data = get_market_state(df_slice, current_price)
-            trend_code = market_data.get("trend_code", "RANGE")
-            
-            if trend_code == "BULL": crit_rsi_low, crit_rsi_high, crit_vol = 35, 85, 2.0
-            elif trend_code == "BEAR": crit_rsi_low, crit_rsi_high, crit_vol = 20, 70, 2.5
-            else: crit_rsi_low, crit_rsi_high, crit_vol = 25, 75, 3.0
-                
-            signal_data = get_cryptano_signal(
-                df=df_slice, current_price=current_price, price_precision=price_precision,
-                scan_type="auto", rsi_high=crit_rsi_high, rsi_low=crit_rsi_low, volume_multiplier=crit_vol
-            )
-            
-            if signal_data and signal_data.get("type") == "SHORT_PUMP":
-                print(f"🚨 [{time_str}] CRITICAL НАШЕЛ ПАМП! Цена: {current_price:.5f}")
-                critical_trigger_time = current_ts  
-                target_min = signal_data.get("target_zone_min", current_price)
-                print(f"🎯 ЖДЕМ ЗОНУ ФИБО: {target_min:.5f} и выше!")
-                break
-                
-        if not critical_trigger_time:
-            print("❌ Critical не нашел сигналов в этом временном окне.")
-            sys.exit()
+TIMEFRAME = "15m"
+LIMIT_CANDLES = 5000
 
-        # =========================================================
-        # ФАЗА 2: РАБОТАЕТ WATCHER (СЛЕДИТ ЗА МОНЕТОЙ ПОСЛЕ СИГНАЛА)
-        # =========================================================
-        print("\n" + "="*50)
-        print(" 🎯 ФАЗА 2: РАБОТАЕТ WATCHER (15m)")
-        print("="*50)
+TAKE_PROFIT = 10.0    # Цель в %
+SL_BUFFER = 0.5      # Отступ стоп-лосса за уровень в %
+
+# --- ТУМБЛЕРЫ ФИЛЬТРОВ ---
+USE_CHOCH        = True   # Слом структуры
+USE_ANTI_KNIFE   = True   # Запрет входа против агрессивных свечей
+USE_RR_FILTER    = True   # Математический фильтр R/R
+RR_RATIO         = 3.0    # Минимальный R/R
+
+USE_RANGE_FILTER = True  # Игнорировать входы, если закрытие свечи ушло в средние 40% диапазона
+USE_LEVEL_BURN   = True  # Сжигать уровень (удалять из памяти) после открытия сделки от него
+# =========================================================
+
+CURRENT_SUPPORTS = []
+CURRENT_RESISTANCES = []
+
+def SMA(arr, n):
+    return pd.Series(arr).rolling(n).mean()
+
+class SmartSniperUniversal(Strategy):
+    def init(self):
+        self.burned_levels = set()      # Память для уровней, давших ПЛЮС
+        self.active_level_id = None     # Ярлык уровня для текущей сделки
+
+        self.wait_for_bullish_choch = False
+        self.choch_bull_level = 0.0
+        self.wait_for_bearish_choch = False
+        self.choch_bear_level = 0.0
+        self.active_level = None
         
-        fetch_since_15m = critical_trigger_time - (150 * 15 * 60 * 1000)
+        high_low = pd.Series(self.data.High) - pd.Series(self.data.Low)
+        self.atr = self.I(SMA, high_low, 14)
+
+    def next(self):
+        if len(self.data) < 15: return
         
-        # Вычисляем точное количество свечей M15 до END_TIME, чтобы не обрывалось
-        minutes_diff = (end_ts - fetch_since_15m) / (1000 * 60)
-        limit_15m = int(minutes_diff / 15) + 10
-        if limit_15m > 1000: limit_15m = 1000
+        # ==========================================
+        # ЖЕЛЕЗОБЕТОННОЕ СЖИГАНИЕ УРОВНЯ
+        # ==========================================
+        # Если мы были в позиции, а теперь нет — значит сделка только что закрылась
+        if not self.position and self.active_level_id is not None:
+            if len(self.closed_trades) > 0:
+                last_trade = self.closed_trades[-1]
+                # Если закрыли в плюс — сжигаем уровень навсегда
+                if last_trade.pl > 0:
+                    self.burned_levels.add(self.active_level_id)
+            # Очищаем ярлык до следующей сделки
+            self.active_level_id = None
+
+        c_close, c_open = self.data.Close[-1], self.data.Open[-1]
+        c_high, c_low = self.data.High[-1], self.data.Low[-1]
+        c_vol = self.data.Volume[-1]
         
-        ohlcv_15m = exchange.fetch_ohlcv(symbol, timeframe="15m", since=fetch_since_15m, limit=limit_15m)
-        df_15m = pd.DataFrame(ohlcv_15m, columns=["timestamp", "open", "high", "low", "close", "volume"])
-        
-        COOLDOWN_HOURS = 4
-        cooldown_ms = COOLDOWN_HOURS * 60 * 60 * 1000
-        last_signal_time = 0
-        price_reached_zone = False
-        
-        for i in range(120, len(df_15m) + 1):
-            df_slice = df_15m.iloc[:i].copy()
-            current_candle = df_slice.iloc[-1]
-            current_ts = current_candle["timestamp"]
+        p_close, p_open = self.data.Close[-2], self.data.Open[-2]
+        p_vol = self.data.Volume[-2]
+
+        # ANTI-KNIFE
+        is_falling_knife = False
+        is_flying_rocket = False
+        if USE_ANTI_KNIFE:
+            c_atr = self.atr[-1] if not np.isnan(self.atr[-1]) else (c_high - c_low)
+            if c_close < c_open and p_close < p_open:
+                if (c_open - c_close) > (c_atr * 0.8) and c_vol >= p_vol:
+                    is_falling_knife = True
+            if c_close > c_open and p_close > p_open:
+                if (c_close - c_open) > (c_atr * 0.8) and c_vol >= p_vol:
+                    is_flying_rocket = True
+
+        if self.position:
+            self.wait_for_bullish_choch = False
+            self.wait_for_bearish_choch = False
+            return
+
+        # ==========================================
+        # ЛОГИКА LONG
+        # ==========================================
+        for sup in CURRENT_SUPPORTS:
+            level_id = f"{sup['min']}_{sup['max']}"
             
-            if current_ts < critical_trigger_time: continue
-            
-            # ЖЕСТКИЙ СТОП, КОГДА ДОШЛИ ДО END_TIME
-            if current_ts > end_ts: 
-                print("\n🛑 Тест достиг времени END_TIME. Остановка.")
-                break
+            # Если уровень уже дал плюс — пропускаем его
+            if USE_LEVEL_BURN and level_id in self.burned_levels:
+                continue 
+
+            if c_low <= sup['max'] and c_close > sup['min']:
+                if is_falling_knife: break
                 
-            current_price = float(current_candle["close"])
-            candle_high = float(current_candle["high"])
-            candle_time = datetime.fromtimestamp(current_ts / 1000).strftime('%m-%d %H:%M')
-            
-            # === ЖДЕМ ЗОНУ ФИБО ===
-            if not price_reached_zone:
-                if candle_high >= target_min:
-                    price_reached_zone = True
-                    print(f"\n🚀 [{candle_time}] ЦЕНА ДОШЛА ДО ФИБО ({target_min:.5f})! ВАТЧЕР ПРОСНУЛСЯ И ОТКРЫВАЕТ ОХОТУ!\n")
+                if USE_CHOCH:
+                    self.wait_for_bullish_choch = True
+                    self.choch_bull_level = max(self.data.High[-1], self.data.High[-2])
+                    self.active_level = sup
                 else:
-                    continue  # Ватчер спит, ничего не считает
-            
-            df_slice["rsi"] = calculate_rsi(df_slice)
-            current_rsi = float(df_slice["rsi"].iloc[-1])
-            
-            result = analyze_extreme_pattern(df_slice.iloc[:-1], "SHORT", current_price, price_precision)
-            score = result["score"]
-            details = result["details"]
-            
-            retrace_present = any("Замена BOS" in d for d in details)
-            trigger_msg = "✅ ОТКАТ" if retrace_present else "❌ ОТКАТ"
-            is_cooling_down = (current_ts - last_signal_time) < cooldown_ms
-            
-            # ВЫВОД ТОЛЬКО ПОСЛЕ ТОГО, КАК ДОШЛИ ДО ЗОНЫ ФИБО
-            if is_cooling_down:
-                status = "🧊 КУЛДАУН (Спит)"
-            else:
-                status = "🔥 ГОТОВ! ВХОД!" if (score >= 3 and retrace_present) else "❌ ОТКАЗ / ЖДЕМ"
+                    self._execute_long(sup, c_close)
+                break
+
+        if USE_CHOCH and self.wait_for_bullish_choch and self.active_level is not None:
+            if c_close > self.choch_bull_level:
+                is_valid_range = True
+                if USE_RANGE_FILTER:
+                    closest_res = min([r['min'] for r in CURRENT_RESISTANCES if r['min'] > self.active_level['max']], default=None)
+                    if closest_res:
+                        range_size = closest_res - self.active_level['max']
+                        if (c_close - self.active_level['max']) > (range_size * 0.30):
+                            is_valid_range = False 
                 
-            print(f"[{candle_time}] Цена: {current_price:.5f} | RSI: {current_rsi:.1f} | Баллы: {score}/5 ({trigger_msg}) -> {status}")
-            
-            if not is_cooling_down:
-                for d in details: print(f"      {d}")
-                print("-" * 50)
+                if is_valid_range:
+                    self._execute_long(self.active_level, c_close)
                 
-            if "🔥" in status:
-                last_signal_time = current_ts
-                print(f"   🎯 WATCHER PLAN | Вход: {current_price:.5f} | TP1: {result.get('tp1_price', 0)}")
-                print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-                    
-    except Exception as e:
-        print(f"💥 Критическая ошибка в конвейере: {e}")
+                self.wait_for_bullish_choch = False
+            elif c_low < self.active_level['min'] * 0.99:
+                self.wait_for_bullish_choch = False
+
+        # ==========================================
+        # ЛОГИКА SHORT
+        # ==========================================
+        for res in CURRENT_RESISTANCES:
+            level_id = f"{res['min']}_{res['max']}"
+            
+            # Если уровень уже дал плюс — пропускаем его
+            if USE_LEVEL_BURN and level_id in self.burned_levels:
+                continue 
+
+            if c_high >= res['max'] and c_close < res['max']:
+                if is_flying_rocket: break
+                
+                if USE_CHOCH:
+                    self.wait_for_bearish_choch = True
+                    self.choch_bear_level = min(self.data.Low[-1], self.data.Low[-2])
+                    self.active_level = res
+                else:
+                    self._execute_short(res, c_close)
+                break
+
+        if USE_CHOCH and self.wait_for_bearish_choch and self.active_level is not None:
+            if c_close < self.choch_bear_level:
+                is_valid_range = True
+                if USE_RANGE_FILTER:
+                    closest_sup = max([s['max'] for s in CURRENT_SUPPORTS if s['max'] < self.active_level['min']], default=None)
+                    if closest_sup:
+                        range_size = self.active_level['min'] - closest_sup
+                        if (self.active_level['min'] - c_close) > (range_size * 0.30):
+                            is_valid_range = False
+                
+                if is_valid_range:
+                    self._execute_short(self.active_level, c_close)
+                
+                self.wait_for_bearish_choch = False
+            elif c_high > self.active_level['max'] * 1.01:
+                self.wait_for_bearish_choch = False
+
+    # ==========================================
+    # ИСПОЛНЕНИЕ ОРДЕРОВ И ПРИВЯЗКА ЯРЛЫКА
+    # ==========================================
+    def _execute_long(self, level, current_price):
+        sl = level['min'] * (1 - SL_BUFFER / 100)
+        tp = current_price * (1 + TAKE_PROFIT / 100)
+        risk = current_price - sl
+        reward = tp - current_price
+        
+        if USE_RR_FILTER and (risk == 0 or (reward / risk) < RR_RATIO): return
+        
+        # Клеим ярлык с ID уровня на эту сделку
+        self.active_level_id = f"{level['min']}_{level['max']}"
+        self.buy(sl=sl, tp=tp)
+
+    def _execute_short(self, level, current_price):
+        sl = level['max'] * (1 + SL_BUFFER / 100)
+        tp = current_price * (1 - TAKE_PROFIT / 100)
+        risk = sl - current_price
+        reward = current_price - tp
+        
+        if USE_RR_FILTER and (risk == 0 or (reward / risk) < RR_RATIO): return
+        
+        # Клеим ярлык с ID уровня на эту сделку
+        self.active_level_id = f"{level['min']}_{level['max']}"
+        self.sell(sl=sl, tp=tp)
+
+# =========================================================
+# ЗАПУСК ТЕСТОВ
+# =========================================================
+macro_path = os.path.join("modules", "cryptano", "macro_levels.json")
+macro_db = load_json(macro_path, default={}) if os.path.exists(macro_path) else {}
+
+def get_cached_data(coin):
+    symbol = f"{coin.upper()}/USDT"
+    cache_file = f"cache_{coin.lower()}_{TIMEFRAME}_{LIMIT_CANDLES}.csv"
+    if os.path.exists(cache_file):
+        return pd.read_csv(cache_file, index_col=0, parse_dates=True)
+    else:
+        print(f"🌐 Скачиваю свечи для {symbol}...")
+        try:
+            ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=LIMIT_CANDLES)
+            df = pd.DataFrame(ohlcv, columns=["Open_time", "Open", "High", "Low", "Close", "Volume"])
+            df.index = pd.to_datetime(df["Open_time"], unit="ms")
+            df.to_csv(cache_file)
+            return df
+        except Exception as e:
+            return pd.DataFrame()
+
+if TARGET_COIN.upper() == "ALL":
+    print(f"🤖 Начинаю глобальный аудит портфеля (TP={TAKE_PROFIT}%, R/R={RR_RATIO}, RangeFilter={USE_RANGE_FILTER}, Burn={USE_LEVEL_BURN})...")
+    portfolio_results = []
+    
+    for coin, data in macro_db.items():
+        if not isinstance(data, dict): continue
+        CURRENT_SUPPORTS = data.get("supports", [])
+        CURRENT_RESISTANCES = data.get("resistances", [])
+        if not CURRENT_SUPPORTS and not CURRENT_RESISTANCES: continue
+        
+        df = get_cached_data(coin)
+        if df.empty: continue
+        
+        bt = Backtest(df, SmartSniperUniversal, cash=10000, commission=.0006, hedging=False)
+        stats = bt.run()
+        
+        if int(stats['# Trades']) > 0:
+            portfolio_results.append({
+                "Монета": coin.upper(),
+                "Сделок": int(stats['# Trades']),
+                "Win Rate %": round(stats['Win Rate [%]'], 2),
+                "Profit Factor": round(stats['Profit Factor'], 2) if pd.notna(stats['Profit Factor']) else "Без убытка",
+                "Просадка %": round(stats['Max. Drawdown [%]'], 2),
+                "Чистый Профит %": round(stats['Return [%]'], 2)
+            })
+
+    print("\n" + "="*75)
+    print(f"📊 СВОДНЫЙ СРЕЗ ГЛОБАЛЬНОГО ТЕСТА СТРАТЕГИИ")
+    print("="*75)
+    if portfolio_results:
+        report_df = pd.DataFrame(portfolio_results).sort_values(by="Чистый Профит %", ascending=False)
+        print(report_df.to_string(index=False))
+        print("-" * 75)
+        print(f"📈 Суммарный профит портфеля: {report_df['Чистый Профит %'].sum():.2f}%")
+        print(f"🏆 Средний Win Rate:          {report_df['Win Rate %'].mean():.2f}%")
+    else:
+        print("❌ Нет сделок. Фильтры отсекли всё.")
+    print("="*75 + "\n")
+
+else:
+    coin_data = macro_db.get(TARGET_COIN.upper(), {}) if isinstance(macro_db.get(TARGET_COIN.upper()), dict) else {}
+    CURRENT_SUPPORTS = coin_data.get("supports", [])
+    CURRENT_RESISTANCES = coin_data.get("resistances", [])
+    
+    print(f"📥 Запускаю детальный тест для {TARGET_COIN.upper()}...")
+    df = get_cached_data(TARGET_COIN)
+    if df.empty:
+        print("❌ Ошибка загрузки данных.")
+    else:
+        bt = Backtest(df, SmartSniperUniversal, cash=10000, commission=.0006, hedging=False)
+        stats = bt.run()
+        
+        print("\n" + "="*60)
+        print(f"📊 ТЕСТ ДЛЯ {TARGET_COIN.upper()} | RangeFilter={USE_RANGE_FILTER} | Burn={USE_LEVEL_BURN}")
+        print("="*60)
+        print(f"💵 Конечный баланс:   ${stats['Equity Final [$]']:,.2f}")
+        print(f"📈 Чистый профит:     {stats['Return [%]']:.2f}%")
+        print(f"📉 Макс. просадка:    {stats['Max. Drawdown [%]']:.2f}%")
+        print(f"🤝 Всего сделок:       {int(stats['# Trades'])}")
+        
+        if int(stats['# Trades']) > 0:
+            print(f"🏆 Процент плюсовых:  {stats['Win Rate [%]']:.2f}%")
+            print("-" * 60)
+            for idx, row in stats['_trades'].iterrows():
+                status = f"✅ ПЛЮС" if row['PnL'] > 0 else f"❌ МИНУС"
+                tr_type = "LONG " if row['Size'] > 0 else "SHORT"
+                print(f"  ▪️ Сделка №{idx+1} ({tr_type}): {row['EntryTime'].strftime('%d.%m %H:%M')} -> {row['ExitTime'].strftime('%d.%m %H:%M')} | {status} ({row['ReturnPct']*100:.2f}%)")
+        
+        chart_path = os.path.abspath(f'chart_{TARGET_COIN.lower()}.html')
+        bt.plot(filename=chart_path, open_browser=True)

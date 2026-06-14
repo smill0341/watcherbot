@@ -127,9 +127,14 @@ def handle_text(message):
 
     # --- РЕЗУЛЬТАТЫ ---
     elif message.text == "📊 Результаты":
-        check_and_update(bot, message.chat.id)
-        bot.send_message(message.chat.id, "Выбери период:", reply_markup=keyboards.get_history_keyboard())
-
+        bot.send_message(message.chat.id, "⏳ Опрашиваю биржу (проверка открытых сделок)...", parse_mode="Markdown")
+        
+        def run_check():
+            check_and_update(bot, message.chat.id)
+            bot.send_message(message.chat.id, "✅ База обновлена! Выбери период для отчета:", reply_markup=keyboards.get_history_keyboard())
+            
+        import threading
+        threading.Thread(target=run_check).start()
 
 def process_normal_analysis(message):
     # 1. ЗАЩИТА ОТ "ЗАЛИПАНИЯ": Позволяем выйти в меню, если передумали
@@ -222,6 +227,27 @@ def handle_coin_analysis(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_inline(call):
+    
+    # =========================================================
+    # БЛОК: ПОЛНАЯ ОЧИСТКА WATCHLIST
+    # =========================================================
+    if call.data == "clear_entire_watchlist":
+        try:
+            wl_path = os.path.join("modules", "cryptano", "watchlist.json")
+            save_json_atomic(wl_path, {})  # Полностью перезаписываем в пустой JSON
+            
+            bot.answer_callback_query(call.id, "Watchlist успешно очищен!")
+            bot.edit_message_text(
+                "📋 Мой watchlist пуст.\nДобавь монеты командой `+BTC` или `+ETH SHORT`", 
+                call.message.chat.id, 
+                call.message.message_id,
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print(f"[ERROR] Ошибка полной очистки watchlist: {e}")
+            bot.answer_callback_query(call.id, f"Ошибка: {e}")
+        return
+    
     # =========================================================
     # БЛОК 1: УПРАВЛЕНИЕ АВТОБОТОМ (ВКЛ / ВЫКЛ)
     # =========================================================
@@ -231,7 +257,7 @@ def handle_inline(call):
         
         if call.data == "start_autobot":
             config["crypto"]["status"] = "RUNNING"
-            config["crypto"]["fasttrade"] = True  # ПРАВИЛО: При старте Автобота принудительно включаем FastTrade
+            # Строку с принудительным fasttrade = True полностью удалили
             save_config(config)
             
             # Обновляем текст кнопки на актуальный статус
@@ -241,11 +267,13 @@ def handle_inline(call):
                 call.message.message_id, 
                 reply_markup=keyboards.get_autobot_menu()
             )
+            
             bot.send_message(
                 call.message.chat.id, 
-                "🚀 **Автобот запущен!**\nФильтры начнут включаться по каскадному расписанию.\n⚡️ Режим **FastTrade** автоматически переведен в **ВКЛ**.", 
+                "🚀 **Автобот запущен!**\nФильтры начнут включаться по каскадному расписанию.\n⚙️ _FastTrade управляется отдельно вручную._", 
                 parse_mode="Markdown"
             )
+            
         else:
             config["crypto"]["status"] = "STOPPED"
             save_config(config)
@@ -318,6 +346,44 @@ def handle_inline(call):
 
     if call.data == "status_nba":
         check_nba_injuries(bot, call.message.chat.id, silent=False)
+        return
+
+    # =========================================================
+    # БЛОК: ИСТОРИЯ И ОТЧЕТЫ (Короткий отчет + кнопка TXT)
+    # =========================================================
+    if call.data in ["hist_day", "hist_week", "hist_month", "hist_all"]:
+        period = call.data.split("_")[1]
+        bot.edit_message_text("⏳ Считываю статистику...", call.message.chat.id, call.message.message_id)
+        
+        try:
+            # Отправляем только короткий текст
+            short_report = format_history(period)
+            txt_markup = types.InlineKeyboardMarkup()
+            txt_markup.add(types.InlineKeyboardButton("📄 Скачать полный отчет (.txt)", callback_data=f"gettxt_{period}"))
+            
+            bot.send_message(call.message.chat.id, short_report, parse_mode="Markdown", reply_markup=txt_markup)
+        except Exception as e:
+            bot.send_message(call.message.chat.id, f"❌ Ошибка вывода истории: {e}")
+            
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+        return
+
+    # =========================================================
+    # БЛОК: СКАЧИВАНИЕ ПОЛНОГО ОТЧЕТА ПО ЗАПРОСУ
+    # =========================================================
+    if call.data.startswith("gettxt_"):
+        period = call.data.split("_")[1]
+        bot.answer_callback_query(call.id, "Генерирую файл отчета...")
+        
+        try:
+            file_path = generate_report_file(period)
+            if file_path and os.path.exists(file_path):
+                with open(file_path, "rb") as f:
+                    bot.send_document(call.message.chat.id, f, caption=f"📄 Детализация за период: {period.upper()}")
+            else:
+                bot.send_message(call.message.chat.id, "⚠️ Не удалось сформировать файл. Возможно, сделок нет.")
+        except Exception as e:
+            bot.send_message(call.message.chat.id, f"❌ Ошибка отправки файла: {e}")
         return
 
     if "_" in call.data:

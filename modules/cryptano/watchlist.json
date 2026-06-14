@@ -1,36 +1,187 @@
 {
-    "TON": {
-        "direction": "ANY",
-        "added_at": "2026-06-05T01:04:53.715641"
-    },
-    "SAND": {
-        "direction": "ANY",
-        "added_at": "2026-06-05T20:09:21.449022"
-    },
-    "ESPORTS": {
-        "direction": "ANY",
-        "added_at": "2026-06-09T11:54:27.732893"
-    },
-    "XAU": {
+    "APT": {
         "direction": "LONG",
-        "added_at": "2026-06-10T20:00:05.855238",
-        "source": "Critical"
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
     },
-    "WLD": {
+    "ARB": {
         "direction": "LONG",
-        "added_at": "2026-06-10T20:09:00.812417",
-        "source": "MOMENTUM_DUMP",
-        "info": "-10.0%"
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "BCH": {
+        "direction": "LONG",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "BTC": {
+        "direction": "LONG",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "CLO": {
+        "direction": "SHORT",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "COAI": {
+        "direction": "SHORT",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "DOGE": {
+        "direction": "LONG",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "ETH": {
+        "direction": "LONG",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "HBAR": {
+        "direction": "LONG",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "HMSTR": {
+        "direction": "SHORT",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
     },
     "HYPE": {
         "direction": "LONG",
-        "added_at": "2026-06-10T20:09:00.812417",
-        "source": "MOMENTUM_DUMP",
-        "info": "-5.3%"
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "LINK": {
+        "direction": "SHORT",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "NAORIS": {
+        "direction": "SHORT",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "ONDO": {
+        "direction": "LONG",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "OP": {
+        "direction": "SHORT",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "ORCA": {
+        "direction": "LONG",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "PUMPFUN": {
+        "direction": "SHORT",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "RENDER": {
+        "direction": "LONG",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "SIREN": {
+        "direction": "LONG",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "SOL": {
+        "direction": "LONG",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "VIRTUAL": {
+        "direction": "LONG",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "WIF": {
+        "direction": "SHORT",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "WLFI": {
+        "direction": "LONG",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
     },
     "XAUT": {
         "direction": "LONG",
-        "added_at": "2026-06-10T21:00:06.902061",
-        "source": "Critical"
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "XLM": {
+        "direction": "LONG",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "XPL": {
+        "direction": "LONG",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "XRP": {
+        "direction": "LONG",
+        "added_at": "2026-06-13T12:25:39.311227",
+        "source": "Swing Hunter"
+    },
+    "STG": {
+        "direction": "LONG",
+        "added_at": "2026-06-13T12:26:39.596101",
+        "source": "Swing Hunter"
+    },
+    "TAO": {
+        "direction": "SHORT",
+        "added_at": "2026-06-13T12:27:03.008063",
+        "source": "Light"
+    },
+    "SUI": {
+        "direction": "SHORT",
+        "added_at": "2026-06-13T12:27:03.129056",
+        "source": "Light"
+    },
+    "AAVE": {
+        "direction": "SHORT",
+        "added_at": "2026-06-13T12:27:03.366498",
+        "source": "Light"
+    },
+    "DOT": {
+        "direction": "SHORT",
+        "added_at": "2026-06-13T12:27:03.490531",
+        "source": "Light"
+    },
+    "LTC": {
+        "direction": "SHORT",
+        "added_at": "2026-06-13T12:27:03.565443",
+        "source": "Light"
+    },
+    "SEI": {
+        "direction": "SHORT",
+        "added_at": "2026-06-13T12:27:03.774247",
+        "source": "Light"
+    },
+    "ICP": {
+        "direction": "SHORT",
+        "added_at": "2026-06-13T12:27:03.857569",
+        "source": "Light"
+    },
+    "1000PEPE": {
+        "direction": "LONG",
+        "added_at": "2026-06-13T12:28:40.232817",
+        "source": "Swing Hunter"
+    },
+    "NOT": {
+        "direction": "SHORT",
+        "added_at": "2026-06-13T12:57:00.326840",
+        "source": "Light"
     }
 }

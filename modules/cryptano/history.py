@@ -43,8 +43,6 @@ def save_signal(signal: dict):
 
     signals.append(record)
     _save_signals(signals)
-    print(f"[ИСТОРИЯ] Сохранён сигнал: {record['coin']} {record['type']} @ {record['entry']}")
-
 
 # ================= ПРОВЕРКА РЕЗУЛЬТАТОВ =================
 def check_and_update(bot, chat_id):
@@ -181,10 +179,7 @@ def format_history(period: str) -> str:
 
     open_signals = [s for s in filtered if s.get("status") == "⏳"]
     msg += f"⏳ *Всего открытых сделок:* {len(open_signals)}\n"
-    if open_signals:
-        open_coins = list(set([s.get("coin", "UNKNOWN") for s in open_signals]))
-        msg += f"━━━━━━━━━━━━━━━\n*В работе:*\n" + ", ".join(open_coins) + "\n"
-
+    
     return msg
 
 # ================= ГЕНЕРАЦИЯ TXT ФАЙЛА =================

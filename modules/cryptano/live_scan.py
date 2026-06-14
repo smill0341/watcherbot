@@ -1,4 +1,5 @@
 import time
+from telebot import types
 import datetime
 import os
 import threading
@@ -19,9 +20,10 @@ AUTO_REMOVE_AFTER_SIGNAL = True # Удалять монету из Watchlist п�
 watcher_cooldown_cache = {}
 _watcher_lock = threading.Lock()
 
-def auto_add_to_watchlist(coin, direction):
-    """Вызывается из critical_filter.py для автоматического добавления монет"""
-    if not AUTO_ADD_FROM_CRITICAL:
+def auto_add_to_watchlist(coin, direction, source="Critical"):
+    """Универсальное автодобавление монет из фильтров"""
+    # Блокируем ТОЛЬКО если пришло от Critical и его рубильник выключен
+    if source == "Critical" and not AUTO_ADD_FROM_CRITICAL:
         return False
         
     wl = _load_watchlist()
@@ -29,7 +31,7 @@ def auto_add_to_watchlist(coin, direction):
         wl[coin] = {
             "direction": direction, 
             "added_at": datetime.datetime.now().isoformat(),
-            "source": "Critical"  # 🆕 Отметка авто-добавления
+            "source": source
         }
         _save_watchlist(wl)
         return True
@@ -131,25 +133,54 @@ def manage_watchlist(command, bot, chat_id):
     return False
 
 def show_watchlist(bot, chat_id):
-    """Показывает текущий список слежения"""
+    """Показывает текущий список слежения с группировкой SWING монет"""
+    from telebot import types
     wl = _load_watchlist()
     if not wl:
-        bot.send_message(chat_id, "📋 Мой watchlist пуст.\nДобавь монеты командой `+BTC` или `+ETH SHORT`", parse_mode="Markdown")
+        bot.send_message(chat_id, "📋 Мой watchlist пуст.\nДобавь монеты командой `+BTC`", parse_mode="Markdown")
         return
     
-    msg = "📋 **Мой watchlist:**\n\n"
+    msg = "📋 Мой watchlist:\n\n"
+    swing_hunter_count = 0
+    
+    # 1. Сначала выводим построчно все монеты, кроме SWING
     for coin, data in wl.items():
-        # Форматируем направление (ANY, Short, Long)
-        direction_text = data['direction'].capitalize() if data['direction'] != "ANY" else "ANY"
-        
-        # Получаем источник (если старая монета без метки - пишем Manual)
         source = data.get('source', 'Manual')
         
-        # Новый компактный дизайн вывода
-        msg += f"• {coin} | {direction_text} | {source}\n"
+        # Если монета от Swing Hunter — просто считаем её и пропускаем поштучный вывод
+        if source == "Swing Hunter":
+            swing_hunter_count += 1
+            continue
+            
+        # 1. Защита от пустых значений (None)
+        safe_source = source if source else "Manual"
+        
+        # 2. Полный словарь со всеми метками
+        source_map = {
+            "Manual": "MAN", 
+            "Critical": "CRIT", 
+            "Light": "LIGHT",
+            "Swing Hunter": "SWING"
+        }
+        
+        # 3. Безопасное форматирование
+        src_label = source_map.get(safe_source, str(safe_source)).upper()
+        
+        direction_text = data['direction'].capitalize() if data['direction'] != "ANY" else "ANY"
+        msg += f"• {coin} | {direction_text} | {src_label}\n"
     
-    msg += "\n_Для удаления напиши: `-ТИКЕР` (например, `-BTC`)_"
-    bot.send_message(chat_id, msg, parse_mode="Markdown")
+    # 2. В самом конце выводим ОДНУ строку со счетом для Swing Hunter
+    if swing_hunter_count > 0:
+        import datetime
+        now_str = datetime.datetime.now().strftime("%H:%M , %d.%m")
+        msg += f"\n`{now_str}` — добавлено {swing_hunter_count} монет от swinghunter\n"
+    
+    msg += "\nДля удаления напиши: `-ТИКЕР` (например, `-BTC`)"
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🗑 Полная очистка списка", callback_data="clear_entire_watchlist"))
+    
+    bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=markup)
 
 def run_live_scanner(bot, admin_chat_id):
     """
@@ -183,6 +214,7 @@ def run_live_scanner(bot, admin_chat_id):
 
                 # 🆕 Безопасная итерация через list(), чтобы словарь не менял размер в процессе
                 for coin, data in list(wl.items()):
+                    time.sleep(0.3)
                     # Если ANY - проверяем оба направления. Иначе - только заданное.
                     directions_to_check = ["LONG", "SHORT"] if data["direction"] == "ANY" else [data["direction"]]
                     
@@ -192,8 +224,8 @@ def run_live_scanner(bot, admin_chat_id):
                         if cache_key in watcher_cooldown_cache:
                             continue  # Монета в кулдауне, пропускаем
                         
-                        # Вызываем готовую логику
-                        is_ready, report = check_manual_extreme(coin, d)
+                        # Вызываем готовую логику с передачей источника
+                        is_ready, report = check_manual_extreme(coin, d, source=data.get("source", "Manual"))
                         
                         if not report or report.startswith("❌") or report.startswith("⚠️"):
                             continue

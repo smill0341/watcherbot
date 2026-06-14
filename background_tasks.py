@@ -8,6 +8,7 @@ from modules.cryptano.utils.storage import load_json
 from modules.cryptano.critical_filter import scan_market, format_results
 from modules.cryptano.light_filter import _execute_scan_cycle
 from modules.cryptano.utils.coin_generators import update_momentum_watchlist
+from modules.cryptano.swing_hunter import start_swing_hunter
 
 # Импорт спортивных модулей
 from modules.footballnogoal.football import run_football_monitor
@@ -106,7 +107,6 @@ def crypto_orchestrator(bot, admin_chat_id):
                 print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [DISPATCHER] ⏱ Каскад: Запуск сканирования Watcher списка...")
                 last_watcher = time.time()
                 
-                # Выполняем одиночный скан Ватчера (вынуто из live_scan.py чтобы контролировать тайминг)
                 try:
                     from modules.cryptano.live_scan import _load_watchlist, _save_watchlist, watcher_cooldown_cache, _watcher_lock, AUTO_REMOVE_AFTER_SIGNAL, COOLDOWN_HOURS
                     from modules.cryptano.watcher_plan import check_manual_extreme
@@ -114,51 +114,73 @@ def crypto_orchestrator(bot, admin_chat_id):
                     wl = _load_watchlist()
                     if wl:
                         now_dt = datetime.datetime.now()
-                        # Очистка старого кэша заморозки
                         keys_to_del = [k for k, v in watcher_cooldown_cache.items() if (now_dt - v).total_seconds() >= (COOLDOWN_HOURS * 3600)]
                         for k in keys_to_del: del watcher_cooldown_cache[k]
 
                         if _watcher_lock.acquire(blocking=False):
                             try:
                                 coins_to_remove = []
+                                total_scanned = 0
+                                signals_found = 0
+                                
                                 for coin, data in list(wl.items()):
+                                    total_scanned += 1
+                                    # Достаем реальный источник (Swing, Momentum, Manual)
+                                    source = data.get("source", "Manual") 
+                                    
+                                    # ПЕЧАТАЕМ КАЖДЫЙ ШАГ, ЧТОБЫ ВИДЕТЬ, ЧТО БОТ НЕ ВИСНЕТ
+                                    print(f"   -> [WATCHER] Анализирую монету: {coin} ({total_scanned}/{len(wl)})...")
+                                    
                                     dirs = ["LONG", "SHORT"] if data["direction"] == "ANY" else [data["direction"]]
                                     for d in dirs:
                                         if f"{coin}_{d}" in watcher_cooldown_cache: continue
                                         
-                                        is_ready, report = check_manual_extreme(coin, d)
+                                        # Передаем source в функцию
+                                        is_ready, report = check_manual_extreme(coin, d, source)
                                         if not report or report.startswith("❌") or report.startswith("⚠️"): continue
                                         
                                         if is_ready:
+                                            signals_found += 1
                                             bot.send_message(admin_chat_id, report, parse_mode="Markdown")
                                             watcher_cooldown_cache[f"{coin}_{d}"] = now_dt
                                             if AUTO_REMOVE_AFTER_SIGNAL: coins_to_remove.append(coin)
                                             break
-                                    time.sleep(1)
+                                    time.sleep(1.2) # Защитная пауза между монетами
                                 
                                 if coins_to_remove:
                                     current_wl = _load_watchlist()
                                     for c in set(coins_to_remove):
                                         if c in current_wl: del current_wl[c]
                                     _save_watchlist(current_wl)
+                                    
+                                # 🚀 ФИНАЛЬНЫЙ ПРИНТ СО СТАТИСТИКОЙ
+                                print(f"✅ [DISPATCHER] Скан завершен. Просканировано: {total_scanned} | Найдено точек входа: {signals_found}")
+                                
                             finally:
                                 _watcher_lock.release()
+                    else:
+                        print("✅ [DISPATCHER] Watchlist пуст. Скан отменен.")
+                        
                 except Exception as e:
                     print(f"[DISPATCHER ERROR] Ошибка внутри Watcher цикла: {e}")
-
             # =========================================================
-            # 4. ОЧЕРЕДЬ: 🚀 COIN GENERATOR / FASTTRADE (Старт на 10-й минуте, далее каждые 2 часа)
+            # 4. ОЧЕРЕДЬ: 🚀 COIN GENERATOR / FASTTRADE (Скальпинг)
             # =========================================================
-            if elapsed >= 600 and (time.time() - last_generator >= 7200 or last_generator == 0):
-                last_generator = time.time()
-                if fasttrade_on:
-                    print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [DISPATCHER] ⏱ Каскад: FastTrade ON -> Запуск генератора ТОП-20 монет...")
+            if fasttrade_on:
+                if last_generator == 0:
+                    print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [DISPATCHER] ⚡️ FastTrade включен! Первый скан начнется через 60 секунд...")
+                    last_generator = time.time() - 7200 + 60 
+                
+                elif time.time() - last_generator >= 7200:
+                    print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [DISPATCHER] ⏱ Каскад: Запуск генератора ТОП-20 монет...")
                     try:
                         update_momentum_watchlist(bot, admin_chat_id)
                     except Exception as e:
-                        print(f"[DISPATCHER ERROR] Ошибка генератора монет: {e}")
-                else:
-                    print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [DISPATCHER] ⏱ Каскад: FastTrade OFF -> Пропускаю запуск генератора монет.")
+                        print(f"[DISPATCHER ERROR] Ошибка генератора: {e}")
+                    
+                    last_generator = time.time()
+            else:
+                last_generator = 0  # <--- Просто тихо держим на нуле, БЕЗ print
 
         except Exception as e:
             print(f"[CRITICAL DISPATCHER ERROR] Сбой главного диспетчера задач: {e}")
@@ -169,6 +191,9 @@ def start_all_background_tasks(bot, admin_chat_id):
     """
     # 🪙 Запуск Единого Диспетчера Крипты в один поток
     threading.Thread(target=crypto_orchestrator, args=(bot, admin_chat_id), daemon=True).start()
+    
+    # 🌪 Запуск Свинг Хантера (Генератор уровней + Минутный дозор)
+    start_swing_hunter(bot, admin_chat_id)
     
     # ⚽️🏀 Спортивные мониторы (остались без изменений)
     threading.Thread(target=run_football_monitor, args=(bot, admin_chat_id), daemon=True).start()

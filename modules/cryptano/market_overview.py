@@ -3,7 +3,7 @@ import pandas as pd
 import gc
 from datetime import datetime
 from modules.cryptano.utils.common import calculate_rsi, exchange, format_price as fmt_p
-from modules.cryptano.utils.market_cache import load_markets_cached
+from modules.cryptano.utils.market_cache import load_markets_cached, get_ohlcv_cached
 from modules.cryptano.utils.price_action import check_live_confirmation
 from modules.cryptano.utils.regime import detect_market_regime
 from modules.cryptano.watcher_plan import check_manual_extreme
@@ -86,7 +86,7 @@ def evaluate_setup(direction, current_price, rsi_4h, vol_ratio, market_mode, ran
     return quality, confirm, reasons
 
 # ==========================================
-# БЛОК 4: Поиск Order Block зон (MTF)
+# БЛОК 4: Поиск Order Block зон (MTF) + Pivots
 # ==========================================
 def get_order_blocks(df, price_precision=6):
     df = df.copy()
@@ -99,6 +99,7 @@ def get_order_blocks(df, price_precision=6):
     raw_supports = []
     raw_resistances = []
 
+    # 1. ОРДЕР-БЛОКИ (Следы крупного объема - старая база)
     for i in range(1, len(df)):
         if df['body'].iat[i] > 2 * df['avg_body'].iat[i] and df['volume'].iat[i] > 2 * df['avg_vol'].iat[i]:
             if df['close'].iat[i] > df['open'].iat[i]:
@@ -106,25 +107,41 @@ def get_order_blocks(df, price_precision=6):
                 while j >= 0 and df['close'].iat[j] >= df['open'].iat[j]:
                     j -= 1
                 if j >= 0:
-                    raw_supports.append({
-                        'min': float(df['low'].iat[j]),
-                        'max': float(df['high'].iat[j]),
-                        'score': 1
-                    })
+                    raw_supports.append({'min': float(df['low'].iat[j]), 'max': float(df['high'].iat[j]), 'score': 1})
             elif df['close'].iat[i] < df['open'].iat[i]:
                 j = i - 1
                 while j >= 0 and df['close'].iat[j] <= df['open'].iat[j]:
                     j -= 1
                 if j >= 0:
-                    raw_resistances.append({
-                        'min': float(df['low'].iat[j]),
-                        'max': float(df['high'].iat[j]),
-                        'score': 1
-                    })
+                    raw_resistances.append({'min': float(df['low'].iat[j]), 'max': float(df['high'].iat[j]), 'score': 1})
 
+    # 2. ПИВОТЫ (Классические Swing High / Swing Low толпы)
+    window = 10 # Смотрим 10 свечей влево и 10 вправо
+    for i in range(window, len(df) - window):
+        high_val = df['high'].iat[i]
+        low_val = df['low'].iat[i]
+        
+        # Если это локальный максимум
+        if high_val == df['high'].iloc[i-window:i+window+1].max():
+            raw_resistances.append({
+                'min': float(max(df['open'].iat[i], df['close'].iat[i])), # Низ зоны - тело свечи
+                'max': float(high_val),                                   # Верх зоны - шпилька
+                'score': 2 # Пивотам даем вес x2
+            })
+        
+        # Если это локальный минимум
+        if low_val == df['low'].iloc[i-window:i+window+1].min():
+            raw_supports.append({
+                'min': float(low_val),                                    # Низ зоны - шпилька
+                'max': float(min(df['open'].iat[i], df['close'].iat[i])), # Верх зоны - тело свечи
+                'score': 2
+            })
+
+    # 3. КЛАСТЕРИЗАЦИЯ (Склейка зон, которые стоят рядом)
     def cluster_zones(zones):
         clusters = []
-        threshold = 0.01
+        threshold = 0.015 # Если уровни ближе чем на 1.5% - клеим их в один монолит
+        
         for zone in sorted(zones, key=lambda x: (x['min'] + x['max']) / 2):
             zone_avg = (zone['min'] + zone['max']) / 2
             added = False
@@ -133,24 +150,21 @@ def get_order_blocks(df, price_precision=6):
                 if abs(zone_avg - cluster_avg) / cluster_avg <= threshold:
                     cluster['min'] = min(cluster['min'], zone['min'])
                     cluster['max'] = max(cluster['max'], zone['max'])
-                    cluster['score'] += 1
+                    cluster['score'] += zone['score'] # Зона становится сильнее
                     added = True
                     break
             if not added:
                 clusters.append(zone.copy())
+                
+        # Возвращаем только подтвержденные уровни (где совпало хотя бы 2 фактора)
         return [
-            {
-                'min': float(c['min']),
-                'max': float(c['max']),
-                'score': c['score']
-            }
-            for c in clusters
+            {'min': float(c['min']), 'max': float(c['max']), 'score': c['score']}
+            for c in clusters if c['score'] >= 2
         ]
 
     supports = cluster_zones(raw_supports)
     resistances = cluster_zones(raw_resistances)
     return supports, resistances
-
 # ==========================================
 # БЛОК 5: Основная Функция Анализа
 # ==========================================
@@ -168,11 +182,11 @@ def analyze_coin(ticker_input: str) -> str:
             if symbol_fut in markets: symbol = symbol_fut
             else: return f"❌ Монета *{coin}* не найдена на Bybit."
 
-        ohlcv_1h = exchange.fetch_ohlcv(symbol, timeframe="1h", limit=336)
+        ohlcv_1h = get_ohlcv_cached(exchange, symbol, timeframe="1h", limit=336)
         df_1h = pd.DataFrame(ohlcv_1h, columns=["timestamp", "open", "high", "low", "close", "volume"])
         df_1h["rsi"] = calculate_rsi(df_1h)
 
-        ohlcv_4h = exchange.fetch_ohlcv(symbol, timeframe="4h", limit=360)
+        ohlcv_4h = get_ohlcv_cached(exchange, symbol, timeframe="4h", limit=360)
         df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"])
         df_4h["rsi"] = calculate_rsi(df_4h)
         df_4h["atr"] = calculate_atr(df_4h)
@@ -188,7 +202,7 @@ def analyze_coin(ticker_input: str) -> str:
         vol_ratio = round(recent_vol / avg_vol if avg_vol > 0 else 1.0, 2)
         # ----------------------------------
 
-        ohlcv_daily = exchange.fetch_ohlcv(symbol, timeframe="1d", limit=365)
+        ohlcv_daily = get_ohlcv_cached(exchange, symbol, timeframe="1d", limit=365)
         df_daily = pd.DataFrame(ohlcv_daily, columns=["timestamp", "open", "high", "low", "close", "volume"])
         last_daily_vol = df_daily["volume"].iloc[-1]
         last_daily_close = df_daily["close"].iloc[-1]
@@ -385,7 +399,6 @@ def analyze_coin(ticker_input: str) -> str:
 
         if not (is_pump or is_dump):
             msg += (
-                f"📍 ПОЗИЦИЯ: {int(range_position)}% | {pos_text}\n\n"
                 f"📌 *КЛЮЧЕВЫЕ УРОВНИ*\n"
                 f"🔹 Local: `{clean_price(fmt_z(local_sup))}` | `{clean_price(fmt_z(local_res))}`\n"
                 f"🔹 Swing: `{clean_price(fmt_z(swing_sup))}` | `{clean_price(fmt_z(swing_res))}`\n"
@@ -424,45 +437,60 @@ def analyze_coin(ticker_input: str) -> str:
                     main_dir = "SHORT"
                     alt_dir = "LONG"
 
+                # Собираем ВСЕ сопротивления и поддержки с 1H, 4H, 1D в одну Карту Ликвидности
+                all_resistances = local_resistances + swing_resistances + macro_resistances
+                all_supports = local_supports + swing_supports + macro_supports
+
+                def get_clean_targets(zones, is_long):
+                    targets = sorted([z['min'] if is_long else z['max'] for z in zones])
+                    if not is_long: targets.reverse()
+                    
+                    clean = []
+                    for t in targets:
+                        if (is_long and t > current_price) or (not is_long and t < current_price):
+                            if not clean or abs(t - clean[-1]) / clean[-1] > 0.015:
+                                clean.append(t)
+                    return clean
+
+                long_targets = get_clean_targets(all_resistances, is_long=True)
+                short_targets = get_clean_targets(all_supports, is_long=False)
+
                 if main_dir == "LONG":
-                    # LONG IDEA формируется при приближении к зоне поддержки
                     l_entry = local_sup["max"]
                     l_sl = local_sup["min"] - atr
-                    l_tp1 = local_res["min"] if local_res else l_entry * 1.05
-                    l_tp2 = swing_res["min"] if swing_res else l_tp1 * 1.05
-                    if l_tp2 <= l_tp1:
-                        l_tp2 = l_tp1 * 1.05
+                    
+                    l_tp1 = long_targets[0] if len(long_targets) > 0 else l_entry * 1.03
+                    l_tp2 = long_targets[1] if len(long_targets) > 1 else l_tp1 * 1.05
+                    l_tp3 = long_targets[2] if len(long_targets) > 2 else l_tp2 * 1.08
+                    
                     l_rr = round((l_tp1 - l_entry) / (l_entry - l_sl), 1) if l_entry > l_sl else 0
-
                     l_qual, l_conf, l_reasons = evaluate_setup("LONG", current_price, rsi_4h, vol_ratio, market_mode, range_position, l_rr, local_sup["score"])
-                    risk_label = "(По тренду / Сильный)" if l_qual >= 65 else "(Контртренд / Риск высокий)"
+                    risk_label = "(По тренду)" if l_qual >= 65 else "(Контртренд)"
 
                     msg += (
                         f"🎯 LONG IDEA {risk_label}\n"
                         f"📍 Вход: {clean_price(fmt_p(l_entry))}\n"
                         f"🛡 СТОП (SL): {clean_price(fmt_p(l_sl))}\n"
-                        f"💰 ЦЕЛИ (TP): {clean_price(fmt_p(l_tp1))} | {clean_price(fmt_p(l_tp2))}\n"
+                        f"💰 ЦЕЛИ (TP): {clean_price(fmt_p(l_tp1))} | {clean_price(fmt_p(l_tp2))} | {clean_price(fmt_p(l_tp3))}\n"
                     )
                 else:
-                    # SHORT IDEA формируется при приближении к зоне сопротивления
                     s_entry = local_res["min"]
                     s_sl = local_res["max"] + atr
-                    s_tp1 = local_sup["max"] if local_sup else s_entry * 0.95
-                    s_tp2 = swing_sup["max"] if swing_sup else s_tp1 * 0.95
-                    if s_tp2 >= s_tp1:
-                        s_tp2 = s_tp1 * 0.95
-                    s_rr = round((s_entry - s_tp1) / (s_sl - s_entry), 1) if s_sl > s_entry else 0
+                    
+                    s_tp1 = short_targets[0] if len(short_targets) > 0 else s_entry * 0.97
+                    s_tp2 = short_targets[1] if len(short_targets) > 1 else s_tp1 * 0.95
+                    s_tp3 = short_targets[2] if len(short_targets) > 2 else s_tp2 * 0.92
 
+                    s_rr = round((s_entry - s_tp1) / (s_sl - s_entry), 1) if s_sl > s_entry else 0
                     s_qual, s_conf, s_reasons = evaluate_setup("SHORT", current_price, rsi_4h, vol_ratio, market_mode, range_position, s_rr, local_res["score"])
-                    risk_label = "(По тренду / Сильный)" if s_qual >= 65 else "(Контртренд / Риск высокий)"
+                    risk_label = "(По тренду)" if s_qual >= 65 else "(Контртренд)"
 
                     msg += (
                         f"🎯 SHORT IDEA {risk_label}\n"
                         f"📍 Вход: {clean_price(fmt_p(s_entry))}\n"
                         f"🛡 СТОП (SL): {clean_price(fmt_p(s_sl))}\n"
-                        f"💰 ЦЕЛИ (TP): {clean_price(fmt_p(s_tp1))} | {clean_price(fmt_p(s_tp2))}\n"
+                        f"💰 ЦЕЛИ (TP): {clean_price(fmt_p(s_tp1))} | {clean_price(fmt_p(s_tp2))} | {clean_price(fmt_p(s_tp3))}\n"
                     )
-
                 # ==========================================
                 # БЛОК 11: Триггер входа
                 # ==========================================

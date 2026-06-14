@@ -15,46 +15,57 @@ SCAN_COINS_LIMIT = 200
 
 _scan_lock = threading.Lock()
 
+# === БЛОК ЗАМОРОЗКИ ===
+COOLDOWN_HOURS = 4         # Сколько часов не повторять сигнал по одной монете
+critical_cooldown_cache = {}
+
 # ================= Настройки фильтров =================
-RSI_HIGH = 70              
-RSI_LOW = 30             
-VOLUME_MULTIPLIER = 4.0    
+RSI_HIGH = 65              
+RSI_LOW = 25            
+VOLUME_MULTIPLIER = 3.0    
 TIMEFRAME = "4h"  
 USE_FUTURES = True         
-MAX_SCAN_WORKERS = 8
+MAX_SCAN_WORKERS = 3
 
 def scan_market(scan_type="auto"):
     if not _scan_lock.acquire(blocking=False):
-        print("⚠️ [Critical фильтр] Сканирование уже идёт, пропускаю.")
         return []
         
-    # БЕЗОПАСНАЯ ИНИЦИАЛИЗАЦИЯ
     results = []
     total_processed_coins = 0
     api_queries = 0
     start_time = time.time()
+    now = datetime.datetime.now()
+    
+    # === Инициализация словаря для сбора статистики отказов ===
+    reject_stats = {'volume': 0, 'rsi': 0, 'pattern': 0, 'data': 0, 'error': 0}
     
     try:
         coins = get_top_coins(limit=SCAN_COINS_LIMIT)
         if not coins:
              return []
+             
+        if scan_type == "auto":
+            keys_to_delete = [k for k, v in critical_cooldown_cache.items() if (now - v).total_seconds() >= (COOLDOWN_HOURS * 3600)]
+            for k in keys_to_delete:
+                del critical_cooldown_cache[k]
+
         total_processed_coins = len(coins)
         api_queries = total_processed_coins + 1
         
-        print(f"Начало сканирования рынка ({scan_type}). Всего ликвидных пар: {total_processed_coins}")
-        
-        # Сначала подгружаем структуру маркетов Bybit (один раз перед циклом, чтобы не спамить)
         markets = load_markets_cached(exchange)
 
         def analyze_symbol(symbol):
-            time.sleep(0.1)
+            time.sleep(0.5)
             try:
-                # 1. Если монеты нет на бирже вообще - пропускаем
+                coin_name = symbol.split("/")[0]
+                
+                if scan_type == "auto" and coin_name in critical_cooldown_cache:
+                    return None
+                    
                 if symbol not in markets:
                     return None
                 
-                # 2. РУБИЛЬНИК ФЬЮЧЕРСОВ
-                # Если USE_FUTURES = False, то жестко отсекаем всё, что не спот
                 if not USE_FUTURES:
                     if not markets[symbol].get('spot', False):
                         return None
@@ -63,36 +74,38 @@ def scan_market(scan_type="auto"):
                     
                 ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=250)
                 if len(ohlcv) < 20:
-                    return None
+                    return 'reject_data'
                     
                 df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+                df["rsi"] = calculate_rsi(df)
                 
                 last_row = df.iloc[-1]
                 current_price = float(last_row["close"])
+                current_rsi = float(last_row["rsi"])
+                
+                # Приблизительный расчет среднего объема для ранней отбраковки
+                avg_vol = df["volume"].iloc[-21:-1].mean() if len(df) > 20 else 1
+                vol_ratio = float(last_row["volume"]) / avg_vol if avg_vol > 0 else 1.0
+                
                 market_info = markets[symbol]
                 price_precision = price_precision_from_market(market_info)
                 
-                coin_name = symbol.split("/")[0]
-                
-                # Узнаем текущий режим рынка для этой монеты
                 market_data = get_market_state(df, current_price)
                 trend_code = market_data.get("trend_code", "RANGE")
                 
-                # === ДИНАМИЧЕСКИЕ НАСТРОЙКИ CRITICAL ===
                 if trend_code == "BULL":
-                    crit_rsi_low = 35
-                    crit_rsi_high = 85
-                    crit_vol = 2.0
+                    crit_rsi_low, crit_rsi_high, crit_vol = 35, 85, 2.0
                 elif trend_code == "BEAR":
-                    crit_rsi_low = 20
-                    crit_rsi_high = 70
-                    crit_vol = 2.5
-                else: # RANGE
-                    crit_rsi_low = 25
-                    crit_rsi_high = 75
-                    crit_vol = 3.0
-                # =======================================
+                    crit_rsi_low, crit_rsi_high, crit_vol = 20, 70, 2.5
+                else: 
+                    crit_rsi_low, crit_rsi_high, crit_vol = 25, 75, 3.0
                 
+                # 🆕 РАННЯЯ ОТБРАКОВКА ДЛЯ СТАТИСТИКИ
+                if vol_ratio < crit_vol:
+                    return 'reject_volume'
+                if current_rsi < crit_rsi_high and current_rsi > crit_rsi_low:
+                    return 'reject_rsi'
+
                 signal_data = get_cryptano_signal(
                     df=df,
                     current_price=current_price,
@@ -107,34 +120,50 @@ def scan_market(scan_type="auto"):
                     signal_data["coin"] = coin_name
                     del df
                     return signal_data
+                else:
+                    del df
+                    return 'reject_pattern'
                         
-            except Exception as e:
-                print(f"Ошибка анализа {symbol}: {e}")
-            # Очищаем если дошли сюда
+            except Exception:
+                pass
+                
             if 'df' in locals():
                 del df
-            return None
+            return 'reject_error'
         
-        results = []
         worker_count = min(MAX_SCAN_WORKERS, max(1, total_processed_coins))
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
             futures = [executor.submit(analyze_symbol, symbol) for symbol in coins]
             for future in as_completed(futures):
                 result = future.result()
-                if result:
+                
+                # 🆕 ОБРАБОТКА СТАТИСТИКИ
+                if isinstance(result, str) and result.startswith('reject_'):
+                    reason = result.split('_')[1]
+                    if reason in reject_stats:
+                        reject_stats[reason] += 1
+                elif result is None:
+                    continue # Пропущен из-за кэша или фьючерсов
+                elif isinstance(result, dict):
                     result["source"] = "CRITICAL"
                     results.append(result)
                     save_signal(result)
+                    
+                    if scan_type == "auto":
+                        critical_cooldown_cache[result["coin"]] = now
                 
         return results
     finally:
         elapsed_time = time.time() - start_time
         found_signals = len(results)
-        print(f"\n [Critical фильтр] 📊 Скан завершен за {elapsed_time:.1f} сек.")
-        print(f"[Critical фильтр] 🪙 Монет обработано: {total_processed_coins} | Найдено сетапов: {found_signals}")
-        print(f"[Critical фильтр] 🌐 Запросов к API Bybit: {api_queries}\n")
+        prefix = "[CRITICAL FILTER]"
+        
+        print(f"\n{prefix} 📊 Скан завершен за {elapsed_time:.1f} сек.")
+        print(f"{prefix} 🪙 Монет обработано: {total_processed_coins} | Найдено сетапов: {found_signals}")
+        print(f"{prefix} 🚫 Отбраковано -> Объем: {reject_stats['volume']} | RSI: {reject_stats['rsi']} | Паттерн: {reject_stats['pattern']} | Нехватка данных: {reject_stats['data']}")
+        print(f"{prefix} 🌐 Запросов к API Bybit: {api_queries}\n")
+        
         _scan_lock.release()
-
 def format_results(results, title=""):
     if not results:
         return f"🤷‍♂️ По фильтру *{title}* ничего не найдено."
@@ -255,7 +284,7 @@ def auto_scheduler(bot, admin_chat_id):
         res = scan_market(scan_type="auto")
         
         if res:
-            msg = format_results(res, "⏰ Авто-находка: Сильный RSI + Аномальный объем!")
+            msg = format_results(res, "Critical filtr")
             
             # 🆕 АВТО-ДОБАВЛЕНИЕ В WATCHER
             # Импортируем локально, чтобы избежать ошибки циклического импорта

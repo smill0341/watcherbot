@@ -18,7 +18,8 @@ TIMEFRAME = "4h"
 SCAN_COINS_LIMIT = 150    # Количество топ-монет по объему для сканирования
 COOLDOWN_HOURS = 4         # Не спамить одной монетой 4 часа после сигнала
 SCAN_INTERVAL = 1800        # Запуск сканирования каждые 30 минут (1800 сек)
-MAX_LIGHT_SCAN_WORKERS = 8
+MAX_LIGHT_SCAN_WORKERS = 3
+AUTO_ADD_TO_WATCHER = True  # Разрешить легкому фильтру самому добавлять монеты в Watchlist после нахождения сигнала
 
 cooldown_cache = {}
 _scan_lock = threading.Lock()
@@ -27,7 +28,7 @@ def _light_setup(symbol):
     """
     Единая функция анализа (Радар) с умной матрицей и возвратом причин отбраковки.
     """
-    time.sleep(0.1)
+    time.sleep(0.5)
     try:
         coin_name = symbol.split("/")[0]
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=250)
@@ -170,7 +171,7 @@ def format_light_signal(setup):
         action_risk = f"⚖️ Риск: Шорт от сопротивления ~{fmt_p(nearest_resistance)}"
 
     msg = (
-        f"⚡️ LIGHT СЕТАП | #{coin_name} {icon}\n"
+        f"⚡️ LIGHT FILTR | #{coin_name} {icon}\n"
         f"━━━━━━━━━━━━━━━\n"
         f"💰 Цена: {fmt_p(current_price)} ({price_context})\n"
         f"📊 Объем: x{setup['vol_ratio']:.1f}  |  🌡 RSI: {setup['rsi']:.1f}\n"
@@ -183,12 +184,10 @@ def format_light_signal(setup):
     return msg
 
 def _execute_scan_cycle(bot, admin_chat_id, is_auto=False):
-    prefix = "[ЛАЙТ-РАДАР АВТО]" if is_auto else "[ЛАЙТ-РАДАР РУЧНОЙ]"
+    prefix = "[LIGHT FILTER AUTO]" if is_auto else "[LIGHT FILTER MANUAL]"
     try:
         found_something = False
         
-        # 🛠 ИСПРАВЛЕНО: Убрали локальную инициализацию ccxt.bybit, 
-        # теперь используем глобальный exchange из импортов, чтобы не получить бан API
         load_markets_cached(exchange, ttl_seconds=86400)
 
         coins = get_top_coins(limit=SCAN_COINS_LIMIT)
@@ -199,7 +198,6 @@ def _execute_scan_cycle(bot, admin_chat_id, is_auto=False):
 
         eligible_symbols = []
         if is_auto:
-            # Очистка старых записей из кэша (утечка памяти)
             keys_to_delete = [k for k, v in cooldown_cache.items() if (now - v).total_seconds() >= (COOLDOWN_HOURS * 3600)]
             for k in keys_to_delete:
                 del cooldown_cache[k]
@@ -216,7 +214,6 @@ def _execute_scan_cycle(bot, admin_chat_id, is_auto=False):
         worker_count = min(MAX_LIGHT_SCAN_WORKERS, max(1, len(eligible_symbols)))
         setups = []
         
-        # === Инициализация словаря для сбора статистики отказов ===
         reject_stats = {'volume': 0, 'rsi': 0, 'distance': 0, 'data': 0, 'error': 0}
 
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
@@ -224,9 +221,7 @@ def _execute_scan_cycle(bot, admin_chat_id, is_auto=False):
             for future in as_completed(futures):
                 setup = future.result()
                 
-                # --- ЛОГИКА СБОРА СТАТИСТИКИ (И ЖЕСТКАЯ ПРОВЕРКА ТИПА) ---
                 if not isinstance(setup, dict):
-                    # Если вернулся не словарь (а строка 'reject_...' или None), считаем статистику и пропускаем
                     if isinstance(setup, str) and setup.startswith('reject_'):
                         reason = setup.split('_')[1]
                         if reason in reject_stats:
@@ -234,23 +229,25 @@ def _execute_scan_cycle(bot, admin_chat_id, is_auto=False):
                     else:
                         reject_stats['error'] += 1
                     continue
-                # --------------------------------------------------------
 
-                setup["source"] = "LIGHT"  # Бирка радара
+                setup["source"] = "LIGHT"
                 
-                if setup["pos_pct"] > 50:  # Всё, что в верхней части канала — это шорт-зоны
+                if setup["pos_pct"] > 50:
                     setup["type"] = "SHORT_PUMP"
-                    setup["take_profit"] = setup.get("strong_support", 0) # Для шорта цель ВНИЗУ
-                    setup["stop_loss"] = setup.get("strong_resistance", 0) * 1.05 # Стоп за хай
-                else:                      # Всё, что в нижней части — это лонг-зоны
+                    setup["take_profit"] = setup.get("strong_support", 0)
+                    setup["stop_loss"] = setup.get("strong_resistance", 0) * 1.05
+                else:
                     setup["type"] = "LONG_ROLLBACK"
-                    setup["take_profit"] = setup.get("strong_resistance", 0) # Для лонга цель ВВЕРХУ
-                    setup["stop_loss"] = setup.get("strong_support", 0) * 0.95 # Стоп за дно
+                    setup["take_profit"] = setup.get("strong_resistance", 0)
+                    setup["stop_loss"] = setup.get("strong_support", 0) * 0.95
                     
                 setup["price"] = setup.get("current_price", 0)
                 
-                save_signal(setup)         # Сохранение в базу
+                save_signal(setup)
                 setups.append(setup)
+
+        # === ЕДИНСТВЕННЫЙ ЦИКЛ ОТПРАВКИ И ДОБАВЛЕНИЯ ===
+        sent_to_watchlist_count = 0
 
         for setup in setups:
             coin_name = setup["coin"]
@@ -262,12 +259,27 @@ def _execute_scan_cycle(bot, admin_chat_id, is_auto=False):
             if is_auto:
                 cooldown_cache[coin_name] = now
                 
+                if AUTO_ADD_TO_WATCHER:
+                    try:
+                        from modules.cryptano.live_scan import auto_add_to_watchlist
+                        w_dir = "SHORT" if setup["type"] == "SHORT_PUMP" else "LONG"
+                        
+                        if auto_add_to_watchlist(coin_name, w_dir, source="Light"):
+                            sent_to_watchlist_count += 1
+                    except Exception as e:
+                        print(f"[LIGHT] Ошибка передачи в Watcher: {e}")
+
         elapsed_time = time.time() - start_time
         
-        # --- ФОРМИРОВАНИЕ СТРОКИ СТАТИСТИКИ ---
         stats_str = f"🚫 Отбраковано -> Объем: {reject_stats['volume']} | RSI: {reject_stats['rsi']} | Дистанция: {reject_stats['distance']} | Нехватка данных: {reject_stats['data']}"
         
-        if not is_auto:
+        if is_auto:
+            print(f"\n{prefix} 📊 Скан завершен за {elapsed_time:.1f} сек.")
+            print(f"{prefix} 🪙 Монет обработано: {total_processed_coins} | Найдено сетапов: {len(setups)}")
+            print(f"{prefix} 📥 Отправлено в Watchlist: {sent_to_watchlist_count} шт.")
+            print(f"{prefix} {stats_str}")
+            print(f"{prefix} 🌐 Запросов к API Bybit: {api_queries}\n")
+        else:
             if not found_something:
                 print("[SCANNER LOG] Монет по фильтру Light не найдено.")
                 print(f"\n{prefix} 📊 Скан завершен за {elapsed_time:.1f} сек.")
@@ -282,11 +294,6 @@ def _execute_scan_cycle(bot, admin_chat_id, is_auto=False):
                 print(f"{prefix} {stats_str}")
                 print(f"{prefix} 🌐 Запросов к API Bybit: {api_queries}\n")
                 bot.send_message(admin_chat_id, "✅ Ручной экспресс-скан Light завершен!")
-        else:
-            print(f"\n{prefix} 📊 Скан завершен за {elapsed_time:.1f} сек.")
-            print(f"{prefix} 🪙 Монет обработано: {total_processed_coins} | Найдено сетапов: {len(setups)}")
-            print(f"{prefix} {stats_str}")
-            print(f"{prefix} 🌐 Запросов к API Bybit: {api_queries}\n")
             
     except Exception as e:
         print(f"[SCANNER ERROR] Ошибка внутри Light-скана: {e}")

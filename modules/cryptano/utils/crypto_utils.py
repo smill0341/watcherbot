@@ -49,16 +49,13 @@ def calculate_rsi(df, period=14):
     return 100 - (100 / (1 + rs))
 
 
-def get_top_coins(limit=MAX_COINS_LIMIT, min_volume=MIN_DAILY_VOLUME):
+def get_top_coins(limit=MAX_COINS_LIMIT, min_volume=MIN_DAILY_VOLUME, return_stats=False):
     """Исправленная версия получения топ ликвидных пар Bybit."""
     try:
-        print("[DIAGNOSTIC] Запуск get_top_coins...")
         tickers = exchange.fetch_tickers()
         if not tickers:
-            print("[WARNING] Биржа вернула пустой список тикеров!")
-            return []
+            return ([], 0, 0) if return_stats else []
             
-        print(f"[DIAGNOSTIC] Успешно получено {len(tickers)} тикеров с биржи.")
         liquid_coins = []
         
         for symbol, ticker in tickers.items():
@@ -78,15 +75,15 @@ def get_top_coins(limit=MAX_COINS_LIMIT, min_volume=MIN_DAILY_VOLUME):
                 if calc_volume >= min_volume:
                     liquid_coins.append((symbol, calc_volume))
                     
-        print(f"[DIAGNOSTIC] Прошли фильтр по объему (>{min_volume}$): {len(liquid_coins)} монет.")
         liquid_coins.sort(key=lambda x: x[1], reverse=True)
         
         result = [coin[0] for coin in liquid_coins[:limit]]
-        print(f"[DIAGNOSTIC] Итоговый список для сканера содержит: {len(result)} монет.")
+        if return_stats:
+            return result, len(tickers), len(liquid_coins)
         return result
     except Exception as e:
         print(f"[КРИТИЧЕСКАЯ ОШИБКА BYBIT] Не удалось получить тикеры: {e}")
-        return []
+        return ([], 0, 0) if return_stats else []
 
 
 def price_precision_for_value(value, one_to_ten_decimals=3, small_extra_decimals=3):

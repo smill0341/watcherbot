@@ -1,15 +1,18 @@
 # modules/cryptano/watcher_plan.py
 
 import time
+import os
+from modules.cryptano.utils.storage import load_json
 import pandas as pd
 import gc
 import traceback
 from modules.cryptano.utils.common import calculate_rsi, exchange, format_price as fmt_p, price_precision_from_market
 from modules.cryptano.utils.market_cache import load_markets_cached
+from modules.cryptano.utils.indicators import analyze_extreme_pattern, pandas_get_local_structure
 
 SCAN_COINS_LIMIT = 150
 
-def check_manual_extreme(coin, direction):
+def check_manual_extreme(coin, direction, source="Manual"):
     """
     Делает умный срез графика M15. Ищет пик/дно в последних свечах 
     и проверяет, не произошел ли разворот на основе SFP (ликвидности).
@@ -17,11 +20,10 @@ def check_manual_extreme(coin, direction):
     try:
         start_time = time.time()
         api_queries = 2
+        time.sleep(0.3)
 
         coin = coin.upper().replace("USDT", "").replace("/", "").strip()
         symbol = f"{coin}/USDT"
-        
-        print(f"\n[WATCHER DEBUG] 🚀 Запуск ручного анализа: {symbol} | Направление: {direction}")
         
         markets = load_markets_cached(exchange)
         if symbol not in markets:
@@ -35,10 +37,20 @@ def check_manual_extreme(coin, direction):
         market_info = markets[symbol]
         price_precision = price_precision_from_market(market_info)
 
-        print(f"[WATCHER DEBUG] 📥 Скачиваем M15 свечи для {symbol}...")
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe="15m", limit=120)
-        if len(ohlcv) < 16:
-            print(f"[WATCHER DEBUG] ⚠️ Недостаточно данных ({len(ohlcv)} свечей)")
+        ohlcv = None
+        for attempt in range(3):
+            try:
+                ohlcv = exchange.fetch_ohlcv(symbol, timeframe="15m", limit=120)
+                break
+            except Exception as e:
+                if "Rate Limit" in str(e) or "10006" in str(e):
+                    print(f"[WATCHER WARNING] Bybit лимиты забиты на {coin}. Пауза 1.5 сек...")
+                    time.sleep(1.5)
+                else:
+                    raise e
+
+        if not ohlcv or len(ohlcv) < 16:
+            print(f"[WATCHER DEBUG] ⚠️ Недостаточно данных ({len(ohlcv) if ohlcv else 0} свечей)")
             return False, f"⚠️ Недостаточно данных по монете {coin} на M15."
 
         df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
@@ -50,12 +62,15 @@ def check_manual_extreme(coin, direction):
         # Отрезаем незакрытую (живую) свечу, работаем только с фактами
         df_closed = df.iloc[:-1]
         
-        print("[WATCHER DEBUG] 🧠 Вызов индикаторов analyze_extreme_pattern...")
-        from modules.cryptano.utils.indicators import analyze_extreme_pattern
-        # Получаем новые ключи статусов
-        result = analyze_extreme_pattern(df_closed, direction, current_price, price_precision)
+        # --- НОВОЕ: ЗАГРУЗКА МАКРО-УРОВНЕЙ ---
         
-        print(f"[WATCHER DEBUG] 📊 Результат от индикаторов: {result}")
+        macro_path = os.path.join(os.path.dirname(__file__), "macro_levels.json")
+        macro_db = load_json(macro_path, default={})
+        coin_macro = macro_db.get(coin, {})
+        # ------------------------------------
+        
+        # Передаем source и coin_macro
+        result = analyze_extreme_pattern(df_closed, direction, current_price, price_precision, source, coin_macro)
 
         trigger_fired = result.get("trigger_fired", False)
         rsi_filter_passed = result.get("rsi_filter_passed", False)
@@ -69,17 +84,23 @@ def check_manual_extreme(coin, direction):
         tp2_price = result.get("tp2_price", 0.0)
         tp3_price = result.get("tp3_price", 0.0)
 
-        # 🚀 ГЛАВНОЕ ПРАВИЛО ВХОДА: Есть триггер (SFP/Пинбар) И пройден фильтр RSI
+        # 🚀 ГЛАВНОЕ ПРАВИЛО ВХОДА: Жесткий фильтр RSI для ВСЕХ источников
         is_ready = trigger_fired and rsi_filter_passed
         
         icon = "🔴" if direction == "SHORT" else "🟢"
         status_text = "ВХОД! УСЛОВИЯ ВЫПОЛНЕНЫ" if is_ready else "ЖДЕМ (Слабость не подтверждена)"
         
-        report = f"{icon} {coin} | WATCHER {direction}\n\n"
-        report += f"💰 Текущая цена: {fmt_p(current_price)}\n"
-        report += f"📊 Статус: {status_text}\n\n"
-        
-        report += f" 👀 Metrics:\n"
+        # Короткие метки для источников
+        source_map = {
+            "Manual": "MAN",
+            "Critical": "CRIT",
+            "Light": "LIGHT",
+            "Swing Hunter": "SWING"
+        }
+        src_label = source_map.get(source, source).upper()
+
+        # Строка без лишнего мусора, только суть
+        report = f"{icon} {coin} | WATCHER {direction} | {src_label}\n\n"
         
         # 1. Триггер
         trigger_icon = "⚡️" if trigger_fired else "⏳"
@@ -124,7 +145,6 @@ def check_manual_extreme(coin, direction):
             # ----------------------------------------------------
 
         elapsed_time = time.time() - start_time
-        print(f"[WATCHER DEBUG] ✅ Проверка {coin} успешно завершена за {elapsed_time:.2f} сек.\n")
 
         del df
         gc.collect()
@@ -135,3 +155,4 @@ def check_manual_extreme(coin, direction):
         print(f"\n[WATCHER ERROR] ❌ КРИТИЧЕСКАЯ ОШИБКА В РУЧНОМ СКАНЕ ({coin}): {e}")
         traceback.print_exc()  # Печатает полный стек вызовов ошибки в терминал
         return False, f"❌ Ошибка ручного экспресс-анализа {coin}: {e}"
+    
