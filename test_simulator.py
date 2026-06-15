@@ -20,7 +20,7 @@ LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной �
 # 🧪 ТУМБЛЕР МАШИНЫ ВРЕМЕНИ (Должен совпадать с BACKTEST_DATE из swing_hunter.py или None)
 TEST_START_DATE = "2026-05-01 16:00:00"
 
-TAKE_PROFIT = 3.0   # Цель в %
+TAKE_PROFIT = 10.0   # Цель в %
 SL_BUFFER = 0.5      # Отступ стоп-лосса за уровень в %
 
 # --- ТУМБЛЕРЫ ФИЛЬТРОВ ---
@@ -52,6 +52,9 @@ class SmartSniperUniversal(Strategy):
         self.last_closed_trades = 0
         self.current_trade_level_id = None
         
+        # МАГНИТ ДЛЯ БЕЗУБЫТКА (Новая строка)
+        self.active_signals = []
+        
         high_low = pd.Series(self.data.High) - pd.Series(self.data.Low)
         self.atr = self.I(SMA, high_low, 14)
 
@@ -77,6 +80,31 @@ class SmartSniperUniversal(Strategy):
             self.I(create_line, res['max'], name=f"Resist Top {res['max']:.4f}", overlay=True, color="pink")
 
     def next(self):
+        # ==========================================
+        # 0. БЕЗУБЫТОК (БУ) ПРОВЕРКА
+        # ==========================================
+        for sig in self.active_signals:
+            if not sig['sl_moved']:
+                # Если Лонг достиг TP1
+                if sig['type'] == 'LONG' and self.data.High[-1] >= sig['tp1']:
+                    for t in self.trades:
+                        if t.is_long and abs(t.entry_price - sig['entry']) < 1e-6:
+                            # Переводим стоп в цену входа + 0.06% на комсу
+                            t.sl = max(t.sl or 0, sig['entry'] * 1.0006) 
+                    sig['sl_moved'] = True
+                    
+                # Если Шорт достиг TP1
+                elif sig['type'] == 'SHORT' and self.data.Low[-1] <= sig['tp1']:
+                    for t in self.trades:
+                        if t.is_short and abs(t.entry_price - sig['entry']) < 1e-6:
+                            # Переводим стоп в цену входа - 0.06% на комсу
+                            t.sl = min(t.sl or float('inf'), sig['entry'] * 0.9994)
+                    sig['sl_moved'] = True
+
+        # Очистка памяти
+        if len(self.trades) == 0:
+            self.active_signals.clear()
+
         # ==========================================
         # 1. СЖИГАНИЕ УРОВНЕЙ (ТОЛЬКО ПОСЛЕ ПЛЮСА)
         # ==========================================
@@ -275,6 +303,14 @@ class SmartSniperUniversal(Strategy):
         self.sell(size=0.3, sl=sl, tp=tp1)
         self.sell(size=0.3, sl=sl, tp=tp2)
         self.sell(size=0.3, sl=sl, tp=tp3)
+        
+        # Записываем в память для БУ
+        self.active_signals.append({
+            'type': 'SHORT',
+            'entry': current_price,
+            'tp1': tp1,
+            'sl_moved': False
+        })
 
 # =========================================================
 # ЗАПУСК ТЕСТОВ И ОТЧЕТЫ
@@ -349,13 +385,21 @@ if TARGET_COIN.upper() == "ALL":
             grouped = trades_df.groupby('EntryTime').agg({'PnL': 'sum'}).reset_index()
             grouped = grouped.sort_values('EntryTime')
             
-            success_list = []
-            for i, (_, row) in enumerate(grouped.iterrows(), start=1):
-                if row['PnL'] > 0:
-                    success_list.append(str(i))
+            real_trades_count = len(grouped)
             
+            success_list = []
+            for idx, row in grouped.iterrows():
+                if row['PnL'] > 0:
+                    success_list.append(str(idx + 1))
+            
+            # НОВАЯ ЛОГИКА ФОРМИРОВАНИЯ СТРОКИ: Плюсы / Всего
             if success_list:
-                success_str = "/".join(success_list)
+                success_str = "/".join(success_list) + f"/{real_trades_count}"
+            else:
+                success_str = f"0/{real_trades_count}"
+        else:
+            real_trades_count = 0
+            success_str = "0/0"
                 
             real_trades_count = len(grouped)
 
