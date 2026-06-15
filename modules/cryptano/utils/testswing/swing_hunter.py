@@ -30,6 +30,10 @@ TIME_US_OPEN = "15:05"
 BACKTEST_DATE = "2026-05-01 16:00:00"  
 # =========================================================
 
+# 🎛 НАСТРОЙКИ V2 ФИЛЬТРОВ
+IMPULSE_ATR_MULTIPLIER = 2.5  # Цена должна улететь минимум на 2.5 ATR от зоны
+IMPULSE_LOOKAHEAD_DAYS = 10   # Даем цене 10 дней на то, чтобы показать этот импульс
+
 # Теперь BASE_DIR указывает прямо на modules/cryptano/utils/testswing/
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -147,11 +151,12 @@ def build_levels_for_single_coin(coin):
                         current_price = float(df_4h['close'].iloc[-1])
 
                         zone = {
-                            "min": poc_price - (atr_4h * 0.5),
-                            "max": poc_price + (atr_4h * 0.5),
-                            "score": 2.0,
-                            "type": "4h_poc"
-                        }
+                                "min": poc_price - (atr_4h * 0.5),
+                                "max": poc_price + (atr_4h * 0.5),
+                                "score": 2.0,
+                                "type": "4h_poc",
+                                "date": "Volume Accumulation (200 candles)"
+                            }
 
                         if current_price > poc_price: supports.append(zone)
                         else: resistances.append(zone)
@@ -195,7 +200,7 @@ def build_macro_levels(bot=None, admin_chat_id=None):
             fetch_params['endTime'] = int(dt_obj.timestamp() * 1000)
         
         for symbol in valid_symbols:
-            time.sleep(1.5)  # Увеличили паузу до 1.5 секунд
+            time.sleep(1.5)
             coin = symbol.split("/")[0].replace(":USDT", "")
             
             try:
@@ -215,17 +220,46 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                     
                     current_price_1d = float(df_1d['close'].iloc[-1])
                     
+                    # === ФИЛЬТРАЦИЯ ПОДДЕРЖЕК (ВПАДИНЫ) ===
                     for v in valleys:
                         price = float(df_1d['low'].iloc[v])
                         if abs(price - current_price_1d) / current_price_1d > 0.15: continue
-                        zone = {"min": price - (atr_1d * 0.5), "max": price + (atr_1d * 0.5), "score": 3.0, "type": "1d_extreme"}
+                        
+                        # 🛡 НОВЫЙ ФИЛЬТР: Origin Move (ATR-based)
+                        # Берем следующие X дней после касания
+                        lookahead_slice = df_1d['high'].iloc[v+1 : v+1+IMPULSE_LOOKAHEAD_DAYS]
+                        if lookahead_slice.empty: continue # Свежий уровень, еще нет истории для проверки
+                        
+                        max_move = lookahead_slice.max()
+                        # Если цена не смогла уйти вверх хотя бы на 2.5 ATR -> это слабый уровень, удаляем
+                        if max_move < price + (atr_1d * IMPULSE_ATR_MULTIPLIER):
+                            continue 
+                            
+                        ts = df_1d['timestamp'].iloc[v]
+                        date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
+                        
+                        zone = {"min": price - (atr_1d * 0.5), "max": price + (atr_1d * 0.5), "score": 3.0, "type": "1d_extreme", "date": date_str}
                         if price < current_price_1d: supports.append(zone)
                         else: resistances.append(zone)
                         
+                    # === ФИЛЬТРАЦИЯ СОПРОТИВЛЕНИЙ (ПИКИ) ===
                     for p in peaks:
                         price = float(df_1d['high'].iloc[p])
                         if abs(price - current_price_1d) / current_price_1d > 0.15: continue
-                        zone = {"min": price - (atr_1d * 0.5), "max": price + (atr_1d * 0.5), "score": 3.0, "type": "1d_extreme"}
+                        
+                        # 🛡 НОВЫЙ ФИЛЬТР: Origin Move (ATR-based)
+                        lookahead_slice = df_1d['low'].iloc[p+1 : p+1+IMPULSE_LOOKAHEAD_DAYS]
+                        if lookahead_slice.empty: continue
+                        
+                        min_move = lookahead_slice.min()
+                        # Если цена не рухнула вниз хотя бы на 2.5 ATR -> удаляем
+                        if min_move > price - (atr_1d * IMPULSE_ATR_MULTIPLIER):
+                            continue
+                            
+                        ts = df_1d['timestamp'].iloc[p]
+                        date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
+                        
+                        zone = {"min": price - (atr_1d * 0.5), "max": price + (atr_1d * 0.5), "score": 3.0, "type": "1d_extreme", "date": date_str}
                         if price > current_price_1d: resistances.append(zone)
                         else: supports.append(zone)
 

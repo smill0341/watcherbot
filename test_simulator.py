@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import os
 import warnings
+
+from sympy import true
 warnings.filterwarnings("ignore")
 from backtesting import Backtest, Strategy
 from modules.cryptano.utils.crypto_utils import exchange
@@ -16,19 +18,21 @@ TIMEFRAME = "15m"
 LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной истории
 
 # 🧪 ТУМБЛЕР МАШИНЫ ВРЕМЕНИ (Должен совпадать с BACKTEST_DATE из swing_hunter.py или None)
-TEST_START_DATE = "2024-05-01 00:00:00"
+TEST_START_DATE = "2026-05-01 16:00:00"
 
 TAKE_PROFIT = 10.0   # Цель в %
 SL_BUFFER = 0.5      # Отступ стоп-лосса за уровень в %
 
 # --- ТУМБЛЕРЫ ФИЛЬТРОВ ---
-USE_CHOCH        = False   # Слом структуры
-USE_ANTI_KNIFE   = False   # Запрет входа против агрессивных свечей
+USE_CHOCH        = True   # Слом структуры
+USE_ANTI_KNIFE   = True   # Запрет входа против агрессивных свечей
 USE_RR_FILTER    = False   # Математический фильтр R/R
-RR_RATIO         = 3.0    # Минимальный R/R
+RR_RATIO         = 2.0    # Минимальный R/R
 
 USE_RANGE_FILTER = False   # Игнорировать входы, если закрытие свечи ушло в средние 40% диапазона
 USE_LEVEL_BURN   = False   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА (чтобы не забирал 2 раза)
+
+
 # =========================================================
 
 CURRENT_SUPPORTS = []
@@ -39,19 +43,38 @@ def SMA(arr, n):
 
 class SmartSniperUniversal(Strategy):
     def init(self):
-        self.burned_levels = set()  # Множество для сгоревших уровней
+        self.burned_levels = set()  
         self.wait_for_bullish_choch = False
         self.choch_bull_level = 0.0
         self.wait_for_bearish_choch = False
         self.choch_bear_level = 0.0
         self.active_level = None
-        
-        # Для отслеживания профита по сделкам
         self.last_closed_trades = 0
         self.current_trade_level_id = None
         
         high_low = pd.Series(self.data.High) - pd.Series(self.data.Low)
         self.atr = self.I(SMA, high_low, 14)
+
+        # ==========================================
+        # 🎨 ОТРИСОВКА МАКРО-УРОВНЕЙ НА ГРАФИКЕ
+        # ==========================================
+        # Функция-пустышка для проброса линий
+        def create_line(val):
+            return pd.Series(val, index=self.data.index)
+
+        # Рисуем поддержки (Зеленые зоны)
+        for sup in CURRENT_SUPPORTS:
+            # Верхняя граница зоны (где ждем касания)
+            self.I(create_line, sup['max'], name=f"Support Top {sup['max']:.4f}", overlay=True, color="green")
+            # Нижняя граница зоны (где стоит стоп)
+            self.I(create_line, sup['min'], name=f"Support Bottom {sup['min']:.4f}", overlay=True, color="lightgreen")
+
+        # Рисуем сопротивления (Красные зоны)
+        for res in CURRENT_RESISTANCES:
+            # Нижняя граница (где ждем касания шорта)
+            self.I(create_line, res['min'], name=f"Resist Bottom {res['min']:.4f}", overlay=True, color="red")
+            # Верхняя граница (где стоит стоп)
+            self.I(create_line, res['max'], name=f"Resist Top {res['max']:.4f}", overlay=True, color="pink")
 
     def next(self):
         # ==========================================
