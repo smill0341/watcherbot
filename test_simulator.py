@@ -15,17 +15,20 @@ TARGET_COIN = "ALL"  # Впиши "ALL" для теста всего портф�
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной истории
 
+# 🧪 ТУМБЛЕР МАШИНЫ ВРЕМЕНИ (Должен совпадать с BACKTEST_DATE из swing_hunter.py или None)
+TEST_START_DATE = "2024-05-01 00:00:00"
+
 TAKE_PROFIT = 10.0   # Цель в %
 SL_BUFFER = 0.5      # Отступ стоп-лосса за уровень в %
 
 # --- ТУМБЛЕРЫ ФИЛЬТРОВ ---
-USE_CHOCH        = True   # Слом структуры
-USE_ANTI_KNIFE   = True   # Запрет входа против агрессивных свечей
-USE_RR_FILTER    = True   # Математический фильтр R/R
+USE_CHOCH        = False   # Слом структуры
+USE_ANTI_KNIFE   = False   # Запрет входа против агрессивных свечей
+USE_RR_FILTER    = False   # Математический фильтр R/R
 RR_RATIO         = 3.0    # Минимальный R/R
 
 USE_RANGE_FILTER = False   # Игнорировать входы, если закрытие свечи ушло в средние 40% диапазона
-USE_LEVEL_BURN   = True   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА (чтобы не забирал 2 раза)
+USE_LEVEL_BURN   = False   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА (чтобы не забирал 2 раза)
 # =========================================================
 
 CURRENT_SUPPORTS = []
@@ -189,19 +192,41 @@ macro_db = load_json(macro_path, default={}) if os.path.exists(macro_path) else 
 
 def get_cached_data(coin):
     symbol = f"{coin.upper()}/USDT"
-    cache_file = f"cache_{coin.lower()}_{TIMEFRAME}_{LIMIT_CANDLES}.csv"
+    
+    date_suffix = TEST_START_DATE[:10] if TEST_START_DATE else "live"
+    cache_file = f"cache_{coin.lower()}_{TIMEFRAME}_{LIMIT_CANDLES}_{date_suffix}.csv"
+    
     if os.path.exists(cache_file):
         return pd.read_csv(cache_file, index_col=0, parse_dates=True)
     else:
         print(f"🌐 Скачиваю свечи для {symbol}...")
         try:
-            ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=LIMIT_CANDLES)
+            since_ts = None
+            if TEST_START_DATE:
+                dt_obj = pd.to_datetime(TEST_START_DATE) - pd.Timedelta(days=1)
+                since_ts = int(dt_obj.timestamp() * 1000)
+            
+            if since_ts:
+                ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=LIMIT_CANDLES, since=since_ts)
+            else:
+                ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=LIMIT_CANDLES)
+                
             df = pd.DataFrame(ohlcv, columns=["Open_time", "Open", "High", "Low", "Close", "Volume"])
             df.index = pd.to_datetime(df["Open_time"], unit="ms")
             df.to_csv(cache_file)
             return df
         except Exception as e:
+            print(f"Ошибка скачивания {coin}: {e}")
             return pd.DataFrame()
+
+# 🎯 НАСТРОЙКА ПУТИ К ТЕСТОВОЙ ПАПКЕ
+if TEST_START_DATE:
+    # Тестер берет файл макро-уровней прямо из изолированной папки testswing
+    macro_path = os.path.join("modules", "cryptano", "utils", "testswing", f"macro_test_{TEST_START_DATE[:10]}.json")
+else:
+    macro_path = os.path.join("modules", "cryptano", "macro_levels.json")
+
+macro_db = load_json(macro_path, default={}) if os.path.exists(macro_path) else {}
 
 filters_summary = (f"CHoCH={USE_CHOCH} | KNIFE={USE_ANTI_KNIFE} | "
                    f"R/R={USE_RR_FILTER} | RANGE={USE_RANGE_FILTER} | BURN(Win)={USE_LEVEL_BURN}")
