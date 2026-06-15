@@ -20,14 +20,14 @@ LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной �
 # 🧪 ТУМБЛЕР МАШИНЫ ВРЕМЕНИ (Должен совпадать с BACKTEST_DATE из swing_hunter.py или None)
 TEST_START_DATE = "2026-05-01 16:00:00"
 
-TAKE_PROFIT = 10.0   # Цель в %
+TAKE_PROFIT = 3.0   # Цель в %
 SL_BUFFER = 0.5      # Отступ стоп-лосса за уровень в %
 
 # --- ТУМБЛЕРЫ ФИЛЬТРОВ ---
 USE_CHOCH        = True   # Слом структуры
 USE_ANTI_KNIFE   = True   # Запрет входа против агрессивных свечей
 USE_RR_FILTER    = False   # Математический фильтр R/R
-RR_RATIO         = 2.0    # Минимальный R/R
+RR_RATIO         = 3.0    # Минимальный R/R
 
 USE_RANGE_FILTER = False   # Игнорировать входы, если закрытие свечи ушло в средние 40% диапазона
 USE_LEVEL_BURN   = False   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА (чтобы не забирал 2 раза)
@@ -116,7 +116,7 @@ class SmartSniperUniversal(Strategy):
             self.wait_for_bearish_choch = False
             return
 
-        # ==========================================
+# ==========================================
         # 3. ЛОГИКА LONG
         # ==========================================
         for sup in CURRENT_SUPPORTS:
@@ -148,6 +148,7 @@ class SmartSniperUniversal(Strategy):
                 self.wait_for_bullish_choch = False
             elif c_low < self.active_level['min'] * 0.99:
                 self.wait_for_bullish_choch = False
+
 
         # ==========================================
         # 4. ЛОГИКА SHORT
@@ -182,30 +183,98 @@ class SmartSniperUniversal(Strategy):
             elif c_high > self.active_level['max'] * 1.01:
                 self.wait_for_bearish_choch = False
 
+
     # ==========================================
-    # 5. ИСПОЛНЕНИЕ ОРДЕРОВ
+    # 5. ИСПОЛНЕНИЕ ОРДЕРОВ (3 Тейка + RR Фильтр)
     # ==========================================
     def _execute_long(self, level, current_price):
+        # 1. Стоп строго за нижнюю границу зоны
         sl = level['min'] * (1 - SL_BUFFER / 100)
-        tp = current_price * (1 + TAKE_PROFIT / 100)
         risk = current_price - sl
-        reward = tp - current_price
         
-        if USE_RR_FILTER and (risk <= 0 or (reward / risk) < RR_RATIO): return
+        if risk <= 0: return
+
+        # 2. TP2: Ближайшая макро-зона (Resistance) сверху
+        valid_resistances = [r['min'] for r in CURRENT_RESISTANCES if r['min'] > current_price]
+        if not valid_resistances:
+            return  # Отмена: нет макро-целей сверху
+
+        tp2 = min(valid_resistances)
+        rr_to_tp2 = (tp2 - current_price) / risk
+
+        # ⛔ ЖЕСТКИЙ ФИЛЬТР: Отмена, если до TP2 меньше 2.5 стопов
+        if rr_to_tp2 < 2.5:
+            return
+
+        # 3. TP1: Локальный хай (15M) за последние 30 свечей
+        lookback = min(30, len(self.data.High) - 1)
+        if lookback > 0:
+            local_high = max(self.data.High[-lookback:])
+        else:
+            local_high = current_price
+
+        # Защита: если локальный хай дает меньше 1.5R, ставим математические 1.5R
+        if local_high < current_price + (risk * 1.5):
+            tp1 = current_price + (risk * 1.5)
+        else:
+            tp1 = local_high
+
+        # 4. TP3: Дальний Runner (4R)
+        tp3 = current_price + (risk * 4.0)
+
+        print(f"[LONG] Вход: {current_price:.4f} | SL: {sl:.4f} | TP2(RR={rr_to_tp2:.1f}): {tp2:.4f}")
         
         self.current_trade_level_id = f"{level['min']}_{level['max']}"
-        self.buy(sl=sl, tp=tp)
+        
+        # Открываем сетку. Библиотека использует size как долю от текущего кэша.
+        # Используем 0.3 для каждого, чтобы гарантированно хватило баланса на 3 ордера.
+        self.buy(size=0.3, sl=sl, tp=tp1)
+        self.buy(size=0.3, sl=sl, tp=tp2)
+        self.buy(size=0.3, sl=sl, tp=tp3)
+
 
     def _execute_short(self, level, current_price):
+        # 1. Стоп строго за верхнюю границу зоны
         sl = level['max'] * (1 + SL_BUFFER / 100)
-        tp = current_price * (1 - TAKE_PROFIT / 100)
         risk = sl - current_price
-        reward = current_price - tp
         
-        if USE_RR_FILTER and (risk <= 0 or (reward / risk) < RR_RATIO): return
+        if risk <= 0: return
+
+        # 2. TP2: Ближайшая макро-зона (Support) снизу
+        valid_supports = [s['max'] for s in CURRENT_SUPPORTS if s['max'] < current_price]
+        if not valid_supports:
+            return  # Отмена: нет макро-целей снизу
+
+        tp2 = max(valid_supports)
+        rr_to_tp2 = (current_price - tp2) / risk
+
+        # ⛔ ЖЕСТКИЙ ФИЛЬТР: Отмена, если до TP2 меньше 2.5 стопов
+        if rr_to_tp2 < 2.5:
+            return
+
+        # 3. TP1: Локальный лой (15M) за последние 30 свечей
+        lookback = min(30, len(self.data.Low) - 1)
+        if lookback > 0:
+            local_low = min(self.data.Low[-lookback:])
+        else:
+            local_low = current_price
+
+        # Защита: если локальный лой дает меньше 1.5R, ставим математические 1.5R
+        if local_low > current_price - (risk * 1.5):
+            tp1 = current_price - (risk * 1.5)
+        else:
+            tp1 = local_low
+
+        # 4. TP3: Дальний Runner (4R)
+        tp3 = current_price - (risk * 4.0)
+
+        print(f"[SHORT] Вход: {current_price:.4f} | SL: {sl:.4f} | TP2(RR={rr_to_tp2:.1f}): {tp2:.4f}")
         
         self.current_trade_level_id = f"{level['min']}_{level['max']}"
-        self.sell(sl=sl, tp=tp)
+        
+        self.sell(size=0.3, sl=sl, tp=tp1)
+        self.sell(size=0.3, sl=sl, tp=tp2)
+        self.sell(size=0.3, sl=sl, tp=tp3)
 
 # =========================================================
 # ЗАПУСК ТЕСТОВ И ОТЧЕТЫ
@@ -270,14 +339,42 @@ if TARGET_COIN.upper() == "ALL":
         bt = Backtest(df, SmartSniperUniversal, cash=10000, commission=.0006, hedging=False)
         stats = bt.run()
         
-        if int(stats['# Trades']) > 0:
+        # --- СБОР СТАТИСТИКИ 1/5/10 ДЛЯ ВСЕХ МОНЕТ ---
+        trades_df = stats.get('_trades')
+        success_str = "-"
+        real_trades_count = 0
+        
+        if trades_df is not None and not trades_df.empty:
+            # Склеиваем 3 тейка в 1 сигнал
+            grouped = trades_df.groupby('EntryTime').agg({'PnL': 'sum'}).reset_index()
+            grouped = grouped.sort_values('EntryTime')
+            
+            success_list = []
+            for i, (_, row) in enumerate(grouped.iterrows(), start=1):
+                if row['PnL'] > 0:
+                    success_list.append(str(i))
+            
+            if success_list:
+                success_str = "/".join(success_list)
+                
+            real_trades_count = len(grouped)
+
+        # Добавляем в таблицу только если были реальные сделки
+        if real_trades_count > 0:
+            win_rate = stats.get('Win Rate [%]', 0.0)
+            if pd.isna(win_rate): win_rate = 0.0
+            
+            pf = stats.get('Profit Factor', 0.0)
+            pf_val = round(pf, 2) if pd.notna(pf) else "Без убытка"
+            
             portfolio_results.append({
                 "Монета": coin.upper(),
-                "Сделок": int(stats['# Trades']),
-                "Win Rate %": round(stats['Win Rate [%]'], 2),
-                "Profit Factor": round(stats['Profit Factor'], 2) if pd.notna(stats['Profit Factor']) else "Без убытка",
-                "Просадка %": round(stats['Max. Drawdown [%]'], 2),
-                "Чистый Профит %": round(stats['Return [%]'], 2)
+                "Сделок": real_trades_count,
+                "Win Rate %": round(win_rate, 2),
+                "Profit Factor": pf_val,
+                "Просадка %": round(stats.get('Max. Drawdown [%]', 0.0), 2),
+                "Чистый Профит %": round(stats.get('Return [%]', 0.0), 2),
+                "Успех": success_str
             })
 
     print("\n" + "="*85)
@@ -289,7 +386,7 @@ if TARGET_COIN.upper() == "ALL":
         print(report_df.to_string(index=False))
         print("-" * 85)
         print(f"📈 Суммарный профит портфеля: {report_df['Чистый Профит %'].sum():.2f}%")
-        print(f"🏆 Средний Win Rate:          {report_df['Win Rate %'].mean():.2f}%")
+        print(f"🏆 Средний Win Rate:         {report_df['Win Rate %'].mean():.2f}%")
     else:
         print("❌ Нет сделок. Фильтры отсекли всё.")
     print("="*85 + "\n")
@@ -306,30 +403,48 @@ else:
     else:
         bt = Backtest(df, SmartSniperUniversal, cash=10000, commission=.0006, hedging=False)
         stats = bt.run()
+    
+        trades_df = stats.get('_trades')
+        success_str = "-"
+        real_trades_count = 0
+        grouped = pd.DataFrame()
         
+        if trades_df is not None and not trades_df.empty:
+            # Группируем ордера по времени входа (3 тейка = 1 общий сигнал)
+            grouped = trades_df.groupby('EntryTime').agg({'PnL': 'sum'}).reset_index()
+            grouped = grouped.sort_values('EntryTime')
+            
+            success_list = []
+            for i, (_, row) in enumerate(grouped.iterrows(), start=1):
+                if row['PnL'] > 0:
+                    success_list.append(str(i))
+                    
+            if success_list:
+                success_str = "/".join(success_list)
+                
+            real_trades_count = len(grouped) 
+            
         print("\n" + "="*70)
         print(f"📊 ТЕСТ ДЛЯ {TARGET_COIN.upper()}")
         print(f"🛠 Фильтры: {filters_summary}")
         print("="*70)
-        print(f"💵 Конечный баланс:   ${stats['Equity Final [$]']:,.2f}")
-        print(f"📈 Чистый профит:     {stats['Return [%]']:.2f}%")
-        print(f"📉 Макс. просадка:    {stats['Max. Drawdown [%]']:.2f}%")
-        print(f"🤝 Всего сделок:       {int(stats['# Trades'])}")
+        print(f"💵 Конечный баланс:   ${stats.get('Equity Final [$]', 0):,.2f}")
+        print(f"📈 Чистый профит:     {stats.get('Return [%]', 0):.2f}%")
+        print(f"📉 Макс. просадка:    {stats.get('Max. Drawdown [%]', 0):.2f}%")
+        print(f"🤝 Всего сигналов:     {real_trades_count} (Успех: {success_str})")
         
-        if int(stats['# Trades']) > 0:
-            print(f"🏆 Процент плюсовых:  {stats['Win Rate [%]']:.2f}%")
+        if real_trades_count > 0:
+            win_rate = stats.get('Win Rate [%]', 0.0)
+            if pd.isna(win_rate): win_rate = 0.0
+            print(f"🏆 Процент плюсовых:  {win_rate:.2f}%")
             print("-" * 70)
-            for idx, row in stats['_trades'].iterrows():
-                # Расчет знака и статуса для красивого отчета
-                pct_val = row['ReturnPct'] * 100
-                sign = "+" if pct_val > 0 else ""
+            
+            # Вывод лога склеенных сделок
+            for i, (_, row) in enumerate(grouped.iterrows(), start=1):
                 status = "✅ ПЛЮС" if row['PnL'] > 0 else "❌ МИНУС"
-                tr_type = "LONG " if row['Size'] > 0 else "SHORT"
-                
                 t_in = row['EntryTime'].strftime('%d.%m %H:%M')
-                t_out = row['ExitTime'].strftime('%d.%m %H:%M')
+                sign = "+" if row['PnL'] > 0 else ""
+                print(f"  ▪️ Сигнал №{i}: Вход {t_in} | Итог: {status} (PnL: {sign}${row['PnL']:.2f})")
                 
-                print(f"  ▪️ Сделка №{idx+1} ({tr_type}): {t_in} -> {t_out} | {status} ({sign}{pct_val:.2f}%)")
-        
         chart_path = os.path.abspath(f'chart_{TARGET_COIN.lower()}.html')
         bt.plot(filename=chart_path, open_browser=True)

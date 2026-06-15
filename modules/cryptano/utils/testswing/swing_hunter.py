@@ -225,20 +225,22 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                         price = float(df_1d['low'].iloc[v])
                         if abs(price - current_price_1d) / current_price_1d > 0.15: continue
                         
-                        # 🛡 НОВЫЙ ФИЛЬТР: Origin Move (ATR-based)
-                        # Берем следующие X дней после касания
+                        # БЕРЕМ ATR ИМЕННО ТОГО ДНЯ, КОГДА БЫЛА ВПАДИНА
+                        local_atr = df_1d['atr'].iloc[v]
+                        if pd.isna(local_atr) or local_atr == 0: local_atr = atr_1d
+
                         lookahead_slice = df_1d['high'].iloc[v+1 : v+1+IMPULSE_LOOKAHEAD_DAYS]
-                        if lookahead_slice.empty: continue # Свежий уровень, еще нет истории для проверки
+                        if lookahead_slice.empty: continue 
                         
                         max_move = lookahead_slice.max()
-                        # Если цена не смогла уйти вверх хотя бы на 2.5 ATR -> это слабый уровень, удаляем
-                        if max_move < price + (atr_1d * IMPULSE_ATR_MULTIPLIER):
+                        # Сравниваем импульс с историческим ATR
+                        if max_move < price + (local_atr * IMPULSE_ATR_MULTIPLIER):
                             continue 
                             
                         ts = df_1d['timestamp'].iloc[v]
                         date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
                         
-                        zone = {"min": price - (atr_1d * 0.5), "max": price + (atr_1d * 0.5), "score": 3.0, "type": "1d_extreme", "date": date_str}
+                        zone = {"min": price - (local_atr * 0.5), "max": price + (local_atr * 0.5), "score": 3.0, "type": "1d_extreme", "date": date_str}
                         if price < current_price_1d: supports.append(zone)
                         else: resistances.append(zone)
                         
@@ -247,19 +249,21 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                         price = float(df_1d['high'].iloc[p])
                         if abs(price - current_price_1d) / current_price_1d > 0.15: continue
                         
-                        # 🛡 НОВЫЙ ФИЛЬТР: Origin Move (ATR-based)
+                        # БЕРЕМ ATR ИМЕННО ТОГО ДНЯ
+                        local_atr = df_1d['atr'].iloc[p]
+                        if pd.isna(local_atr) or local_atr == 0: local_atr = atr_1d
+
                         lookahead_slice = df_1d['low'].iloc[p+1 : p+1+IMPULSE_LOOKAHEAD_DAYS]
                         if lookahead_slice.empty: continue
                         
                         min_move = lookahead_slice.min()
-                        # Если цена не рухнула вниз хотя бы на 2.5 ATR -> удаляем
-                        if min_move > price - (atr_1d * IMPULSE_ATR_MULTIPLIER):
+                        if min_move > price - (local_atr * IMPULSE_ATR_MULTIPLIER):
                             continue
                             
                         ts = df_1d['timestamp'].iloc[p]
                         date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
                         
-                        zone = {"min": price - (atr_1d * 0.5), "max": price + (atr_1d * 0.5), "score": 3.0, "type": "1d_extreme", "date": date_str}
+                        zone = {"min": price - (local_atr * 0.5), "max": price + (local_atr * 0.5), "score": 3.0, "type": "1d_extreme", "date": date_str}
                         if price > current_price_1d: resistances.append(zone)
                         else: supports.append(zone)
 
