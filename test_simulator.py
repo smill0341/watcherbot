@@ -280,8 +280,8 @@ class SmartSniperUniversal(Strategy):
         if rr_to_tp2 < 2.5:
             return
 
-        # 3. TP1: Локальный лой (15M) за последние 30 свечей
-        lookback = min(30, len(self.data.Low) - 1)
+        # 3. TP1: Локальный лой (15M) за последние 12 свечей
+        lookback = min(12, len(self.data.Low) - 1)
         if lookback > 0:
             local_low = min(self.data.Low[-lookback:])
         else:
@@ -290,6 +290,8 @@ class SmartSniperUniversal(Strategy):
         # Защита: если локальный лой дает меньше 1.5R, ставим математические 1.5R
         if local_low > current_price - (risk * 1.5):
             tp1 = current_price - (risk * 1.5)
+        elif local_low < current_price - (risk * 2.0):
+            tp1 = current_price - (risk * 2.0)
         else:
             tp1 = local_low
 
@@ -300,16 +302,17 @@ class SmartSniperUniversal(Strategy):
         
         self.current_trade_level_id = f"{level['min']}_{level['max']}"
         
-        self.sell(size=0.3, sl=sl, tp=tp1)
-        self.sell(size=0.3, sl=sl, tp=tp2)
-        self.sell(size=0.3, sl=sl, tp=tp3)
+        self.sell(size=0.33, sl=sl, tp=tp1)
+        self.sell(size=0.50, sl=sl, tp=tp2)
+        self.sell(size=0.95, sl=sl, tp=tp3)
         
         # Записываем в память для БУ
         self.active_signals.append({
             'type': 'SHORT',
             'entry': current_price,
             'tp1': tp1,
-            'sl_moved': False
+            'sl_moved': False,
+            'signal_time': self.data.index[-1]
         })
 
 # =========================================================
