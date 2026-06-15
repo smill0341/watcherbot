@@ -12,29 +12,28 @@ from modules.cryptano.utils.storage import load_json
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "ALL"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "BNB"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной истории
 
-# 🧪 ТУМБЛЕР МАШИНЫ ВРЕМЕНИ (Должен совпадать с BACKTEST_DATE из swing_hunter.py или None)
+# 🧪 ТУМБЛЕР МАШИНЫ ВРЕМЕНИ
 TEST_START_DATE = "2026-05-01 16:00:00"
 
-TAKE_PROFIT = 10.0   # Цель в %
-SL_BUFFER = 0.5      # Отступ стоп-лосса за уровень в %
+TAKE_PROFIT = 10.0   # Оригинальная цель в %
+SL_BUFFER = 0.5      # Оригинальный отступ стоп-лосса в %
 
 # --- ТУМБЛЕРЫ ФИЛЬТРОВ ---
-USE_CHOCH        = True   # Слом структуры
-USE_ANTI_KNIFE   = True   # Запрет входа против агрессивных свечей
+USE_CHOCH        = True    # Слом структуры
+USE_ANTI_KNIFE   = True    # Запрет входа против агрессивных свечей
 USE_RR_FILTER    = False   # Математический фильтр R/R
-RR_RATIO         = 3.0    # Минимальный R/R
+RR_RATIO         = 3.0     # Минимальный R/R
 
-USE_RANGE_FILTER = False   # Игнорировать входы, если закрытие свечи ушло в средние 40% диапазона
-USE_LEVEL_BURN   = False   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА (чтобы не забирал 2 раза)
+USE_RANGE_FILTER = False   # Игнорировать входы, если закрытие ушло в средние 40% диапазона
+USE_LEVEL_BURN   = False   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА
 
 
 # =========================================================
-
 CURRENT_SUPPORTS = []
 CURRENT_RESISTANCES = []
 
@@ -52,59 +51,24 @@ class SmartSniperUniversal(Strategy):
         self.last_closed_trades = 0
         self.current_trade_level_id = None
         
-        # МАГНИТ ДЛЯ БЕЗУБЫТКА (Новая строка)
-        self.active_signals = []
-        
         high_low = pd.Series(self.data.High) - pd.Series(self.data.Low)
         self.atr = self.I(SMA, high_low, 14)
 
         # ==========================================
         # 🎨 ОТРИСОВКА МАКРО-УРОВНЕЙ НА ГРАФИКЕ
         # ==========================================
-        # Функция-пустышка для проброса линий
         def create_line(val):
             return pd.Series(val, index=self.data.index)
 
-        # Рисуем поддержки (Зеленые зоны)
         for sup in CURRENT_SUPPORTS:
-            # Верхняя граница зоны (где ждем касания)
             self.I(create_line, sup['max'], name=f"Support Top {sup['max']:.4f}", overlay=True, color="green")
-            # Нижняя граница зоны (где стоит стоп)
             self.I(create_line, sup['min'], name=f"Support Bottom {sup['min']:.4f}", overlay=True, color="lightgreen")
 
-        # Рисуем сопротивления (Красные зоны)
         for res in CURRENT_RESISTANCES:
-            # Нижняя граница (где ждем касания шорта)
             self.I(create_line, res['min'], name=f"Resist Bottom {res['min']:.4f}", overlay=True, color="red")
-            # Верхняя граница (где стоит стоп)
             self.I(create_line, res['max'], name=f"Resist Top {res['max']:.4f}", overlay=True, color="pink")
 
     def next(self):
-        # ==========================================
-        # 0. БЕЗУБЫТОК (БУ) ПРОВЕРКА
-        # ==========================================
-        for sig in self.active_signals:
-            if not sig['sl_moved']:
-                # Если Лонг достиг TP1
-                if sig['type'] == 'LONG' and self.data.High[-1] >= sig['tp1']:
-                    for t in self.trades:
-                        if t.is_long and abs(t.entry_price - sig['entry']) < 1e-6:
-                            # Переводим стоп в цену входа + 0.06% на комсу
-                            t.sl = max(t.sl or 0, sig['entry'] * 1.0006) 
-                    sig['sl_moved'] = True
-                    
-                # Если Шорт достиг TP1
-                elif sig['type'] == 'SHORT' and self.data.Low[-1] <= sig['tp1']:
-                    for t in self.trades:
-                        if t.is_short and abs(t.entry_price - sig['entry']) < 1e-6:
-                            # Переводим стоп в цену входа - 0.06% на комсу
-                            t.sl = min(t.sl or float('inf'), sig['entry'] * 0.9994)
-                    sig['sl_moved'] = True
-
-        # Очистка памяти
-        if len(self.trades) == 0:
-            self.active_signals.clear()
-
         # ==========================================
         # 1. СЖИГАНИЕ УРОВНЕЙ (ТОЛЬКО ПОСЛЕ ПЛЮСА)
         # ==========================================
@@ -121,7 +85,6 @@ class SmartSniperUniversal(Strategy):
         c_close, c_open = self.data.Close[-1], self.data.Open[-1]
         c_high, c_low = self.data.High[-1], self.data.Low[-1]
         c_vol = self.data.Volume[-1]
-        
         p_close, p_open = self.data.Close[-2], self.data.Open[-2]
         p_vol = self.data.Volume[-2]
 
@@ -144,30 +107,36 @@ class SmartSniperUniversal(Strategy):
             self.wait_for_bearish_choch = False
             return
 
-# ==========================================
-        # 3. ЛОГИКА LONG
+        # 🔥 ОБЪЕДИНЯЕМ ВСЕ ЗОНЫ (Решение проблемы зеркальных уровней)
+        all_zones = CURRENT_SUPPORTS + CURRENT_RESISTANCES
+
         # ==========================================
-        for sup in CURRENT_SUPPORTS:
-            level_id = f"{sup['min']}_{sup['max']}"
+        # 3. ЛОГИКА LONG (Цена падает СВЕРХУ ВНИЗ на любую зону)
+        # ==========================================
+        for zone in all_zones:
+            level_id = f"{zone['min']}_{zone['max']}"
             if USE_LEVEL_BURN and level_id in self.burned_levels: 
                 continue 
 
-            if c_low <= sup['max'] and c_close > sup['min']:
+            zone_mid = (zone['max'] + zone['min']) / 2
+
+            # Условие: Открылись ВЫШЕ середины зоны, кольнули верхнюю границу (max), не пробили нижнюю (min)
+            if c_open >= zone_mid and c_low <= zone['max'] and c_close > zone['min']:
                 if is_falling_knife: break
                 
                 if USE_RANGE_FILTER:
-                    closest_res = min([r['min'] for r in CURRENT_RESISTANCES if r['min'] > sup['max']], default=None)
+                    closest_res = min([r['min'] for r in all_zones if r['min'] > zone['max']], default=None)
                     if closest_res:
-                        range_size = closest_res - sup['max']
-                        if (c_close - sup['max']) > (range_size * 0.30):
+                        range_size = closest_res - zone['max']
+                        if (c_close - zone['max']) > (range_size * 0.30):
                             break 
 
                 if USE_CHOCH:
                     self.wait_for_bullish_choch = True
                     self.choch_bull_level = max(self.data.High[-1], self.data.High[-2])
-                    self.active_level = sup
+                    self.active_level = zone
                 else:
-                    self._execute_long(sup, c_close)
+                    self._execute_long(zone, c_close)
                 break
 
         if USE_CHOCH and self.wait_for_bullish_choch and self.active_level is not None:
@@ -177,31 +146,33 @@ class SmartSniperUniversal(Strategy):
             elif c_low < self.active_level['min'] * 0.99:
                 self.wait_for_bullish_choch = False
 
-
         # ==========================================
-        # 4. ЛОГИКА SHORT
+        # 4. ЛОГИКА SHORT (Цена растет СНИЗУ ВВЕРХ в любую зону)
         # ==========================================
-        for res in CURRENT_RESISTANCES:
-            level_id = f"{res['min']}_{res['max']}"
+        for zone in all_zones:
+            level_id = f"{zone['min']}_{zone['max']}"
             if USE_LEVEL_BURN and level_id in self.burned_levels: 
                 continue 
 
-            if c_high >= res['max'] and c_close < res['max']:
+            zone_mid = (zone['max'] + zone['min']) / 2
+
+            # Условие: Открылись НИЖЕ середины зоны, кольнули нижнюю границу (min), не пробили верхнюю (max)
+            if c_open <= zone_mid and c_high >= zone['min'] and c_close < zone['max']:
                 if is_flying_rocket: break
                 
                 if USE_RANGE_FILTER:
-                    closest_sup = max([s['max'] for s in CURRENT_SUPPORTS if s['max'] < res['min']], default=None)
+                    closest_sup = max([s['max'] for s in all_zones if s['max'] < zone['min']], default=None)
                     if closest_sup:
-                        range_size = res['min'] - closest_sup
-                        if (res['min'] - c_close) > (range_size * 0.30):
+                        range_size = zone['min'] - closest_sup
+                        if (zone['min'] - c_close) > (range_size * 0.30):
                             break 
 
                 if USE_CHOCH:
                     self.wait_for_bearish_choch = True
                     self.choch_bear_level = min(self.data.Low[-1], self.data.Low[-2])
-                    self.active_level = res
+                    self.active_level = zone
                 else:
-                    self._execute_short(res, c_close)
+                    self._execute_short(zone, c_close)
                 break
 
         if USE_CHOCH and self.wait_for_bearish_choch and self.active_level is not None:
@@ -213,110 +184,32 @@ class SmartSniperUniversal(Strategy):
 
 
     # ==========================================
-    # 5. ИСПОЛНЕНИЕ ОРДЕРОВ (3 Тейка + RR Фильтр)
+    # 5. ИСПОЛНЕНИЕ ОРДЕРОВ (ОРИГИНАЛ: 1 СТОП, 1 ТЕЙК)
     # ==========================================
     def _execute_long(self, level, current_price):
-        # 1. Стоп строго за нижнюю границу зоны
         sl = level['min'] * (1 - SL_BUFFER / 100)
+        tp = current_price * (1 + TAKE_PROFIT / 100)
         risk = current_price - sl
+        reward = tp - current_price
         
-        if risk <= 0: return
-
-        # 2. TP2: Ближайшая макро-зона (Resistance) сверху
-        valid_resistances = [r['min'] for r in CURRENT_RESISTANCES if r['min'] > current_price]
-        if not valid_resistances:
-            return  # Отмена: нет макро-целей сверху
-
-        tp2 = min(valid_resistances)
-        rr_to_tp2 = (tp2 - current_price) / risk
-
-        # ⛔ ЖЕСТКИЙ ФИЛЬТР: Отмена, если до TP2 меньше 2.5 стопов
-        if rr_to_tp2 < 2.5:
-            return
-
-        # 3. TP1: Локальный хай (15M) за последние 30 свечей
-        lookback = min(30, len(self.data.High) - 1)
-        if lookback > 0:
-            local_high = max(self.data.High[-lookback:])
-        else:
-            local_high = current_price
-
-        # Защита: если локальный хай дает меньше 1.5R, ставим математические 1.5R
-        if local_high < current_price + (risk * 1.5):
-            tp1 = current_price + (risk * 1.5)
-        else:
-            tp1 = local_high
-
-        # 4. TP3: Дальний Runner (4R)
-        tp3 = current_price + (risk * 4.0)
-
-        print(f"[LONG] Вход: {current_price:.4f} | SL: {sl:.4f} | TP2(RR={rr_to_tp2:.1f}): {tp2:.4f}")
+        if USE_RR_FILTER and (risk <= 0 or (reward / risk) < RR_RATIO): return
         
         self.current_trade_level_id = f"{level['min']}_{level['max']}"
-        
-        # Открываем сетку. Библиотека использует size как долю от текущего кэша.
-        # Используем 0.3 для каждого, чтобы гарантированно хватило баланса на 3 ордера.
-        self.buy(size=0.3, sl=sl, tp=tp1)
-        self.buy(size=0.3, sl=sl, tp=tp2)
-        self.buy(size=0.3, sl=sl, tp=tp3)
-
+        self.buy(sl=sl, tp=tp)
 
     def _execute_short(self, level, current_price):
-        # 1. Стоп строго за верхнюю границу зоны
         sl = level['max'] * (1 + SL_BUFFER / 100)
+        tp = current_price * (1 - TAKE_PROFIT / 100)
         risk = sl - current_price
+        reward = current_price - tp
         
-        if risk <= 0: return
-
-        # 2. TP2: Ближайшая макро-зона (Support) снизу
-        valid_supports = [s['max'] for s in CURRENT_SUPPORTS if s['max'] < current_price]
-        if not valid_supports:
-            return  # Отмена: нет макро-целей снизу
-
-        tp2 = max(valid_supports)
-        rr_to_tp2 = (current_price - tp2) / risk
-
-        # ⛔ ЖЕСТКИЙ ФИЛЬТР: Отмена, если до TP2 меньше 2.5 стопов
-        if rr_to_tp2 < 2.5:
-            return
-
-        # 3. TP1: Локальный лой (15M) за последние 12 свечей
-        lookback = min(12, len(self.data.Low) - 1)
-        if lookback > 0:
-            local_low = min(self.data.Low[-lookback:])
-        else:
-            local_low = current_price
-
-        # Защита: если локальный лой дает меньше 1.5R, ставим математические 1.5R
-        if local_low > current_price - (risk * 1.5):
-            tp1 = current_price - (risk * 1.5)
-        elif local_low < current_price - (risk * 2.0):
-            tp1 = current_price - (risk * 2.0)
-        else:
-            tp1 = local_low
-
-        # 4. TP3: Дальний Runner (4R)
-        tp3 = current_price - (risk * 4.0)
-
-        print(f"[SHORT] Вход: {current_price:.4f} | SL: {sl:.4f} | TP2(RR={rr_to_tp2:.1f}): {tp2:.4f}")
+        if USE_RR_FILTER and (risk <= 0 or (reward / risk) < RR_RATIO): return
         
         self.current_trade_level_id = f"{level['min']}_{level['max']}"
-        
-        self.sell(size=0.33, sl=sl, tp=tp1)
-        self.sell(size=0.50, sl=sl, tp=tp2)
-        self.sell(size=0.95, sl=sl, tp=tp3)
-        
-        # Записываем в память для БУ
-        self.active_signals.append({
-            'type': 'SHORT',
-            'entry': current_price,
-            'tp1': tp1,
-            'sl_moved': False,
-            'signal_time': self.data.index[-1]
-        })
+        self.sell(sl=sl, tp=tp)
 
 # =========================================================
-# ЗАПУСК ТЕСТОВ И ОТЧЕТЫ
+# ЗАПУСК ТЕСТОВ И ОТЧЕТЫ (ЧИСТЫЙ СТАНДАРТ)
 # =========================================================
 macro_path = os.path.join("modules", "cryptano", "macro_levels.json")
 macro_db = load_json(macro_path, default={}) if os.path.exists(macro_path) else {}
@@ -350,9 +243,7 @@ def get_cached_data(coin):
             print(f"Ошибка скачивания {coin}: {e}")
             return pd.DataFrame()
 
-# 🎯 НАСТРОЙКА ПУТИ К ТЕСТОВОЙ ПАПКЕ
 if TEST_START_DATE:
-    # Тестер берет файл макро-уровней прямо из изолированной папки testswing
     macro_path = os.path.join("modules", "cryptano", "utils", "testswing", f"macro_test_{TEST_START_DATE[:10]}.json")
 else:
     macro_path = os.path.join("modules", "cryptano", "macro_levels.json")
@@ -378,50 +269,14 @@ if TARGET_COIN.upper() == "ALL":
         bt = Backtest(df, SmartSniperUniversal, cash=10000, commission=.0006, hedging=False)
         stats = bt.run()
         
-        # --- СБОР СТАТИСТИКИ 1/5/10 ДЛЯ ВСЕХ МОНЕТ ---
-        trades_df = stats.get('_trades')
-        success_str = "-"
-        real_trades_count = 0
-        
-        if trades_df is not None and not trades_df.empty:
-            # Склеиваем 3 тейка в 1 сигнал
-            grouped = trades_df.groupby('EntryTime').agg({'PnL': 'sum'}).reset_index()
-            grouped = grouped.sort_values('EntryTime')
-            
-            real_trades_count = len(grouped)
-            
-            success_list = []
-            for idx, row in grouped.iterrows():
-                if row['PnL'] > 0:
-                    success_list.append(str(idx + 1))
-            
-            # НОВАЯ ЛОГИКА ФОРМИРОВАНИЯ СТРОКИ: Плюсы / Всего
-            if success_list:
-                success_str = "/".join(success_list) + f"/{real_trades_count}"
-            else:
-                success_str = f"0/{real_trades_count}"
-        else:
-            real_trades_count = 0
-            success_str = "0/0"
-                
-            real_trades_count = len(grouped)
-
-        # Добавляем в таблицу только если были реальные сделки
-        if real_trades_count > 0:
-            win_rate = stats.get('Win Rate [%]', 0.0)
-            if pd.isna(win_rate): win_rate = 0.0
-            
-            pf = stats.get('Profit Factor', 0.0)
-            pf_val = round(pf, 2) if pd.notna(pf) else "Без убытка"
-            
+        if int(stats['# Trades']) > 0:
             portfolio_results.append({
                 "Монета": coin.upper(),
-                "Сделок": real_trades_count,
-                "Win Rate %": round(win_rate, 2),
-                "Profit Factor": pf_val,
-                "Просадка %": round(stats.get('Max. Drawdown [%]', 0.0), 2),
-                "Чистый Профит %": round(stats.get('Return [%]', 0.0), 2),
-                "Успех": success_str
+                "Сделок": int(stats['# Trades']),
+                "Win Rate %": round(stats['Win Rate [%]'], 2),
+                "Profit Factor": round(stats['Profit Factor'], 2) if pd.notna(stats['Profit Factor']) else "Без убытка",
+                "Просадка %": round(stats['Max. Drawdown [%]'], 2),
+                "Чистый Профит %": round(stats['Return [%]'], 2)
             })
 
     print("\n" + "="*85)
@@ -450,48 +305,28 @@ else:
     else:
         bt = Backtest(df, SmartSniperUniversal, cash=10000, commission=.0006, hedging=False)
         stats = bt.run()
-    
-        trades_df = stats.get('_trades')
-        success_str = "-"
-        real_trades_count = 0
-        grouped = pd.DataFrame()
         
-        if trades_df is not None and not trades_df.empty:
-            # Группируем ордера по времени входа (3 тейка = 1 общий сигнал)
-            grouped = trades_df.groupby('EntryTime').agg({'PnL': 'sum'}).reset_index()
-            grouped = grouped.sort_values('EntryTime')
-            
-            success_list = []
-            for i, (_, row) in enumerate(grouped.iterrows(), start=1):
-                if row['PnL'] > 0:
-                    success_list.append(str(i))
-                    
-            if success_list:
-                success_str = "/".join(success_list)
-                
-            real_trades_count = len(grouped) 
-            
         print("\n" + "="*70)
         print(f"📊 ТЕСТ ДЛЯ {TARGET_COIN.upper()}")
         print(f"🛠 Фильтры: {filters_summary}")
         print("="*70)
-        print(f"💵 Конечный баланс:   ${stats.get('Equity Final [$]', 0):,.2f}")
-        print(f"📈 Чистый профит:     {stats.get('Return [%]', 0):.2f}%")
-        print(f"📉 Макс. просадка:    {stats.get('Max. Drawdown [%]', 0):.2f}%")
-        print(f"🤝 Всего сигналов:     {real_trades_count} (Успех: {success_str})")
+        print(f"💵 Конечный баланс:   ${stats['Equity Final [$]']:,.2f}")
+        print(f"📈 Чистый профит:     {stats['Return [%]']:.2f}%")
+        print(f"📉 Макс. просадка:    {stats['Max. Drawdown [%]']:.2f}%")
+        print(f"🤝 Всего сделок:      {int(stats['# Trades'])}")
         
-        if real_trades_count > 0:
-            win_rate = stats.get('Win Rate [%]', 0.0)
-            if pd.isna(win_rate): win_rate = 0.0
-            print(f"🏆 Процент плюсовых:  {win_rate:.2f}%")
+        if int(stats['# Trades']) > 0:
+            print(f"🏆 Процент плюсовых:  {stats['Win Rate [%]']:.2f}%")
             print("-" * 70)
-            
-            # Вывод лога склеенных сделок
-            for i, (_, row) in enumerate(grouped.iterrows(), start=1):
+            for idx, row in stats['_trades'].iterrows():
+                pct_val = row['ReturnPct'] * 100
+                sign = "+" if pct_val > 0 else ""
                 status = "✅ ПЛЮС" if row['PnL'] > 0 else "❌ МИНУС"
+                tr_type = "LONG " if row['Size'] > 0 else "SHORT"
                 t_in = row['EntryTime'].strftime('%d.%m %H:%M')
-                sign = "+" if row['PnL'] > 0 else ""
-                print(f"  ▪️ Сигнал №{i}: Вход {t_in} | Итог: {status} (PnL: {sign}${row['PnL']:.2f})")
+                t_out = row['ExitTime'].strftime('%d.%m %H:%M')
+                
+                print(f"  ▪️ Сделка №{idx+1} ({tr_type}): {t_in} -> {t_out} | {status} ({sign}{pct_val:.2f}%)")
                 
         chart_path = os.path.abspath(f'chart_{TARGET_COIN.lower()}.html')
         bt.plot(filename=chart_path, open_browser=True)
