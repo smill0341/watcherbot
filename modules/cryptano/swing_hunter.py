@@ -65,6 +65,95 @@ def merge_overlapping_zones(zones):
             
     return merged
 
+def build_levels_for_single_coin(coin):
+    """Изолированный расчет макро-уровней для одной монеты."""
+    print(f"[SWING HUNTER] Расчет институциональных зон для {coin}...")
+    try:
+        symbol = f"{coin}/USDT"
+        supports = []
+        resistances = []
+
+        try:
+            ohlcv_1d = exchange.fetch_ohlcv(symbol, timeframe="1d", limit=365)
+            if len(ohlcv_1d) >= 50:
+                df_1d = pd.DataFrame(ohlcv_1d, columns=["timestamp", "open", "high", "low", "close", "volume"])
+                df_1d['atr'] = calculate_atr(df_1d, 14)
+                atr_1d = df_1d['atr'].iloc[-1]
+                if pd.isna(atr_1d) or atr_1d == 0: atr_1d = df_1d['close'].iloc[-1] * 0.05
+
+                peaks, _ = find_peaks(df_1d['high'], distance=15, prominence=atr_1d * 1.5)
+                valleys, _ = find_peaks(-df_1d['low'], distance=15, prominence=atr_1d * 1.5)
+
+                current_price_1d = float(df_1d['close'].iloc[-1])
+
+                for v in valleys:
+                    price = float(df_1d['low'].iloc[v])
+                    if abs(price - current_price_1d) / current_price_1d > 0.15:
+                        continue
+
+                    zone = {"min": price - (atr_1d * 0.5), "max": price + (atr_1d * 0.5), "score": 3.0, "type": "1d_extreme"}
+                    if price < current_price_1d: supports.append(zone)
+                    else: resistances.append(zone)
+
+                for p in peaks:
+                    price = float(df_1d['high'].iloc[p])
+                    if abs(price - current_price_1d) / current_price_1d > 0.15:
+                        continue
+
+                    zone = {"min": price - (atr_1d * 0.5), "max": price + (atr_1d * 0.5), "score": 3.0, "type": "1d_extreme"}
+                    if price > current_price_1d: resistances.append(zone)
+                    else: supports.append(zone)
+        except Exception as e:
+            print(f"[SWING ERROR] Ошибка 1D для {coin}: {e}")
+
+        try:
+            ohlcv_4h = exchange.fetch_ohlcv(symbol, timeframe="4h", limit=200)
+            if len(ohlcv_4h) >= 50:
+                df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"])
+                df_4h['atr'] = calculate_atr(df_4h, 14)
+                atr_4h = df_4h['atr'].iloc[-1]
+                if pd.isna(atr_4h) or atr_4h == 0: atr_4h = df_4h['close'].iloc[-1] * 0.02
+
+                df_4h['typical'] = (df_4h['high'] + df_4h['low'] + df_4h['close']) / 3
+                min_val, max_val = df_4h['low'].min(), df_4h['high'].max()
+
+                if max_val > min_val:
+                    bins = np.linspace(min_val, max_val, 50)
+                    df_4h['bin'] = pd.cut(df_4h['typical'], bins=bins)
+                    vol_profile = df_4h.groupby('bin', observed=False)['volume'].sum()
+
+                    poc_bin = vol_profile.idxmax()
+                    if pd.notna(poc_bin) and hasattr(poc_bin, "mid"):
+                        poc_price = float(getattr(poc_bin, "mid"))
+                        current_price = float(df_4h['close'].iloc[-1])
+
+                        zone = {
+                            "min": poc_price - (atr_4h * 0.5),
+                            "max": poc_price + (atr_4h * 0.5),
+                            "score": 2.0,
+                            "type": "4h_poc"
+                        }
+
+                        if current_price > poc_price: supports.append(zone)
+                        else: resistances.append(zone)
+        except Exception as e:
+            print(f"[SWING ERROR] Ошибка 4H для {coin}: {e}")
+
+        if supports or resistances:
+            macro_base = load_json(MACRO_LEVELS_FILE, default={})
+            macro_base[coin] = {
+                "supports": merge_overlapping_zones(supports),
+                "resistances": merge_overlapping_zones(resistances),
+                "updated_at": datetime.datetime.now().isoformat()
+            }
+            save_json_atomic(MACRO_LEVELS_FILE, macro_base)
+            print(f"✅ [SWING HUNTER] Уровни для {coin} обновлены.")
+        else:
+            print(f"⚠️ [SWING HUNTER] Нет зон для {coin}.")
+
+    except Exception as e:
+        print(f"❌ [SWING HUNTER] КРИТИЧЕСКАЯ ОШИБКА генерации {coin}: {e}")
+
 def build_macro_levels(bot=None, admin_chat_id=None):
     print("[SWING HUNTER] Запуск генерации институциональных зон (1D Экстремумы + 4H POC)...")
     try:
@@ -112,7 +201,7 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                         if abs(price - current_price_1d) / current_price_1d > 0.15: 
                             continue
                         
-                        zone = {"min": price - (atr_1d * 0.25), "max": price + (atr_1d * 0.25), "score": 3.0, "type": "1d_extreme"}
+                        zone = {"min": price - (atr_1d * 0.5), "max": price + (atr_1d * 0.5), "score": 3.0, "type": "1d_extreme"}
                         # Если старая впадина сейчас ВЫШЕ цены — она стала сопротивлением
                         if price < current_price_1d: supports.append(zone)
                         else: resistances.append(zone)
@@ -123,7 +212,7 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                         if abs(price - current_price_1d) / current_price_1d > 0.15: 
                             continue
                         
-                        zone = {"min": price - (atr_1d * 0.25), "max": price + (atr_1d * 0.25), "score": 3.0, "type": "1d_extreme"}
+                        zone = {"min": price - (atr_1d * 0.5), "max": price + (atr_1d * 0.5), "score": 3.0, "type": "1d_extreme"}
                         # Если старый пик сейчас НИЖЕ цены — он стал поддержкой
                         if price > current_price_1d: resistances.append(zone)
                         else: supports.append(zone)
@@ -155,8 +244,8 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                             current_price = float(df_4h['close'].iloc[-1])
                             
                             zone = {
-                                "min": poc_price - (atr_4h * 0.25),
-                                "max": poc_price + (atr_4h * 0.25),
+                                "min": poc_price - (atr_4h * 0.5),
+                                "max": poc_price + (atr_4h * 0.5),
                                 "score": 2.0,
                                 "type": "4h_poc"
                             }

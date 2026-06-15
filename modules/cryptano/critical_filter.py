@@ -4,8 +4,8 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from telebot import types
 import threading
-from modules.cryptano.utils.common import format_price as fmt_p, price_precision_from_market
-from modules.cryptano.utils.crypto_utils import calculate_rsi, exchange, get_top_coins
+from modules.cryptano.utils.common import format_price as fmt_p, price_precision_from_market, calculate_rsi
+from modules.cryptano.utils.crypto_utils import exchange, get_top_coins
 from modules.cryptano.history import save_signal
 from modules.cryptano.utils.indicators import get_cryptano_signal, get_market_state
 from modules.cryptano.utils.market_cache import load_markets_cached

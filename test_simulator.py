@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 import os
+import warnings
+warnings.filterwarnings("ignore")
 from backtesting import Backtest, Strategy
 from modules.cryptano.utils.crypto_utils import exchange
 from modules.cryptano.utils.storage import load_json
@@ -8,12 +10,12 @@ from modules.cryptano.utils.storage import load_json
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "XLM"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ALL"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
-LIMIT_CANDLES = 5000
+LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной истории
 
-TAKE_PROFIT = 10.0    # Цель в %
+TAKE_PROFIT = 10.0   # Цель в %
 SL_BUFFER = 0.5      # Отступ стоп-лосса за уровень в %
 
 # --- ТУМБЛЕРЫ ФИЛЬТРОВ ---
@@ -22,8 +24,8 @@ USE_ANTI_KNIFE   = True   # Запрет входа против агресси�
 USE_RR_FILTER    = True   # Математический фильтр R/R
 RR_RATIO         = 3.0    # Минимальный R/R
 
-USE_RANGE_FILTER = True  # Игнорировать входы, если закрытие свечи ушло в средние 40% диапазона
-USE_LEVEL_BURN   = True  # Сжигать уровень (удалять из памяти) после открытия сделки от него
+USE_RANGE_FILTER = False   # Игнорировать входы, если закрытие свечи ушло в средние 40% диапазона
+USE_LEVEL_BURN   = True   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА (чтобы не забирал 2 раза)
 # =========================================================
 
 CURRENT_SUPPORTS = []
@@ -34,34 +36,34 @@ def SMA(arr, n):
 
 class SmartSniperUniversal(Strategy):
     def init(self):
-        self.burned_levels = set()      # Память для уровней, давших ПЛЮС
-        self.active_level_id = None     # Ярлык уровня для текущей сделки
-
+        self.burned_levels = set()  # Множество для сгоревших уровней
         self.wait_for_bullish_choch = False
         self.choch_bull_level = 0.0
         self.wait_for_bearish_choch = False
         self.choch_bear_level = 0.0
         self.active_level = None
         
+        # Для отслеживания профита по сделкам
+        self.last_closed_trades = 0
+        self.current_trade_level_id = None
+        
         high_low = pd.Series(self.data.High) - pd.Series(self.data.Low)
         self.atr = self.I(SMA, high_low, 14)
 
     def next(self):
+        # ==========================================
+        # 1. СЖИГАНИЕ УРОВНЕЙ (ТОЛЬКО ПОСЛЕ ПЛЮСА)
+        # ==========================================
+        if len(self.closed_trades) > self.last_closed_trades:
+            last_trade = self.closed_trades[-1]
+            if last_trade.pl > 0 and self.current_trade_level_id is not None:
+                if USE_LEVEL_BURN:
+                    self.burned_levels.add(self.current_trade_level_id)
+            self.current_trade_level_id = None
+            self.last_closed_trades = len(self.closed_trades)
+
         if len(self.data) < 15: return
         
-        # ==========================================
-        # ЖЕЛЕЗОБЕТОННОЕ СЖИГАНИЕ УРОВНЯ
-        # ==========================================
-        # Если мы были в позиции, а теперь нет — значит сделка только что закрылась
-        if not self.position and self.active_level_id is not None:
-            if len(self.closed_trades) > 0:
-                last_trade = self.closed_trades[-1]
-                # Если закрыли в плюс — сжигаем уровень навсегда
-                if last_trade.pl > 0:
-                    self.burned_levels.add(self.active_level_id)
-            # Очищаем ярлык до следующей сделки
-            self.active_level_id = None
-
         c_close, c_open = self.data.Close[-1], self.data.Open[-1]
         c_high, c_low = self.data.High[-1], self.data.Low[-1]
         c_vol = self.data.Volume[-1]
@@ -69,7 +71,9 @@ class SmartSniperUniversal(Strategy):
         p_close, p_open = self.data.Close[-2], self.data.Open[-2]
         p_vol = self.data.Volume[-2]
 
-        # ANTI-KNIFE
+        # ==========================================
+        # 2. ФИЛЬТР ANTI-KNIFE
+        # ==========================================
         is_falling_knife = False
         is_flying_rocket = False
         if USE_ANTI_KNIFE:
@@ -87,18 +91,23 @@ class SmartSniperUniversal(Strategy):
             return
 
         # ==========================================
-        # ЛОГИКА LONG
+        # 3. ЛОГИКА LONG
         # ==========================================
         for sup in CURRENT_SUPPORTS:
             level_id = f"{sup['min']}_{sup['max']}"
-            
-            # Если уровень уже дал плюс — пропускаем его
-            if USE_LEVEL_BURN and level_id in self.burned_levels:
+            if USE_LEVEL_BURN and level_id in self.burned_levels: 
                 continue 
 
             if c_low <= sup['max'] and c_close > sup['min']:
                 if is_falling_knife: break
                 
+                if USE_RANGE_FILTER:
+                    closest_res = min([r['min'] for r in CURRENT_RESISTANCES if r['min'] > sup['max']], default=None)
+                    if closest_res:
+                        range_size = closest_res - sup['max']
+                        if (c_close - sup['max']) > (range_size * 0.30):
+                            break 
+
                 if USE_CHOCH:
                     self.wait_for_bullish_choch = True
                     self.choch_bull_level = max(self.data.High[-1], self.data.High[-2])
@@ -109,34 +118,29 @@ class SmartSniperUniversal(Strategy):
 
         if USE_CHOCH and self.wait_for_bullish_choch and self.active_level is not None:
             if c_close > self.choch_bull_level:
-                is_valid_range = True
-                if USE_RANGE_FILTER:
-                    closest_res = min([r['min'] for r in CURRENT_RESISTANCES if r['min'] > self.active_level['max']], default=None)
-                    if closest_res:
-                        range_size = closest_res - self.active_level['max']
-                        if (c_close - self.active_level['max']) > (range_size * 0.30):
-                            is_valid_range = False 
-                
-                if is_valid_range:
-                    self._execute_long(self.active_level, c_close)
-                
+                self._execute_long(self.active_level, c_close)
                 self.wait_for_bullish_choch = False
             elif c_low < self.active_level['min'] * 0.99:
                 self.wait_for_bullish_choch = False
 
         # ==========================================
-        # ЛОГИКА SHORT
+        # 4. ЛОГИКА SHORT
         # ==========================================
         for res in CURRENT_RESISTANCES:
             level_id = f"{res['min']}_{res['max']}"
-            
-            # Если уровень уже дал плюс — пропускаем его
-            if USE_LEVEL_BURN and level_id in self.burned_levels:
+            if USE_LEVEL_BURN and level_id in self.burned_levels: 
                 continue 
 
             if c_high >= res['max'] and c_close < res['max']:
                 if is_flying_rocket: break
                 
+                if USE_RANGE_FILTER:
+                    closest_sup = max([s['max'] for s in CURRENT_SUPPORTS if s['max'] < res['min']], default=None)
+                    if closest_sup:
+                        range_size = res['min'] - closest_sup
+                        if (res['min'] - c_close) > (range_size * 0.30):
+                            break 
+
                 if USE_CHOCH:
                     self.wait_for_bearish_choch = True
                     self.choch_bear_level = min(self.data.Low[-1], self.data.Low[-2])
@@ -147,23 +151,13 @@ class SmartSniperUniversal(Strategy):
 
         if USE_CHOCH and self.wait_for_bearish_choch and self.active_level is not None:
             if c_close < self.choch_bear_level:
-                is_valid_range = True
-                if USE_RANGE_FILTER:
-                    closest_sup = max([s['max'] for s in CURRENT_SUPPORTS if s['max'] < self.active_level['min']], default=None)
-                    if closest_sup:
-                        range_size = self.active_level['min'] - closest_sup
-                        if (self.active_level['min'] - c_close) > (range_size * 0.30):
-                            is_valid_range = False
-                
-                if is_valid_range:
-                    self._execute_short(self.active_level, c_close)
-                
+                self._execute_short(self.active_level, c_close)
                 self.wait_for_bearish_choch = False
             elif c_high > self.active_level['max'] * 1.01:
                 self.wait_for_bearish_choch = False
 
     # ==========================================
-    # ИСПОЛНЕНИЕ ОРДЕРОВ И ПРИВЯЗКА ЯРЛЫКА
+    # 5. ИСПОЛНЕНИЕ ОРДЕРОВ
     # ==========================================
     def _execute_long(self, level, current_price):
         sl = level['min'] * (1 - SL_BUFFER / 100)
@@ -171,10 +165,9 @@ class SmartSniperUniversal(Strategy):
         risk = current_price - sl
         reward = tp - current_price
         
-        if USE_RR_FILTER and (risk == 0 or (reward / risk) < RR_RATIO): return
+        if USE_RR_FILTER and (risk <= 0 or (reward / risk) < RR_RATIO): return
         
-        # Клеим ярлык с ID уровня на эту сделку
-        self.active_level_id = f"{level['min']}_{level['max']}"
+        self.current_trade_level_id = f"{level['min']}_{level['max']}"
         self.buy(sl=sl, tp=tp)
 
     def _execute_short(self, level, current_price):
@@ -183,14 +176,13 @@ class SmartSniperUniversal(Strategy):
         risk = sl - current_price
         reward = current_price - tp
         
-        if USE_RR_FILTER and (risk == 0 or (reward / risk) < RR_RATIO): return
+        if USE_RR_FILTER and (risk <= 0 or (reward / risk) < RR_RATIO): return
         
-        # Клеим ярлык с ID уровня на эту сделку
-        self.active_level_id = f"{level['min']}_{level['max']}"
+        self.current_trade_level_id = f"{level['min']}_{level['max']}"
         self.sell(sl=sl, tp=tp)
 
 # =========================================================
-# ЗАПУСК ТЕСТОВ
+# ЗАПУСК ТЕСТОВ И ОТЧЕТЫ
 # =========================================================
 macro_path = os.path.join("modules", "cryptano", "macro_levels.json")
 macro_db = load_json(macro_path, default={}) if os.path.exists(macro_path) else {}
@@ -211,8 +203,11 @@ def get_cached_data(coin):
         except Exception as e:
             return pd.DataFrame()
 
+filters_summary = (f"CHoCH={USE_CHOCH} | KNIFE={USE_ANTI_KNIFE} | "
+                   f"R/R={USE_RR_FILTER} | RANGE={USE_RANGE_FILTER} | BURN(Win)={USE_LEVEL_BURN}")
+
 if TARGET_COIN.upper() == "ALL":
-    print(f"🤖 Начинаю глобальный аудит портфеля (TP={TAKE_PROFIT}%, R/R={RR_RATIO}, RangeFilter={USE_RANGE_FILTER}, Burn={USE_LEVEL_BURN})...")
+    print(f"🤖 Начинаю глобальный аудит портфеля на {LIMIT_CANDLES} свечей...")
     portfolio_results = []
     
     for coin, data in macro_db.items():
@@ -237,18 +232,19 @@ if TARGET_COIN.upper() == "ALL":
                 "Чистый Профит %": round(stats['Return [%]'], 2)
             })
 
-    print("\n" + "="*75)
+    print("\n" + "="*85)
     print(f"📊 СВОДНЫЙ СРЕЗ ГЛОБАЛЬНОГО ТЕСТА СТРАТЕГИИ")
-    print("="*75)
+    print(f"🛠 Фильтры: {filters_summary}")
+    print("="*85)
     if portfolio_results:
         report_df = pd.DataFrame(portfolio_results).sort_values(by="Чистый Профит %", ascending=False)
         print(report_df.to_string(index=False))
-        print("-" * 75)
+        print("-" * 85)
         print(f"📈 Суммарный профит портфеля: {report_df['Чистый Профит %'].sum():.2f}%")
         print(f"🏆 Средний Win Rate:          {report_df['Win Rate %'].mean():.2f}%")
     else:
         print("❌ Нет сделок. Фильтры отсекли всё.")
-    print("="*75 + "\n")
+    print("="*85 + "\n")
 
 else:
     coin_data = macro_db.get(TARGET_COIN.upper(), {}) if isinstance(macro_db.get(TARGET_COIN.upper()), dict) else {}
@@ -263,9 +259,10 @@ else:
         bt = Backtest(df, SmartSniperUniversal, cash=10000, commission=.0006, hedging=False)
         stats = bt.run()
         
-        print("\n" + "="*60)
-        print(f"📊 ТЕСТ ДЛЯ {TARGET_COIN.upper()} | RangeFilter={USE_RANGE_FILTER} | Burn={USE_LEVEL_BURN}")
-        print("="*60)
+        print("\n" + "="*70)
+        print(f"📊 ТЕСТ ДЛЯ {TARGET_COIN.upper()}")
+        print(f"🛠 Фильтры: {filters_summary}")
+        print("="*70)
         print(f"💵 Конечный баланс:   ${stats['Equity Final [$]']:,.2f}")
         print(f"📈 Чистый профит:     {stats['Return [%]']:.2f}%")
         print(f"📉 Макс. просадка:    {stats['Max. Drawdown [%]']:.2f}%")
@@ -273,11 +270,18 @@ else:
         
         if int(stats['# Trades']) > 0:
             print(f"🏆 Процент плюсовых:  {stats['Win Rate [%]']:.2f}%")
-            print("-" * 60)
+            print("-" * 70)
             for idx, row in stats['_trades'].iterrows():
-                status = f"✅ ПЛЮС" if row['PnL'] > 0 else f"❌ МИНУС"
+                # Расчет знака и статуса для красивого отчета
+                pct_val = row['ReturnPct'] * 100
+                sign = "+" if pct_val > 0 else ""
+                status = "✅ ПЛЮС" if row['PnL'] > 0 else "❌ МИНУС"
                 tr_type = "LONG " if row['Size'] > 0 else "SHORT"
-                print(f"  ▪️ Сделка №{idx+1} ({tr_type}): {row['EntryTime'].strftime('%d.%m %H:%M')} -> {row['ExitTime'].strftime('%d.%m %H:%M')} | {status} ({row['ReturnPct']*100:.2f}%)")
+                
+                t_in = row['EntryTime'].strftime('%d.%m %H:%M')
+                t_out = row['ExitTime'].strftime('%d.%m %H:%M')
+                
+                print(f"  ▪️ Сделка №{idx+1} ({tr_type}): {t_in} -> {t_out} | {status} ({sign}{pct_val:.2f}%)")
         
         chart_path = os.path.abspath(f'chart_{TARGET_COIN.lower()}.html')
         bt.plot(filename=chart_path, open_browser=True)

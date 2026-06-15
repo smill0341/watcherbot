@@ -10,7 +10,6 @@ import json
 
 # ================= НАСТРОЙКИ WATCHER =================
 WATCHLIST_FILE = os.path.join(os.path.dirname(__file__), "watchlist.json")
-WATCH_INTERVAL = 900  # Интервал проверок: 900 секунд (15 минут)
 COOLDOWN_HOURS = 4     # Заморозка повторных сигналов по монете
 
 # 🆕 НОВЫЕ РУБИЛЬНИКИ АВТОМАТИЗАЦИИ
@@ -28,6 +27,12 @@ def auto_add_to_watchlist(coin, direction, source="Critical"):
         
     wl = _load_watchlist()
     if coin not in wl:
+        macro_path = os.path.join(os.path.dirname(__file__), "macro_levels.json")
+        macro_levels = load_json(macro_path, default={})
+        if coin not in macro_levels:
+            from modules.cryptano.swing_hunter import build_levels_for_single_coin
+            build_levels_for_single_coin(coin)
+
         wl[coin] = {
             "direction": direction, 
             "added_at": datetime.datetime.now().isoformat(),
@@ -186,11 +191,21 @@ def run_live_scanner(bot, admin_chat_id):
     """
     Главный фоновый цикл Watcher. Проверяет монеты раз в 15 минут.
     """
-    print(f" 📡 Watcher live scan инициализирован! Первый запуск через {WATCH_INTERVAL // 60} минут.")
+    print(" 📡 Watcher live scan инициализирован! Синхронизация с 15m свечами включена.")
     
     while True:
-        # Пауза стоит СНАЧАЛА, поэтому бот не сканирует сразу при запуске
-        time.sleep(WATCH_INTERVAL)
+        now = datetime.datetime.utcnow()
+        mins_past = now.minute
+
+        if mins_past % 15 == 0 and now.second < 35:
+            sleep_time = 35 - now.second
+        else:
+            next_mark = ((mins_past // 15) + 1) * 15
+            sleep_time = (next_mark - mins_past) * 60 - now.second + 35
+
+        current_local_time = datetime.datetime.now().strftime("%H:%M:%S")
+        print(f"[{current_local_time}] 📡 [WATCHER] Ждем {int(sleep_time)} сек. (синхронизация с 15m свечой Bybit + 35 сек)...")
+        time.sleep(sleep_time)
         
         try:
             wl = _load_watchlist()

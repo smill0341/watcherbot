@@ -7,6 +7,7 @@ from modules.cryptano.utils.market_cache import load_markets_cached, get_ohlcv_c
 from modules.cryptano.utils.price_action import check_live_confirmation
 from modules.cryptano.utils.regime import detect_market_regime
 from modules.cryptano.watcher_plan import check_manual_extreme
+from modules.cryptano.utils.indicators import calculate_atr
 
 # ==========================================
 # БЛОК 1: Настройки и Импорты
@@ -18,16 +19,6 @@ def fmt_z(z): return fmt_p((z['min'] + z['max']) / 2) if z else "Нет"
 def clean_price(price_str):
     """Возвращает строку без обрезки нулей (исправление для фикса целых чисел)"""
     return str(price_str)
-
-# ==========================================
-# БЛОК 2: Базовые Индикаторы
-# ==========================================
-def calculate_atr(df, period=14):
-    high_low = df["high"] - df["low"]
-    high_cp = (df["high"] - df["close"].shift()).abs()
-    low_cp = (df["low"] - df["close"].shift()).abs()
-    tr = pd.concat([high_low, high_cp, low_cp], axis=1).max(axis=1)
-    return tr.ewm(alpha=1/period, adjust=False).mean()
 
 # ==========================================
 # БЛОК 3: Оценка Сетапа (Quality и Confirmation)

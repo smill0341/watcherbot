@@ -5,8 +5,8 @@ import pandas as pd
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from modules.cryptano.utils.common import format_price as fmt_p
-from modules.cryptano.utils.crypto_utils import calculate_rsi, exchange, get_top_coins
+from modules.cryptano.utils.common import format_price as fmt_p, calculate_rsi
+from modules.cryptano.utils.crypto_utils import exchange, get_top_coins
 from modules.cryptano.utils.market_cache import load_markets_cached
 from modules.cryptano.utils.regime import detect_market_regime
 from modules.cryptano.utils.indicators import get_market_state

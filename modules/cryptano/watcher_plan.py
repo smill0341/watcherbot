@@ -8,7 +8,8 @@ import gc
 import traceback
 from modules.cryptano.utils.common import calculate_rsi, exchange, format_price as fmt_p, price_precision_from_market
 from modules.cryptano.utils.market_cache import load_markets_cached
-from modules.cryptano.utils.indicators import analyze_extreme_pattern, pandas_get_local_structure
+from modules.cryptano.utils.indicators import pandas_get_local_structure
+from modules.cryptano.utils.watcher_logic import analyze_extreme_pattern
 
 SCAN_COINS_LIMIT = 150
 
@@ -118,10 +119,14 @@ def check_manual_extreme(coin, direction, source="Manual"):
         
         if is_ready:
             report += f"📝 WATCHER PLAN:\n"
-            report += f"• Entry: ({fmt_p(current_price)})\n"
-            report += f"• TP1: {fmt_p(tp1_price)}\n"
-            report += f"• TP2: {fmt_p(tp2_price)}\n"
-            report += f"• TP3: {fmt_p(tp3_price)}\n"
+            report += f"• Entry: {fmt_p(current_price)}\n"
+            
+            # Оставляем только уникальные тейки (если впереди было мало зон)
+            tps = [fmt_p(tp1_price)]
+            if tp2_price != tp1_price: tps.append(fmt_p(tp2_price))
+            if tp3_price != tp2_price: tps.append(fmt_p(tp3_price))
+            
+            report += f"• TP: {' | '.join(tps)}\n"
             report += f"• Sl: {fmt_p(sl_price)}\n"
 
             # ----------------------------------------------------
@@ -134,8 +139,8 @@ def check_manual_extreme(coin, direction, source="Manual"):
                     "type": "SHORT_PUMP" if direction == "SHORT" else "LONG_ROLLBACK", 
                     "price": current_price,
                     "take_profit": tp1_price,  # TP1: главная цель для подсчета ✅
-                    "target_2": tp2_price,     # TP2: для полного отчета .txt
-                    "target_3": tp3_price,     # TP3: для полного отчета .txt
+                    "target_2": tp2_price if tp2_price != tp1_price else None,
+                    "target_3": tp3_price if tp3_price != tp2_price else None,
                     "stop_loss": sl_price,
                     "source": "WATCHER"        # Бирка для фильтрации в отчете
                 }
