@@ -12,7 +12,7 @@ from modules.cryptano.utils.storage import load_json
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "VELVET"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ALL"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной истории
@@ -34,6 +34,12 @@ USE_LEVEL_BURN   = False   # Сжигать уровень ТОЛЬКО ПОСЛ
 
 ALLOW_SHORT_TRADES = False # ТУМБЛЕР ДЛЯ ШОРТОВ: True — разрешить шорты, False — торговать только лонги
 MIN_SCORE = 3      # Минимальный балл зоны для входа (отсекает мусор)
+
+# --- НОВЫЕ СНАЙПЕРСКИЕ ФИЛЬТРЫ ---
+USE_ZONE_GAP      = True   # Правило 2: Включить проверку "воздуха" между зонами
+MIN_ZONE_GAP_PCT  = 3.0    # Минимальный зазор между Поддержкой и ближайшим Сопротивлением в %
+USE_RISK_CAP      = False   # Правило 3: Ограничение риска
+MAX_RISK_PCT      = 3.0   # Макс. стоп-лосс в %. Сделка с большим стопом отменяется
 # =========================================================
 CURRENT_SUPPORTS = []
 CURRENT_RESISTANCES = []
@@ -115,13 +121,20 @@ class SmartSniperUniversal(Strategy):
         # 3. ЛОГИКА LONG (Только от зон Поддержки)
         # ==========================================
         for sup in CURRENT_SUPPORTS:
-            # Отсекаем мусор по баллам
             if sup.get('score', 0) < MIN_SCORE: 
                 continue 
                 
             level_id = f"{sup['min']}_{sup['max']}"
             if USE_LEVEL_BURN and level_id in self.burned_levels: 
-                continue
+                continue 
+
+            # 🛡 ПРАВИЛО 2: Проверка "воздуха" (Gap) до ближайшего сопротивления
+            if USE_ZONE_GAP:
+                closest_res = min([r['min'] for r in CURRENT_RESISTANCES if r['min'] > sup['max']], default=None)
+                if closest_res:
+                    gap_pct = ((closest_res - sup['max']) / sup['max']) * 100
+                    if gap_pct < MIN_ZONE_GAP_PCT:
+                        continue # Скипаем зону, если до потолка нет запаса хода
 
             # Условие: Цена коснулась поддержки, но не пробила её насквозь
             if c_low <= sup['max'] and c_close > sup['min']:
@@ -154,16 +167,24 @@ class SmartSniperUniversal(Strategy):
         # ==========================================
         for res in CURRENT_RESISTANCES:
             if not ALLOW_SHORT_TRADES:
-                break # Если шорты отключены, сразу выходим из цикла поиска продаж
+                break 
                 
-            # Отсекаем мусор по баллам
             if res.get('score', 0) < MIN_SCORE: 
                 continue 
                 
             level_id = f"{res['min']}_{res['max']}"
             if USE_LEVEL_BURN and level_id in self.burned_levels: 
-                continue
+                continue 
 
+            # 🛡 ПРАВИЛО 2: Проверка "воздуха" (Gap) до ближайшей поддержки
+            if USE_ZONE_GAP:
+                closest_sup = max([s['max'] for s in CURRENT_SUPPORTS if s['max'] < res['min']], default=None)
+                if closest_sup:
+                    gap_pct = ((res['min'] - closest_sup) / closest_sup) * 100
+                    if gap_pct < MIN_ZONE_GAP_PCT:
+                        continue # Скипаем зону, если до пола нет запаса хода
+
+            
             # Условие: Цена коснулась сопротивления, но не пробила его вверх
             if c_high >= res['min'] and c_close < res['max']:
                 if is_flying_rocket: break
@@ -192,10 +213,16 @@ class SmartSniperUniversal(Strategy):
 
 
     # ==========================================
-    # 5. ИСПОЛНЕНИЕ ОРДЕРОВ (ОРИГИНАЛ: 1 СТОП, 1 ТЕЙК)
+    # 5. ИСПОЛНЕНИЕ ОРДЕРОВ (ТОЛЬКО RISK CAP)
     # ==========================================
     def _execute_long(self, level, current_price):
         sl = level['min'] * (1 - SL_BUFFER / 100)
+        
+        # 🛡 ПРАВИЛО 3 (RISK CAP): Слишком большой стоп? Игнорируем сделку.
+        risk_pct = ((current_price - sl) / current_price) * 100
+        if USE_RISK_CAP and risk_pct > MAX_RISK_PCT:
+            return 
+            
         tp = current_price * (1 + TAKE_PROFIT / 100)
         risk = current_price - sl
         reward = tp - current_price
@@ -205,8 +232,15 @@ class SmartSniperUniversal(Strategy):
         self.current_trade_level_id = f"{level['min']}_{level['max']}"
         self.buy(sl=sl, tp=tp)
 
+
     def _execute_short(self, level, current_price):
         sl = level['max'] * (1 + SL_BUFFER / 100)
+        
+        # 🛡 ПРАВИЛО 3 (RISK CAP): Слишком большой стоп? Игнорируем сделку.
+        risk_pct = ((sl - current_price) / current_price) * 100
+        if USE_RISK_CAP and risk_pct > MAX_RISK_PCT:
+            return 
+            
         tp = current_price * (1 - TAKE_PROFIT / 100)
         risk = sl - current_price
         reward = current_price - tp
