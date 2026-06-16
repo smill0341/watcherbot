@@ -73,20 +73,59 @@ def merge_overlapping_zones(zones):
         last = merged[-1]
         
         # Если зоны пересекаются (текущая начинается до того, как закончилась предыдущая)
-        if current['min'] <= last['max']:
-            # Расширяем границы склеенной зоны до максимума
-            last['max'] = max(last['max'], current['max'])
-            
-            # Если слились уровни разной силы (например 4H и 1D) - берем максимальный вес
-            last['score'] = max(last['score'], current['score'])
-            
-            # Отмечаем, что зона усилена слиянием разных таймфреймов
-            if current['type'] not in last['type']:
-                last['type'] = f"{last['type']} + {current['type']}"
+        if current['min'] <= prev['max']:
+            # Зоны пересекаются, расширяем
+            prev['max'] = max(prev['max'], current['max'])
+            # Суммируем баллы (confluence), а не берем максимальный
+            prev['score'] = prev.get('score', 1) + current.get('score', 1)
         else:
             merged.append(current)
             
     return merged
+
+MAJORS = ["BTC", "ETH", "SOL", "BNB"]
+
+def compress_fat_zones(zones, coin):
+    """Сжимает слишком широкие зоны к их центру"""
+    max_width_pct = 0.03 if coin in MAJORS else 0.05
+    for z in zones:
+        center = (z['max'] + z['min']) / 2.0
+        width = z['max'] - z['min']
+        max_allowed_width = center * max_width_pct
+        
+        if width > max_allowed_width:
+            new_half_width = max_allowed_width / 2.0
+            z['min'] = center - new_half_width
+            z['max'] = center + new_half_width
+    return zones
+
+def resolve_cross_overlaps(supports, resistances):
+    """Удаляет слабые зоны при жестком пересечении Support и Resistance (>25%)"""
+    to_remove_sup = set()
+    to_remove_res = set()
+    
+    for i, s in enumerate(supports):
+        for j, r in enumerate(resistances):
+            if i in to_remove_sup or j in to_remove_res: continue
+                
+            overlap = min(r['max'], s['max']) - max(r['min'], s['min'])
+            if overlap > 0:
+                min_zone_width = min(r['max'] - r['min'], s['max'] - s['min'])
+                if min_zone_width <= 0: continue 
+                
+                if (overlap / min_zone_width) > 0.25:
+                    # Удаляем слабейшую
+                    if s.get('score', 0) > r.get('score', 0):
+                        to_remove_res.add(j)
+                    elif r.get('score', 0) > s.get('score', 0):
+                        to_remove_sup.add(i)
+                    else:
+                        # Если баллы равны, удаляем сопротивление (крипта чаще растет)
+                        to_remove_res.add(j)
+                        
+    final_sup = [s for i, s in enumerate(supports) if i not in to_remove_sup]
+    final_res = [r for j, r in enumerate(resistances) if j not in to_remove_res]
+    return final_sup, final_res
 
 def build_levels_for_single_coin(coin):
     """Изолированный расчет макро-уровней для одной монеты."""
@@ -164,13 +203,24 @@ def build_levels_for_single_coin(coin):
             print(f"[SWING ERROR] Ошибка 4H для {coin}: {e}")
 
         if supports or resistances:
+            merged_sup = merge_overlapping_zones(supports)
+            merged_res = merge_overlapping_zones(resistances)
+            
+            # 1. Сжимаем жирные зоны
+            merged_sup = compress_fat_zones(merged_sup, coin)
+            merged_res = compress_fat_zones(merged_res, coin)
+            
+            # 2. Удаляем конфликты (пересечения поддержки и сопротивления)
+            final_sup, final_res = resolve_cross_overlaps(merged_sup, merged_res)
+
             macro_base = load_json(MACRO_LEVELS_FILE, default={})
-            macro_base[coin] = {
-                "supports": merge_overlapping_zones(supports),
-                "resistances": merge_overlapping_zones(resistances),
-                "updated_at": datetime.datetime.now().isoformat()
-            }
-            save_json_atomic(MACRO_LEVELS_FILE, macro_base)
+            if final_sup or final_res:
+                macro_base[coin] = {
+                    "supports": final_sup,
+                    "resistances": final_res,
+                    "updated_at": datetime.datetime.now().isoformat()
+                }
+                save_json_atomic(MACRO_LEVELS_FILE, macro_base)
             print(f"✅ [SWING HUNTER] Уровни для {coin} обновлены.")
         else:
             print(f"⚠️ [SWING HUNTER] Нет зон для {coin}.")
@@ -292,12 +342,24 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                             if current_price > poc_price: supports.append(zone)
                             else: resistances.append(zone)
 
+                # Записываем в базу, пропустив через фильтры
                 if supports or resistances:
-                    macro_base[coin] = {
-                        "supports": merge_overlapping_zones(supports),
-                        "resistances": merge_overlapping_zones(resistances),
-                        "updated_at": datetime.datetime.now().isoformat()
-                    }
+                    merged_sup = merge_overlapping_zones(supports)
+                    merged_res = merge_overlapping_zones(resistances)
+                    
+                    # 1. Сжимаем жирные зоны
+                    merged_sup = compress_fat_zones(merged_sup, coin)
+                    merged_res = compress_fat_zones(merged_res, coin)
+                    
+                    # 2. Удаляем конфликты (пересечения поддержки и сопротивления)
+                    final_sup, final_res = resolve_cross_overlaps(merged_sup, merged_res)
+                    
+                    if final_sup or final_res:
+                        macro_base[coin] = {
+                            "supports": final_sup,
+                            "resistances": final_res,
+                            "updated_at": datetime.datetime.now().isoformat()
+                        }
                     
             except Exception as e:
                 print(f"[TEST ERROR] Ошибка для {coin}: {e}")

@@ -12,7 +12,7 @@ from modules.cryptano.utils.storage import load_json
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "BNB"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ALL"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной истории
@@ -21,7 +21,7 @@ LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной �
 TEST_START_DATE = "2026-05-01 16:00:00"
 
 TAKE_PROFIT = 10.0   # Оригинальная цель в %
-SL_BUFFER = 0.5      # Оригинальный отступ стоп-лосса в %
+SL_BUFFER = 1.5      # Оригинальный отступ стоп-лосса в %
 
 # --- ТУМБЛЕРЫ ФИЛЬТРОВ ---
 USE_CHOCH        = True    # Слом структуры
@@ -111,17 +111,15 @@ class SmartSniperUniversal(Strategy):
         all_zones = CURRENT_SUPPORTS + CURRENT_RESISTANCES
 
         # ==========================================
-        # 3. ЛОГИКА LONG (Цена падает СВЕРХУ ВНИЗ на любую зону)
+        # 3. ЛОГИКА LONG (Только от зон Поддержки)
         # ==========================================
-        for zone in all_zones:
-            level_id = f"{zone['min']}_{zone['max']}"
+        for sup in CURRENT_SUPPORTS:
+            level_id = f"{sup['min']}_{sup['max']}"
             if USE_LEVEL_BURN and level_id in self.burned_levels: 
                 continue 
 
-            zone_mid = (zone['max'] + zone['min']) / 2
-
-            # Условие: Открылись ВЫШЕ середины зоны, кольнули верхнюю границу (max), не пробили нижнюю (min)
-            if c_open >= zone_mid and c_low <= zone['max'] and c_close > zone['min']:
+            # Условие: Цена коснулась поддержки, но не пробила её насквозь
+            if c_low <= sup['max'] and c_close > sup['min']:
                 if is_falling_knife: break
                 
                 if USE_RANGE_FILTER:
@@ -147,17 +145,15 @@ class SmartSniperUniversal(Strategy):
                 self.wait_for_bullish_choch = False
 
         # ==========================================
-        # 4. ЛОГИКА SHORT (Цена растет СНИЗУ ВВЕРХ в любую зону)
+        # 4. ЛОГИКА SHORT (Только от зон Сопротивления)
         # ==========================================
-        for zone in all_zones:
-            level_id = f"{zone['min']}_{zone['max']}"
+        for res in CURRENT_RESISTANCES:
+            level_id = f"{res['min']}_{res['max']}"
             if USE_LEVEL_BURN and level_id in self.burned_levels: 
                 continue 
 
-            zone_mid = (zone['max'] + zone['min']) / 2
-
-            # Условие: Открылись НИЖЕ середины зоны, кольнули нижнюю границу (min), не пробили верхнюю (max)
-            if c_open <= zone_mid and c_high >= zone['min'] and c_close < zone['max']:
+            # Условие: Цена коснулась сопротивления, но не пробила его вверх
+            if c_high >= res['min'] and c_close < res['max']:
                 if is_flying_rocket: break
                 
                 if USE_RANGE_FILTER:
