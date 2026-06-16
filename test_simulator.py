@@ -12,7 +12,7 @@ from modules.cryptano.utils.storage import load_json
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "ALL"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "H"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной истории
@@ -21,7 +21,7 @@ LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной �
 TEST_START_DATE = "2026-05-01 16:00:00"
 
 TAKE_PROFIT = 10.0   # Оригинальная цель в %
-SL_BUFFER = 1.5      # Оригинальный отступ стоп-лосса в %
+SL_BUFFER = 0.5      # Оригинальный отступ стоп-лосса в %
 
 # --- ТУМБЛЕРЫ ФИЛЬТРОВ ---
 USE_CHOCH        = True    # Слом структуры
@@ -32,7 +32,8 @@ RR_RATIO         = 3.0     # Минимальный R/R
 USE_RANGE_FILTER = False   # Игнорировать входы, если закрытие ушло в средние 40% диапазона
 USE_LEVEL_BURN   = False   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА
 
-
+ALLOW_SHORT_TRADES = False # ТУМБЛЕР ДЛЯ ШОРТОВ: True — разрешить шорты, False — торговать только лонги
+MIN_SCORE = 4      # Минимальный балл зоны для входа (отсекает мусор)
 # =========================================================
 CURRENT_SUPPORTS = []
 CURRENT_RESISTANCES = []
@@ -114,9 +115,13 @@ class SmartSniperUniversal(Strategy):
         # 3. ЛОГИКА LONG (Только от зон Поддержки)
         # ==========================================
         for sup in CURRENT_SUPPORTS:
+            # Отсекаем мусор по баллам
+            if sup.get('score', 0) < MIN_SCORE: 
+                continue 
+                
             level_id = f"{sup['min']}_{sup['max']}"
             if USE_LEVEL_BURN and level_id in self.burned_levels: 
-                continue 
+                continue
 
             # Условие: Цена коснулась поддержки, но не пробила её насквозь
             if c_low <= sup['max'] and c_close > sup['min']:
@@ -148,9 +153,16 @@ class SmartSniperUniversal(Strategy):
         # 4. ЛОГИКА SHORT (Только от зон Сопротивления)
         # ==========================================
         for res in CURRENT_RESISTANCES:
+            if not ALLOW_SHORT_TRADES:
+                break # Если шорты отключены, сразу выходим из цикла поиска продаж
+                
+            # Отсекаем мусор по баллам
+            if res.get('score', 0) < MIN_SCORE: 
+                continue 
+                
             level_id = f"{res['min']}_{res['max']}"
             if USE_LEVEL_BURN and level_id in self.burned_levels: 
-                continue 
+                continue
 
             # Условие: Цена коснулась сопротивления, но не пробила его вверх
             if c_high >= res['min'] and c_close < res['max']:
@@ -211,7 +223,20 @@ macro_path = os.path.join("modules", "cryptano", "macro_levels.json")
 macro_db = load_json(macro_path, default={}) if os.path.exists(macro_path) else {}
 
 def get_cached_data(coin):
-    symbol = f"{coin.upper()}/USDT"
+    # УНИВЕРСАЛЬНЫЙ ПОИСК ТИКЕРА В БАЗЕ БИРЖИ
+    try:
+        exchange.load_markets() # Подтягиваем список всех торговых пар
+    except:
+        pass
+
+    symbol_perp = f"{coin.upper()}/USDT:USDT" # Формат фьючерса
+    symbol_spot = f"{coin.upper()}/USDT"      # Формат спота
+
+    # Сначала ищем фьючерс, если его нет — берем спот
+    if exchange.markets and symbol_perp in exchange.markets:
+        symbol = symbol_perp
+    else:
+        symbol = symbol_spot
     
     date_suffix = TEST_START_DATE[:10] if TEST_START_DATE else "live"
     cache_file = f"cache_{coin.lower()}_{TIMEFRAME}_{LIMIT_CANDLES}_{date_suffix}.csv"
@@ -236,9 +261,9 @@ def get_cached_data(coin):
             df.to_csv(cache_file)
             return df
         except Exception as e:
-            print(f"Ошибка скачивания {coin}: {e}")
+            print(f"❌ Ошибка скачивания {symbol}: {e}")
             return pd.DataFrame()
-
+        
 if TEST_START_DATE:
     macro_path = os.path.join("modules", "cryptano", "utils", "testswing", f"macro_test_{TEST_START_DATE[:10]}.json")
 else:

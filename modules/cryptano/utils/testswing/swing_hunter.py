@@ -60,32 +60,48 @@ def calculate_atr(df, period=14):
 
 def merge_overlapping_zones(zones):
     """
-    Математическое слияние пересекающихся зон (Классический алгоритм Interval Merging).
-    Суммирует score для создания карты плотности (confluence).
+    Математическое слияние зон.
+    Логика: берем балл самого сильного уровня (база) + 1 балл за каждое дополнительное подтверждение (бонус).
+    Это защищает от инфляции мусорных уровней (3+3+2 не станет 8).
     """
     if not zones:
         return []
         
-    # Сортируем зоны снизу вверх по их минимальной границе
     sorted_zones = sorted(zones, key=lambda x: x['min'])
+    
+    # Добавляем временные поля для подсчета базы и количества наслоений
+    for z in sorted_zones:
+        z['base_score'] = z.get('score', 1.0)
+        z['components'] = 1
+        
     merged = [sorted_zones[0]]
     
     for current in sorted_zones[1:]:
         last = merged[-1]
         
-        # Если зоны пересекаются (текущая начинается до того, как закончилась предыдущая)
+        # Если зоны пересекаются
         if current['min'] <= last['max']:
-            # Зоны пересекаются, расширяем верхнюю границу
             last['max'] = max(last['max'], current['max'])
-            # Суммируем баллы (confluence)
-            last['score'] = last.get('score', 1) + current.get('score', 1)
             
-            # Отмечаем, что зона усилена слиянием разных таймфреймов/типов
+            # 1. Обновляем базовый балл (выбираем сильнейший источник из слипшихся)
+            last['base_score'] = max(last['base_score'], current['base_score'])
+            
+            # 2. Увеличиваем счетчик слипшихся зон (для бонусов)
+            last['components'] += 1
+            
+            # 3. Итоговый Score = Сильнейшая база + бонус за каждое наслоение
+            last['score'] = last['base_score'] + (last['components'] - 1)
+            
             if current.get('type') and last.get('type') and current['type'] not in last['type']:
                 last['type'] = f"{last['type']} + {current['type']}"
         else:
             merged.append(current)
             
+    # Подчищаем временные ключи перед сохранением в JSON
+    for m in merged:
+        m.pop('base_score', None)
+        m.pop('components', None)
+        
     return merged
 
 MAJORS = ["BTC", "ETH", "SOL", "BNB"]
