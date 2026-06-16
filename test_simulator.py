@@ -12,7 +12,7 @@ from modules.cryptano.utils.storage import load_json
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "ALL"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "JUP"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной истории
@@ -20,8 +20,8 @@ LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной �
 # 🧪 ТУМБЛЕР МАШИНЫ ВРЕМЕНИ
 TEST_START_DATE = "2026-05-01 16:00:00"
 
-TAKE_PROFIT = 10.0   # Оригинальная цель в %
-SL_BUFFER = 0.5      # Оригинальный отступ стоп-лосса в %
+TAKE_PROFIT = 5.0   # Оригинальная цель в %
+SL_BUFFER = 1.0      # Оригинальный отступ стоп-лосса в %
 
 # --- ТУМБЛЕРЫ ФИЛЬТРОВ ---
 USE_CHOCH        = True    # Слом структуры
@@ -32,7 +32,8 @@ RR_RATIO         = 3.0     # Минимальный R/R
 USE_RANGE_FILTER = False   # Игнорировать входы, если закрытие ушло в средние 40% диапазона
 USE_LEVEL_BURN   = False   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА
 
-ALLOW_SHORT_TRADES = True # ТУМБЛЕР ДЛЯ ШОРТОВ: True — разрешить шорты, False — торговать только лонги
+ALLOW_LONG_TRADES  = False # ❌ ОТКЛЮЧАЕМ ЛОНГИ ДЛЯ ЧИСТОГО ТЕСТА ШОРТОВ
+ALLOW_SHORT_TRADES = True  # ✅ ШОРТЫ ОСТАЮТСЯ ВКЛЮЧЕНЫ
 MIN_SCORE = 3      # Минимальный балл зоны для входа (отсекает мусор)
 
 # --- НОВЫЕ СНАЙПЕРСКИЕ ФИЛЬТРЫ ---
@@ -44,7 +45,21 @@ MAX_RISK_PCT      = 5.0   # Макс. стоп-лосс в %. Сделка с б
 # --- ФИЛЬТР ОТСТАВАНИЯ (ДОГОНЯЮЩИЙ ВХОД) ---
 USE_DISTANCE_FILTER = True # Мягкий фильтр: отмена сделки, если цена улетела далеко от зоны
 MAX_DISTANCE_PCT    = 1.0  # Максимально допустимый отрыв от зоны в % (тестируем 1.0)
+USE_IMPULSE_FILTER  = True   # Включаем фильтр аномальных свечей в реальную работу
+
+# Настройки для LONG (Мягкие, чтобы не убить рабочие 56% профита)
+MAX_DISTANCE_PCT_LONG  = 1.5    # Разрешаем отрыв до 1.5%
+MAX_IMPULSE_RATIO_LONG = 3.0    # Фильтруем только совсем дикие свечи (> 3х)
+
+# Настройки для SHORT (Жесткие, чтобы полностью вырезать баг со скринов)
+MAX_DISTANCE_PCT_SHORT = 1.0    # Отрыв строго не более 1.0%
+MAX_IMPULSE_RATIO_SHORT = 1.8   # Фильтруем любые свечи, которые больше средних на 80% (>= 1.8х)
+# ФИЛЬТРЫ ДЛЯ ШОРТОВ (SFP + Тренд) ---
+USE_SHORT_EMA200_FILTER = True  # Разрешить шорты только если цена НИЖЕ EMA 200
+USE_SHORT_SFP_LOGIC     = True  # Искать SFP (прокол верхней границы зоны), а не просто касание низа
+SHORT_CHOCH_PERIOD      = 10    # ГЛУБОКИЙ CHoCH: ищем лой за 10 свечей (а не за 2)
 # =========================================================
+
 # --- SHADOW METRICS (ТЕНЕВАЯ СТАТИСТИКА) ---
 USE_DISTANCE_FILTER = False # Выключаем жесткую отмену сделок, чтобы собрать дату
 SHADOW_MAX_DISTANCE = 1.0   # Порог отрыва цены (для лога)
@@ -69,6 +84,12 @@ class SmartSniperUniversal(Strategy):
         
         high_low = pd.Series(self.data.High) - pd.Series(self.data.Low)
         self.atr = self.I(SMA, high_low, 14)
+        
+        # Считаем 4H EMA 200 (эмуляция на 15-минутном графике: 200 * 16 = 3200 свечей)
+        def EMA(values, n):
+            return pd.Series(values).ewm(span=n, adjust=False).mean()
+        
+        self.ema_4h_200 = self.I(EMA, self.data.Close, 3200)
 
         # ==========================================
         # 🎨 ОТРИСОВКА МАКРО-УРОВНЕЙ НА ГРАФИКЕ
@@ -130,8 +151,11 @@ class SmartSniperUniversal(Strategy):
         # 3. ЛОГИКА LONG (Только от зон Поддержки)
         # ==========================================
         for sup in CURRENT_SUPPORTS:
+            if not ALLOW_LONG_TRADES:
+                break # ❌ Выходим из цикла, лонги полностью отключены
+                
             if sup.get('score', 0) < MIN_SCORE: 
-                continue 
+                continue
                 
             level_id = f"{sup['min']}_{sup['max']}"
             if USE_LEVEL_BURN and level_id in self.burned_levels: 
@@ -172,7 +196,7 @@ class SmartSniperUniversal(Strategy):
                 self.wait_for_bullish_choch = False
 
         # ==========================================
-        # 4. ЛОГИКА SHORT (Только от зон Сопротивления)
+        # 4. ЛОГИКА SHORT (Мгновенный SFP или Глубокий CHoCH)
         # ==========================================
         for res in CURRENT_RESISTANCES:
             if not ALLOW_SHORT_TRADES:
@@ -185,17 +209,39 @@ class SmartSniperUniversal(Strategy):
             if USE_LEVEL_BURN and level_id in self.burned_levels: 
                 continue 
 
-            # 🛡 ПРАВИЛО 2: Проверка "воздуха" (Gap) до ближайшей поддержки
+            # 🛡 Проверка "воздуха" (Gap) до ближайшей поддержки
             if USE_ZONE_GAP:
                 closest_sup = max([s['max'] for s in CURRENT_SUPPORTS if s['max'] < res['min']], default=None)
                 if closest_sup:
                     gap_pct = ((res['min'] - closest_sup) / closest_sup) * 100
                     if gap_pct < MIN_ZONE_GAP_PCT:
-                        continue # Скипаем зону, если до пола нет запаса хода
+                        continue 
 
+            # 🛡 ФИЛЬТР ТРЕНДА: 4H EMA 200
+            if USE_SHORT_EMA200_FILTER:
+                # Если 15-минутная цена выше месячной средней (4H EMA200) - шорты запрещены!
+                if c_close > self.ema_4h_200[-1]:
+                    continue
+
+            # 🎯 РАЗДЕЛЕНИЕ ЛОГИКИ: SFP или Касание
+            # 1. SFP: Тень уколола верхнюю границу зоны (max), но тело закрылось ниже
+            is_sfp = (c_high >= res['max']) and (c_close < res['max'])
             
-            # Условие: Цена коснулась сопротивления, но не пробила его вверх
-            if c_high >= res['min'] and c_close < res['max']:
+            # 2. Просто касание: вошли в зону, но до верха не дотянули
+            is_touch = (c_high >= res['min']) and (c_close < res['max']) and not is_sfp
+
+            # === СЦЕНАРИЙ А: SFP (Мгновенный выстрел) ===
+            if is_sfp:
+                if is_flying_rocket: break
+                
+                # При SFP мы НЕ ждем CHoCH! Заходим прямо под хаем.
+                self._execute_short(res, c_close)
+                # Сбрасываем ожидание CHoCH на всякий случай
+                self.wait_for_bearish_choch = False 
+                break
+
+            # === СЦЕНАРИЙ Б: Касание (Ждем глубокий CHoCH) ===
+            elif is_touch:
                 if is_flying_rocket: break
                 
                 if USE_RANGE_FILTER:
@@ -207,71 +253,75 @@ class SmartSniperUniversal(Strategy):
 
                 if USE_CHOCH:
                     self.wait_for_bearish_choch = True
-                    self.choch_bear_level = min(self.data.Low[-1], self.data.Low[-2])
+                    # Ищем минимум за последние 10 свечей
+                    self.choch_bear_level = min(self.data.Low[-SHORT_CHOCH_PERIOD:])
                     self.active_level = res
                 else:
                     self._execute_short(res, c_close)
                 break
 
+        # ОЖИДАНИЕ СЛОМА СТРУКТУРЫ (Работает только для "Сценария Б")
         if USE_CHOCH and self.wait_for_bearish_choch and self.active_level is not None:
             if c_close < self.choch_bear_level:
                 self._execute_short(self.active_level, c_close)
                 self.wait_for_bearish_choch = False
             elif c_high > self.active_level['max'] * 1.01:
+                # Если цена улетела выше зоны на 1% - отменяем охоту
                 self.wait_for_bearish_choch = False
 
-
-    # ==========================================
-    # 5. ИСПОЛНЕНИЕ ОРДЕРОВ (С SHADOW METRICS И RISK CAP)
+    ## ==========================================
+    # 5. ИСПОЛНЕНИЕ ОРДЕРОВ (БОЕВАЯ СНАЙПЕРСКАЯ ФИЛЬТРАЦИЯ)
     # ==========================================
     def _execute_long(self, level, current_price):
-        # 👻 ТЕНЕВАЯ АНАЛИТИКА: Считаем параметры, но сделку НЕ отменяем
-        distance_pct = ((current_price - level['max']) / level['max']) * 100 if current_price > level['max'] else 0.0
-        
-        # Считаем размер текущей свечи (импульс)
+        # 1. Считаем импульс свечи
         current_body = abs(self.data.Close[-1] - self.data.Open[-1])
-        # Среднее тело 10 предыдущих свечей (со 2-й по 11-ю вглубь истории)
         avg_body = sum([abs(self.data.Close[-i] - self.data.Open[-i]) for i in range(2, 12)]) / 10
         avg_body = avg_body if avg_body > 0 else 0.0001
         impulse_ratio = current_body / avg_body
         
-        # Если пробили наши теневые лимиты - просто пишем в лог
-        if distance_pct > SHADOW_MAX_DISTANCE or impulse_ratio > SHADOW_MAX_IMPULSE:
-            print(f"👻 [SHADOW LONG] Дистанция: {distance_pct:.2f}% | Импульс: {impulse_ratio:.1f}x (отклонили бы сделку)")
+        # 2. Боевой фильтр импульса для LONG
+        if USE_IMPULSE_FILTER and impulse_ratio > MAX_IMPULSE_RATIO_LONG:
+            return
 
-        # 🛡 ПРАВИЛО 3 (RISK CAP): Слишком большой стоп? Игнорируем сделку (этот фильтр работает РЕАЛЬНО).
+        # 3. Боевой фильтр дистанции для LONG
+        if USE_DISTANCE_FILTER and current_price > level['max']:
+            distance_pct = ((current_price - level['max']) / level['max']) * 100
+            if distance_pct > MAX_DISTANCE_PCT_LONG:
+                return
+
+        # Исполнение ордера
         sl = level['min'] * (1 - SL_BUFFER / 100)
         risk_pct = ((current_price - sl) / current_price) * 100
-        if USE_RISK_CAP and risk_pct > MAX_RISK_PCT:
-            return 
+        if USE_RISK_CAP and risk_pct > MAX_RISK_PCT: return 
             
         tp = current_price * (1 + TAKE_PROFIT / 100)
-        
         self.current_trade_level_id = f"{level['min']}_{level['max']}"
         self.buy(sl=sl, tp=tp)
 
 
     def _execute_short(self, level, current_price):
-        # 👻 ТЕНЕВАЯ АНАЛИТИКА: Считаем параметры, но сделку НЕ отменяем
-        distance_pct = ((level['min'] - current_price) / level['min']) * 100 if current_price < level['min'] else 0.0
-        
+        # 1. Считаем импульс свечи
         current_body = abs(self.data.Close[-1] - self.data.Open[-1])
         avg_body = sum([abs(self.data.Close[-i] - self.data.Open[-i]) for i in range(2, 12)]) / 10
         avg_body = avg_body if avg_body > 0 else 0.0001
         impulse_ratio = current_body / avg_body
         
-        # Если пробили наши теневые лимиты - просто пишем в лог
-        if distance_pct > SHADOW_MAX_DISTANCE or impulse_ratio > SHADOW_MAX_IMPULSE:
-            print(f"👻 [SHADOW SHORT] Дистанция: {distance_pct:.2f}% | Импульс: {impulse_ratio:.1f}x (отклонили бы сделку)")
+        # 2. Боевой фильтр импульса для SHORT (Жесткий)
+        if USE_IMPULSE_FILTER and impulse_ratio > MAX_IMPULSE_RATIO_SHORT:
+            return
 
-        # 🛡 ПРАВИЛО 3 (RISK CAP): Слишком большой стоп? Игнорируем сделку (этот фильтр работает РЕАЛЬНО).
+        # 3. Боевой фильтр дистанции для SHORT (Жесткий)
+        if USE_DISTANCE_FILTER and current_price < level['min']:
+            distance_pct = ((level['min'] - current_price) / level['min']) * 100
+            if distance_pct > MAX_DISTANCE_PCT_SHORT:
+                return
+
+        # Исполнение ордера
         sl = level['max'] * (1 + SL_BUFFER / 100)
         risk_pct = ((sl - current_price) / current_price) * 100
-        if USE_RISK_CAP and risk_pct > MAX_RISK_PCT:
-            return 
+        if USE_RISK_CAP and risk_pct > MAX_RISK_PCT: return 
             
         tp = current_price * (1 - TAKE_PROFIT / 100)
-        
         self.current_trade_level_id = f"{level['min']}_{level['max']}"
         self.sell(sl=sl, tp=tp)
 
