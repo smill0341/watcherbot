@@ -12,7 +12,7 @@ from modules.cryptano.utils.storage import load_json
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "JUP"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "NEAR"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной истории
@@ -20,8 +20,8 @@ LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной �
 # 🧪 ТУМБЛЕР МАШИНЫ ВРЕМЕНИ
 TEST_START_DATE = "2026-05-01 16:00:00"
 
-TAKE_PROFIT = 5.0   # Оригинальная цель в %
-SL_BUFFER = 1.0      # Оригинальный отступ стоп-лосса в %
+TAKE_PROFIT = 10.0   # Оригинальная цель в %
+SL_BUFFER = 0.5      # Оригинальный отступ стоп-лосса в %
 
 # --- ТУМБЛЕРЫ ФИЛЬТРОВ ---
 USE_CHOCH        = True    # Слом структуры
@@ -32,8 +32,8 @@ RR_RATIO         = 3.0     # Минимальный R/R
 USE_RANGE_FILTER = False   # Игнорировать входы, если закрытие ушло в средние 40% диапазона
 USE_LEVEL_BURN   = False   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА
 
-ALLOW_LONG_TRADES  = False # ❌ ОТКЛЮЧАЕМ ЛОНГИ ДЛЯ ЧИСТОГО ТЕСТА ШОРТОВ
-ALLOW_SHORT_TRADES = True  # ✅ ШОРТЫ ОСТАЮТСЯ ВКЛЮЧЕНЫ
+ALLOW_LONG_TRADES  = True # ❌ ОТКЛЮЧАЕМ ЛОНГИ ДЛЯ ЧИСТОГО ТЕСТА ШОРТОВ
+ALLOW_SHORT_TRADES = False  # ✅ ШОРТЫ ОСТАЮТСЯ ВКЛЮЧЕНЫ
 MIN_SCORE = 3      # Минимальный балл зоны для входа (отсекает мусор)
 
 # --- НОВЫЕ СНАЙПЕРСКИЕ ФИЛЬТРЫ ---
@@ -148,11 +148,25 @@ class SmartSniperUniversal(Strategy):
         all_zones = CURRENT_SUPPORTS + CURRENT_RESISTANCES
 
         # ==========================================
+        # 🛡 ПРОВЕРКА КОНТЕКСТА (ПУСТЫЕ СТОРОНЫ)
+        # ==========================================
+        has_supports = len(CURRENT_SUPPORTS) > 0
+        has_resistances = len(CURRENT_RESISTANCES) > 0
+
+        # Если ничего нет: skip symbol (сразу выходим из свечи)
+        if not has_supports and not has_resistances:
+            return 
+
+        # Жесткая блокировка направлений (Учитывает и пустые зоны, и рубильники)
+        can_long = has_supports and ALLOW_LONG_TRADES
+        can_short = has_resistances and ALLOW_SHORT_TRADES
+        
+        # ==========================================
         # 3. ЛОГИКА LONG (Только от зон Поддержки)
         # ==========================================
         for sup in CURRENT_SUPPORTS:
-            if not ALLOW_LONG_TRADES:
-                break # ❌ Выходим из цикла, лонги полностью отключены
+            if not can_long:
+                break # ❌ LONG аппаратно запрещен (нет поддержек или отключен вручную)
                 
             if sup.get('score', 0) < MIN_SCORE: 
                 continue
@@ -196,11 +210,11 @@ class SmartSniperUniversal(Strategy):
                 self.wait_for_bullish_choch = False
 
         # ==========================================
-        # 4. ЛОГИКА SHORT (Мгновенный SFP или Глубокий CHoCH)
+        # 4. ЛОГИКА SHORT (Только от зон Сопротивления)
         # ==========================================
         for res in CURRENT_RESISTANCES:
-            if not ALLOW_SHORT_TRADES:
-                break 
+            if not can_short:
+                break # ❌ SHORT аппаратно запрещен (нет сопротивлений или отключен)
                 
             if res.get('score', 0) < MIN_SCORE: 
                 continue 
@@ -428,8 +442,12 @@ else:
     CURRENT_SUPPORTS = coin_data.get("supports", [])
     CURRENT_RESISTANCES = coin_data.get("resistances", [])
     
-    print(f"📥 Запускаю детальный тест для {TARGET_COIN.upper()}...")
-    df = get_cached_data(TARGET_COIN)
+    # 🔥 ПРОВЕРКА КОНТЕКСТА: Если ничего нет - skip symbol
+    if not CURRENT_SUPPORTS and not CURRENT_RESISTANCES:
+        print(f"⏩ Скипаем {TARGET_COIN.upper()}: нет уровней (skip symbol).")
+    else:
+        print(f"📥 Запускаю детальный тест для {TARGET_COIN.upper()}...")
+        df = get_cached_data(TARGET_COIN)
     if df.empty:
         print("❌ Ошибка загрузки данных.")
     else:
