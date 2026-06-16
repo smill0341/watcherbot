@@ -32,15 +32,24 @@ RR_RATIO         = 3.0     # Минимальный R/R
 USE_RANGE_FILTER = False   # Игнорировать входы, если закрытие ушло в средние 40% диапазона
 USE_LEVEL_BURN   = False   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА
 
-ALLOW_SHORT_TRADES = False # ТУМБЛЕР ДЛЯ ШОРТОВ: True — разрешить шорты, False — торговать только лонги
+ALLOW_SHORT_TRADES = True # ТУМБЛЕР ДЛЯ ШОРТОВ: True — разрешить шорты, False — торговать только лонги
 MIN_SCORE = 3      # Минимальный балл зоны для входа (отсекает мусор)
 
 # --- НОВЫЕ СНАЙПЕРСКИЕ ФИЛЬТРЫ ---
 USE_ZONE_GAP      = True   # Правило 2: Включить проверку "воздуха" между зонами
 MIN_ZONE_GAP_PCT  = 3.0    # Минимальный зазор между Поддержкой и ближайшим Сопротивлением в %
 USE_RISK_CAP      = False   # Правило 3: Ограничение риска
-MAX_RISK_PCT      = 3.0   # Макс. стоп-лосс в %. Сделка с большим стопом отменяется
+MAX_RISK_PCT      = 5.0   # Макс. стоп-лосс в %. Сделка с большим стопом отменяется
+
+# --- ФИЛЬТР ОТСТАВАНИЯ (ДОГОНЯЮЩИЙ ВХОД) ---
+USE_DISTANCE_FILTER = True # Мягкий фильтр: отмена сделки, если цена улетела далеко от зоны
+MAX_DISTANCE_PCT    = 1.0  # Максимально допустимый отрыв от зоны в % (тестируем 1.0)
 # =========================================================
+# --- SHADOW METRICS (ТЕНЕВАЯ СТАТИСТИКА) ---
+USE_DISTANCE_FILTER = False # Выключаем жесткую отмену сделок, чтобы собрать дату
+SHADOW_MAX_DISTANCE = 1.0   # Порог отрыва цены (для лога)
+SHADOW_MAX_IMPULSE  = 2.0   # Порог аномальной свечи: в 2 раза больше средних 10 свечей (для лога)
+
 CURRENT_SUPPORTS = []
 CURRENT_RESISTANCES = []
 
@@ -213,39 +222,55 @@ class SmartSniperUniversal(Strategy):
 
 
     # ==========================================
-    # 5. ИСПОЛНЕНИЕ ОРДЕРОВ (ТОЛЬКО RISK CAP)
+    # 5. ИСПОЛНЕНИЕ ОРДЕРОВ (С SHADOW METRICS И RISK CAP)
     # ==========================================
     def _execute_long(self, level, current_price):
-        sl = level['min'] * (1 - SL_BUFFER / 100)
+        # 👻 ТЕНЕВАЯ АНАЛИТИКА: Считаем параметры, но сделку НЕ отменяем
+        distance_pct = ((current_price - level['max']) / level['max']) * 100 if current_price > level['max'] else 0.0
         
-        # 🛡 ПРАВИЛО 3 (RISK CAP): Слишком большой стоп? Игнорируем сделку.
+        # Считаем размер текущей свечи (импульс)
+        current_body = abs(self.data.Close[-1] - self.data.Open[-1])
+        # Среднее тело 10 предыдущих свечей (со 2-й по 11-ю вглубь истории)
+        avg_body = sum([abs(self.data.Close[-i] - self.data.Open[-i]) for i in range(2, 12)]) / 10
+        avg_body = avg_body if avg_body > 0 else 0.0001
+        impulse_ratio = current_body / avg_body
+        
+        # Если пробили наши теневые лимиты - просто пишем в лог
+        if distance_pct > SHADOW_MAX_DISTANCE or impulse_ratio > SHADOW_MAX_IMPULSE:
+            print(f"👻 [SHADOW LONG] Дистанция: {distance_pct:.2f}% | Импульс: {impulse_ratio:.1f}x (отклонили бы сделку)")
+
+        # 🛡 ПРАВИЛО 3 (RISK CAP): Слишком большой стоп? Игнорируем сделку (этот фильтр работает РЕАЛЬНО).
+        sl = level['min'] * (1 - SL_BUFFER / 100)
         risk_pct = ((current_price - sl) / current_price) * 100
         if USE_RISK_CAP and risk_pct > MAX_RISK_PCT:
             return 
             
         tp = current_price * (1 + TAKE_PROFIT / 100)
-        risk = current_price - sl
-        reward = tp - current_price
-        
-        if USE_RR_FILTER and (risk <= 0 or (reward / risk) < RR_RATIO): return
         
         self.current_trade_level_id = f"{level['min']}_{level['max']}"
         self.buy(sl=sl, tp=tp)
 
 
     def _execute_short(self, level, current_price):
-        sl = level['max'] * (1 + SL_BUFFER / 100)
+        # 👻 ТЕНЕВАЯ АНАЛИТИКА: Считаем параметры, но сделку НЕ отменяем
+        distance_pct = ((level['min'] - current_price) / level['min']) * 100 if current_price < level['min'] else 0.0
         
-        # 🛡 ПРАВИЛО 3 (RISK CAP): Слишком большой стоп? Игнорируем сделку.
+        current_body = abs(self.data.Close[-1] - self.data.Open[-1])
+        avg_body = sum([abs(self.data.Close[-i] - self.data.Open[-i]) for i in range(2, 12)]) / 10
+        avg_body = avg_body if avg_body > 0 else 0.0001
+        impulse_ratio = current_body / avg_body
+        
+        # Если пробили наши теневые лимиты - просто пишем в лог
+        if distance_pct > SHADOW_MAX_DISTANCE or impulse_ratio > SHADOW_MAX_IMPULSE:
+            print(f"👻 [SHADOW SHORT] Дистанция: {distance_pct:.2f}% | Импульс: {impulse_ratio:.1f}x (отклонили бы сделку)")
+
+        # 🛡 ПРАВИЛО 3 (RISK CAP): Слишком большой стоп? Игнорируем сделку (этот фильтр работает РЕАЛЬНО).
+        sl = level['max'] * (1 + SL_BUFFER / 100)
         risk_pct = ((sl - current_price) / current_price) * 100
         if USE_RISK_CAP and risk_pct > MAX_RISK_PCT:
             return 
             
         tp = current_price * (1 - TAKE_PROFIT / 100)
-        risk = sl - current_price
-        reward = current_price - tp
-        
-        if USE_RR_FILTER and (risk <= 0 or (reward / risk) < RR_RATIO): return
         
         self.current_trade_level_id = f"{level['min']}_{level['max']}"
         self.sell(sl=sl, tp=tp)
