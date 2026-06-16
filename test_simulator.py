@@ -123,18 +123,18 @@ class SmartSniperUniversal(Strategy):
                 if is_falling_knife: break
                 
                 if USE_RANGE_FILTER:
-                    closest_res = min([r['min'] for r in all_zones if r['min'] > zone['max']], default=None)
+                    closest_res = min([r['min'] for r in all_zones if r['min'] > sup['max']], default=None)
                     if closest_res:
-                        range_size = closest_res - zone['max']
-                        if (c_close - zone['max']) > (range_size * 0.30):
+                        range_size = closest_res - sup['max']
+                        if (c_close - sup['max']) > (range_size * 0.30):
                             break 
 
                 if USE_CHOCH:
                     self.wait_for_bullish_choch = True
                     self.choch_bull_level = max(self.data.High[-1], self.data.High[-2])
-                    self.active_level = zone
+                    self.active_level = sup
                 else:
-                    self._execute_long(zone, c_close)
+                    self._execute_long(sup, c_close)
                 break
 
         if USE_CHOCH and self.wait_for_bullish_choch and self.active_level is not None:
@@ -157,18 +157,18 @@ class SmartSniperUniversal(Strategy):
                 if is_flying_rocket: break
                 
                 if USE_RANGE_FILTER:
-                    closest_sup = max([s['max'] for s in all_zones if s['max'] < zone['min']], default=None)
+                    closest_sup = max([s['max'] for s in all_zones if s['max'] < res['min']], default=None)
                     if closest_sup:
-                        range_size = zone['min'] - closest_sup
-                        if (zone['min'] - c_close) > (range_size * 0.30):
+                        range_size = res['min'] - closest_sup
+                        if (res['min'] - c_close) > (range_size * 0.30):
                             break 
 
                 if USE_CHOCH:
                     self.wait_for_bearish_choch = True
                     self.choch_bear_level = min(self.data.Low[-1], self.data.Low[-2])
-                    self.active_level = zone
+                    self.active_level = res
                 else:
-                    self._execute_short(zone, c_close)
+                    self._execute_short(res, c_close)
                 break
 
         if USE_CHOCH and self.wait_for_bearish_choch and self.active_level is not None:

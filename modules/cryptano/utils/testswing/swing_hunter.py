@@ -61,6 +61,7 @@ def calculate_atr(df, period=14):
 def merge_overlapping_zones(zones):
     """
     Математическое слияние пересекающихся зон (Классический алгоритм Interval Merging).
+    Суммирует score для создания карты плотности (confluence).
     """
     if not zones:
         return []
@@ -73,11 +74,15 @@ def merge_overlapping_zones(zones):
         last = merged[-1]
         
         # Если зоны пересекаются (текущая начинается до того, как закончилась предыдущая)
-        if current['min'] <= prev['max']:
-            # Зоны пересекаются, расширяем
-            prev['max'] = max(prev['max'], current['max'])
-            # Суммируем баллы (confluence), а не берем максимальный
-            prev['score'] = prev.get('score', 1) + current.get('score', 1)
+        if current['min'] <= last['max']:
+            # Зоны пересекаются, расширяем верхнюю границу
+            last['max'] = max(last['max'], current['max'])
+            # Суммируем баллы (confluence)
+            last['score'] = last.get('score', 1) + current.get('score', 1)
+            
+            # Отмечаем, что зона усилена слиянием разных таймфреймов/типов
+            if current.get('type') and last.get('type') and current['type'] not in last['type']:
+                last['type'] = f"{last['type']} + {current['type']}"
         else:
             merged.append(current)
             
