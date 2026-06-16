@@ -12,7 +12,7 @@ from modules.cryptano.utils.storage import load_json
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "XPL"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "VELVET"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной истории
@@ -33,7 +33,7 @@ USE_RANGE_FILTER = False   # Игнорировать входы, если за�
 USE_LEVEL_BURN   = False   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА
 
 ALLOW_SHORT_TRADES = False # ТУМБЛЕР ДЛЯ ШОРТОВ: True — разрешить шорты, False — торговать только лонги
-MIN_SCORE = 4      # Минимальный балл зоны для входа (отсекает мусор)
+MIN_SCORE = 3      # Минимальный балл зоны для входа (отсекает мусор)
 # =========================================================
 CURRENT_SUPPORTS = []
 CURRENT_RESISTANCES = []
@@ -347,7 +347,14 @@ else:
                 t_in = row['EntryTime'].strftime('%d.%m %H:%M')
                 t_out = row['ExitTime'].strftime('%d.%m %H:%M')
                 
+                # Напрямую берем готовые значения из колонок строки сделки
+                p_entry = row['EntryPrice']
+                p_sl = row['SL']
+                p_tp = row['TP']
+                
+                # Выводим полную информацию для ручного анализа
                 print(f"  ▪️ Сделка №{idx+1} ({tr_type}): {t_in} -> {t_out} | {status} ({sign}{pct_val:.2f}%)")
+                print(f"    👉 Вход (Entry): {p_entry:.4f} | Стоп (SL): {p_sl:.4f} | Тейк (TP 10%): {p_tp:.4f}")
                 
         chart_path = os.path.abspath(f'chart_{TARGET_COIN.lower()}.html')
         bt.plot(filename=chart_path, open_browser=True)
