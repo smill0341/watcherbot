@@ -25,7 +25,7 @@ GLOBAL_DEBUG_STATS = {
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "ALL"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "H"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной истории
@@ -45,9 +45,9 @@ RR_RATIO         = 3.0     # Минимальный R/R
 USE_RANGE_FILTER = False   # Игнорировать входы, если закрытие ушло в средние 40% диапазона
 USE_LEVEL_BURN   = True   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА
 
-ALLOW_LONG_TRADES  = True # ❌ ОТКЛЮЧАЕМ ЛОНГИ ДЛЯ ЧИСТОГО ТЕСТА ШОРТОВ
-ALLOW_SHORT_TRADES = False  # ✅ ШОРТЫ ОСТАЮТСЯ ВКЛЮЧЕНЫ
-MIN_SCORE = 3      # Минимальный балл зоны для входа (отсекает мусор)
+ALLOW_LONG_TRADES  = False # ❌ ОТКЛЮЧАЕМ ЛОНГИ ДЛЯ ЧИСТОГО ТЕСТА ШОРТОВ
+ALLOW_SHORT_TRADES = True  # ✅ ШОРТЫ ОСТАЮТСЯ ВКЛЮЧЕНЫ
+MIN_SCORE = 4      # Минимальный балл зоны для входа (отсекает мусор)
 
 # --- НОВЫЕ СНАЙПЕРСКИЕ ФИЛЬТРЫ ---
 USE_ZONE_GAP      = True   # Правило 2: Включить проверку "воздуха" между зонами
@@ -141,17 +141,29 @@ class SmartSniperUniversal(Strategy):
         p_vol = self.data.Volume[-2]
 
         # ==========================================
-        # 2. ФИЛЬТР ANTI-KNIFE
+        # 2. ФИЛЬТР ANTI-KNIFE (С объемами и тенями)
         # ==========================================
         is_falling_knife = False
         is_flying_rocket = False
+        
         if USE_ANTI_KNIFE:
+            # Средний объем за последние 10 свечей (исключая текущую)
+            avg_vol = self.data.Volume[-11:-1].mean() if len(self.data) >= 11 else p_vol
             c_atr = self.atr[-1] if not np.isnan(self.atr[-1]) else (c_high - c_low)
-            if c_close < c_open and p_close < p_open:
-                if (c_open - c_close) > (c_atr * 0.8) and c_vol >= p_vol:
+            
+            c_body_red = c_open - c_close
+            c_body_green = c_close - c_open
+            
+            # Для отмены LONG (Падающий нож): Красная, большая, нет тени снизу, объем > 1.5х
+            if c_close < c_open and c_body_red > (c_atr * 0.8):
+                lower_wick = c_close - c_low
+                if lower_wick < (c_body_red * 0.3) and c_vol > (avg_vol * 1.5):
                     is_falling_knife = True
-            if c_close > c_open and p_close > p_open:
-                if (c_close - c_open) > (c_atr * 0.8) and c_vol >= p_vol:
+                    
+            # Для отмены SHORT (Ракета): Зеленая, большая, нет тени сверху, объем > 1.5х
+            if c_close > c_open and c_body_green > (c_atr * 0.8):
+                upper_wick = c_high - c_close
+                if upper_wick < (c_body_green * 0.3) and c_vol > (avg_vol * 1.5):
                     is_flying_rocket = True
 
         if self.position:
@@ -265,25 +277,18 @@ class SmartSniperUniversal(Strategy):
                 GLOBAL_DEBUG_STATS["Killed_by_PUMP"] += 1
                 continue 
 
-            # 🔥 5. БРОНЯ ОТ "ПОЕЗДА" (FREIGHT TRAIN)
-            # Если свеча большая, зеленая и без тени сверху - это пробой, а не отскок
-            c_body = c_close - c_open
-            c_upper_wick = c_high - c_close
-            c_atr_val = self.atr[-1] if not np.isnan(self.atr[-1]) else (c_high - c_low)
-            
-            is_freight_train = (c_close > c_open) and (c_body > c_atr_val * 0.8) and (c_upper_wick < c_body * 0.3)
+            # 🔥 5. БРОНЯ ОТ "ПОЕЗДА" (Аномальный пробой)
+            # Если сработал новый фильтр с объемами - блокируем вход
+            if is_flying_rocket:
+                GLOBAL_DEBUG_STATS["Killed_by_FREIGHT_TRAIN"] += 1
+                break 
 
             # 🔥 6. ИСТИННЫЙ SFP И КАСАНИЕ
-            # SFP считается только если закрылись красной свечой (c_close < c_open)
             is_sfp = (c_high >= res['max']) and (c_close < res['max']) and (c_close < c_open)
             is_touch = (c_high >= res['min']) and (c_close < res['max']) and not is_sfp
 
             # === СЦЕНАРИЙ А: SFP ===
             if is_sfp:
-                if is_freight_train:
-                    GLOBAL_DEBUG_STATS["Killed_by_FREIGHT_TRAIN"] += 1
-                    break
-                
                 self._execute_short(res, c_close)
                 self.wait_for_bearish_choch = False 
                 GLOBAL_DEBUG_STATS["Passed_to_Trade"] += 1
@@ -291,14 +296,8 @@ class SmartSniperUniversal(Strategy):
 
             # === СЦЕНАРИЙ Б: Касание ===
             elif is_touch:
-                if is_freight_train:
-                    GLOBAL_DEBUG_STATS["Killed_by_FREIGHT_TRAIN"] += 1
-                    self.wait_for_bearish_choch = False # Зона пробита
-                    break
-                
                 if USE_CHOCH:
                     self.wait_for_bearish_choch = True
-                    # CHoCH по последним 3 свечам (локальный быстрый слом)
                     self.choch_bear_level = min(self.data.Low[-3:])
                     self.active_level = res
                 else:
