@@ -312,8 +312,8 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                         date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
                         
                         zone = {"min": price - (local_atr * 0.5), "max": price + (local_atr * 0.5), "score": 3.0, "type": "1d_extreme", "date": date_str}
-                        if price < current_price_1d: supports.append(zone)
-                        else: resistances.append(zone)
+                        if price > current_price_1d: pass # ❌ ВЫКЛЮЧИЛИ СТАРЫЕ ШОРТЫ
+                        else: supports.append(zone)       # ✅ ЛОНГИ НЕ ТРОГАЕМ
                         
                     # === ФИЛЬТРАЦИЯ СОПРОТИВЛЕНИЙ (ПИКИ) ===
                     for p in peaks:
@@ -337,7 +337,44 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                         zone = {"min": price - (local_atr * 0.5), "max": price + (local_atr * 0.5), "score": 3.0, "type": "1d_extreme", "date": date_str}
                         if price > current_price_1d: resistances.append(zone)
                         else: supports.append(zone)
-
+                    # =======================================================
+                    # 🔥 НОВЫЙ АЛГОРИТМ SMC: SUPPLY ZONES (ТОЛЬКО ДЛЯ ШОРТОВ)
+                    # =======================================================
+                    df_1d['body'] = abs(df_1d['open'] - df_1d['close'])
+                    df_1d['avg_body'] = df_1d['body'].rolling(14).mean()
+                    
+                    for i in range(15, len(df_1d) - 1):
+                        # 1. Имбаланс (Красная свеча в 2+ раза больше средней и больше 0.8 ATR)
+                        is_drop = df_1d['close'].iloc[i] < df_1d['open'].iloc[i]
+                        is_huge = (df_1d['body'].iloc[i] > df_1d['avg_body'].iloc[i] * 2.0) and (df_1d['body'].iloc[i] > df_1d['atr'].iloc[i] * 0.8)
+                        
+                        if is_drop and is_huge:
+                            # 2. База / Ордерблок (Предыдущая свеча была зеленой или дожи)
+                            if df_1d['close'].iloc[i-1] >= df_1d['open'].iloc[i-1]:
+                                zone_max = float(df_1d['high'].iloc[i-1])
+                                zone_min = float(df_1d['low'].iloc[i-1])
+                                
+                                # Отсекаем мусор (ширина зоны не больше 5%)
+                                if (zone_max - zone_min) / zone_min > 0.05: continue
+                                
+                                # 3. Фильтр свежести (Unmitigated)
+                                # Цена не должна была пробивать эту зону вверх с момента создания
+                                future_highs = df_1d['high'].iloc[i+1:]
+                                if future_highs.empty or future_highs.max() < zone_max:
+                                    
+                                    # 4. Проверяем, что зона сейчас ВЫШЕ цены (чтобы было куда шортить)
+                                    if zone_min > current_price_1d and abs(zone_min - current_price_1d) / current_price_1d <= 0.15:
+                                        ts = df_1d['timestamp'].iloc[i-1]
+                                        date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
+                                        
+                                        resistances.append({
+                                            "min": zone_min, 
+                                            "max": zone_max, 
+                                            "score": 3.0, 
+                                            "type": "1d_supply_ob", 
+                                            "date": date_str
+                                        })
+                    # =======================================================
                 # === 2. АНАЛИЗ 4H ===
                 ohlcv_4h = exchange.fetch_ohlcv(symbol, timeframe="4h", limit=200, params=fetch_params)
                 if len(ohlcv_4h) >= 50:
@@ -361,7 +398,7 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                             
                             zone = {"min": poc_price - (atr_4h * 0.5), "max": poc_price + (atr_4h * 0.5), "score": 2.0, "type": "4h_poc"}
                             if current_price > poc_price: supports.append(zone)
-                            else: resistances.append(zone)
+                            else: pass # ❌ ВЫКЛЮЧИЛИ 4H ШОРТЫ
 
                 # Записываем в базу, пропустив через фильтры
                 if supports or resistances:

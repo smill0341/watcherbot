@@ -14,7 +14,7 @@ GLOBAL_DEBUG_STATS = {
     "Killed_by_GAP": 0,     # Отсеял Gap (воздух)
     "Killed_by_EMA": 0,     # Отсеяла EMA 200
     "Killed_by_PUMP": 0,    # Отсеял фильтр подхода (не было 6% роста)
-    "Killed_by_KNIFE": 0,   # Отсеял Anti-Knife
+    "Killed_by_FREIGHT_TRAIN": 0,   # Отсеял Anti-Knife
     "Killed_by_CHOCH": 0,   # Не дождались CHoCH (цена ушла выше)
     "Killed_by_IMPULSE": 0, # Свеча входа слишком большая
     "Killed_by_DISTANCE": 0,# Цена далеко улетела на входе
@@ -25,7 +25,7 @@ GLOBAL_DEBUG_STATS = {
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "BABY"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ALL"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной истории
@@ -34,7 +34,7 @@ LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной �
 TEST_START_DATE = "2026-05-01 16:00:00"
 
 TAKE_PROFIT = 10.0   # Оригинальная цель в %
-SL_BUFFER = 0.5      # Оригинальный отступ стоп-лосса в %
+SL_BUFFER = 3.5      # Оригинальный отступ стоп-лосса в %
 
 # --- ТУМБЛЕРЫ ФИЛЬТРОВ ---
 USE_CHOCH        = False    # Слом структуры
@@ -43,10 +43,10 @@ USE_RR_FILTER    = False   # Математический фильтр R/R
 RR_RATIO         = 3.0     # Минимальный R/R
 
 USE_RANGE_FILTER = False   # Игнорировать входы, если закрытие ушло в средние 40% диапазона
-USE_LEVEL_BURN   = False   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА
+USE_LEVEL_BURN   = True   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА
 
-ALLOW_LONG_TRADES  = False # ❌ ОТКЛЮЧАЕМ ЛОНГИ ДЛЯ ЧИСТОГО ТЕСТА ШОРТОВ
-ALLOW_SHORT_TRADES = True  # ✅ ШОРТЫ ОСТАЮТСЯ ВКЛЮЧЕНЫ
+ALLOW_LONG_TRADES  = True # ❌ ОТКЛЮЧАЕМ ЛОНГИ ДЛЯ ЧИСТОГО ТЕСТА ШОРТОВ
+ALLOW_SHORT_TRADES = False  # ✅ ШОРТЫ ОСТАЮТСЯ ВКЛЮЧЕНЫ
 MIN_SCORE = 3      # Минимальный балл зоны для входа (отсекает мусор)
 
 # --- НОВЫЕ СНАЙПЕРСКИЕ ФИЛЬТРЫ ---
@@ -66,13 +66,13 @@ MAX_IMPULSE_RATIO_LONG = 3.0    # Фильтруем только совсем �
 
 # Настройки для SHORT (Жесткие, чтобы полностью вырезать баг со скринов)
 MAX_DISTANCE_PCT_SHORT = 1.0    # Отрыв строго не более 1.0%
-MAX_IMPULSE_RATIO_SHORT = 1.8   # Фильтруем любые свечи, которые больше средних на 80% (>= 1.8х)
+MAX_IMPULSE_RATIO_SHORT = 2.5   # Фильтруем любые свечи, которые больше средних на 80% (>= 1.8х)
 # ФИЛЬТРЫ ДЛЯ ШОРТОВ (SFP + Тренд) ---
 USE_SHORT_EMA200_FILTER = False  # Разрешить шорты только если цена НИЖЕ EMA 200
 USE_SHORT_SFP_LOGIC     = True  # Искать SFP (прокол верхней границы зоны), а не просто касание низа
 SHORT_CHOCH_PERIOD      = 10    # ГЛУБОКИЙ CHoCH: ищем лой за 10 свечей (а не за 2)
-SHORT_LOOKBACK          = 200    # Окно поиска дна перед шортом (48 свечей = 12 часов)
-SHORT_MIN_PUMP_PCT      = 20.0   # Минимальный рост от дна до сопротивления в %
+SHORT_LOOKBACK          = 100    # Окно поиска дна перед шортом (48 свечей = 12 часов)
+SHORT_MIN_PUMP_PCT      = 10.0   # Минимальный рост от дна до сопротивления в %
 # =========================================================
 
 # --- SHADOW METRICS (ТЕНЕВАЯ СТАТИСТИКА) ---
@@ -225,7 +225,7 @@ class SmartSniperUniversal(Strategy):
                 self.wait_for_bullish_choch = False
 
         # ==========================================
-        # 4. ЛОГИКА SHORT (С диагностикой отмен)
+        # 4. ЛОГИКА SHORT (С диагностикой отмен и SMC)
         # ==========================================
         global GLOBAL_DEBUG_STATS
 
@@ -236,12 +236,9 @@ class SmartSniperUniversal(Strategy):
             level_id = f"{res['min']}_{res['max']}"
             if USE_LEVEL_BURN and level_id in self.burned_levels: continue 
 
-            # 🎯 1. СНАЧАЛА ПРОВЕРЯЕМ КАСАНИЕ ЗОНЫ
-            is_sfp = (c_high >= res['max']) and (c_close < res['max'])
-            is_touch = (c_high >= res['min']) and (c_close < res['max']) and not is_sfp
-
-            if not is_sfp and not is_touch:
-                continue # Цена не в зоне, игнорируем
+            # 🎯 1. СНАЧАЛА ПРОВЕРЯЕМ КАСАНИЕ ЗОНЫ (Оптимизация)
+            if c_high < res['min']:
+                continue # Вообще не дошли до зоны, идем дальше
                 
             # 🔥 МЫ В ЗОНЕ! Фиксируем попытку
             GLOBAL_DEBUG_STATS["Touches"] += 1
@@ -261,35 +258,52 @@ class SmartSniperUniversal(Strategy):
                     GLOBAL_DEBUG_STATS["Killed_by_EMA"] += 1
                     continue
 
-            # 🛡 4. ФИЛЬТР ПОДХОДА (ПОЧЕМУ РЫНОК ТУТ)
+            # 🛡 4. ФИЛЬТР ПОДХОДА (Убедись, что SHORT_MIN_PUMP_PCT снижен до ~8-10%)
             recent_low = min(self.data.Low[-SHORT_LOOKBACK:])
             pump_pct = ((res['min'] - recent_low) / recent_low) * 100
             if pump_pct < SHORT_MIN_PUMP_PCT:
                 GLOBAL_DEBUG_STATS["Killed_by_PUMP"] += 1
                 continue 
 
+            # 🔥 5. БРОНЯ ОТ "ПОЕЗДА" (FREIGHT TRAIN)
+            # Если свеча большая, зеленая и без тени сверху - это пробой, а не отскок
+            c_body = c_close - c_open
+            c_upper_wick = c_high - c_close
+            c_atr_val = self.atr[-1] if not np.isnan(self.atr[-1]) else (c_high - c_low)
+            
+            is_freight_train = (c_close > c_open) and (c_body > c_atr_val * 0.8) and (c_upper_wick < c_body * 0.3)
+
+            # 🔥 6. ИСТИННЫЙ SFP И КАСАНИЕ
+            # SFP считается только если закрылись красной свечой (c_close < c_open)
+            is_sfp = (c_high >= res['max']) and (c_close < res['max']) and (c_close < c_open)
+            is_touch = (c_high >= res['min']) and (c_close < res['max']) and not is_sfp
+
             # === СЦЕНАРИЙ А: SFP ===
             if is_sfp:
-                if is_flying_rocket:
-                    GLOBAL_DEBUG_STATS["Killed_by_KNIFE"] += 1
+                if is_freight_train:
+                    GLOBAL_DEBUG_STATS["Killed_by_FREIGHT_TRAIN"] += 1
                     break
                 
                 self._execute_short(res, c_close)
                 self.wait_for_bearish_choch = False 
+                GLOBAL_DEBUG_STATS["Passed_to_Trade"] += 1
                 break
 
             # === СЦЕНАРИЙ Б: Касание ===
             elif is_touch:
-                if is_flying_rocket:
-                    GLOBAL_DEBUG_STATS["Killed_by_KNIFE"] += 1
+                if is_freight_train:
+                    GLOBAL_DEBUG_STATS["Killed_by_FREIGHT_TRAIN"] += 1
+                    self.wait_for_bearish_choch = False # Зона пробита
                     break
                 
                 if USE_CHOCH:
                     self.wait_for_bearish_choch = True
-                    self.choch_bear_level = min(self.data.Low[-SHORT_CHOCH_PERIOD:])
+                    # CHoCH по последним 3 свечам (локальный быстрый слом)
+                    self.choch_bear_level = min(self.data.Low[-3:])
                     self.active_level = res
                 else:
                     self._execute_short(res, c_close)
+                    GLOBAL_DEBUG_STATS["Passed_to_Trade"] += 1
                 break
 
         # ОЖИДАНИЕ СЛОМА СТРУКТУРЫ
@@ -297,11 +311,11 @@ class SmartSniperUniversal(Strategy):
             if c_close < self.choch_bear_level:
                 self._execute_short(self.active_level, c_close)
                 self.wait_for_bearish_choch = False
+                GLOBAL_DEBUG_STATS["Passed_to_Trade"] += 1
             elif c_high > self.active_level['max'] * 1.01:
                 # Цена улетела выше зоны без слома CHoCH
                 GLOBAL_DEBUG_STATS["Killed_by_CHOCH"] += 1
                 self.wait_for_bearish_choch = False
-
     ## ==========================================
     # 5. ИСПОЛНЕНИЕ ОРДЕРОВ (БОЕВАЯ СНАЙПЕРСКАЯ ФИЛЬТРАЦИЯ)
     # ==========================================
@@ -527,12 +541,7 @@ print(f"🎯 Всего касаний зон:                    {GLOBAL_DEBUG_
 print(f"🔪 Отсеяно по Gap (Нет воздуха):         {GLOBAL_DEBUG_STATS['Killed_by_GAP']}")
 print(f"🔪 Отсеяно по EMA200 (Против макро):     {GLOBAL_DEBUG_STATS['Killed_by_EMA']}")
 print(f"🔪 Отсеяно по Пампу (Не было роста):     {GLOBAL_DEBUG_STATS['Killed_by_PUMP']}")
-print(f"🔪 Отсеяно по Anti-Knife (Ракета):       {GLOBAL_DEBUG_STATS['Killed_by_KNIFE']}")
-print(f"🔪 Отсеяно по CHoCH (Слом не случился):  {GLOBAL_DEBUG_STATS['Killed_by_CHOCH']}")
-print(f"🔪 Отсеяно по Импульсу (Аномалия):       {GLOBAL_DEBUG_STATS['Killed_by_IMPULSE']}")
-print(f"🔪 Отсеяно по Дистанции (Ушла далеко):   {GLOBAL_DEBUG_STATS['Killed_by_DISTANCE']}")
-print(f"🔪 Отсеяно по Риску (Стоп > 5%):         {GLOBAL_DEBUG_STATS['Killed_by_RISK']}")
-print("-" * 70)
-print(f"✅ Прошло в боевой ордер:                {GLOBAL_DEBUG_STATS['Passed_to_Trade']}")
-print("="*70)       
+print(f"🔪 Отсеяно поездом (Freight Train):      {GLOBAL_DEBUG_STATS['Killed_by_FREIGHT_TRAIN']}")
+print(f"🔪 Отсеяно (не дождались CHoCH):         {GLOBAL_DEBUG_STATS['Killed_by_CHOCH']}")
+print(f"✅ Допущено до сделки:                   {GLOBAL_DEBUG_STATS['Passed_to_Trade']}")
         
