@@ -9,10 +9,23 @@ from backtesting import Backtest, Strategy
 from modules.cryptano.utils.crypto_utils import exchange
 from modules.cryptano.utils.storage import load_json
 
+GLOBAL_DEBUG_STATS = {
+    "Touches": 0,           # Сколько раз цена зашла в зону
+    "Killed_by_GAP": 0,     # Отсеял Gap (воздух)
+    "Killed_by_EMA": 0,     # Отсеяла EMA 200
+    "Killed_by_PUMP": 0,    # Отсеял фильтр подхода (не было 6% роста)
+    "Killed_by_KNIFE": 0,   # Отсеял Anti-Knife
+    "Killed_by_CHOCH": 0,   # Не дождались CHoCH (цена ушла выше)
+    "Killed_by_IMPULSE": 0, # Свеча входа слишком большая
+    "Killed_by_DISTANCE": 0,# Цена далеко улетела на входе
+    "Killed_by_RISK": 0,    # Слишком большой стоп-лосс
+    "Passed_to_Trade": 0    # Дошло до реальной сделки
+}
+
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "NEAR"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "BABY"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной истории
@@ -24,7 +37,7 @@ TAKE_PROFIT = 10.0   # Оригинальная цель в %
 SL_BUFFER = 0.5      # Оригинальный отступ стоп-лосса в %
 
 # --- ТУМБЛЕРЫ ФИЛЬТРОВ ---
-USE_CHOCH        = True    # Слом структуры
+USE_CHOCH        = False    # Слом структуры
 USE_ANTI_KNIFE   = True    # Запрет входа против агрессивных свечей
 USE_RR_FILTER    = False   # Математический фильтр R/R
 RR_RATIO         = 3.0     # Минимальный R/R
@@ -32,8 +45,8 @@ RR_RATIO         = 3.0     # Минимальный R/R
 USE_RANGE_FILTER = False   # Игнорировать входы, если закрытие ушло в средние 40% диапазона
 USE_LEVEL_BURN   = False   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА
 
-ALLOW_LONG_TRADES  = True # ❌ ОТКЛЮЧАЕМ ЛОНГИ ДЛЯ ЧИСТОГО ТЕСТА ШОРТОВ
-ALLOW_SHORT_TRADES = False  # ✅ ШОРТЫ ОСТАЮТСЯ ВКЛЮЧЕНЫ
+ALLOW_LONG_TRADES  = False # ❌ ОТКЛЮЧАЕМ ЛОНГИ ДЛЯ ЧИСТОГО ТЕСТА ШОРТОВ
+ALLOW_SHORT_TRADES = True  # ✅ ШОРТЫ ОСТАЮТСЯ ВКЛЮЧЕНЫ
 MIN_SCORE = 3      # Минимальный балл зоны для входа (отсекает мусор)
 
 # --- НОВЫЕ СНАЙПЕРСКИЕ ФИЛЬТРЫ ---
@@ -55,9 +68,11 @@ MAX_IMPULSE_RATIO_LONG = 3.0    # Фильтруем только совсем �
 MAX_DISTANCE_PCT_SHORT = 1.0    # Отрыв строго не более 1.0%
 MAX_IMPULSE_RATIO_SHORT = 1.8   # Фильтруем любые свечи, которые больше средних на 80% (>= 1.8х)
 # ФИЛЬТРЫ ДЛЯ ШОРТОВ (SFP + Тренд) ---
-USE_SHORT_EMA200_FILTER = True  # Разрешить шорты только если цена НИЖЕ EMA 200
+USE_SHORT_EMA200_FILTER = False  # Разрешить шорты только если цена НИЖЕ EMA 200
 USE_SHORT_SFP_LOGIC     = True  # Искать SFP (прокол верхней границы зоны), а не просто касание низа
 SHORT_CHOCH_PERIOD      = 10    # ГЛУБОКИЙ CHoCH: ищем лой за 10 свечей (а не за 2)
+SHORT_LOOKBACK          = 200    # Окно поиска дна перед шортом (48 свечей = 12 часов)
+SHORT_MIN_PUMP_PCT      = 20.0   # Минимальный рост от дна до сопротивления в %
 # =========================================================
 
 # --- SHADOW METRICS (ТЕНЕВАЯ СТАТИСТИКА) ---
@@ -210,77 +225,81 @@ class SmartSniperUniversal(Strategy):
                 self.wait_for_bullish_choch = False
 
         # ==========================================
-        # 4. ЛОГИКА SHORT (Только от зон Сопротивления)
+        # 4. ЛОГИКА SHORT (С диагностикой отмен)
         # ==========================================
+        global GLOBAL_DEBUG_STATS
+
         for res in CURRENT_RESISTANCES:
-            if not can_short:
-                break # ❌ SHORT аппаратно запрещен (нет сопротивлений или отключен)
-                
-            if res.get('score', 0) < MIN_SCORE: 
-                continue 
+            if not can_short: break 
+            if res.get('score', 0) < MIN_SCORE: continue 
                 
             level_id = f"{res['min']}_{res['max']}"
-            if USE_LEVEL_BURN and level_id in self.burned_levels: 
-                continue 
+            if USE_LEVEL_BURN and level_id in self.burned_levels: continue 
 
-            # 🛡 Проверка "воздуха" (Gap) до ближайшей поддержки
+            # 🎯 1. СНАЧАЛА ПРОВЕРЯЕМ КАСАНИЕ ЗОНЫ
+            is_sfp = (c_high >= res['max']) and (c_close < res['max'])
+            is_touch = (c_high >= res['min']) and (c_close < res['max']) and not is_sfp
+
+            if not is_sfp and not is_touch:
+                continue # Цена не в зоне, игнорируем
+                
+            # 🔥 МЫ В ЗОНЕ! Фиксируем попытку
+            GLOBAL_DEBUG_STATS["Touches"] += 1
+
+            # 🛡 2. Проверка "воздуха" (Gap)
             if USE_ZONE_GAP:
                 closest_sup = max([s['max'] for s in CURRENT_SUPPORTS if s['max'] < res['min']], default=None)
                 if closest_sup:
                     gap_pct = ((res['min'] - closest_sup) / closest_sup) * 100
                     if gap_pct < MIN_ZONE_GAP_PCT:
+                        GLOBAL_DEBUG_STATS["Killed_by_GAP"] += 1
                         continue 
 
-            # 🛡 ФИЛЬТР ТРЕНДА: 4H EMA 200
+            # 🛡 3. ФИЛЬТР ТРЕНДА: 4H EMA 200
             if USE_SHORT_EMA200_FILTER:
-                # Если 15-минутная цена выше месячной средней (4H EMA200) - шорты запрещены!
                 if c_close > self.ema_4h_200[-1]:
+                    GLOBAL_DEBUG_STATS["Killed_by_EMA"] += 1
                     continue
 
-            # 🎯 РАЗДЕЛЕНИЕ ЛОГИКИ: SFP или Касание
-            # 1. SFP: Тень уколола верхнюю границу зоны (max), но тело закрылось ниже
-            is_sfp = (c_high >= res['max']) and (c_close < res['max'])
-            
-            # 2. Просто касание: вошли в зону, но до верха не дотянули
-            is_touch = (c_high >= res['min']) and (c_close < res['max']) and not is_sfp
+            # 🛡 4. ФИЛЬТР ПОДХОДА (ПОЧЕМУ РЫНОК ТУТ)
+            recent_low = min(self.data.Low[-SHORT_LOOKBACK:])
+            pump_pct = ((res['min'] - recent_low) / recent_low) * 100
+            if pump_pct < SHORT_MIN_PUMP_PCT:
+                GLOBAL_DEBUG_STATS["Killed_by_PUMP"] += 1
+                continue 
 
-            # === СЦЕНАРИЙ А: SFP (Мгновенный выстрел) ===
+            # === СЦЕНАРИЙ А: SFP ===
             if is_sfp:
-                if is_flying_rocket: break
+                if is_flying_rocket:
+                    GLOBAL_DEBUG_STATS["Killed_by_KNIFE"] += 1
+                    break
                 
-                # При SFP мы НЕ ждем CHoCH! Заходим прямо под хаем.
                 self._execute_short(res, c_close)
-                # Сбрасываем ожидание CHoCH на всякий случай
                 self.wait_for_bearish_choch = False 
                 break
 
-            # === СЦЕНАРИЙ Б: Касание (Ждем глубокий CHoCH) ===
+            # === СЦЕНАРИЙ Б: Касание ===
             elif is_touch:
-                if is_flying_rocket: break
+                if is_flying_rocket:
+                    GLOBAL_DEBUG_STATS["Killed_by_KNIFE"] += 1
+                    break
                 
-                if USE_RANGE_FILTER:
-                    closest_sup = max([s['max'] for s in all_zones if s['max'] < res['min']], default=None)
-                    if closest_sup:
-                        range_size = res['min'] - closest_sup
-                        if (res['min'] - c_close) > (range_size * 0.30):
-                            break 
-
                 if USE_CHOCH:
                     self.wait_for_bearish_choch = True
-                    # Ищем минимум за последние 10 свечей
                     self.choch_bear_level = min(self.data.Low[-SHORT_CHOCH_PERIOD:])
                     self.active_level = res
                 else:
                     self._execute_short(res, c_close)
                 break
 
-        # ОЖИДАНИЕ СЛОМА СТРУКТУРЫ (Работает только для "Сценария Б")
+        # ОЖИДАНИЕ СЛОМА СТРУКТУРЫ
         if USE_CHOCH and self.wait_for_bearish_choch and self.active_level is not None:
             if c_close < self.choch_bear_level:
                 self._execute_short(self.active_level, c_close)
                 self.wait_for_bearish_choch = False
             elif c_high > self.active_level['max'] * 1.01:
-                # Если цена улетела выше зоны на 1% - отменяем охоту
+                # Цена улетела выше зоны без слома CHoCH
+                GLOBAL_DEBUG_STATS["Killed_by_CHOCH"] += 1
                 self.wait_for_bearish_choch = False
 
     ## ==========================================
@@ -314,27 +333,41 @@ class SmartSniperUniversal(Strategy):
 
 
     def _execute_short(self, level, current_price):
-        # 1. Считаем импульс свечи
+        global GLOBAL_DEBUG_STATS
+        
+        # 🕵️‍♂️ ЛОГ ВХОДА ДЛЯ АНАЛИЗА ТАЙМИНГА (Выводится строго при отправке ордера)
+        recent_low_debug = min(self.data.Low[-SHORT_LOOKBACK:])
+        pump_pct_debug = ((level['min'] - recent_low_debug) / recent_low_debug) * 100
+        print(f"\n🎯 [SHORT TRIGGER LOG] Время: {self.data.index[-1]}")
+        print(f"   🔹 Границы зоны: Min={level['min']:.4f} | Max={level['max']:.4f}")
+        print(f"   🔹 Цена входа (Close): {current_price:.4f} | Хай свечи: {self.data.High[-1]:.4f}")
+        print(f"   🔹 Найдено дно за 48 свечей: {recent_low_debug:.4f}")
+        print(f"   🔹 Насчитанный памп до зоны: {pump_pct_debug:.2f}%")
+        print(f"   🔹 Свеча: Open={self.data.Open[-1]:.4f} | Close={current_price:.4f}\n")
+
         current_body = abs(self.data.Close[-1] - self.data.Open[-1])
         avg_body = sum([abs(self.data.Close[-i] - self.data.Open[-i]) for i in range(2, 12)]) / 10
         avg_body = avg_body if avg_body > 0 else 0.0001
         impulse_ratio = current_body / avg_body
         
-        # 2. Боевой фильтр импульса для SHORT (Жесткий)
         if USE_IMPULSE_FILTER and impulse_ratio > MAX_IMPULSE_RATIO_SHORT:
+            GLOBAL_DEBUG_STATS["Killed_by_IMPULSE"] += 1
             return
 
-        # 3. Боевой фильтр дистанции для SHORT (Жесткий)
         if USE_DISTANCE_FILTER and current_price < level['min']:
             distance_pct = ((level['min'] - current_price) / level['min']) * 100
             if distance_pct > MAX_DISTANCE_PCT_SHORT:
+                GLOBAL_DEBUG_STATS["Killed_by_DISTANCE"] += 1
                 return
 
-        # Исполнение ордера
         sl = level['max'] * (1 + SL_BUFFER / 100)
         risk_pct = ((sl - current_price) / current_price) * 100
-        if USE_RISK_CAP and risk_pct > MAX_RISK_PCT: return 
+        if USE_RISK_CAP and risk_pct > MAX_RISK_PCT: 
+            GLOBAL_DEBUG_STATS["Killed_by_RISK"] += 1
+            return 
             
+        # Если дошли сюда - значит сделка открылась!
+        GLOBAL_DEBUG_STATS["Passed_to_Trade"] += 1
         tp = current_price * (1 - TAKE_PROFIT / 100)
         self.current_trade_level_id = f"{level['min']}_{level['max']}"
         self.sell(sl=sl, tp=tp)
@@ -485,3 +518,21 @@ else:
                 
         chart_path = os.path.abspath(f'chart_{TARGET_COIN.lower()}.html')
         bt.plot(filename=chart_path, open_browser=True)
+        
+# 🔥 ГЛОБАЛЬНЫЙ ВЫВОД ДИАГНОСТИКИ (ВНЕ ЗАВИСИМОСТИ ОТ РЕЖИМА ТЕСТА)
+print("\n" + "="*70)
+print("🕵️‍♂️ ОТЧЕТ УБИЙЦ СДЕЛОК (GLOBAL DEBUG СТАТИСТИКА)")
+print("="*70)
+print(f"🎯 Всего касаний зон:                    {GLOBAL_DEBUG_STATS['Touches']}")
+print(f"🔪 Отсеяно по Gap (Нет воздуха):         {GLOBAL_DEBUG_STATS['Killed_by_GAP']}")
+print(f"🔪 Отсеяно по EMA200 (Против макро):     {GLOBAL_DEBUG_STATS['Killed_by_EMA']}")
+print(f"🔪 Отсеяно по Пампу (Не было роста):     {GLOBAL_DEBUG_STATS['Killed_by_PUMP']}")
+print(f"🔪 Отсеяно по Anti-Knife (Ракета):       {GLOBAL_DEBUG_STATS['Killed_by_KNIFE']}")
+print(f"🔪 Отсеяно по CHoCH (Слом не случился):  {GLOBAL_DEBUG_STATS['Killed_by_CHOCH']}")
+print(f"🔪 Отсеяно по Импульсу (Аномалия):       {GLOBAL_DEBUG_STATS['Killed_by_IMPULSE']}")
+print(f"🔪 Отсеяно по Дистанции (Ушла далеко):   {GLOBAL_DEBUG_STATS['Killed_by_DISTANCE']}")
+print(f"🔪 Отсеяно по Риску (Стоп > 5%):         {GLOBAL_DEBUG_STATS['Killed_by_RISK']}")
+print("-" * 70)
+print(f"✅ Прошло в боевой ордер:                {GLOBAL_DEBUG_STATS['Passed_to_Trade']}")
+print("="*70)       
+        
