@@ -8,6 +8,7 @@ warnings.filterwarnings("ignore")
 from backtesting import Backtest, Strategy
 from modules.cryptano.utils.crypto_utils import exchange
 from modules.cryptano.utils.storage import load_json
+from modules.cryptano.utils.testswing.context_filter import evaluate_context
 
 GLOBAL_DEBUG_STATS = {
     "Touches": 0,           # Сколько раз цена зашла в зону
@@ -28,7 +29,7 @@ GLOBAL_TRADE_CONTEXTS = {} # 🧠 ГЛОБАЛЬНЫЙ КЭШ ДЛЯ КОНТЕ�
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "ALL"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ETH"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной истории
@@ -45,18 +46,27 @@ USE_ANTI_KNIFE   = True    # Запрет входа против агресси
 USE_RR_FILTER    = False   # Математический фильтр R/R
 RR_RATIO         = 3.0     # Минимальный R/R
 
+# --- КОНТЕКСТНЫЙ ФИЛЬТР (SMART MONEY) ---
+USE_CONTEXT_FILTER  = True  # Вкл/Выкл продвинутый слой анализа тренда и поджатия
+
+# --- ФИЛЬТР ГЛУБИНЫ (Premium/Discount) ---
+USE_DEPTH_FILTER    = True
+MAX_NARROW_ZONE_PCT = 2.5   # Если зона уже 2.5%, заходим сразу от края
+DEEP_ENTRY_MIN      = 83.0  # Для широких зон (5%) ждем погружения минимум на 40%
+DEEP_ENTRY_MAX      = 85.0  # Блокируем вход, если цена легла на дно (>85%), там опасно
+
 USE_RANGE_FILTER = False   # Игнорировать входы, если закрытие ушло в средние 40% диапазона
 USE_LEVEL_BURN   = True   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА
 
 ALLOW_LONG_TRADES  = True  
 ALLOW_SHORT_TRADES = True   
-MIN_SCORE = 3      # Минимальный балл зоны для входа 
+MIN_SCORE = 4      # Минимальный балл зоны для входа 
 
-# ФИЛЬТРЫ ДЛЯ ШОРТОВ (SFP)
+# ФИЛЬТРЫ SFP
 USE_SHORT_SFP_LOGIC     = True  # Искать SFP (прокол верхней границы зоны)
 USE_LONG_SFP_LOGIC      = False  # Искать SFP для лонгов (прокол нижней границы зоны)
 
-# --- НОВЫЕ СНАЙПЕРСКИЕ ФИЛЬТРЫ ---
+# СНАЙПЕРСКИЕ ФИЛЬТРЫ ---
 USE_ZONE_GAP      = True   # Правило 2: Включить проверку "воздуха" между зонами
 MIN_ZONE_GAP_PCT  = 3.0    # Минимальный зазор между Поддержкой и ближайшим Сопротивлением в %
 USE_RISK_CAP      = False   # Правило 3: Ограничение риска
@@ -129,6 +139,7 @@ class SmartSniperUniversal(Strategy):
             self.I(create_line, res['max'], name=f"Resist Top {res['max']:.4f}", overlay=True, color="pink")
 
     def next(self):
+        global GLOBAL_DEBUG_STATS
         # ==========================================
         # 1. СЖИГАНИЕ УРОВНЕЙ (ТОЛЬКО ПОСЛЕ ПЛЮСА)
         # ==========================================
@@ -149,30 +160,34 @@ class SmartSniperUniversal(Strategy):
         p_vol = self.data.Volume[-2]
 
         # ==========================================
-        # 2. ФИЛЬТР ANTI-KNIFE (С объемами и тенями)
+        # 2. ФИЛЬТР ANTI-KNIFE (Остановка Локомотива - 3 свечи)
         # ==========================================
         is_falling_knife = False
         is_flying_rocket = False
         
         if USE_ANTI_KNIFE:
-            # Средний объем за последние 10 свечей (исключая текущую)
-            avg_vol = self.data.Volume[-11:-1].mean() if len(self.data) >= 11 else p_vol
             c_atr = self.atr[-1] if not np.isnan(self.atr[-1]) else (c_high - c_low)
+            c_body_abs = abs(c_close - c_open)
             
-            c_body_red = c_open - c_close
-            c_body_green = c_close - c_open
-            
-            # Для отмены LONG (Падающий нож): Красная, большая, нет тени снизу, объем > 1.5х
-            if c_close < c_open and c_body_red > (c_atr * 0.8):
-                lower_wick = c_close - c_low
-                if lower_wick < (c_body_red * 0.3) and c_vol > (avg_vol * 1.5):
-                    is_falling_knife = True
-                    
-            # Для отмены SHORT (Ракета): Зеленая, большая, нет тени сверху, объем > 1.5х
-            if c_close > c_open and c_body_green > (c_atr * 0.8):
-                upper_wick = c_high - c_close
-                if upper_wick < (c_body_green * 0.3) and c_vol > (avg_vol * 1.5):
-                    is_flying_rocket = True
+            # Замеряем безоткатную дистанцию за последние 3 свечи (45 минут)
+            if len(self.data) >= 3:
+                drop_3 = max(self.data.High[-3:]) - c_close  # Сколько пролетели вниз
+                pump_3 = c_close - min(self.data.Low[-3:])   # Сколько пролетели вверх
+            else:
+                drop_3 = 0
+                pump_3 = 0
+                
+            # Падающий нож (Запрет Лонга): 
+            # Либо текущая красная свеча огромная (>1.5 ATR), 
+            # Либо мы безоткатно рухнули за 3 свечи (>2.5 ATR)
+            if (c_close < c_open and c_body_abs > (c_atr * 1.5)) or (drop_3 > (c_atr * 2.5)):
+                is_falling_knife = True
+                
+            # Ракета (Запрет Шорта): 
+            # Либо текущая зеленая свеча огромная (>1.5 ATR), 
+            # Либо мы безоткатно взлетели за 3 свечи (>2.5 ATR)
+            if (c_close > c_open and c_body_abs > (c_atr * 1.5)) or (pump_3 > (c_atr * 2.5)):
+                is_flying_rocket = True
 
         if self.position:
             self.wait_for_bullish_choch = False
@@ -213,8 +228,38 @@ class SmartSniperUniversal(Strategy):
                     if gap_pct < MIN_ZONE_GAP_PCT: continue
 
             # Условие пересечения зоны
+            # Касание зоны
             if c_low <= sup['max'] and c_close > sup['min']:
-                if is_falling_knife: break
+                if is_falling_knife: continue # 🔥 Ждем следующую свечу, не отменяем зону полностью
+                
+                # 🔥 НОВЫЙ БЛОК: Замер глубины и отсев плохих входов
+                zone_range = sup['max'] - sup['min']
+                zone_width_pct = (zone_range / sup['min']) * 100 if sup['min'] > 0 else 0
+                depth_pct = ((sup['max'] - c_close) / zone_range) * 100 if zone_range > 0 else 0
+
+                if USE_DEPTH_FILTER:
+                    # Отсекаем отрицательную глубину (вход в небесах) и лежание на дне (85-100%)
+                    if depth_pct < 0.0 or depth_pct > DEEP_ENTRY_MAX:
+                        continue 
+                    # Если зона жирная (шире 2.5%), но скидки еще нет (глубина < 40%) - ждем
+                    if zone_width_pct >= MAX_NARROW_ZONE_PCT and depth_pct < DEEP_ENTRY_MIN:
+                        continue
+                
+                # 🔥 НОВЫЙ БЛОК: Слой Контекста (Smart Money)
+                if USE_CONTEXT_FILTER:
+                    ctx_eval = evaluate_context(
+                        closes=self.data.Close,
+                        highs=self.data.High,
+                        lows=self.data.Low,
+                        current_atr=c_atr,
+                        trade_type='LONG',
+                        level_min=sup['min'],  # Передаем дно зоны
+                        level_max=sup['max']   # Передаем потолок зоны
+                    )
+                    if not ctx_eval['allowed']:
+                        # Записываем причину отмены в лог, чтобы видеть глазами!
+                        GLOBAL_DEBUG_STATS["Killed_by_CONTEXT"] = GLOBAL_DEBUG_STATS.get("Killed_by_CONTEXT", 0) + 1
+                        continue
                 
                 if USE_RANGE_FILTER:
                     closest_res = min([r['min'] for r in all_zones if r['min'] > sup['max']], default=None)
@@ -255,7 +300,6 @@ class SmartSniperUniversal(Strategy):
         # ==========================================
         # 4. ЛОГИКА SHORT (С диагностикой отмен и SMC)
         # ==========================================
-        global GLOBAL_DEBUG_STATS
 
         for res in CURRENT_RESISTANCES:
             if not can_short: break 
@@ -265,10 +309,40 @@ class SmartSniperUniversal(Strategy):
             if USE_LEVEL_BURN and level_id in self.burned_levels: continue 
 
             # 🎯 1. СНАЧАЛА ПРОВЕРЯЕМ КАСАНИЕ ЗОНЫ (Оптимизация)
-            if c_high < res['min']:
-                continue # Вообще не дошли до зоны, идем дальше
+            if c_high < res['min']: continue 
                 
-            # 🔥 МЫ В ЗОНЕ! Фиксируем попытку
+            # 🔥 НОВЫЙ БЛОК: Замер глубины для шортов
+            zone_range = res['max'] - res['min']
+            zone_width_pct = (zone_range / res['min']) * 100 if res['min'] > 0 else 0
+            depth_pct = ((c_close - res['min']) / zone_range) * 100 if zone_range > 0 else 0
+
+
+            # 🔥 НОВЫЙ БЛОК: Слой Контекста (Smart Money)
+            if USE_CONTEXT_FILTER:
+                ctx_eval = evaluate_context(
+                    closes=self.data.Close,
+                    highs=self.data.High,
+                    lows=self.data.Low,
+                    current_atr=c_atr,
+                    trade_type='SHORT',
+                    level_min=res['min'],  # Передаем дно зоны
+                    level_max=res['max']   # Передаем потолок зоны
+                )
+                if not ctx_eval['allowed']:
+                    GLOBAL_DEBUG_STATS["Killed_by_CONTEXT"] = GLOBAL_DEBUG_STATS.get("Killed_by_CONTEXT", 0) + 1
+                    continue
+                if not ctx_eval['allowed']:
+                    GLOBAL_DEBUG_STATS["Killed_by_CONTEXT"] = GLOBAL_DEBUG_STATS.get("Killed_by_CONTEXT", 0) + 1
+                    continue
+
+            if USE_DEPTH_FILTER:
+                # Отсекаем отрицательную глубину (упали без нас) и лежание на потолке (85-100%)
+                if depth_pct < 0.0 or depth_pct > DEEP_ENTRY_MAX:
+                    continue 
+                # Если зона жирная, но мы все еще на низах (глубина < 40%) - ждем откат повыше
+                if zone_width_pct >= MAX_NARROW_ZONE_PCT and depth_pct < DEEP_ENTRY_MIN:
+                    continue
+
             GLOBAL_DEBUG_STATS["Touches"] += 1
 
             # 🛡 2. Проверка "воздуха" (Gap)
@@ -297,7 +371,7 @@ class SmartSniperUniversal(Strategy):
             # Если сработал новый фильтр с объемами - блокируем вход
             if is_flying_rocket:
                 GLOBAL_DEBUG_STATS["Killed_by_FREIGHT_TRAIN"] += 1
-                break 
+                continue # 🔥 Ждем следующую свечу
 
             # 🔥 6. ИСТИННЫЙ SFP И КАСАНИЕ (С учетом тумблера USE_SHORT_SFP_LOGIC)
             upper_wick = (c_high - c_close) if (c_close < c_open) else (c_high - c_open)
