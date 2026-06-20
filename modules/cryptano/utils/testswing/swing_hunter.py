@@ -27,7 +27,7 @@ TIME_ASIAN_CLOSE = "03:05"
 TIME_US_OPEN = "15:05"      
 
 # 🧪 ТУМБЛЕР МАШИНЫ ВРЕМЕНИ (Укажи дату для теста, или None для лайва)
-BACKTEST_DATE = "2026-04-01 16:00:00"  
+BACKTEST_DATE = "2026-02-01 16:00:00"  
 # =========================================================
 
 # 🎛 НАСТРОЙКИ V2 ФИЛЬТРОВ
@@ -249,29 +249,54 @@ def build_levels_for_single_coin(coin):
     except Exception as e:
         print(f"❌ [SWING HUNTER] КРИТИЧЕСКАЯ ОШИБКА генерации {coin}: {e}")
 
-def build_macro_levels(bot=None, admin_chat_id=None):
+def build_macro_levels(bot=None, admin_chat_id=None, target_time_str=None):
     print(f"[TEST HUNTER] Запуск генерации зон в папку {BASE_DIR}...")
     try:
-        exchange.load_markets(reload=True)
+        # Загружаем рынки из сети только один раз, в остальные разы берем из кэша библиотеки
+        if not exchange.markets:
+            exchange.load_markets(reload=True)
+        else:
+            exchange.load_markets(reload=False)
         tickers = exchange.fetch_tickers()
-        valid_symbols = []
         
+        # Собираем пары с их объемами для последующей сортировки
+        symbols_with_volume = []
         for sym, tick in tickers.items():
             if sym.endswith('/USDT') or sym.endswith(':USDT'):
                 vol = float(tick.get('quoteVolume') or 0)
                 if vol >= MIN_VOLUME_USD:
-                    valid_symbols.append(sym)
+                    symbols_with_volume.append((sym, vol))
                     
+        # Сортируем по убыванию объема торгов и берем строго ТОП-70
+        symbols_with_volume.sort(key=lambda x: x[1], reverse=True)
+        valid_symbols = [sym for sym, vol in symbols_with_volume[:70]]
+        
+        print(f"🔥 Найдено {len(symbols_with_volume)} монет. Фильтруем до ТОП-70 самых ликвидных.")
         macro_base = {}
         
         # Подготовка параметров для исторического среза данных
         fetch_params = {}
-        if BACKTEST_DATE:
-            dt_obj = datetime.datetime.strptime(BACKTEST_DATE, "%Y-%m-%d %H:%M:%S")
+        use_date = target_time_str or BACKTEST_DATE 
+        if use_date:
+            dt_obj = datetime.datetime.strptime(use_date, "%Y-%m-%d %H:%M:%S")
             fetch_params['endTime'] = int(dt_obj.timestamp() * 1000)
         
+        # Safe fetcher with retry logic against rate limits
+        def safe_fetch_ohlcv(sym, tf, lim, params):
+            for attempt in range(5): # 5 попыток пробить блок
+                try:
+                    return exchange.fetch_ohlcv(sym, timeframe=tf, limit=lim, params=params)
+                except Exception as e:
+                    if "10006" in str(e) or "Rate Limit" in str(e) or "Too many visits" in str(e):
+                        print(f"⚠️ Было слишком много запросов. Bybit ругается. Ждем 4 сек (Попытка {attempt+1}/5)...")
+                        time.sleep(4.0)
+                    else:
+                        raise e
+            raise Exception("Биржа наглухо заблокировала запросы по Rate Limit после 5 попыток.")
+        
+        
         for symbol in valid_symbols:
-            time.sleep(1.5)
+            time.sleep(0.3)
             coin = symbol.split("/")[0].replace(":USDT", "")
             
             try:
@@ -279,7 +304,7 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                 resistances = []
                 
                 # === 1. АНАЛИЗ 1D ===
-                ohlcv_1d = exchange.fetch_ohlcv(symbol, timeframe="1d", limit=365, params=fetch_params)
+                ohlcv_1d = safe_fetch_ohlcv(symbol, "1d", 365, fetch_params)
                 if len(ohlcv_1d) >= 50:
                     df_1d = pd.DataFrame(ohlcv_1d, columns=["timestamp", "open", "high", "low", "close", "volume"])
                     df_1d['atr'] = calculate_atr(df_1d, 14)
@@ -376,7 +401,7 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                                         })
                     # =======================================================
                 # === 2. АНАЛИЗ 4H ===
-                ohlcv_4h = exchange.fetch_ohlcv(symbol, timeframe="4h", limit=200, params=fetch_params)
+                ohlcv_4h = safe_fetch_ohlcv(symbol, "4h", 200, fetch_params)
                 if len(ohlcv_4h) >= 50:
                     df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"])
                     df_4h['atr'] = calculate_atr(df_4h, 14)
@@ -398,7 +423,7 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                             
                             zone = {"min": poc_price - (atr_4h * 0.5), "max": poc_price + (atr_4h * 0.5), "score": 2.0, "type": "4h_poc"}
                             if current_price > poc_price: supports.append(zone)
-                            else: pass # ❌ ВЫКЛЮЧИЛИ 4H ШОРТЫ
+                            else: resistances.append(zone) # ✅ ВЕРНУЛИ 4H ШОРТЫ
 
                 # Записываем в базу, пропустив через фильтры
                 if supports or resistances:
@@ -425,6 +450,7 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                 
         save_json_atomic(MACRO_LEVELS_FILE, macro_base)
         print(f"✅ [TEST HUNTER] Сбор завершен! Создан файл: {MACRO_LEVELS_FILE}")
+        return macro_base
             
     except Exception as e:
         print(f"❌ [TEST HUNTER] КРИТИЧЕСКАЯ ОШИБКА: {e}")

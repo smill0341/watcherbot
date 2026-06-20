@@ -1,99 +1,114 @@
 import numpy as np
 
-def evaluate_context(closes, highs, lows, current_atr, trade_type, level_min, level_max):
+def analyze_context(closes, highs, lows, current_atr, trade_type, level_min, level_max):
     """
-    Макро-Аналитик Контекста (Smart Money)
-    Окно обзора: 60 свечей (15 часов)
+    Монолитный Макро-Аналитик Контекста
+    Окно обзора: 192 свечи (2 суток на 15m)
     """
-    # Если истории слишком мало, пропускаем оценку
-    if len(closes) < 62:
-        return {"allowed": True, "reason": "Not enough data"}
+    if len(closes) < 192:
+        return {"allowed": True, "reason": "Not enough data", "score": 0}
 
     current_close = closes[-1]
     
+    # Разделяем историю на 3 блока по 16 часов для оценки макро-картины
+    b1_lows, b2_lows, b3_lows = lows[-192:-128], lows[-128:-64], lows[-64:]
+    b1_highs, b2_highs, b3_highs = highs[-192:-128], highs[-128:-64], highs[-64:]
+    
     # =================================================
-    # 1. ЗАЩИТА ОТ РАСПИЛА (Living in the zone)
-    # Считаем, сколько свечей закрылись прямо внутри или близко к зоне
+    # 1. МАКРО-СТРУКТУРА (Trend / Откуда пришли)
+    # =================================================
+    is_counter_trend = False
+    
+    if trade_type == 'LONG':
+        # Если каждый следующий 16-часовой блок рисует максимумы ниже предыдущего - это жесткий дамп
+        if max(b3_highs) < max(b2_highs) < max(b1_highs):
+            is_counter_trend = True
+    elif trade_type == 'SHORT':
+        # Если каждый блок рисует минимумы выше предыдущего - это жесткий памп
+        if min(b3_lows) > min(b2_lows) > min(b1_lows):
+            is_counter_trend = True
+
+    # =================================================
+    # 2. ТИП ПОДХОДА (Momentum / Компрессия или Импульс)
+    # Окно: последние 4 часа (16 свечей)
+    # =================================================
+    approach_status = "NORMAL"
+    recent_low = min(lows[-16:])
+    recent_high = max(highs[-16:])
+    
+    if trade_type == 'LONG':
+        move_down = recent_high - current_close
+        if move_down > (current_atr * 4.0):
+            approach_status = "IMPULSE_DUMP"  # Падающий нож
+        elif min(b3_lows) < min(b2_lows) < min(b1_lows) and move_down < (current_atr * 1.5):
+             approach_status = "COMPRESSION"  # Медленное сползание (давление продавца)
+             
+    elif trade_type == 'SHORT':
+        move_up = current_close - recent_low
+        if move_up > (current_atr * 4.0):
+            approach_status = "IMPULSE_PUMP"  # Взлетающая ракета
+        elif max(b3_highs) > max(b2_highs) > max(b1_highs) and move_up < (current_atr * 1.5):
+             approach_status = "COMPRESSION"  # Медленное поджатие вверх
+
+    # =================================================
+    # 3. ПРИМАНКА (Inducement / Накопление ликвидности перед зоной)
+    # Ищем, была ли недавняя остановка ЦУТЬ-ЧУТЬ не доходя до уровня
+    # =================================================
+    has_inducement = False
+    
+    # Смотрим окно от 30 до 5 свечей назад (чтобы не цеплять текущий подход)
+    window_lows = lows[-30:-5]
+    window_highs = highs[-30:-5]
+    
+    if trade_type == 'LONG':
+        # Если был минимум в диапазоне от 0.2 до 1.5 ATR выше зоны - там скопились стопы
+        if level_max < min(window_lows) <= (level_max + current_atr * 1.5):
+            has_inducement = True
+    elif trade_type == 'SHORT':
+        # Если был максимум чуть ниже зоны
+        if (level_min - current_atr * 1.5) <= max(window_highs) < level_min:
+            has_inducement = True
+
+    # =================================================
+    # 4. РАСПИЛ (Time at Price / Living in the zone)
     # =================================================
     zone_buffer = current_atr * 0.2
-    candles_in_zone = 0
-    
-    # Смотрим на последние 60 свечей (исключая текущую)
-    for i in range(2, 62):
-        c = closes[-i]
-        if (level_min - zone_buffer) <= c <= (level_max + zone_buffer):
-            candles_in_zone += 1
-            
-    # Если цена провела в зоне суммарно больше 8 свечей (2 часа) за последние 15 часов - зона выжата
-    is_chopped = candles_in_zone > 8
+    candles_in_zone = sum(1 for c in closes[-62:-2] if (level_min - zone_buffer) <= c <= (level_max + zone_buffer))
+    is_chopped = candles_in_zone > 8  # Больше 8 свечей в зоне за последние 15 часов
 
     # =================================================
-    # 2. МАКРО-ПОДЖАТИЕ (Compression)
-    # Делим 60 свечей на два блока по 30 свечей (по 7.5 часов)
-    # =================================================
-    is_compressed = False
-    
-    block_a_lows = lows[-60:-30]  # Старая половина дня
-    block_b_lows = lows[-30:]     # Новая половина дня
-    
-    block_a_highs = highs[-60:-30]
-    block_b_highs = highs[-30:]
-
-    if trade_type == 'SHORT':
-        # Восходящий треугольник: дно второго блока минимум на 0.5 ATR выше первого
-        if min(block_b_lows) > min(block_a_lows) + (current_atr * 0.5):
-            is_compressed = True
-    else:
-        # Нисходящий треугольник: потолок второго блока минимум на 0.5 ATR ниже первого
-        if max(block_b_highs) < max(block_a_highs) - (current_atr * 0.5):
-            is_compressed = True
-
-    # =================================================
-    # 3. ИСТОЩЕНИЕ (Exhaustion / Натянутая резинка)
-    # Вертикальный безоткатный пролет (Окно 15 свечей)
-    # =================================================
-    is_exhausted = False
-    recent_low = min(lows[-15:])
-    recent_high = max(highs[-15:])
-
-    if trade_type == 'SHORT':
-        move_up = current_close - recent_low
-        if move_up > (current_atr * 3.5):  # Пролет 3.5 ATR вверх
-            is_exhausted = True
-    else:
-        move_down = recent_high - current_close
-        if move_down > (current_atr * 3.5):  # Пролет 3.5 ATR вниз
-            is_exhausted = True
-
-    # =================================================
-    # ВЕРДИКТ СИГНАЛЬЩИКА
+    # ФОРМИРОВАНИЕ ВЕРДИКТА
     # =================================================
     trade_allowed = True
-    reason = "Clear"
+    reasons = []
+    
+    # Жесткие отказы (Красный свет)
+    if is_chopped:
+        trade_allowed = False
+        reasons.append("KILLED: Level Chopped (No Liquidity)")
+        
+    if approach_status == "COMPRESSION":
+        trade_allowed = False
+        reasons.append("KILLED: Approach Compression (High Risk of Breakout)")
+        
+    if approach_status in ["IMPULSE_DUMP", "IMPULSE_PUMP"]:
+        trade_allowed = False
+        reasons.append("KILLED: Freight Train (Falling Knife / Rocket)")
+        
+    # Предупреждения (Влияют на вероятность, но могут быть отторгованы)
+    if is_counter_trend:
+        reasons.append("WARNING: Counter-trend trade")
+        
+    # Позитивные факторы
+    if has_inducement:
+        reasons.append("BONUS: Inducement found (Liquidity is primed)")
 
-    if trade_type == 'SHORT':
-        if is_exhausted:
-            trade_allowed = True # Резинка натянута, берем шорт на отскок
-            reason = "Exhaustion Bounce"
-        elif is_chopped:
-            trade_allowed = False
-            reason = "Level Chopped (No Liquidity)"
-        elif is_compressed:
-            trade_allowed = False
-            reason = "Macro Compression UP"
-            
-    elif trade_type == 'LONG':
-        if is_exhausted:
-            trade_allowed = True
-            reason = "Exhaustion Bounce"
-        elif is_chopped:
-            trade_allowed = False
-            reason = "Level Chopped (No Liquidity)"
-        elif is_compressed:
-            trade_allowed = False
-            reason = "Macro Compression DOWN"
+    if not reasons:
+        reasons.append("Clear & Healthy Approach")
 
     return {
         "allowed": trade_allowed,
-        "reason": reason
+        "reason": " | ".join(reasons),
+        "has_inducement": has_inducement,
+        "is_counter_trend": is_counter_trend
     }

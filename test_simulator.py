@@ -2,13 +2,16 @@ import pandas as pd
 import numpy as np
 import os
 import warnings
+import json
 
 from sympy import true
 warnings.filterwarnings("ignore")
 from backtesting import Backtest, Strategy
 from modules.cryptano.utils.crypto_utils import exchange
 from modules.cryptano.utils.storage import load_json
-from modules.cryptano.utils.testswing.context_filter import evaluate_context
+from modules.cryptano.utils.testswing.context_filter import evaluate_context, get_approach_type
+from modules.cryptano.utils.testswing.context_filter import analyze_context
+
 
 GLOBAL_DEBUG_STATS = {
     "Touches": 0,           # Сколько раз цена зашла в зону
@@ -25,57 +28,60 @@ GLOBAL_DEBUG_STATS = {
 GLOBAL_REPORT = []      # 📊 ТРЕКЕР ДЛЯ ТАБЛИЦЫ
 GLOBAL_LOSERS_LOG = []  # 📉 ТРЕКЕР ТОЛЬКО ДЛЯ УБЫТКОВ
 GLOBAL_TRADE_CONTEXTS = {} # 🧠 ГЛОБАЛЬНЫЙ КЭШ ДЛЯ КОНТЕКСТА СДЕЛКИ
+GLOBAL_WINNERS_LOG = []
 
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "ETH"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ALL"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной истории
 
 # 🧪 ТУМБЛЕР МАШИНЫ ВРЕМЕНИ
-TEST_START_DATE = "2026-04-01 16:00:00"
+TEST_START_DATE = "2026-04-01 00:00:00"
 
 TAKE_PROFIT = 10.0   # Оригинальная цель в %
 SL_BUFFER = 1.0     # Оригинальный отступ стоп-лосса в %
 
-# --- ТУМБЛЕРЫ ФИЛЬТРОВ ---
-USE_CHOCH        = False    # Слом структуры
-USE_ANTI_KNIFE   = True    # Запрет входа против агрессивных свечей
-USE_RR_FILTER    = False   # Математический фильтр R/R
-RR_RATIO         = 3.0     # Минимальный R/R
-
-# --- КОНТЕКСТНЫЙ ФИЛЬТР (SMART MONEY) ---
-USE_CONTEXT_FILTER  = True  # Вкл/Выкл продвинутый слой анализа тренда и поджатия
-
-# --- ФИЛЬТР ГЛУБИНЫ (Premium/Discount) ---
-USE_DEPTH_FILTER    = True
-MAX_NARROW_ZONE_PCT = 2.5   # Если зона уже 2.5%, заходим сразу от края
-DEEP_ENTRY_MIN      = 83.0  # Для широких зон (5%) ждем погружения минимум на 40%
-DEEP_ENTRY_MAX      = 85.0  # Блокируем вход, если цена легла на дно (>85%), там опасно
-
-USE_RANGE_FILTER = False   # Игнорировать входы, если закрытие ушло в средние 40% диапазона
-USE_LEVEL_BURN   = True   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА
+# ---рабочие фильтра ---
+USE_CONTEXT_FILTER  = False  # Вкл/Выкл продвинутый слой анализа тренда и поджатия
+USE_ANTI_KNIFE   = True     # Запрет входа против агрессивных свечей
 
 ALLOW_LONG_TRADES  = True  
-ALLOW_SHORT_TRADES = True   
+ALLOW_SHORT_TRADES = False   
 MIN_SCORE = 4      # Минимальный балл зоны для входа 
-
-# ФИЛЬТРЫ SFP
-USE_SHORT_SFP_LOGIC     = True  # Искать SFP (прокол верхней границы зоны)
-USE_LONG_SFP_LOGIC      = False  # Искать SFP для лонгов (прокол нижней границы зоны)
-
-# СНАЙПЕРСКИЕ ФИЛЬТРЫ ---
 USE_ZONE_GAP      = True   # Правило 2: Включить проверку "воздуха" между зонами
-MIN_ZONE_GAP_PCT  = 3.0    # Минимальный зазор между Поддержкой и ближайшим Сопротивлением в %
-USE_RISK_CAP      = False   # Правило 3: Ограничение риска
-MAX_RISK_PCT      = 5.0   # Макс. стоп-лосс в %. Сделка с большим стопом отменяется
+MIN_ZONE_GAP_PCT  = 2.0   # Минимальный зазор между Поддержкой и ближайшим Сопротивлением в %
+MIN_ZONE_GAP_PCT  = 2.0   # Минимальный зазор между Поддержкой и ближайшим Сопротивлением в %
 
 # --- ФИЛЬТР ОТСТАВАНИЯ (ДОГОНЯЮЩИЙ ВХОД) ---
 USE_DISTANCE_FILTER = True # Мягкий фильтр: отмена сделки, если цена улетела далеко от зоны
 MAX_DISTANCE_PCT    = 1.0  # Максимально допустимый отрыв от зоны в % (тестируем 1.0)
-USE_IMPULSE_FILTER  = True   # Включаем фильтр аномальных свечей в реальную работу
+USE_IMPULSE_FILTER  = False   # Включаем фильтр аномальных свечей в реальную работу
+
+
+
+# --- ТУМБЛЕРЫ ФИЛЬТРОВ ---
+USE_CHOCH        = False    # Слом структуры
+
+USE_RR_FILTER    = False   # Математический фильтр R/R
+RR_RATIO         = 2.0     # Минимальный R/R
+# --- ФИЛЬТР ГЛУБИНЫ (Premium/Discount) ---
+USE_DEPTH_FILTER    = False
+MAX_NARROW_ZONE_PCT = 2.5   # Если зона уже 2.5%, заходим сразу от края
+DEEP_ENTRY_MIN      = -10.0  # Для широких зон (5%) ждем погружения минимум на 40%
+DEEP_ENTRY_MAX      = 70.0  # Блокируем вход, если цена легла на дно (>85%), там опасно
+
+USE_RANGE_FILTER = False   # Игнорировать входы, если закрытие ушло в средние 40% диапазона
+USE_LEVEL_BURN   = True   # Сжигать уровень ТОЛЬКО ПОСЛЕ ПЛЮСА
+
+# ФИЛЬТРЫ SFP
+USE_SHORT_SFP_LOGIC     = False  # Искать SFP (прокол верхней границы зоны)
+USE_LONG_SFP_LOGIC      = False  # Искать SFP для лонгов (прокол нижней границы зоны)
+
+USE_RISK_CAP      = False   # Правило 3: Ограничение риска
+MAX_RISK_PCT      = 5.0   # Макс. стоп-лосс в %. Сделка с большим стопом отменяется
 
 # Настройки для LONG (Мягкие, чтобы не убить рабочие 56% профита)
 MAX_DISTANCE_PCT_LONG  = 1.5    # Разрешаем отрыв до 1.5%
@@ -87,8 +93,8 @@ MAX_IMPULSE_RATIO_SHORT = 2.5   # Фильтруем любые свечи, ко
 # ФИЛЬТРЫ ДЛЯ ШОРТОВ (SFP + Тренд) ---
 USE_SHORT_EMA200_FILTER = False  # Разрешить шорты только если цена НИЖЕ EMA 200
 SHORT_CHOCH_PERIOD      = 10    # ГЛУБОКИЙ CHoCH: ищем лой за 10 свечей (а не за 2)
-SHORT_LOOKBACK          = 100    # Окно поиска дна перед шортом (48 свечей = 12 часов)
-SHORT_MIN_PUMP_PCT      = 10.0   # Минимальный рост от дна до сопротивления в %
+SHORT_LOOKBACK          = 50    # Окно поиска дна перед шортом (48 свечей = 12 часов)
+SHORT_MIN_PUMP_PCT      = 2.0   # Минимальный рост от дна до сопротивления в %
 # =========================================================
 
 # --- SHADOW METRICS (ТЕНЕВАЯ СТАТИСТИКА) ---
@@ -105,6 +111,7 @@ def SMA(arr, n):
 class SmartSniperUniversal(Strategy):
     def init(self):
         self.burned_levels = set()  
+        self.level_states = {}
         self.wait_for_bullish_choch = False
         self.choch_bull_level = 0.0
         self.wait_for_bearish_choch = False
@@ -114,6 +121,7 @@ class SmartSniperUniversal(Strategy):
         self.current_trade_level_id = None
         self.trade_contexts = []
         self.trade_counter = 0
+        
         
         high_low = pd.Series(self.data.High) - pd.Series(self.data.Low)
         self.atr = self.I(SMA, high_low, 14)
@@ -125,21 +133,40 @@ class SmartSniperUniversal(Strategy):
         self.ema_4h_200 = self.I(EMA, self.data.Close, 3200)
 
         # ==========================================
-        # 🎨 ОТРИСОВКА МАКРО-УРОВНЕЙ НА ГРАФИКЕ
+        # 🎨 ДИНАМИЧЕСКАЯ ОТРИСОВКА МАКРО-УРОВНЕЙ
         # ==========================================
-        def create_line(val):
-            return pd.Series(val, index=self.data.index)
-
-        for sup in CURRENT_SUPPORTS:
-            self.I(create_line, sup['max'], name=f"Support Top {sup['max']:.4f}", overlay=True, color="green")
-            self.I(create_line, sup['min'], name=f"Support Bottom {sup['min']:.4f}", overlay=True, color="lightgreen")
-
-        for res in CURRENT_RESISTANCES:
-            self.I(create_line, res['min'], name=f"Resist Bottom {res['min']:.4f}", overlay=True, color="red")
-            self.I(create_line, res['max'], name=f"Resist Top {res['max']:.4f}", overlay=True, color="pink")
+        # Создаем индикаторы, которые будут динамически подтягивать значения из датафрейма
+        self.draw_sup_max = self.I(lambda: self.data.df['sup_max'], name="Support Top")
+        self.draw_res_min = self.I(lambda: self.data.df['res_min'], name="Resist Bottom")
 
     def next(self):
-        global GLOBAL_DEBUG_STATS
+        global GLOBAL_DEBUG_STATS, CURRENT_SUPPORTS, CURRENT_RESISTANCES, GLOBAL_TIMELINE, TARGET_COIN_CURRENT
+        
+        # --- МАШИНА ВРЕМЕНИ ---
+        current_time = pd.to_datetime(self.data.index[-1])
+        period_key = current_time.floor('12h').strftime("%Y-%m-%d %H:%M:%S")
+        
+        if getattr(self, 'current_period_key', None) != period_key:
+            if period_key in GLOBAL_TIMELINE:
+                coin_data = GLOBAL_TIMELINE[period_key].get(TARGET_COIN_CURRENT.upper(), {})
+                CURRENT_SUPPORTS = coin_data.get("supports", [])
+                CURRENT_RESISTANCES = coin_data.get("resistances", [])
+                
+                self.current_period_key = period_key
+                self.burned_levels.clear()
+        
+        # Записываем текущие уровни в датафрейм для отрисовки на графике
+        # Берем верхнюю границу самой первой поддержки и нижнюю границу самого первого сопротивления
+        c_price = self.data.Close[-1]
+        active_sup = CURRENT_SUPPORTS[0]['max'] if CURRENT_SUPPORTS else np.nan
+        active_res = CURRENT_RESISTANCES[0]['min'] if CURRENT_RESISTANCES else np.nan
+        
+        # Магия backtesting.py: обновляем значения в pandas df напрямую
+        self.data.df.loc[self.data.index[-1], 'sup_max'] = active_sup
+        self.data.df.loc[self.data.index[-1], 'res_min'] = active_res
+   
+
+      
         # ==========================================
         # 1. СЖИГАНИЕ УРОВНЕЙ (ТОЛЬКО ПОСЛЕ ПЛЮСА)
         # ==========================================
@@ -154,14 +181,31 @@ class SmartSniperUniversal(Strategy):
         if len(self.data) < 15: return
         
         c_close, c_open = self.data.Close[-1], self.data.Open[-1]
+        
         c_high, c_low = self.data.High[-1], self.data.Low[-1]
         c_vol = self.data.Volume[-1]
         p_close, p_open = self.data.Close[-2], self.data.Open[-2]
         p_vol = self.data.Volume[-2]
 
+        # 🔥 ОБНОВЛЯЕМ СТАТУСЫ УРОВНЕЙ (СВЕЖИЙ ИЛИ ЗОМБИ)
+        for sup in CURRENT_SUPPORTS:
+            l_id = f"{sup['min']}_{sup['max']}"
+            if l_id not in self.level_states:
+                self.level_states[l_id] = 'FRESH'
+            if c_close < sup['min']:
+                self.level_states[l_id] = 'ZOMBIE (Broken Down)'
+
+        for res in CURRENT_RESISTANCES:
+            l_id = f"{res['min']}_{res['max']}"
+            if l_id not in self.level_states:
+                self.level_states[l_id] = 'FRESH'
+            if c_close > res['max']:
+                self.level_states[l_id] = 'ZOMBIE (Broken Up)'
+
         # ==========================================
         # 2. ФИЛЬТР ANTI-KNIFE (Остановка Локомотива - 3 свечи)
         # ==========================================
+        
         is_falling_knife = False
         is_flying_rocket = False
         
@@ -238,10 +282,15 @@ class SmartSniperUniversal(Strategy):
                 depth_pct = ((sup['max'] - c_close) / zone_range) * 100 if zone_range > 0 else 0
 
                 if USE_DEPTH_FILTER:
-                    # Отсекаем отрицательную глубину (вход в небесах) и лежание на дне (85-100%)
-                    if depth_pct < 0.0 or depth_pct > DEEP_ENTRY_MAX:
+                    # 🔥 УМНАЯ АДАПТАЦИЯ ГЛУБИНЫ ПО SCORE ЗОНЫ
+                    # Для слабых зон (Score 3) жестко ограничиваем глубину входа
+                    # Для сильных зон (Score 4+) разрешаем заходить чуть глубже
+                    max_allowed_depth = 65.0 if sup.get('score', 0) < 4.0 else 85.0
+                    
+                    if depth_pct < 0.0 or depth_pct > max_allowed_depth:
                         continue 
-                    # Если зона жирная (шире 2.5%), но скидки еще нет (глубина < 40%) - ждем
+                    
+                    # Если зона широкая (5%+), не лезем, пока цена не даст скидку
                     if zone_width_pct >= MAX_NARROW_ZONE_PCT and depth_pct < DEEP_ENTRY_MIN:
                         continue
                 
@@ -273,6 +322,8 @@ class SmartSniperUniversal(Strategy):
                 # SFP засчитывается только если нижняя тень минимум в 2 раза больше тела свечи
                 is_long_sfp = (c_low <= sup['min']) and (c_close > sup['min']) and (lower_wick > c_body_abs * 2.0)
                 is_long_touch = not is_long_sfp # Обычное касание без ложного пробоя низа
+                
+            
 
                 # Если тумблер LONG SFP включен
                 if USE_LONG_SFP_LOGIC:
@@ -335,13 +386,18 @@ class SmartSniperUniversal(Strategy):
                     GLOBAL_DEBUG_STATS["Killed_by_CONTEXT"] = GLOBAL_DEBUG_STATS.get("Killed_by_CONTEXT", 0) + 1
                     continue
 
-            if USE_DEPTH_FILTER:
-                # Отсекаем отрицательную глубину (упали без нас) и лежание на потолке (85-100%)
-                if depth_pct < 0.0 or depth_pct > DEEP_ENTRY_MAX:
-                    continue 
-                # Если зона жирная, но мы все еще на низах (глубина < 40%) - ждем откат повыше
-                if zone_width_pct >= MAX_NARROW_ZONE_PCT and depth_pct < DEEP_ENTRY_MIN:
-                    continue
+                if USE_DEPTH_FILTER:
+                    # 🔥 УМНАЯ АДАПТАЦИЯ ГЛУБИНЫ ПО SCORE ЗОНЫ
+                    # Для слабых зон (Score 3) жестко ограничиваем глубину входа
+                    # Для сильных зон (Score 4+) разрешаем заходить чуть глубже
+                    max_allowed_depth = 65.0 if res.get('score', 0) < 4.0 else 85.0
+
+                    if depth_pct < 0.0 or depth_pct > max_allowed_depth:
+                        continue
+                    
+                    # Если зона широкая (5%+), не лезем, пока цена не даст скидку
+                    if zone_width_pct >= MAX_NARROW_ZONE_PCT and depth_pct < DEEP_ENTRY_MIN:
+                        continue
 
             GLOBAL_DEBUG_STATS["Touches"] += 1
 
@@ -379,6 +435,8 @@ class SmartSniperUniversal(Strategy):
             # SFP засчитывается только если верхняя тень минимум в 2 раза больше тела свечи
             is_sfp = (c_high >= res['max']) and (c_close < res['max']) and (upper_wick > c_body_abs * 2.0)
             is_touch = (c_high >= res['min']) and (c_close < res['max']) and not is_sfp
+            
+            
 
             # === СЦЕНАРИЙ А: SFP ===
             if is_sfp:
@@ -434,14 +492,37 @@ class SmartSniperUniversal(Strategy):
         zone_range = level['max'] - level['min']
         entry_depth = ((level['max'] - current_price) / zone_range) * 100 if zone_range > 0 else 0.0
         
+        # 🔥 Вызываем внешний анализатор контекста
+        c_atr = self.atr[-1] if not np.isnan(self.atr[-1]) else (self.data.High[-1] - self.data.Low[-1])
+        approach_type = get_approach_type(
+            closes=self.data.Close,
+            highs=self.data.High,
+            lows=self.data.Low,
+            trade_type='LONG',
+            current_atr=c_atr
+        )
+        
+        level_id = f"{level['min']}_{level['max']}"
+        lvl_state = self.level_states.get(level_id, 'UNKNOWN')
+        
+        # 🛑 БЛОКИРОВКА МЕРТВЫХ ЗОН
+        if lvl_state != 'FRESH':
+            return
+            
+        # 🛑 ГИБРИДНЫЙ ФИЛЬТР ДЛЯ СЛАБЫХ ЗОН (Score 3)
+        if level.get('score', 0) <= 3.0 and approach_type == "COMPRESSION":
+            return
+        
         GLOBAL_TRADE_CONTEXTS[current_price] = {
+            "state": lvl_state,
             "score": level.get('score', 0),
             "type": level.get('type', 'unknown'),
             "width": round(((level['max'] - level['min']) / level['min']) * 100, 2),
             "gap": round(gap_pct, 2),
             "sfp": is_sfp,
             "choch": is_choch,
-            "depth": round(entry_depth, 1) # 🔥 НОВЫЙ ПАРАМЕТР
+            "depth": round(entry_depth, 1),
+            "approach": approach_type  # 🔥 Сохраняем ярлык
         }
             
         tp = current_price * (1 + TAKE_PROFIT / 100)
@@ -485,14 +566,37 @@ class SmartSniperUniversal(Strategy):
         zone_range = level['max'] - level['min']
         entry_depth = ((current_price - level['min']) / zone_range) * 100 if zone_range > 0 else 0.0
         
+        # 🔥 Вызываем внешний анализатор контекста
+        c_atr = self.atr[-1] if not np.isnan(self.atr[-1]) else (self.data.High[-1] - self.data.Low[-1])
+        approach_type = get_approach_type(
+            closes=self.data.Close,
+            highs=self.data.High,
+            lows=self.data.Low,
+            trade_type='SHORT',
+            current_atr=c_atr
+        )
+        
+        level_id = f"{level['min']}_{level['max']}"
+        lvl_state = self.level_states.get(level_id, 'UNKNOWN')
+        
+        # 🛑 БЛОКИРОВКА МЕРТВЫХ ЗОН
+        if lvl_state != 'FRESH':
+            return
+            
+        # 🛑 ГИБРИДНЫЙ ФИЛЬТР ДЛЯ СЛАБЫХ ЗОН (Score 3)
+        if level.get('score', 0) <= 3.0 and approach_type == "COMPRESSION":
+            return
+        
         GLOBAL_TRADE_CONTEXTS[current_price] = {
+            "state": lvl_state,
             "score": level.get('score', 0),
             "type": level.get('type', 'unknown'),
             "width": round(((level['max'] - level['min']) / level['min']) * 100, 2),
             "gap": round(gap_pct, 2),
             "sfp": is_sfp,
             "choch": is_choch,
-            "depth": round(entry_depth, 1) # 🔥 НОВЫЙ ПАРАМЕТР
+            "depth": round(entry_depth, 1), 
+            "approach": approach_type
         }
 
         GLOBAL_DEBUG_STATS["Passed_to_Trade"] += 1
@@ -532,17 +636,23 @@ def get_cached_data(coin):
         except Exception:
             return pd.DataFrame()
         
-if TEST_START_DATE:
-    macro_path = os.path.join("modules", "cryptano", "utils", "testswing", f"macro_test_{TEST_START_DATE[:10]}.json")
-else:
-    macro_path = os.path.join("modules", "cryptano", "macro_levels.json")
+# --- ЗАГРУЗКА МАШИНЫ ВРЕМЕНИ ---
+try:
+    with open('levels_timeline.json', 'r') as f:
+        GLOBAL_TIMELINE = json.load(f)
+except Exception as e:
+    print("❌ Файл levels_timeline.json не найден. Сначала запусти precalc.py!")
+    GLOBAL_TIMELINE = {}
 
-macro_db = load_json(macro_path, default={}) if os.path.exists(macro_path) else {}
+# Берем список монет из первого ключа, просто чтобы бот понимал, кого прогонять
+first_time_key = list(GLOBAL_TIMELINE.keys())[0] if GLOBAL_TIMELINE else None
+macro_db = GLOBAL_TIMELINE.get(first_time_key, {}) if first_time_key else {}
 
 if TARGET_COIN.upper() == "ALL":
     print("🤖 Аудит запущен. Собираем данные (без спама)...")
     
     for coin, data in macro_db.items():
+        TARGET_COIN_CURRENT = coin # <--- ДОБАВИТЬ ЭТО
         if not isinstance(data, dict): continue
         CURRENT_SUPPORTS = data.get("supports", [])
         CURRENT_RESISTANCES = data.get("resistances", [])
@@ -550,6 +660,10 @@ if TARGET_COIN.upper() == "ALL":
         
         df = get_cached_data(coin)
         if df.empty: continue
+        
+        # Добавляем пустые колонки под динамические уровни
+        df['sup_max'] = np.nan
+        df['res_min'] = np.nan
         
         bt = Backtest(df, SmartSniperUniversal, cash=10000, commission=.0006, hedging=False)
         stats = bt.run()
@@ -570,18 +684,35 @@ if TARGET_COIN.upper() == "ALL":
             })
             
             #
-            # Заполняем детальный лог ТОЛЬКО по минусам из глобального словаря
+            # Заполняем логи для плюсов и минусов
             for idx, row in tr.iterrows():
+                ctx = GLOBAL_TRADE_CONTEXTS.get(row['EntryPrice'], {})
+                trade_type = "LONG" if row['Size'] > 0 else "SHORT"
+                
+                log_str = (f"{coin.upper()} | {trade_type} | Результат: {row['ReturnPct']*100:.2f}% | "
+                           f"Статус: {ctx.get('state','?')} | Подход: {ctx.get('approach','?')} | Score: {ctx.get('score','?')} | "
+                           f"ГЛУБИНА: {ctx.get('depth','?')}% | Ширина: {ctx.get('width','?')}% | Gap: {ctx.get('gap','?')}%")
+                
                 if row['PnL'] <= 0:
-                    ctx = GLOBAL_TRADE_CONTEXTS.get(row['EntryPrice'], {})
+                    # 🔍 АНАЛИЗ БУДУЩЕГО (Что было после стопа?)
+                    exit_time = row['ExitTime']
+                    # Смотрим на 5 дней вперед (1 день = 96 свечей 15m. 5 дней = 480 свечей)
+                    future_df = df.loc[exit_time:].iloc[1:481] 
                     
-                    trade_type = "LONG" if row['Size'] > 0 else "SHORT"
-                    GLOBAL_LOSERS_LOG.append(
-                        f"❌ {coin.upper()} | {trade_type} | Убыток: {row['ReturnPct']*100:.2f}% | "
-                        f"Score: {ctx.get('score','?')} | ГЛУБИНА: {ctx.get('depth','?')}% | "
-                        f"Ширина: {ctx.get('width','?')}% | Gap: {ctx.get('gap','?')}% | "
-                        f"SFP: {ctx.get('sfp','?')} | CHoCH: {ctx.get('choch','?')}"
-                    )
+                    post_mortem = "ПЛОХОЙ УРОВЕНЬ (Цена ушла дальше и не вернулась за 5 дней)"
+                    if not future_df.empty:
+                        if trade_type == "LONG":
+                            tp_price = row['EntryPrice'] * (1 + TAKE_PROFIT / 100)
+                            if future_df['High'].max() >= tp_price:
+                                post_mortem = "МАКРО-ВЫБИВАНИЕ (Сбило стоп, но за 5 дней дошло до тейка)"
+                        else:
+                            tp_price = row['EntryPrice'] * (1 - TAKE_PROFIT / 100)
+                            if future_df['Low'].min() <= tp_price:
+                                post_mortem = "МАКРО-ВЫБИВАНИЕ (Сбило стоп, но за 5 дней дошло до тейка)"
+                                
+                    GLOBAL_LOSERS_LOG.append("❌ " + log_str + f" | 🔍 Диагноз: {post_mortem}")
+                else:
+                    GLOBAL_WINNERS_LOG.append("✅ " + log_str)
         
         # 🔥 КРИТИЧЕСКИ ВАЖНО: Очищаем глобальный контекст перед следующей монетой!
         GLOBAL_TRADE_CONTEXTS = {}
@@ -599,17 +730,28 @@ if TARGET_COIN.upper() == "ALL":
         print("❌ Сделок не найдено.")
         
     print("\n" + "="*115)
+    print("🚀 ОТЧЕТ ПО ПРИБЫЛЬНЫМ СДЕЛКАМ (ГДЕ МЫ ЗАРАБАТЫВАЕМ)")
+    print("="*115)
+    if GLOBAL_WINNERS_LOG:
+        for log in GLOBAL_WINNERS_LOG:
+            print(log)
+            
+    print("\n" + "="*115)
     print("📉 ОТЧЕТ ПО УБЫТОЧНЫМ СДЕЛКАМ (ДЛЯ АНАЛИЗА ПРИЧИН)")
     print("="*115)
     if GLOBAL_LOSERS_LOG:
         for log in GLOBAL_LOSERS_LOG:
             print(log)
-    else:
-        print("Убыточных сделок нет! Грааль! 🚀")
-    print("="*115 + "\n")
-    
+     
+    print("\n" + "="*115)
+    print("🕵️ ДИАГНОСТИКА ОТМЕН (ПОЧЕМУ БОТ НЕ ВХОДИТ В СДЕЛКИ)")
+    print("="*115)
+    for key, val in GLOBAL_DEBUG_STATS.items():
+        print(f"  {key}: {val}")
+            
 else:
     print(f"📥 Запускаю детальный тест для {TARGET_COIN.upper()}...")
+    TARGET_COIN_CURRENT = TARGET_COIN.upper() # <--- ДОБАВИТЬ ЭТО
     coin_data = macro_db.get(TARGET_COIN.upper(), {}) if isinstance(macro_db.get(TARGET_COIN.upper()), dict) else {}
     CURRENT_SUPPORTS = coin_data.get("supports", [])
     CURRENT_RESISTANCES = coin_data.get("resistances", [])
@@ -621,6 +763,10 @@ else:
         if df.empty:
             print("❌ Ошибка загрузки данных.")
         else:
+            # Добавляем пустые колонки под динамические уровни
+            df['sup_max'] = np.nan
+            df['res_min'] = np.nan
+            
             bt = Backtest(df, SmartSniperUniversal, cash=10000, commission=.0006, hedging=False)
             stats = bt.run()
             
@@ -648,7 +794,7 @@ else:
                     ctx = GLOBAL_TRADE_CONTEXTS.get(row['EntryPrice'], {})
                     
                     print(f"  ▪️ {t_in} -> {t_out} | {tr_type} | {status} ({sign}{pct_val:.2f}%)")
-                    print(f"     Score: {ctx.get('score','?')} | ГЛУБИНА: {ctx.get('depth','?')}% | Ширина: {ctx.get('width','?')}% | Gap: {ctx.get('gap','?')}% | SFP: {ctx.get('sfp','?')} | CHoCH: {ctx.get('choch','?')}\n")
+                    print(f"     Подход: {ctx.get('approach','?')} | Score: {ctx.get('score','?')} | ГЛУБИНА: {ctx.get('depth','?')}% | Ширина: {ctx.get('width','?')}% | Gap: {ctx.get('gap','?')}%\n")
             chart_path = os.path.abspath(f'chart_{TARGET_COIN.lower()}.html')
             try:
                 bt.plot(filename=chart_path, open_browser=True)
