@@ -1,0 +1,571 @@
+"""
+levels_builder.py
+==================
+Чистый модуль расчёта уровней. Не знает про биржу, расписание, Telegram.
+Принимает готовые DataFrame (1D и 4H), возвращает словарь зон,
+АКТУАЛЬНЫХ на момент current_idx (на момент скана).
+
+ИЕРАРХИЯ БАЗОВЫХ БАЛЛОВ (откуда пришёл уровень):
+    PMH/PML (месяц, закрытый)        -> 5
+    PWH/PWL (неделя, закрытая)       -> 4
+    find_peaks + lookahead (1D)      -> 3
+    PDH/PDL (день, закрытый)         -> 2
+    4H POC (volume profile)          -> +1 confluence-бонус к существующей зоне
+
+МОДИФИКАТОРЫ SCORE:
+    - Reaction count (сколько раз цена касалась зоны и отбивалась без закрытия
+      за пределами) -> +0.5 за каждый эпизод, максимум +2
+    - Объём на формирующей свече (если объём > 2x среднего за период) -> +0.5
+
+MITIGATED:
+    Если цена закрылась за пределами зоны после её формирования (зона пробита
+    насквозь) - зона считается мёртвой и НЕ ПОПАДАЕТ в финальный результат.
+    Без этого подтверждения слом структуры (CHoCH) не считается доказанным,
+    поэтому role-reversal (старый support становится resistance) здесь не
+    делается - это отдельная задача более высокого уровня (watcher), не этого
+    модуля. См. NOTES_role_reversal.md.
+
+ДИСТАНЦИЯ:
+    Вместо жёсткого процента от цены используется динамический порог:
+    max_distance = ATR(1W) * ATR_DISTANCE_MULTIPLIER.
+    Волатильные монеты сами расширяют себе радар, спокойные - сужают.
+    Это фильтр релевантности (зона физически достижима в обозримые дни),
+    а не "архив" - архива в этой системе нет, выводятся только актуальные
+    на момент current_idx уровни.
+
+Merge пересекающихся зон (merge_overlapping_zones): база самого сильного
+источника + бонус за каждое доп. наложение, с потолком MAX_MERGE_BONUS.
+"""
+
+import pandas as pd
+import numpy as np
+from scipy.signal import find_peaks
+
+# =========================================================
+# БАЗОВЫЕ ВЕСА ИСТОЧНИКОВ
+# =========================================================
+SCORE_PMH_PML = 5.0
+SCORE_PWH_PWL = 4.0
+SCORE_FIND_PEAKS = 3.0
+SCORE_PDH_PDL = 2.0
+POC_BONUS = 1.0
+
+# find_peaks-слой (lookahead-фильтр - старый алгоритм)
+IMPULSE_ATR_MULTIPLIER = 2.5
+IMPULSE_LOOKAHEAD_DAYS = 10
+FIND_PEAKS_DISTANCE = 15
+FIND_PEAKS_PROMINENCE_MULT = 1.5
+
+# Сколько последних закрытых недель/месяцев/дней проверяем на актуальность
+PERIODS_MONTHS_BACK = 3   # последние 3 закрытых месяца
+PERIODS_WEEKS_BACK = 4     # последние 4 закрытых недели
+PERIODS_DAYS_BACK = 5       # последние 5 закрытых дней (PDH/PDL)
+
+# Дистанция релевантности: max_distance = ATR(1W) * этот множитель.
+# Заменяет старый жёсткий процент от цены - адаптируется к волатильности монеты.
+ATR_DISTANCE_MULTIPLIER = 2.0
+
+# Порог объёмного бонуса: во сколько раз объём формирующей свечи должен
+# превышать средний объём периода, чтобы получить бонус
+VOLUME_SPIKE_MULTIPLIER = 2.0
+
+# Потолок бонуса score за слияние нескольких источников в одну зону
+MAX_MERGE_BONUS = 3.0
+
+MAJORS = ["BTC", "ETH", "SOL", "BNB"]
+
+
+def calculate_atr(df, period=14):
+    """Average True Range по стандартной формуле."""
+    high_low = df["high"] - df["low"]
+    high_cp = (df["high"] - df["close"].shift()).abs()
+    low_cp = (df["low"] - df["close"].shift()).abs()
+    tr = pd.concat([high_low, high_cp, low_cp], axis=1).max(axis=1)
+    return tr.rolling(window=period).mean()
+
+
+def _calc_weekly_atr(df_1d, current_idx):
+    """
+    Приближённый недельный ATR из дневных данных: ATR(1D) * sqrt(7).
+    Используется только для расчёта дистанции релевантности,
+    не для ширины самих зон (там используется обычный дневной ATR).
+    """
+    daily_atr = calculate_atr(df_1d, 14).iloc[current_idx]
+    if pd.isna(daily_atr) or daily_atr == 0:
+        daily_atr = df_1d['close'].iloc[current_idx] * 0.05
+    return float(daily_atr) * (7 ** 0.5)
+
+
+def _is_mitigated(df_1d, idx, price, is_support, current_idx=None):
+    """
+    Проверяет, прошла ли цена через уровень с ЗАКРЫТИЕМ за его пределами
+    после момента формирования уровня (idx). True = уровень мёртв.
+    """
+    if current_idx is None:
+        current_idx = len(df_1d) - 1
+    if idx >= current_idx:
+        return False
+
+    future_closes = df_1d['close'].iloc[idx + 1: current_idx + 1]
+    if future_closes.empty:
+        return False
+
+    if is_support:
+        return bool((future_closes < price).any())
+    else:
+        return bool((future_closes > price).any())
+
+
+def _count_reactions(df_1d, idx, price, atr_value, is_support, current_idx=None):
+    """
+    Считает количество ЭПИЗОДОВ касания зоны (не отдельных свечей).
+    Эпизод = последовательность подряд идущих свечей внутри зоны.
+    Засчитывается реакцией, если эпизод завершился без закрытия за пределами
+    (то есть был отбой, а не пробой).
+    """
+    if current_idx is None:
+        current_idx = len(df_1d) - 1
+    if idx >= current_idx:
+        return 0
+
+    zone_half = atr_value * 0.5
+    zone_min, zone_max = price - zone_half, price + zone_half
+
+    window = df_1d.iloc[idx + 1: current_idx + 1].reset_index(drop=True)
+    if window.empty:
+        return 0
+
+    reactions = 0
+    in_episode = False
+    episode_broke_through = False
+
+    for _, row in window.iterrows():
+        touched = (row['low'] <= zone_max) and (row['high'] >= zone_min)
+
+        if touched:
+            if not in_episode:
+                in_episode = True
+                episode_broke_through = False
+            if is_support and row['close'] < zone_min:
+                episode_broke_through = True
+            elif not is_support and row['close'] > zone_max:
+                episode_broke_through = True
+        else:
+            if in_episode:
+                if not episode_broke_through:
+                    reactions += 1
+                in_episode = False
+
+    if in_episode and not episode_broke_through:
+        reactions += 1
+
+    return reactions
+
+
+def _volume_bonus(df, idx, lookback=30):
+    """+0.5 если объём формирующей свечи в VOLUME_SPIKE_MULTIPLIER раз больше
+    среднего объёма за lookback свечей до неё."""
+    if idx < lookback:
+        return 0.0
+    avg_vol = df['volume'].iloc[max(0, idx - lookback):idx].mean()
+    if avg_vol <= 0 or pd.isna(avg_vol):
+        return 0.0
+    this_vol = df['volume'].iloc[idx]
+    if this_vol >= avg_vol * VOLUME_SPIKE_MULTIPLIER:
+        return 0.5
+    return 0.0
+
+
+def _build_zone(price, atr_value, base_score, zone_type, date_str,
+                 mitigated, reaction_count=0, volume_bonus=0.0):
+    """
+    Собирает зону. mitigated-зоны тоже строятся (нужно для фильтрации выше),
+    но в финальный результат build_levels() они не попадают.
+    """
+    score = base_score
+    score += min(reaction_count * 0.5, 2.0)
+    score += volume_bonus
+    score = max(score, 0.5)
+
+    return {
+        "min": float(price - atr_value * 0.5),
+        "max": float(price + atr_value * 0.5),
+        "score": round(float(score), 2),
+        "type": zone_type,
+        "date": date_str,
+        "mitigated": bool(mitigated),
+        "reaction_count": int(reaction_count),
+    }
+
+
+def _extract_period_extremes(df_1d, freq, n_periods_back, current_price, atr_1d,
+                              max_distance, zone_label_high, zone_label_low,
+                              current_idx=None):
+    """
+    Общая функция для PWH/PWL и PMH/PML.
+    Ресемплит df_1d в недели/месяцы, берёт последние n_periods_back ЗАКРЫТЫХ
+    периодов, для каждого создаёт зону по high и по low.
+    Зоны дальше max_distance от текущей цены не создаются.
+    """
+    if current_idx is None:
+        current_idx = len(df_1d) - 1
+
+    work = df_1d.iloc[:current_idx + 1].copy()
+    work['dt'] = pd.to_datetime(work['timestamp'], unit='ms')
+    work = work.set_index('dt')
+
+    resampled = work.resample(freq, label='left').agg({'high': 'max', 'low': 'min', 'volume': 'sum'})
+    resampled = resampled.dropna()
+
+    if len(resampled) > 0:
+        offset = pd.tseries.frequencies.to_offset(freq)
+        last_period_start = resampled.index[-1]
+        last_period_end = (offset.rollforward(last_period_start)
+                            if offset.rollforward(last_period_start) != last_period_start
+                            else last_period_start + offset)
+        now_ts = work.index[-1]
+        if now_ts < last_period_end:
+            resampled = resampled.iloc[:-1]
+
+    if resampled.empty:
+        return []
+
+    recent = resampled.tail(n_periods_back)
+    zones = []
+
+    for period_start, row in recent.iterrows():
+        for price, is_support, label in [
+            (row['high'], False, zone_label_high),
+            (row['low'], True, zone_label_low),
+        ]:
+            if pd.isna(price):
+                continue
+            if abs(price - current_price) > max_distance:
+                continue
+
+            period_mask = (pd.to_datetime(df_1d['timestamp'], unit='ms') >= period_start)
+            candidates = df_1d[period_mask]
+            if candidates.empty:
+                continue
+            idx_ref = candidates.index[0]
+
+            mitigated = _is_mitigated(df_1d, idx_ref, price, is_support, current_idx)
+            reactions = _count_reactions(df_1d, idx_ref, price, atr_1d, is_support, current_idx)
+
+            date_str = period_start.strftime('%Y-%m-%d')
+            base_score = SCORE_PMH_PML if 'M' in label.split('_')[0] else SCORE_PWH_PWL
+
+            zone = _build_zone(price, atr_1d, base_score, label, date_str,
+                                mitigated=mitigated, reaction_count=reactions)
+            zone['_is_support'] = is_support
+            zones.append(zone)
+
+    return zones
+
+
+def _extract_daily_extremes(df_1d, n_days_back, current_price, atr_1d,
+                             max_distance, current_idx=None):
+    """PDH/PDL - последние n закрытых дней, в пределах max_distance от цены."""
+    if current_idx is None:
+        current_idx = len(df_1d) - 1
+
+    zones = []
+    start = max(0, current_idx - n_days_back)
+    for idx in range(start, current_idx):
+        row = df_1d.iloc[idx]
+        ts = row['timestamp']
+        date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
+
+        for price, is_support in [(row['high'], False), (row['low'], True)]:
+            if abs(price - current_price) > max_distance:
+                continue
+
+            mitigated = _is_mitigated(df_1d, idx, price, is_support, current_idx)
+            reactions = _count_reactions(df_1d, idx, price, atr_1d, is_support, current_idx)
+            vol_bonus = _volume_bonus(df_1d, idx)
+
+            label = "1d_low_PDL" if is_support else "1d_high_PDH"
+            zone = _build_zone(price, atr_1d, SCORE_PDH_PDL, label, date_str,
+                                mitigated=mitigated, reaction_count=reactions,
+                                volume_bonus=vol_bonus)
+            zone['_is_support'] = is_support
+            zones.append(zone)
+
+    return zones
+
+
+def _extract_find_peaks_layer(df_1d, current_price, atr_1d, max_distance, current_idx=None):
+    """
+    find_peaks слой с lookahead-фильтром. Зоны дальше max_distance отсекаются -
+    единственный фильтр по расстоянию, без понятия архива/давности.
+    """
+    if current_idx is None:
+        current_idx = len(df_1d) - 1
+
+    work = df_1d.iloc[:current_idx + 1]
+    if len(work) < 50:
+        return []
+
+    atr_series = calculate_atr(work, 14)
+    local_atr_default = atr_series.iloc[-1]
+    if pd.isna(local_atr_default) or local_atr_default == 0:
+        local_atr_default = work['close'].iloc[-1] * 0.05
+
+    peaks, _ = find_peaks(work['high'], distance=FIND_PEAKS_DISTANCE,
+                           prominence=local_atr_default * FIND_PEAKS_PROMINENCE_MULT)
+    valleys, _ = find_peaks(-work['low'], distance=FIND_PEAKS_DISTANCE,
+                             prominence=local_atr_default * FIND_PEAKS_PROMINENCE_MULT)
+
+    zones = []
+
+    for v in valleys:
+        price = float(work['low'].iloc[v])
+        if abs(price - current_price) > max_distance:
+            continue
+
+        local_atr = atr_series.iloc[v]
+        if pd.isna(local_atr) or local_atr == 0:
+            local_atr = local_atr_default
+
+        lookahead = work['high'].iloc[v + 1: v + 1 + IMPULSE_LOOKAHEAD_DAYS]
+        if lookahead.empty:
+            continue
+        if lookahead.max() < price + (local_atr * IMPULSE_ATR_MULTIPLIER):
+            continue
+
+        ts = work['timestamp'].iloc[v]
+        date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
+
+        mitigated = _is_mitigated(df_1d, v, price, True, current_idx)
+        reactions = _count_reactions(df_1d, v, price, local_atr, True, current_idx)
+        vol_bonus = _volume_bonus(df_1d, v)
+
+        zone = _build_zone(price, local_atr, SCORE_FIND_PEAKS, "1d_extreme_peak", date_str,
+                            mitigated=mitigated, reaction_count=reactions, volume_bonus=vol_bonus)
+        zone['_is_support'] = True
+        zones.append(zone)
+
+    for p in peaks:
+        price = float(work['high'].iloc[p])
+        if abs(price - current_price) > max_distance:
+            continue
+
+        local_atr = atr_series.iloc[p]
+        if pd.isna(local_atr) or local_atr == 0:
+            local_atr = local_atr_default
+
+        lookahead = work['low'].iloc[p + 1: p + 1 + IMPULSE_LOOKAHEAD_DAYS]
+        if lookahead.empty:
+            continue
+        if lookahead.min() > price - (local_atr * IMPULSE_ATR_MULTIPLIER):
+            continue
+
+        ts = work['timestamp'].iloc[p]
+        date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
+
+        mitigated = _is_mitigated(df_1d, p, price, False, current_idx)
+        reactions = _count_reactions(df_1d, p, price, local_atr, False, current_idx)
+        vol_bonus = _volume_bonus(df_1d, p)
+
+        zone = _build_zone(price, local_atr, SCORE_FIND_PEAKS, "1d_extreme_peak", date_str,
+                            mitigated=mitigated, reaction_count=reactions, volume_bonus=vol_bonus)
+        zone['_is_support'] = False
+        zones.append(zone)
+
+    return zones
+
+
+def _get_poc(df_4h, current_price):
+    """POC по 4H volume profile. Возвращает (poc_price, atr_4h) либо (None, None)."""
+    if len(df_4h) < 50:
+        return None, None
+
+    atr_4h = calculate_atr(df_4h, 14).iloc[-1]
+    if pd.isna(atr_4h) or atr_4h == 0:
+        atr_4h = df_4h['close'].iloc[-1] * 0.02
+
+    typical = (df_4h['high'] + df_4h['low'] + df_4h['close']) / 3
+    min_val, max_val = df_4h['low'].min(), df_4h['high'].max()
+    if max_val <= min_val:
+        return None, None
+
+    bins = np.linspace(min_val, max_val, 50)
+    bin_idx = pd.cut(typical, bins=bins)
+    vol_profile = df_4h.groupby(bin_idx, observed=False)['volume'].sum()
+
+    poc_bin = vol_profile.idxmax()
+    if pd.isna(poc_bin) or not hasattr(poc_bin, "mid"):
+        return None, None
+
+    return float(poc_bin.mid), float(atr_4h)
+
+
+def _apply_poc_confluence(zones, poc_price, atr_4h):
+    """Если POC попадает в существующую зону - добавляем +1 к score этой зоны."""
+    if poc_price is None:
+        return zones
+    poc_half = atr_4h * 0.5
+    poc_min, poc_max = poc_price - poc_half, poc_price + poc_half
+
+    for z in zones:
+        overlap = min(z['max'], poc_max) - max(z['min'], poc_min)
+        if overlap > 0:
+            z['score'] = round(z['score'] + POC_BONUS, 2)
+            existing_type = z.get('type', '')
+            if '4h_poc' not in existing_type:
+                z['type'] = f"{existing_type}+4h_poc"
+    return zones
+
+
+def merge_overlapping_zones(zones):
+    """Слияние пересекающихся зон. Score = сильнейшая база + бонус за наслоения,
+    с потолком MAX_MERGE_BONUS."""
+    if not zones:
+        return []
+
+    sorted_zones = sorted(zones, key=lambda x: x['min'])
+
+    for z in sorted_zones:
+        z['base_score'] = z.get('score', 1.0)
+        z['components'] = 1
+
+    merged = [sorted_zones[0]]
+
+    for current in sorted_zones[1:]:
+        last = merged[-1]
+        if current['min'] <= last['max']:
+            last['max'] = max(last['max'], current['max'])
+            last['base_score'] = max(last['base_score'], current['base_score'])
+            last['components'] += 1
+            merge_bonus = min(last['components'] - 1, MAX_MERGE_BONUS)
+            last['score'] = round(last['base_score'] + merge_bonus, 2)
+
+            if current.get('type') and last.get('type') and current['type'] not in last['type']:
+                last['type'] = f"{last['type']} + {current['type']}"
+            last['reaction_count'] = max(last.get('reaction_count', 0), current.get('reaction_count', 0))
+        else:
+            merged.append(current)
+
+    for m in merged:
+        m.pop('base_score', None)
+        m.pop('components', None)
+
+    return merged
+
+
+def compress_fat_zones(zones, coin):
+    """Сжимает слишком широкие зоны к их центру."""
+    max_width_pct = 0.03 if coin in MAJORS else 0.05
+    for z in zones:
+        center = (z['max'] + z['min']) / 2.0
+        width = z['max'] - z['min']
+        max_allowed_width = center * max_width_pct
+        if width > max_allowed_width:
+            new_half_width = max_allowed_width / 2.0
+            z['min'] = center - new_half_width
+            z['max'] = center + new_half_width
+    return zones
+
+
+def resolve_cross_overlaps(supports, resistances):
+    """Удаляет слабую зону при жёстком пересечении support/resistance (>25%)."""
+    to_remove_sup = set()
+    to_remove_res = set()
+
+    for i, s in enumerate(supports):
+        for j, r in enumerate(resistances):
+            if i in to_remove_sup or j in to_remove_res:
+                continue
+            overlap = min(r['max'], s['max']) - max(r['min'], s['min'])
+            if overlap > 0:
+                min_zone_width = min(r['max'] - r['min'], s['max'] - s['min'])
+                if min_zone_width <= 0:
+                    continue
+                if (overlap / min_zone_width) > 0.25:
+                    if s.get('score', 0) > r.get('score', 0):
+                        to_remove_res.add(j)
+                    elif r.get('score', 0) > s.get('score', 0):
+                        to_remove_sup.add(i)
+                    else:
+                        to_remove_res.add(j)
+
+    final_sup = [s for i, s in enumerate(supports) if i not in to_remove_sup]
+    final_res = [r for j, r in enumerate(resistances) if j not in to_remove_res]
+    return final_sup, final_res
+
+
+def build_levels(df_1d, df_4h, coin, current_idx=None):
+    """
+    Главная функция модуля.
+
+    df_1d, df_4h: DataFrame с колонками timestamp, open, high, low, close, volume
+    coin: тикер, нужен для compress_fat_zones (majors vs alts)
+    current_idx: индекс "текущего момента" в df_1d (для бэктеста на срезе истории).
+                 None = последняя свеча.
+
+    Возвращает: {"supports": [...], "resistances": [...]}
+    Только зоны, актуальные на момент current_idx:
+      - не mitigated (цена не закрывалась за их пределами после формирования)
+      - в пределах ATR(1W)*ATR_DISTANCE_MULTIPLIER от текущей цены
+    Архива и понятия давности здесь нет.
+    """
+    if current_idx is None:
+        current_idx = len(df_1d) - 1
+
+    current_price = float(df_1d['close'].iloc[current_idx])
+    df_1d = df_1d.copy()
+    df_1d['atr'] = calculate_atr(df_1d, 14)
+    atr_1d = df_1d['atr'].iloc[current_idx]
+    if pd.isna(atr_1d) or atr_1d == 0:
+        atr_1d = current_price * 0.05
+
+    max_distance = _calc_weekly_atr(df_1d, current_idx) * ATR_DISTANCE_MULTIPLIER
+
+    all_zones = []
+
+    # 1. PMH/PML
+    all_zones += _extract_period_extremes(
+        df_1d, 'ME', PERIODS_MONTHS_BACK, current_price, atr_1d, max_distance,
+        "1M_high_PMH", "1M_low_PML", current_idx
+    )
+
+    # 2. PWH/PWL
+    all_zones += _extract_period_extremes(
+        df_1d, 'W', PERIODS_WEEKS_BACK, current_price, atr_1d, max_distance,
+        "1W_high_PWH", "1W_low_PWL", current_idx
+    )
+
+    # 3. find_peaks слой
+    all_zones += _extract_find_peaks_layer(df_1d, current_price, atr_1d, max_distance, current_idx)
+
+    # 4. PDH/PDL
+    all_zones += _extract_daily_extremes(df_1d, PERIODS_DAYS_BACK, current_price, atr_1d,
+                                          max_distance, current_idx)
+
+    # 5. POC confluence-бонус (не отдельная зона, просто бонус к существующим)
+    if df_4h is not None and len(df_4h) >= 50:
+        poc_price, atr_4h = _get_poc(df_4h, current_price)
+        all_zones = _apply_poc_confluence(all_zones, poc_price, atr_4h)
+
+    # Убираем mitigated-зоны - они не актуальны без подтверждённого слома структуры.
+    all_zones = [z for z in all_zones if not z['mitigated']]
+
+    supports, resistances = [], []
+    for z in all_zones:
+        is_sup = z.pop('_is_support', None)
+        z.pop('mitigated', None)
+        if is_sup is True:
+            supports.append(z)
+        elif is_sup is False:
+            resistances.append(z)
+
+    supports = merge_overlapping_zones(supports)
+    resistances = merge_overlapping_zones(resistances)
+    supports = compress_fat_zones(supports, coin)
+    resistances = compress_fat_zones(resistances, coin)
+    supports, resistances = resolve_cross_overlaps(supports, resistances)
+
+    return {
+        "supports": supports,
+        "resistances": resistances,
+    }

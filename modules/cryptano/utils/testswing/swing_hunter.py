@@ -17,6 +17,7 @@ from scipy.signal import find_peaks
 import schedule  
 from modules.cryptano.utils.crypto_utils import exchange
 from modules.cryptano.utils.storage import load_json, save_json_atomic
+from modules.cryptano.utils.testswing.levels_builder import build_levels
 
 # =========================================================
 # ⚙️ НАСТРОЙКИ РАСПИСАНИЯ И ТЕСТА
@@ -27,7 +28,7 @@ TIME_ASIAN_CLOSE = "03:05"
 TIME_US_OPEN = "15:05"      
 
 # 🧪 ТУМБЛЕР МАШИНЫ ВРЕМЕНИ (Укажи дату для теста, или None для лайва)
-BACKTEST_DATE = "2026-02-01 16:00:00"  
+BACKTEST_DATE = "2026-04-01 16:00:00"  
 # =========================================================
 
 # 🎛 НАСТРОЙКИ V2 ФИЛЬТРОВ
@@ -298,155 +299,31 @@ def build_macro_levels(bot=None, admin_chat_id=None, target_time_str=None):
         for symbol in valid_symbols:
             time.sleep(0.3)
             coin = symbol.split("/")[0].replace(":USDT", "")
-            
+
             try:
-                supports = []
-                resistances = []
-                
-                # === 1. АНАЛИЗ 1D ===
+                # === АНАЛИЗ через новый levels_builder ===
                 ohlcv_1d = safe_fetch_ohlcv(symbol, "1d", 365, fetch_params)
-                if len(ohlcv_1d) >= 50:
-                    df_1d = pd.DataFrame(ohlcv_1d, columns=["timestamp", "open", "high", "low", "close", "volume"])
-                    df_1d['atr'] = calculate_atr(df_1d, 14)
-                    atr_1d = df_1d['atr'].iloc[-1]
-                    if pd.isna(atr_1d) or atr_1d == 0: atr_1d = df_1d['close'].iloc[-1] * 0.05
-                    
-                    peaks, _ = find_peaks(df_1d['high'], distance=15, prominence=atr_1d * 1.5)
-                    valleys, _ = find_peaks(-df_1d['low'], distance=15, prominence=atr_1d * 1.5)
-                    
-                    current_price_1d = float(df_1d['close'].iloc[-1])
-                    
-                    # === ФИЛЬТРАЦИЯ ПОДДЕРЖЕК (ВПАДИНЫ) ===
-                    for v in valleys:
-                        price = float(df_1d['low'].iloc[v])
-                        if abs(price - current_price_1d) / current_price_1d > 0.15: continue
-                        
-                        # БЕРЕМ ATR ИМЕННО ТОГО ДНЯ, КОГДА БЫЛА ВПАДИНА
-                        local_atr = df_1d['atr'].iloc[v]
-                        if pd.isna(local_atr) or local_atr == 0: local_atr = atr_1d
-
-                        lookahead_slice = df_1d['high'].iloc[v+1 : v+1+IMPULSE_LOOKAHEAD_DAYS]
-                        if lookahead_slice.empty: continue 
-                        
-                        max_move = lookahead_slice.max()
-                        # Сравниваем импульс с историческим ATR
-                        if max_move < price + (local_atr * IMPULSE_ATR_MULTIPLIER):
-                            continue 
-                            
-                        ts = df_1d['timestamp'].iloc[v]
-                        date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
-                        
-                        zone = {"min": price - (local_atr * 0.5), "max": price + (local_atr * 0.5), "score": 3.0, "type": "1d_extreme", "date": date_str}
-                        if price > current_price_1d: pass # ❌ ВЫКЛЮЧИЛИ СТАРЫЕ ШОРТЫ
-                        else: supports.append(zone)       # ✅ ЛОНГИ НЕ ТРОГАЕМ
-                        
-                    # === ФИЛЬТРАЦИЯ СОПРОТИВЛЕНИЙ (ПИКИ) ===
-                    for p in peaks:
-                        price = float(df_1d['high'].iloc[p])
-                        if abs(price - current_price_1d) / current_price_1d > 0.15: continue
-                        
-                        # БЕРЕМ ATR ИМЕННО ТОГО ДНЯ
-                        local_atr = df_1d['atr'].iloc[p]
-                        if pd.isna(local_atr) or local_atr == 0: local_atr = atr_1d
-
-                        lookahead_slice = df_1d['low'].iloc[p+1 : p+1+IMPULSE_LOOKAHEAD_DAYS]
-                        if lookahead_slice.empty: continue
-                        
-                        min_move = lookahead_slice.min()
-                        if min_move > price - (local_atr * IMPULSE_ATR_MULTIPLIER):
-                            continue
-                            
-                        ts = df_1d['timestamp'].iloc[p]
-                        date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
-                        
-                        zone = {"min": price - (local_atr * 0.5), "max": price + (local_atr * 0.5), "score": 3.0, "type": "1d_extreme", "date": date_str}
-                        if price > current_price_1d: resistances.append(zone)
-                        else: supports.append(zone)
-                    # =======================================================
-                    # 🔥 НОВЫЙ АЛГОРИТМ SMC: SUPPLY ZONES (ТОЛЬКО ДЛЯ ШОРТОВ)
-                    # =======================================================
-                    df_1d['body'] = abs(df_1d['open'] - df_1d['close'])
-                    df_1d['avg_body'] = df_1d['body'].rolling(14).mean()
-                    
-                    for i in range(15, len(df_1d) - 1):
-                        # 1. Имбаланс (Красная свеча в 2+ раза больше средней и больше 0.8 ATR)
-                        is_drop = df_1d['close'].iloc[i] < df_1d['open'].iloc[i]
-                        is_huge = (df_1d['body'].iloc[i] > df_1d['avg_body'].iloc[i] * 2.0) and (df_1d['body'].iloc[i] > df_1d['atr'].iloc[i] * 0.8)
-                        
-                        if is_drop and is_huge:
-                            # 2. База / Ордерблок (Предыдущая свеча была зеленой или дожи)
-                            if df_1d['close'].iloc[i-1] >= df_1d['open'].iloc[i-1]:
-                                zone_max = float(df_1d['high'].iloc[i-1])
-                                zone_min = float(df_1d['low'].iloc[i-1])
-                                
-                                # Отсекаем мусор (ширина зоны не больше 5%)
-                                if (zone_max - zone_min) / zone_min > 0.05: continue
-                                
-                                # 3. Фильтр свежести (Unmitigated)
-                                # Цена не должна была пробивать эту зону вверх с момента создания
-                                future_highs = df_1d['high'].iloc[i+1:]
-                                if future_highs.empty or future_highs.max() < zone_max:
-                                    
-                                    # 4. Проверяем, что зона сейчас ВЫШЕ цены (чтобы было куда шортить)
-                                    if zone_min > current_price_1d and abs(zone_min - current_price_1d) / current_price_1d <= 0.15:
-                                        ts = df_1d['timestamp'].iloc[i-1]
-                                        date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
-                                        
-                                        resistances.append({
-                                            "min": zone_min, 
-                                            "max": zone_max, 
-                                            "score": 3.0, 
-                                            "type": "1d_supply_ob", 
-                                            "date": date_str
-                                        })
-                    # =======================================================
-                # === 2. АНАЛИЗ 4H ===
                 ohlcv_4h = safe_fetch_ohlcv(symbol, "4h", 200, fetch_params)
-                if len(ohlcv_4h) >= 50:
-                    df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"])
-                    df_4h['atr'] = calculate_atr(df_4h, 14)
-                    atr_4h = df_4h['atr'].iloc[-1]
-                    if pd.isna(atr_4h) or atr_4h == 0: atr_4h = df_4h['close'].iloc[-1] * 0.02
-                    
-                    df_4h['typical'] = (df_4h['high'] + df_4h['low'] + df_4h['close']) / 3
-                    min_val, max_val = df_4h['low'].min(), df_4h['high'].max()
-                    
-                    if max_val > min_val:
-                        bins = np.linspace(min_val, max_val, 50)
-                        df_4h['bin'] = pd.cut(df_4h['typical'], bins=bins)
-                        vol_profile = df_4h.groupby('bin', observed=False)['volume'].sum()
-                        
-                        poc_bin = vol_profile.idxmax()
-                        if pd.notna(poc_bin) and hasattr(poc_bin, "mid"):
-                            poc_price = float(getattr(poc_bin, "mid"))
-                            current_price = float(df_4h['close'].iloc[-1])
-                            
-                            zone = {"min": poc_price - (atr_4h * 0.5), "max": poc_price + (atr_4h * 0.5), "score": 2.0, "type": "4h_poc"}
-                            if current_price > poc_price: supports.append(zone)
-                            else: resistances.append(zone) # ✅ ВЕРНУЛИ 4H ШОРТЫ
 
-                # Записываем в базу, пропустив через фильтры
-                if supports or resistances:
-                    merged_sup = merge_overlapping_zones(supports)
-                    merged_res = merge_overlapping_zones(resistances)
-                    
-                    # 1. Сжимаем жирные зоны
-                    merged_sup = compress_fat_zones(merged_sup, coin)
-                    merged_res = compress_fat_zones(merged_res, coin)
-                    
-                    # 2. Удаляем конфликты (пересечения поддержки и сопротивления)
-                    final_sup, final_res = resolve_cross_overlaps(merged_sup, merged_res)
-                    
-                    if final_sup or final_res:
-                        macro_base[coin] = {
-                            "supports": final_sup,
-                            "resistances": final_res,
-                            "updated_at": datetime.datetime.now().isoformat()
-                        }
-                    
+                if len(ohlcv_1d) < 50:
+                    continue
+
+                df_1d = pd.DataFrame(ohlcv_1d, columns=["timestamp", "open", "high", "low", "close", "volume"])
+                df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_4h) >= 50 else None
+
+                levels = build_levels(df_1d, df_4h, coin)
+
+                has_any = (levels["supports"] or levels["resistances"])
+                if has_any:
+                    macro_base[coin] = {
+                        "supports": levels["supports"],
+                        "resistances": levels["resistances"],
+                        "updated_at": datetime.datetime.now().isoformat()
+    }
+
             except Exception as e:
                 print(f"[TEST ERROR] Ошибка для {coin}: {e}")
-                continue 
+                continue
                 
         save_json_atomic(MACRO_LEVELS_FILE, macro_base)
         print(f"✅ [TEST HUNTER] Сбор завершен! Создан файл: {MACRO_LEVELS_FILE}")
