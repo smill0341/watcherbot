@@ -5,8 +5,9 @@ def analyze_context(closes, highs, lows, current_atr, trade_type, level_min, lev
     Монолитный Макро-Аналитик Контекста
     Окно обзора: 192 свечи (2 суток на 15m)
     """
+    # Защита от отсутствия данных (для первых часов работы тестера)
     if len(closes) < 192:
-        return {"allowed": True, "reason": "Not enough data", "score": 0}
+        return {"allowed": True, "reason": "Not enough data", "score": 0, "approach": "NORMAL"}
 
     current_close = closes[-1]
     
@@ -20,52 +21,72 @@ def analyze_context(closes, highs, lows, current_atr, trade_type, level_min, lev
     is_counter_trend = False
     
     if trade_type == 'LONG':
-        # Если каждый следующий 16-часовой блок рисует максимумы ниже предыдущего - это жесткий дамп
         if max(b3_highs) < max(b2_highs) < max(b1_highs):
             is_counter_trend = True
     elif trade_type == 'SHORT':
-        # Если каждый блок рисует минимумы выше предыдущего - это жесткий памп
         if min(b3_lows) > min(b2_lows) > min(b1_lows):
             is_counter_trend = True
 
     # =================================================
-    # 2. ТИП ПОДХОДА (Momentum / Компрессия или Импульс)
-    # Окно: последние 4 часа (16 свечей)
+    # 2. ТИП ПОДХОДА (Два окна: Локальное 16 и Основное 64)
     # =================================================
     approach_status = "NORMAL"
-    recent_low = min(lows[-16:])
-    recent_high = max(highs[-16:])
+    
+    # Подсчет направленности свечей (красные/зеленые)
+    # Свеча "вниз" — это закрытие ниже предыдущего закрытия
+    down_16 = sum(1 for i in range(-16, 0) if closes[i] < closes[i-1])
+    up_16   = sum(1 for i in range(-16, 0) if closes[i] > closes[i-1])
+
+    # Средний размер свечи за 16 часов (проверка на "мелкие свечи")
+    avg_candle_size_64 = np.mean(highs[-64:] - lows[-64:])
     
     if trade_type == 'LONG':
-        move_down = recent_high - current_close
-        if move_down > (current_atr * 4.0):
-            approach_status = "IMPULSE_DUMP"  # Падающий нож
-        elif min(b3_lows) < min(b2_lows) < min(b1_lows) and move_down < (current_atr * 1.5):
-             approach_status = "COMPRESSION"  # Медленное сползание (давление продавца)
-             
+        move_down_16 = max(highs[-16:]) - current_close
+        
+        # --- IMPULSE (Падающий нож / 4 часа) ---
+        if move_down_16 > (current_atr * 3.5) and down_16 >= 12:
+            approach_status = "IMPULSE_DUMP"
+            
+        # --- COMPRESSION (Макро-поджатие / 16 часов) ---
+        else:
+            h1, h2, h3, h4 = max(highs[-64:-48]), max(highs[-48:-32]), max(highs[-32:-16]), max(highs[-16:])
+            
+            # Считаем наклон максимумов через простейшую линейную регрессию numpy
+            slope = np.polyfit([1, 2, 3, 4], [h1, h2, h3, h4], 1)[0]
+            
+            # Наклон отрицательный (давят вниз), свечи не огромные, нет панических распродаж
+            if (slope < 0) and (down_16 <= 10) and (avg_candle_size_64 < current_atr * 1.5):
+                approach_status = "COMPRESSION"
+                
     elif trade_type == 'SHORT':
-        move_up = current_close - recent_low
-        if move_up > (current_atr * 4.0):
-            approach_status = "IMPULSE_PUMP"  # Взлетающая ракета
-        elif max(b3_highs) > max(b2_highs) > max(b1_highs) and move_up < (current_atr * 1.5):
-             approach_status = "COMPRESSION"  # Медленное поджатие вверх
+        move_up_16 = current_close - min(lows[-16:])
+        
+        # --- IMPULSE (Взлетающая ракета / 4 часа) ---
+        if move_up_16 > (current_atr * 3.5) and up_16 >= 12:
+            approach_status = "IMPULSE_PUMP"
+            
+        # --- COMPRESSION (Макро-поджатие вверх / 16 часов) ---
+        else:
+            l1, l2, l3, l4 = min(lows[-64:-48]), min(lows[-48:-32]), min(lows[-32:-16]), min(lows[-16:])
+            
+            # Считаем наклон минимумов через простейшую линейную регрессию numpy
+            slope = np.polyfit([1, 2, 3, 4], [l1, l2, l3, l4], 1)[0]
+            
+            # Наклон положительный (давят вверх)
+            if (slope > 0) and (up_16 <= 10) and (avg_candle_size_64 < current_atr * 1.5):
+                approach_status = "COMPRESSION"
 
     # =================================================
     # 3. ПРИМАНКА (Inducement / Накопление ликвидности перед зоной)
-    # Ищем, была ли недавняя остановка ЦУТЬ-ЧУТЬ не доходя до уровня
     # =================================================
     has_inducement = False
-    
-    # Смотрим окно от 30 до 5 свечей назад (чтобы не цеплять текущий подход)
     window_lows = lows[-30:-5]
     window_highs = highs[-30:-5]
     
     if trade_type == 'LONG':
-        # Если был минимум в диапазоне от 0.2 до 1.5 ATR выше зоны - там скопились стопы
         if level_max < min(window_lows) <= (level_max + current_atr * 1.5):
             has_inducement = True
     elif trade_type == 'SHORT':
-        # Если был максимум чуть ниже зоны
         if (level_min - current_atr * 1.5) <= max(window_highs) < level_min:
             has_inducement = True
 
@@ -74,7 +95,7 @@ def analyze_context(closes, highs, lows, current_atr, trade_type, level_min, lev
     # =================================================
     zone_buffer = current_atr * 0.2
     candles_in_zone = sum(1 for c in closes[-62:-2] if (level_min - zone_buffer) <= c <= (level_max + zone_buffer))
-    is_chopped = candles_in_zone > 8  # Больше 8 свечей в зоне за последние 15 часов
+    is_chopped = candles_in_zone > 8 
 
     # =================================================
     # ФОРМИРОВАНИЕ ВЕРДИКТА
@@ -82,26 +103,23 @@ def analyze_context(closes, highs, lows, current_atr, trade_type, level_min, lev
     trade_allowed = True
     reasons = []
     
-    # Жесткие отказы (Красный свет)
     if is_chopped:
         trade_allowed = False
-        reasons.append("KILLED: Level Chopped (No Liquidity)")
+        reasons.append("KILLED: Level Chopped")
         
     if approach_status == "COMPRESSION":
         trade_allowed = False
-        reasons.append("KILLED: Approach Compression (High Risk of Breakout)")
+        reasons.append("KILLED: Approach Compression")
         
     if approach_status in ["IMPULSE_DUMP", "IMPULSE_PUMP"]:
         trade_allowed = False
-        reasons.append("KILLED: Freight Train (Falling Knife / Rocket)")
+        reasons.append("KILLED: Freight Train")
         
-    # Предупреждения (Влияют на вероятность, но могут быть отторгованы)
     if is_counter_trend:
-        reasons.append("WARNING: Counter-trend trade")
+        reasons.append("WARNING: Counter-trend")
         
-    # Позитивные факторы
     if has_inducement:
-        reasons.append("BONUS: Inducement found (Liquidity is primed)")
+        reasons.append("BONUS: Inducement found")
 
     if not reasons:
         reasons.append("Clear & Healthy Approach")
@@ -109,6 +127,7 @@ def analyze_context(closes, highs, lows, current_atr, trade_type, level_min, lev
     return {
         "allowed": trade_allowed,
         "reason": " | ".join(reasons),
+        "approach": approach_status,
         "has_inducement": has_inducement,
         "is_counter_trend": is_counter_trend
     }
