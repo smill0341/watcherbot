@@ -34,7 +34,7 @@ GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"tr
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "NEAR"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "APT"  # Впиши "ALL" для теста всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 1000 # Оптимально: ~10 дней актуальной истории
@@ -46,11 +46,11 @@ TAKE_PROFIT = 8.0   # Оригинальная цель в %
 SL_BUFFER = 1.0     # Оригинальный отступ стоп-лосса в %
 
 # ---рабочие фильтра ---
-USE_CONTEXT_FILTER  = False  # Вкл/Выкл продвинутый слой анализа тренда и поджатия
+USE_CONTEXT_FILTER  = True  # Вкл/Выкл продвинутый слой анализа тренда и поджатия
 
 ALLOW_LONG_TRADES  = True  
 ALLOW_SHORT_TRADES = False   
-MIN_SCORE = 4      # Минимальный балл зоны для входа 
+MIN_SCORE = 5      # Минимальный балл зоны для входа 
 USE_ZONE_GAP      = True   # Правило 2: Включить проверку "воздуха" между зонами
 MIN_ZONE_GAP_PCT  = 2.0   # Минимальный зазор между Поддержкой и ближайшим Сопротивлением в %
 MIN_ZONE_GAP_PCT  = 2.0   # Минимальный зазор между Поддержкой и ближайшим Сопротивлением в %
@@ -58,10 +58,10 @@ MIN_ZONE_GAP_PCT  = 2.0   # Минимальный зазор между Под�
 # --- ФИЛЬТР ОТСТАВАНИЯ (ДОГОНЯЮЩИЙ ВХОД) ---
 USE_DISTANCE_FILTER = True # Мягкий фильтр: отмена сделки, если цена улетела далеко от зоны
 MAX_DISTANCE_PCT    = 1.0  # Максимально допустимый отрыв от зоны в % (тестируем 1.0)
-USE_IMPULSE_FILTER  = False   # Включаем фильтр аномальных свечей в реальную работу
+USE_IMPULSE_FILTER  = True   # Включаем фильтр аномальных свечей в реальную работу
 
 # --- ТУМБЛЕРЫ ФИЛЬТРОВ ---
-USE_CHOCH        = False    # Слом структуры
+USE_CHOCH        = True    # Слом структуры
 
 USE_RR_FILTER    = False   # Математический фильтр R/R
 RR_RATIO         = 2.0     # Минимальный R/R
@@ -149,7 +149,19 @@ class SmartSniperUniversal(Strategy):
                 
                 self.current_period_key = period_key
                 self.burned_levels.clear()
-                self.watchers.clear()  # 🔥 Сбрасываем старых наблюдателей для нового периода!
+                # watchers НЕ очищаем - активные (BELOW/ABOVE, ждущие Reclaim)
+                # должны доживать свой цикл независимо от обновления списка уровней.
+                # Очищаем только watcher'ы для зон, которых больше нет в новом списке уровней.
+                current_level_ids = set()
+                for s in CURRENT_SUPPORTS:
+                    current_level_ids.add(f"LONG_{s['min']}_{s['max']}")
+                for r in CURRENT_RESISTANCES:
+                    current_level_ids.add(f"SHORT_{r['min']}_{r['max']}")
+                
+                self.watchers = {
+                    level_id: w for level_id, w in self.watchers.items()
+                    if level_id in current_level_ids or w.state not in ("FRESH", "TRIGGERED", "DEAD")
+                }
         
         # Записываем текущие уровни в датафрейм для отрисовки на графике
         # Берем верхнюю границу самой первой поддержки и нижнюю границу самого первого сопротивления
@@ -255,23 +267,13 @@ class SmartSniperUniversal(Strategy):
                     
                 watcher.ctx_cache = ctx_eval
 
-            # ==========================================
-            # ТВОЯ ПРОСТАЯ ЛОГИКА ВХОДА (ПОШЕЛ РОСТ ПОД EMA)
-            # ==========================================
-            ema_val = self.ema_4h_200[-1]
-            
-            # 1. БЕРЕМ НА ПРИЦЕЛ: Цена под EMA и упала в район уровня (допускаем недолет 2%)
-            if c_close < ema_val and c_close <= (sup['max'] * 1.02):
+            if signal and signal["action"] == "BUY":
+                micro_sl = signal['sl'] * (1 - 0.002) if signal['sl'] else (sup['min'] * (1 - SL_BUFFER/100))
+                ctx_eval = getattr(watcher, 'ctx_cache', {"allowed": True, "approach": "NORMAL"})
                 
-                # 2. ПОШЕЛ РОСТ: Текущая и предыдущая свечи закрылись в плюс (зеленые)
-                if (c_close > c_open) and (p_close > p_open):
-                    
-                    micro_sl = sup['min'] * (1 - SL_BUFFER/100)
-                    ctx_eval = getattr(watcher, 'ctx_cache', {"allowed": True, "approach": "NORMAL"})
-                    
-                    # 3. ВХОДИМ
-                    self._execute_long(sup, c_close, is_sfp=False, is_choch=False, ctx_eval=ctx_eval, custom_sl=micro_sl, entry_reason="SIMPLE_GROWTH")
-                    break
+                self._execute_long(sup, c_close, is_sfp=True, is_choch=True, ctx_eval=ctx_eval, custom_sl=micro_sl, entry_reason=signal['reason'])
+                GLOBAL_DEBUG_STATS["Passed_to_Trade"] += 1
+                break
 
         # ==========================================
         # 4. УМНЫЙ WATCHER: SHORT (Снайпер + Reclaim)
