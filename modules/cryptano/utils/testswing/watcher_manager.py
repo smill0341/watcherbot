@@ -109,7 +109,11 @@ class WatcherManager:
     def get_or_create_watcher(self, level, trade_type):
         level_id = self._level_id(level, trade_type)
         if level_id not in self._watchers:
-            self._watchers[level_id] = SweepReclaimWatcher(level['min'], level['max'], trade_type)
+            self._watchers[level_id] = SweepReclaimWatcher(
+                level['min'], level['max'], trade_type,
+                allow_bounce=self.config.get('ALLOW_BOUNCE', True),
+                allow_sweep=self.config.get('ALLOW_SWEEP', True),
+            )
         return self._watchers[level_id]
 
     def drop_watcher(self, level, trade_type):
@@ -133,6 +137,51 @@ class WatcherManager:
         for level_id in to_drop:
             del self._watchers[level_id]
 
+    def _calc_structural_target(self, entry_price, sl, trade_type, all_opposite_levels):
+        """
+        Считает TP от СТРУКТУРЫ рынка (следующий противоположный уровень),
+        а не от произвольного фиксированного %.
+
+        Логика (по принципам price action / risk-reward):
+          - Для LONG: TP = ближайшая resistance НАД входом, минус буфер
+          - Для SHORT: TP = ближайшая support ПОД входом, плюс буфер
+          - Если структурного уровня нет -> fallback на TAKE_PROFIT% из конфига
+          - Если R:R до структурного уровня меньше MIN_RR -> сделка отклоняется
+
+        Returns:
+            (tp, allow, reason)
+        """
+        min_rr = self.config.get('MIN_RR', 1.5)
+        tp_buffer_pct = self.config.get('TP_BUFFER_PCT', 0.3)  # не долетаем до самого уровня
+        fallback_tp_pct = self.config.get('TAKE_PROFIT', 8.0)
+
+        risk = abs(entry_price - sl)
+        if risk <= 0:
+            return None, False, "Invalid risk (SL == entry)"
+
+        if trade_type == 'LONG':
+            candidates = [lvl['min'] for lvl in all_opposite_levels if lvl['min'] > entry_price]
+            structural_level = min(candidates) if candidates else None
+            if structural_level is not None:
+                tp = structural_level * (1 - tp_buffer_pct / 100)
+            else:
+                tp = entry_price * (1 + fallback_tp_pct / 100)
+            reward = tp - entry_price
+        else:
+            candidates = [lvl['max'] for lvl in all_opposite_levels if lvl['max'] < entry_price]
+            structural_level = max(candidates) if candidates else None
+            if structural_level is not None:
+                tp = structural_level * (1 + tp_buffer_pct / 100)
+            else:
+                tp = entry_price * (1 - fallback_tp_pct / 100)
+            reward = entry_price - tp
+
+        rr = reward / risk if risk > 0 else 0
+        if rr < min_rr:
+            return None, False, f"R/R to structure {rr:.2f} < {min_rr} (target too close)"
+
+        return tp, True, f"Structural TP, R/R={rr:.2f}"
+
     def evaluate_sweep_reclaim(self, level, c_open, c_high, c_low, c_close,
                                 all_opposite_levels, trade_type):
         """
@@ -153,22 +202,31 @@ class WatcherManager:
             return self._deny(f"No signal (watcher state: {watcher.state})")
 
         current_price = c_close
+        sl_buffer_mult = 1 - (self.config.get('SL_BUFFER', 1.0) / 100)
+        
         if trade_type == 'LONG':
-            sl = signal['sl'] if signal['sl'] is not None else level['min'] * (1 - self.config.get('SL_BUFFER', 1.0) / 100)
-            sl = sl * (1 - 0.002) if signal['sl'] is not None else sl
-            tp = current_price * (1 + self.config.get('TAKE_PROFIT', 8.0) / 100)
+            # SL берётся от watcher, но применяется буфер (отодвигаем вниз)
+            sl = signal['sl'] * sl_buffer_mult
+            sl = sl * (1 - 0.002)  # проскальзывание
         else:
-            sl = signal['sl'] if signal['sl'] is not None else level['max'] * (1 + self.config.get('SL_BUFFER', 1.0) / 100)
-            sl = sl * (1 + 0.002) if signal['sl'] is not None else sl
-            tp = current_price * (1 - self.config.get('TAKE_PROFIT', 8.0) / 100)
+            sl_buffer_mult = 1 + (self.config.get('SL_BUFFER', 1.0) / 100)
+            sl = signal['sl'] * sl_buffer_mult
+            sl = sl * (1 + 0.002)
+
+        tp, tp_ok, tp_reason = self._calc_structural_target(current_price, sl, trade_type, all_opposite_levels)
+        if not tp_ok:
+            return self._deny(tp_reason)
 
         return {
             'allow': True,
-            'reason': signal['reason'],
+            'reason': f"{signal['reason']} | {tp_reason}",
             'sl': sl,
             'tp': tp,
             'level_id': self._level_id(level, trade_type),
             'extreme_price': watcher.extreme_price,
+            'is_real_sweep': signal.get('is_real_sweep', False),
+            'overshoot_pct': signal.get('overshoot_pct', 0.0),
+            'candles_in_sweep': signal.get('candles_in_sweep', 0),
         }
 
     # =====================================================================
@@ -198,28 +256,19 @@ class WatcherManager:
 
         current_price = float(df['close'].iloc[-1])
         sl_buffer = self.config.get('SL_BUFFER', 0.5)
-        tp_pct = self.config.get('TAKE_PROFIT', 10.0)
 
         if trade_type == 'LONG':
             sl = level['min'] * (1 - sl_buffer / 100)
-            tp = current_price * (1 + tp_pct / 100)
-            risk = current_price - sl
-            reward = tp - current_price
         else:
             sl = level['max'] * (1 + sl_buffer / 100)
-            tp = current_price * (1 - tp_pct / 100)
-            risk = sl - current_price
-            reward = current_price - tp
 
-        if self.config.get('USE_RR_FILTER', True):
-            rr_ratio = self.config.get('RR_RATIO', 3.0)
-            if risk <= 0 or (reward / risk) < rr_ratio:
-                rr_val = (reward / risk) if risk > 0 else 0
-                return self._deny(f"R/R {rr_val:.2f} < {rr_ratio}")
+        tp, tp_ok, tp_reason = self._calc_structural_target(current_price, sl, trade_type, all_opposite_levels)
+        if not tp_ok:
+            return self._deny(tp_reason)
 
         return {
             'allow': True,
-            'reason': signal['reason'],
+            'reason': f"{signal['reason']} | {tp_reason}",
             'sl': sl,
             'tp': tp,
             'level_id': self._level_id(level, trade_type),
@@ -228,4 +277,5 @@ class WatcherManager:
 
     @staticmethod
     def _deny(reason):
-        return {'allow': False, 'reason': reason, 'sl': None, 'tp': None, 'level_id': None, 'extreme_price': None}
+        return {'allow': False, 'reason': reason, 'sl': None, 'tp': None, 'level_id': None, 'extreme_price': None,
+                'is_real_sweep': False, 'overshoot_pct': 0.0, 'candles_in_sweep': 0}

@@ -44,11 +44,18 @@ from scipy.signal import find_peaks
 # =========================================================
 # БАЗОВЫЕ ВЕСА ИСТОЧНИКОВ
 # =========================================================
-SCORE_PMH_PML = 5.0
-SCORE_PWH_PWL = 4.0
-SCORE_FIND_PEAKS = 3.0
-SCORE_PDH_PDL = 2.0
-POC_BONUS = 1.0
+# Иерархия по принципу: доказанный рынком сигнал > календарная метка.
+# find_peaks = цена РЕАЛЬНО развернулась здесь (price evidence) - самый сильный
+# POC        = здесь торговали больше всего объёма (volume evidence) - тоже самостоятельный
+# PWH/PMH/PDH = просто "вчера/на неделе/в месяце был такой-то экстремум" -
+#               НЕТ собственного доказательства, работают только как бонус
+#               при совпадении с find_peaks или POC
+SCORE_FIND_PEAKS = 4.0
+SCORE_POC = 3.0
+SCORE_PWH_PWL = 1.0
+SCORE_PMH_PML = 1.0
+SCORE_PDH_PDL = 1.0
+POC_BONUS = 1.0  # бонус к существующей зоне, если POC совпал с ней (отдельно от SCORE_POC)
 
 # find_peaks-слой (lookahead-фильтр - старый алгоритм)
 IMPULSE_ATR_MULTIPLIER = 2.5
@@ -400,13 +407,20 @@ def _get_poc(df_4h, current_price):
     return float(poc_bin.mid), float(atr_4h)
 
 
-def _apply_poc_confluence(zones, poc_price, atr_4h):
-    """Если POC попадает в существующую зону - добавляем +1 к score этой зоны."""
+def _apply_poc_confluence(zones, poc_price, atr_4h, current_idx_date=None):
+    """
+    Если POC попадает в существующую зону (find_peaks/PWH/PMH/PDH) -
+    добавляем бонус (confluence: цена + объём совпали - сильный сигнал).
+    Если POC НЕ совпал ни с одной зоной - создаёт СВОЮ самостоятельную зону
+    со SCORE_POC, потому что объём - это собственное рыночное доказательство,
+    а не календарная метка (как PMH/PWH/PDH).
+    """
     if poc_price is None:
         return zones
     poc_half = atr_4h * 0.5
     poc_min, poc_max = poc_price - poc_half, poc_price + poc_half
 
+    matched_any = False
     for z in zones:
         overlap = min(z['max'], poc_max) - max(z['min'], poc_min)
         if overlap > 0:
@@ -414,6 +428,21 @@ def _apply_poc_confluence(zones, poc_price, atr_4h):
             existing_type = z.get('type', '')
             if '4h_poc' not in existing_type:
                 z['type'] = f"{existing_type}+4h_poc"
+            matched_any = True
+
+    if not matched_any:
+        # POC сам по себе - самостоятельная зона с собственным доказательством (объём)
+        poc_zone = {
+            "min": float(poc_min),
+            "max": float(poc_max),
+            "score": SCORE_POC,
+            "type": "4h_poc_standalone",
+            "date": current_idx_date or "",
+            "mitigated": False,
+            "reaction_count": 0,
+        }
+        zones.append(poc_zone)
+
     return zones
 
 
@@ -542,10 +571,11 @@ def build_levels(df_1d, df_4h, coin, current_idx=None):
     all_zones += _extract_daily_extremes(df_1d, PERIODS_DAYS_BACK, current_price, atr_1d,
                                           max_distance, current_idx)
 
-    # 5. POC confluence-бонус (не отдельная зона, просто бонус к существующим)
+    # 5. POC: если совпал с существующей зоной - бонус, если нет - своя зона (volume evidence)
     if df_4h is not None and len(df_4h) >= 50:
         poc_price, atr_4h = _get_poc(df_4h, current_price)
-        all_zones = _apply_poc_confluence(all_zones, poc_price, atr_4h)
+        poc_date_str = pd.to_datetime(df_4h['timestamp'].iloc[-1], unit='ms').strftime('%Y-%m-%d')
+        all_zones = _apply_poc_confluence(all_zones, poc_price, atr_4h, poc_date_str)
 
     # Убираем mitigated-зоны - они не актуальны без подтверждённого слома структуры.
     all_zones = [z for z in all_zones if not z['mitigated']]

@@ -23,6 +23,7 @@ from modules.cryptano.utils.crypto_utils import exchange
 from modules.cryptano.utils.storage import load_json
 from modules.cryptano.utils.testswing.context_filter import analyze_context
 from modules.cryptano.utils.testswing.watcher_manager import WatcherManager
+from modules.cryptano.utils.testswing.exit_manager import ExitManager
 
 
 GLOBAL_DEBUG_STATS = {
@@ -46,6 +47,7 @@ TIMEFRAME = "15m"
 LIMIT_CANDLES = 1000
 
 TEST_START_DATE = "2026-04-01 00:00:00"
+WARMUP_DAYS = 12  # запас данных ДО начала теста - нужен 4H контексту (64 свечи x 4ч = ~10.6 дней)
 
 ALLOW_LONG_TRADES = True
 ALLOW_SHORT_TRADES = False
@@ -61,13 +63,21 @@ WATCHER_CONFIG = {
     'USE_ZONE_GAP': True,
     'MIN_ZONE_GAP_PCT': 2.0,
     'USE_LEVEL_BURN': True,
-    'TAKE_PROFIT': 8.0,
     'SL_BUFFER': 1.0,
+    # Изоляция двух разных паттернов внутри SWEEP_RECLAIM, чтобы тестировать их раздельно:
+    # ALLOW_BOUNCE - касание + отказ БЕЗ выноса ликвидности за уровень
+    # ALLOW_SWEEP  - настоящий вынос за уровень + возврат (Reclaim)
+    'ALLOW_BOUNCE': True,
+    'ALLOW_SWEEP': True,
+    # TP теперь СТРУКТУРНЫЙ: считается от следующего противоположного уровня,
+    # не от фиксированного %. TAKE_PROFIT используется только как fallback,
+    # если структурного уровня вообще нет на графике.
+    'TAKE_PROFIT': 8.0,       # fallback %, если нет следующего уровня
+    'TP_BUFFER_PCT': 0.3,     # не долетаем до самого уровня на этот %
+    'MIN_RR': 1.5,            # если до следующего уровня R/R меньше - сделка отклоняется
     # только для CHOCH:
     'CHOCH_LOOKBACK': 15,
     'CHOCH_ANTI_KNIFE_ATR_MULT': 0.8,
-    'USE_RR_FILTER': True,
-    'RR_RATIO': 2.0,
 }
 
 CURRENT_SUPPORTS = []
@@ -79,8 +89,11 @@ def SMA(arr, n):
 
 
 class SmartSniperUniversal(Strategy):
+    context_df_4h: pd.DataFrame = None  # type: ignore # будет установлен снаружи перед bt.run() через build_4h_context_df()
+
     def init(self):
         self.manager = WatcherManager(strategy=STRATEGY, config=WATCHER_CONFIG)
+        self.exit_mgr = ExitManager()  # Менеджер выхода из позиции
         self.level_states = {}
         self.last_closed_trades = 0
         self.current_trade_level_id = None
@@ -99,8 +112,22 @@ class SmartSniperUniversal(Strategy):
     def next(self):
         global GLOBAL_DEBUG_STATS, CURRENT_SUPPORTS, CURRENT_RESISTANCES, GLOBAL_TIMELINE, TARGET_COIN_CURRENT
 
+        # === ПРОВЕРКА ВЫХОДА ИЗ ПОЗИЦИИ ===
+        if self.exit_mgr.is_open() and self.position:
+            c_high, c_low, c_close = self.data.High[-1], self.data.Low[-1], self.data.Close[-1]
+            exit_triggered, exit_reason, exit_price = self.exit_mgr.check_exit(c_high, c_low, c_close)
+            if exit_triggered:
+                # Закрываем позицию
+                self.position.close()
+                self.exit_mgr.close_position()
+
         # --- МАШИНА ВРЕМЕНИ: обновление уровней каждые 12 часов ---
         current_time = pd.to_datetime(self.data.index[-1])
+
+        # === WARMUP: до TEST_START_DATE сделки не открываем, это запас данных для 4H контекста ===
+        if TEST_START_DATE and current_time < pd.to_datetime(TEST_START_DATE):
+            return
+
         period_key = current_time.floor('12h').strftime("%Y-%m-%d %H:%M:%S")
 
         if getattr(self, 'current_period_key', None) != period_key:
@@ -121,9 +148,18 @@ class SmartSniperUniversal(Strategy):
                         current_level_ids.add(f"SHORT_{r['min']}_{r['max']}")
                     self.manager.clear_dead_watchers(current_level_ids)
 
-        # Отрисовка уровней на графике
-        active_sup = CURRENT_SUPPORTS[0]['max'] if CURRENT_SUPPORTS else np.nan
-        active_res = CURRENT_RESISTANCES[0]['min'] if CURRENT_RESISTANCES else np.nan
+        # Отрисовка уровней на графике.
+        # Пока позиция открыта - показываем ИМЕННО тот уровень, по которому вошли
+        # (не первый из списка), чтобы линия на графике совпадала с реальным входом.
+        if self.position and getattr(self, 'last_entered_level', None) is not None:
+            active_min, active_max, entered_type = self.last_entered_level
+            if entered_type == 'LONG':
+                active_sup, active_res = active_max, np.nan
+            else:
+                active_sup, active_res = np.nan, active_min
+        else:
+            active_sup = CURRENT_SUPPORTS[0]['max'] if CURRENT_SUPPORTS else np.nan
+            active_res = CURRENT_RESISTANCES[0]['min'] if CURRENT_RESISTANCES else np.nan
         self.data.df.loc[self.data.index[-1], 'sup_max'] = active_sup
         self.data.df.loc[self.data.index[-1], 'res_min'] = active_res
 
@@ -204,8 +240,24 @@ class SmartSniperUniversal(Strategy):
         """
         global GLOBAL_TRADE_CONTEXTS, GLOBAL_DEBUG_STATS
 
-        ctx_eval = analyze_context(self.data.Close, self.data.High, self.data.Low, c_atr,
-                                    trade_type, level['min'], level['max'])
+        # --- Контекст теперь считается на 4H, не на 15m ---
+        # Берём только ЗАКРЫТЫЕ 4H свечи (открытая текущая 4H свеча не используется,
+        # чтобы не заглядывать в будущее относительно текущего 15m бара).
+        current_time = pd.to_datetime(self.data.index[-1])
+        df_4h_ctx = getattr(self, 'context_df_4h', None)
+        if df_4h_ctx is not None and len(df_4h_ctx) > 0:
+            closed_4h = df_4h_ctx[df_4h_ctx.index + pd.Timedelta(hours=4) <= current_time]
+        else:
+            closed_4h = pd.DataFrame()
+
+        if len(closed_4h) >= 20:
+            ctx_window = closed_4h.tail(64)
+            ctx_eval = analyze_context(ctx_window['Close'].values, ctx_window['High'].values,
+                                        ctx_window['Low'].values, c_atr,
+                                        trade_type, level['min'], level['max'])
+        else:
+            ctx_eval = {"allowed": True, "reason": "Not enough 4H data", "approach": "UNKNOWN",
+                        "trend": "UNKNOWN", "energy": "UNKNOWN"}
         if USE_CONTEXT_FILTER and not ctx_eval['allowed']:
             GLOBAL_DEBUG_STATS["Killed_by_CONTEXT"] += 1
             return
@@ -231,21 +283,35 @@ class SmartSniperUniversal(Strategy):
             "state": lvl_state,
             "score": level.get('score', 0),
             "type": level.get('type', 'unknown'),
+            "level_min": round(level['min'], 4),
+            "level_max": round(level['max'], 4),
             "width": round((zone_range / level['min']) * 100, 2),
             "gap": round(gap_pct, 2),
             "depth": round(entry_depth, 1),
             "approach": ctx_eval.get("approach", "UNKNOWN"),
+            "trend": ctx_eval.get("trend", "UNKNOWN"),
+            "energy": ctx_eval.get("energy", "UNKNOWN"),
+            "context_reason": ctx_eval.get("reason", ""),  # Полное описание контекста
             "reason": decision['reason'],
             "ema_dist": round(ema_dist_pct, 2),
+            "is_real_sweep": decision.get('is_real_sweep', False),
+            "overshoot_pct": round(decision.get('overshoot_pct', 0.0), 3),
+            "candles_in_sweep": decision.get('candles_in_sweep', 0),
+            "entry_price": round(current_price, 8),
+            "sl": round(decision.get('sl', 0.0), 8),
+            "tp": round(decision.get('tp', 0.0), 8),
         }
 
         self.current_trade_level_id = decision['level_id']
+        self.last_entered_level = (level['min'], level['max'], trade_type)
         GLOBAL_DEBUG_STATS["Passed_to_Trade"] += 1
 
         if trade_type == 'LONG':
             self.buy(sl=decision['sl'], tp=decision['tp'])
+            self.exit_mgr.open_position('LONG', current_price, decision['tp'], decision['sl'])
         else:
             self.sell(sl=decision['sl'], tp=decision['tp'])
+            self.exit_mgr.open_position('SHORT', current_price, decision['tp'], decision['sl'])
 
 
 # =========================================================
@@ -265,20 +331,37 @@ def get_cached_data(coin):
     symbol_spot = f"{coin.upper()}/USDT"
     symbol = symbol_perp if exchange.markets and symbol_perp in exchange.markets else symbol_spot
     date_suffix = TEST_START_DATE[:10] if TEST_START_DATE else "live"
-    cache_file = f"cache_{coin.lower()}_{TIMEFRAME}_{LIMIT_CANDLES}_{date_suffix}.csv"
+    cache_file = f"cache_{coin.lower()}_{TIMEFRAME}_{LIMIT_CANDLES}_w{WARMUP_DAYS}_{date_suffix}.csv"
 
     if os.path.exists(cache_file):
         return pd.read_csv(cache_file, index_col=0, parse_dates=True)
     else:
         try:
-            since_ts = int((pd.to_datetime(TEST_START_DATE) - pd.Timedelta(days=1)).timestamp() * 1000) if TEST_START_DATE else None
-            ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=LIMIT_CANDLES, since=since_ts) if since_ts else exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=LIMIT_CANDLES)
+            CANDLES_PER_DAY_15M = 96  # 24ч * 4 свечи/час
+            warmup_candles = WARMUP_DAYS * CANDLES_PER_DAY_15M
+            total_limit = LIMIT_CANDLES + warmup_candles
+            since_ts = int((pd.to_datetime(TEST_START_DATE) - pd.Timedelta(days=WARMUP_DAYS)).timestamp() * 1000) if TEST_START_DATE else None
+            ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=total_limit, since=since_ts) if since_ts else exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=LIMIT_CANDLES)
             df = pd.DataFrame(ohlcv, columns=["Open_time", "Open", "High", "Low", "Close", "Volume"])
             df.index = pd.to_datetime(df["Open_time"], unit="ms")
             df.to_csv(cache_file)
             return df
         except Exception:
             return pd.DataFrame()
+
+
+def build_4h_context_df(df_15m):
+    """
+    Ресемплит 15m данные в 4H СВЕЧИ для контекста (тренд/энергия/импульс).
+    Без сетевых запросов - чистая агрегация уже загруженных 15m данных.
+    Контекст теперь смотрит на 4H картину, а не на последние ~16 часов 15m шума.
+    """
+    if df_15m.empty:
+        return pd.DataFrame()
+    df_4h = df_15m.resample('4h').agg({
+        'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+    }).dropna()
+    return df_4h
 
 
 try:
@@ -306,14 +389,65 @@ def print_trade_log(coin, tr, trade_type_filter=None):
         if row['PnL'] > 0:
             GLOBAL_APPROACH_STATS[app]["win"] += 1
 
+        sweep_type = "SWEEP+RECLAIM" if ctx.get('is_real_sweep', False) else "BOUNCE(no sweep)"
+        if sweep_type not in GLOBAL_SWEEP_STATS:
+            GLOBAL_SWEEP_STATS[sweep_type] = {"trades": 0, "win": 0}
+        GLOBAL_SWEEP_STATS[sweep_type]["trades"] += 1
+        if row['PnL'] > 0:
+            GLOBAL_SWEEP_STATS[sweep_type]["win"] += 1
+
+        # --- Группировка по Score ---
+        score = ctx.get('score', 0)
+        score_bucket = f"{int(score)}" if score else "?"
+        if score_bucket not in GLOBAL_SCORE_STATS:
+            GLOBAL_SCORE_STATS[score_bucket] = {"trades": 0, "win": 0, "pnl": 0.0}
+        GLOBAL_SCORE_STATS[score_bucket]["trades"] += 1
+        if row['PnL'] > 0:
+            GLOBAL_SCORE_STATS[score_bucket]["win"] += 1
+        GLOBAL_SCORE_STATS[score_bucket]["pnl"] += row['ReturnPct'] * 100
+
+        # --- Группировка по Trend ---
+        trend = ctx.get('trend', 'UNKNOWN')
+        if trend not in GLOBAL_TREND_STATS:
+            GLOBAL_TREND_STATS[trend] = {"trades": 0, "win": 0, "pnl": 0.0}
+        GLOBAL_TREND_STATS[trend]["trades"] += 1
+        if row['PnL'] > 0:
+            GLOBAL_TREND_STATS[trend]["win"] += 1
+        GLOBAL_TREND_STATS[trend]["pnl"] += row['ReturnPct'] * 100
+
+        # --- Группировка по EMA позиции ---
+        ema_dist = ctx.get('ema_dist', 0)
+        if ema_dist is not None and isinstance(ema_dist, (int, float)):
+            ema_bucket = "ВЫШЕ EMA" if ema_dist > 0 else "НИЖЕ EMA"
+        else:
+            ema_bucket = "?"
+        if ema_bucket not in GLOBAL_EMA_STATS:
+            GLOBAL_EMA_STATS[ema_bucket] = {"trades": 0, "win": 0, "pnl": 0.0}
+        GLOBAL_EMA_STATS[ema_bucket]["trades"] += 1
+        if row['PnL'] > 0:
+            GLOBAL_EMA_STATS[ema_bucket]["win"] += 1
+        GLOBAL_EMA_STATS[ema_bucket]["pnl"] += row['ReturnPct'] * 100
+
         log_str = (f"{coin.upper()} | {trade_type} | Рез: {row['ReturnPct']*100:.2f}% | "
-                   f" {ctx.get('state','?')} |  {ctx.get('approach','?')} | EMA Dist: {ctx.get('ema_dist','?')}% | Score: {ctx.get('score','?')} | "
-                   f"ГЛУБИНА: {ctx.get('depth','?')}% | Ширина: {ctx.get('width','?')}% | Gap: {ctx.get('gap','?')}%")
+                   f"Entry:{ctx.get('entry_price','?')} SL:{ctx.get('sl','?')} TP:{ctx.get('tp','?')} | "
+                   f"УРОВЕНЬ:[{ctx.get('level_min','?')}-{ctx.get('level_max','?')}] | "
+                   f"[{sweep_type} | overshoot:{ctx.get('overshoot_pct','?')}% | свечей_в_sweep:{ctx.get('candles_in_sweep','?')}] | "
+                   f"{ctx.get('state','?')} | {ctx.get('approach','?')} | "
+                   f"TREND:{ctx.get('trend','?')} ENERGY:{ctx.get('energy','?')} | "
+                   f"EMA Dist: {ctx.get('ema_dist','?')}% | Score: {ctx.get('score','?')} | "
+                   f"ГЛУБИНА: {ctx.get('depth','?')}% | Ширина: {ctx.get('width','?')}% | Gap: {ctx.get('gap','?')}% | "
+                   f"CTX: {ctx.get('context_reason','')}")
 
         if row['PnL'] <= 0:
             GLOBAL_LOSERS_LOG.append("❌ " + log_str)
         else:
             GLOBAL_WINNERS_LOG.append("✅ " + log_str)
+
+
+GLOBAL_SWEEP_STATS = {}
+GLOBAL_SCORE_STATS = {}
+GLOBAL_TREND_STATS = {}
+GLOBAL_EMA_STATS = {}
 
 
 GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"trades": 0, "win": 0}, "NORMAL": {"trades": 0, "win": 0}}
@@ -337,6 +471,7 @@ if TARGET_COIN.upper() == "ALL":
         df['sup_max'] = np.nan
         df['res_min'] = np.nan
 
+        SmartSniperUniversal.context_df_4h = build_4h_context_df(df)
         bt = Backtest(df, SmartSniperUniversal, cash=10000, commission=.0006, hedging=False)
         stats = bt.run()
 
@@ -396,6 +531,44 @@ if TARGET_COIN.upper() == "ALL":
             wr = (data["win"] / data["trades"]) * 100
             print(f"{app}: trades={data['trades']}  WR={wr:.1f}%")
 
+    print("\n" + "=" * 85)
+    print("🔍 ПРОВЕРКА: BOUNCE (без sweep) vs РЕАЛЬНЫЙ SWEEP+RECLAIM")
+    print("=" * 85)
+    total_sweep_trades = sum(d["trades"] for d in GLOBAL_SWEEP_STATS.values())
+    for sweep_type, data in GLOBAL_SWEEP_STATS.items():
+        if data["trades"] > 0:
+            wr = (data["win"] / data["trades"]) * 100
+            share = (data["trades"] / total_sweep_trades) * 100 if total_sweep_trades > 0 else 0
+            print(f"{sweep_type}: trades={data['trades']} ({share:.0f}% от всех)  WR={wr:.1f}%")
+
+    print("\n" + "=" * 85)
+    print("📊 SCORE vs РЕЗУЛЬТАТ (даёт ли Score преимущество?)")
+    print("=" * 85)
+    for score in sorted(GLOBAL_SCORE_STATS.keys()):
+        d = GLOBAL_SCORE_STATS[score]
+        if d["trades"] > 0:
+            wr = (d["win"] / d["trades"]) * 100
+            avg = d["pnl"] / d["trades"]
+            print(f"Score {score}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%")
+
+    print("\n" + "=" * 85)
+    print("📊 TREND vs РЕЗУЛЬТАТ")
+    print("=" * 85)
+    for trend, d in GLOBAL_TREND_STATS.items():
+        if d["trades"] > 0:
+            wr = (d["win"] / d["trades"]) * 100
+            avg = d["pnl"] / d["trades"]
+            print(f"{trend}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%")
+
+    print("\n" + "=" * 85)
+    print("📊 ПОЗИЦИЯ vs EMA (LONG выше/ниже EMA)")
+    print("=" * 85)
+    for ema, d in GLOBAL_EMA_STATS.items():
+        if d["trades"] > 0:
+            wr = (d["win"] / d["trades"]) * 100
+            avg = d["pnl"] / d["trades"]
+            print(f"{ema}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%")
+
 else:
     print(f"📥 Запускаю детальный тест для {TARGET_COIN.upper()} (стратегия: {STRATEGY})...")
     TARGET_COIN_CURRENT = TARGET_COIN.upper()
@@ -413,6 +586,7 @@ else:
             df['sup_max'] = np.nan
             df['res_min'] = np.nan
 
+            SmartSniperUniversal.context_df_4h = build_4h_context_df(df)
             bt = Backtest(df, SmartSniperUniversal, cash=10000, commission=.0006, hedging=False)
             stats = bt.run()
 
@@ -439,6 +613,44 @@ else:
                     if data["trades"] > 0:
                         wr = (data["win"] / data["trades"]) * 100
                         print(f"{app}: trades={data['trades']}  WR={wr:.1f}%")
+
+                print("\n" + "=" * 85)
+                print("🔍 ПРОВЕРКА: BOUNCE (без sweep) vs РЕАЛЬНЫЙ SWEEP+RECLAIM")
+                print("=" * 85)
+                total_sweep_trades = sum(d["trades"] for d in GLOBAL_SWEEP_STATS.values())
+                for sweep_type, data in GLOBAL_SWEEP_STATS.items():
+                    if data["trades"] > 0:
+                        wr = (data["win"] / data["trades"]) * 100
+                        share = (data["trades"] / total_sweep_trades) * 100 if total_sweep_trades > 0 else 0
+                        print(f"{sweep_type}: trades={data['trades']} ({share:.0f}% от всех)  WR={wr:.1f}%")
+
+                print("\n" + "=" * 85)
+                print("📊 SCORE vs РЕЗУЛЬТАТ (даёт ли Score преимущество?)")
+                print("=" * 85)
+                for score in sorted(GLOBAL_SCORE_STATS.keys()):
+                    d = GLOBAL_SCORE_STATS[score]
+                    if d["trades"] > 0:
+                        wr = (d["win"] / d["trades"]) * 100
+                        avg = d["pnl"] / d["trades"]
+                        print(f"Score {score}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%")
+
+                print("\n" + "=" * 85)
+                print("📊 TREND vs РЕЗУЛЬТАТ")
+                print("=" * 85)
+                for trend, d in GLOBAL_TREND_STATS.items():
+                    if d["trades"] > 0:
+                        wr = (d["win"] / d["trades"]) * 100
+                        avg = d["pnl"] / d["trades"]
+                        print(f"{trend}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%")
+
+                print("\n" + "=" * 85)
+                print("📊 ПОЗИЦИЯ vs EMA (LONG выше/ниже EMA)")
+                print("=" * 85)
+                for ema, d in GLOBAL_EMA_STATS.items():
+                    if d["trades"] > 0:
+                        wr = (d["win"] / d["trades"]) * 100
+                        avg = d["pnl"] / d["trades"]
+                        print(f"{ema}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%")
 
             chart_path = os.path.abspath(f'chart_{TARGET_COIN.lower()}.html')
             try:

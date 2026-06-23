@@ -35,12 +35,15 @@ class SweepReclaimWatcher:
       SHORT: симметрично, относительно max зоны
     """
 
-    def __init__(self, level_min, level_max, trade_type):
+    def __init__(self, level_min, level_max, trade_type, allow_bounce=True, allow_sweep=True):
         self.min = level_min
         self.max = level_max
         self.trade_type = trade_type
         self.state = "FRESH"
         self.extreme_price = None
+        self.candles_in_sweep = 0  # сколько свечей просидели в BELOW/ABOVE
+        self.allow_bounce = allow_bounce  # разрешён ли сигнал "Касание+Отказ" (без sweep)
+        self.allow_sweep = allow_sweep    # разрешён ли сигнал "Sweep+Reclaim" (настоящий вынос)
 
     def update(self, c_open, c_high, c_low, c_close):
         if self.state in ["DEAD", "TRIGGERED"]:
@@ -48,35 +51,78 @@ class SweepReclaimWatcher:
 
         if self.trade_type == 'LONG':
             if self.state == "FRESH":
-                if c_low <= self.max:
-                    if c_close < self.min:
-                        self.state = "BELOW"
-                        self.extreme_price = c_low
-                    else:
-                        self.state = "TRIGGERED"
-                        return {"action": "BUY", "sl": None, "reason": "Первое касание (Отскок)"}
+                touched = c_low <= self.max
+                if not touched:
+                    return None
+
+                if c_close < self.min:
+                    if not self.allow_sweep:
+                        return None  # Sweep-паттерн выключен - игнорируем, остаёмся FRESH
+                    # Цена закрылась НИЖЕ зоны (Sweep) -> ждём Reclaim
+                    self.state = "BELOW"
+                    self.extreme_price = c_low
+                    self.candles_in_sweep = 1
+                elif c_close > c_open:
+                    if not self.allow_bounce:
+                        return None  # Bounce-паттерн выключен - игнорируем
+                    # Реальный отказ: касание зоны + бычья свеча (close > open)
+                    # close остаётся в зоне или выше -> мгновенный сигнал
+                    self.state = "TRIGGERED"
+                    return {"action": "BUY", "sl": c_low, "reason": "Касание + Отказ (Bounce)",
+                            "is_real_sweep": False, "overshoot_pct": 0.0, "candles_in_sweep": 0}
+                # Если касание было, но свеча красная и close в зоне - не сигнал,
+                # ждём следующую свечу (state остаётся FRESH)
 
             elif self.state == "BELOW":
-                self.extreme_price = min(self.extreme_price, c_low) if self.extreme_price is not None else c_low
+                self.candles_in_sweep += 1
+                if self.extreme_price is None:
+                    self.extreme_price = c_low
+                else:
+                    self.extreme_price = min(self.extreme_price, c_low)
+                # Reclaim = цена вернулась выше min (закрылась в зоне или выше)
                 if c_close > self.min:
                     self.state = "TRIGGERED"
-                    return {"action": "BUY", "sl": self.extreme_price, "reason": "Возврат (Reclaim выноса)"}
+                    overshoot_pct = ((self.min - self.extreme_price) / self.min) * 100
+                    return {"action": "BUY", "sl": self.extreme_price, "reason": "Возврат (Reclaim выноса)",
+                            "is_real_sweep": True, "overshoot_pct": overshoot_pct,
+                            "candles_in_sweep": self.candles_in_sweep}
 
         elif self.trade_type == 'SHORT':
             if self.state == "FRESH":
-                if c_high >= self.min:
-                    if c_close > self.max:
-                        self.state = "ABOVE"
-                        self.extreme_price = c_high
-                    else:
-                        self.state = "TRIGGERED"
-                        return {"action": "SELL", "sl": None, "reason": "Первое касание (Отскок)"}
+                touched = c_high >= self.min
+                if not touched:
+                    return None
+
+                if c_close > self.max:
+                    if not self.allow_sweep:
+                        return None
+                    # Цена закрылась ВЫШЕ зоны (Sweep) -> ждём Reclaim
+                    self.state = "ABOVE"
+                    self.extreme_price = c_high
+                    self.candles_in_sweep = 1
+                elif c_close < c_open:
+                    if not self.allow_bounce:
+                        return None
+                    # Реальный отказ: касание зоны + медвежья свеча (close < open)
+                    self.state = "TRIGGERED"
+                    return {"action": "SELL", "sl": c_high, "reason": "Касание + Отказ (Bounce)",
+                            "is_real_sweep": False, "overshoot_pct": 0.0, "candles_in_sweep": 0}
+                # Если касание было, но свеча зелёная и close в зоне - не сигнал
 
             elif self.state == "ABOVE":
-                self.extreme_price = max(self.extreme_price, c_high) if self.extreme_price is not None else c_high
+                self.candles_in_sweep += 1
+                if self.extreme_price is None:
+                    self.extreme_price = c_high
+                else:
+                    self.extreme_price = max(self.extreme_price, c_high)
+                # Reclaim = цена вернулась ниже max (закрылась в зоне или ниже)
                 if c_close < self.max:
                     self.state = "TRIGGERED"
-                    return {"action": "SELL", "sl": self.extreme_price, "reason": "Возврат (Reclaim выноса)"}
+                    overshoot_pct = ((self.extreme_price - self.max) / self.max) * 100
+                    return {"action": "SELL", "sl": self.extreme_price, "reason": "Возврат (Reclaim выноса)",
+                            "is_real_sweep": True, "overshoot_pct": overshoot_pct,
+                            "candles_in_sweep": self.candles_in_sweep}
+
 
         return None
 
@@ -143,7 +189,7 @@ def check_choch(df, level, direction, lookback=15, sl_buffer_pct=0.5,
                 wait_for_choch = False
                 active_level = None
 
-            if wait_for_choch:
+            if wait_for_choch and choch_level is not None:
                 if direction == "LONG" and c_close > choch_level:
                     if i == len(df) - 1:
                         return {
