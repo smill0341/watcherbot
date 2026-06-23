@@ -368,7 +368,30 @@ def get_cached_data(coin):
             warmup_candles = WARMUP_DAYS * CANDLES_PER_DAY_15M
             total_limit = LIMIT_CANDLES + warmup_candles
             since_ts = int((pd.to_datetime(TEST_START_DATE) - pd.Timedelta(days=WARMUP_DAYS)).timestamp() * 1000) if TEST_START_DATE else None
-            ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=total_limit, since=since_ts) if since_ts else exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=LIMIT_CANDLES)
+
+            if since_ts is None:
+                ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=LIMIT_CANDLES)
+            else:
+                # Биржа отдаёт максимум ~1000 свечей за один запрос (молча режет, без ошибки).
+                # Поэтому пагинируем: запрашиваем чанками, сдвигая since на последнюю
+                # полученную свечу, пока не наберём total_limit или данные не закончатся.
+                EXCHANGE_MAX_PER_CALL = 1000
+                ohlcv = []
+                cursor = since_ts
+                while len(ohlcv) < total_limit:
+                    chunk = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME,
+                                                  limit=min(EXCHANGE_MAX_PER_CALL, total_limit - len(ohlcv)),
+                                                  since=cursor)
+                    if not chunk:
+                        break
+                    ohlcv.extend(chunk)
+                    last_ts = chunk[-1][0]
+                    if last_ts <= cursor:
+                        break  # биржа не двигается - защита от бесконечного цикла
+                    cursor = last_ts + 1
+                    if len(chunk) < EXCHANGE_MAX_PER_CALL:
+                        break  # данные закончились (дошли до текущего момента)
+
             df = pd.DataFrame(ohlcv, columns=["Open_time", "Open", "High", "Low", "Close", "Volume"])
             df.index = pd.to_datetime(df["Open_time"], unit="ms")
             df.to_csv(cache_file)
