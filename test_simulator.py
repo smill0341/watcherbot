@@ -35,19 +35,27 @@ GLOBAL_DEBUG_STATS = {
 GLOBAL_REPORT = []
 GLOBAL_LOSERS_LOG = []
 GLOBAL_TRADE_CONTEXTS = {}
+GLOBAL_MAE_DIAGNOSTIC = []  # [{coin, mae_pct, hold_hours, exit_reason, result_pct}, ...]
 GLOBAL_WINNERS_LOG = []
 GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"trades": 0, "win": 0}, "NORMAL": {"trades": 0, "win": 0}}
 
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "APT"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ALL"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 1000
 
 TEST_START_DATE = "2026-04-01 00:00:00"
 WARMUP_DAYS = 12  # запас данных ДО начала теста - нужен 4H контексту (64 свечи x 4ч = ~10.6 дней)
+
+# --- DIAGNOSTIC: проверка качества точки входа без SL ---
+# Если True: SL игнорируется, позиция держится до TP или до конца месяца (DIAGNOSTIC_DEADLINE_DAYS).
+# Используется чтобы понять - вход реально близко к развороту (MAE маленький),
+# или мы покупаем рано/в падении и просто пересиживаем минус.
+DISABLE_SL_DIAGNOSTIC = True
+DIAGNOSTIC_DEADLINE_DAYS = 30  # принудительное закрытие, если TP не достигнут за этот срок
 
 ALLOW_LONG_TRADES = True
 ALLOW_SHORT_TRADES = False
@@ -93,7 +101,7 @@ class SmartSniperUniversal(Strategy):
 
     def init(self):
         self.manager = WatcherManager(strategy=STRATEGY, config=WATCHER_CONFIG)
-        self.exit_mgr = ExitManager()  # Менеджер выхода из позиции
+        self.exit_mgr = ExitManager(disable_sl=DISABLE_SL_DIAGNOSTIC)  # Менеджер выхода из позиции
         self.level_states = {}
         self.last_closed_trades = 0
         self.current_trade_level_id = None
@@ -115,11 +123,16 @@ class SmartSniperUniversal(Strategy):
         # === ПРОВЕРКА ВЫХОДА ИЗ ПОЗИЦИИ ===
         if self.exit_mgr.is_open() and self.position:
             c_high, c_low, c_close = self.data.High[-1], self.data.Low[-1], self.data.Close[-1]
-            exit_triggered, exit_reason, exit_price = self.exit_mgr.check_exit(c_high, c_low, c_close)
+            c_time = pd.to_datetime(self.data.index[-1])
+            exit_triggered, exit_reason, exit_price = self.exit_mgr.check_exit(c_high, c_low, c_close, current_time=c_time)
             if exit_triggered:
-                # Закрываем позицию
+                # Записываем MAE и причину закрытия в контекст этой сделки (по времени входа)
+                entry_key = getattr(self, 'current_trade_signal_time', None)
+                if entry_key is not None and entry_key in GLOBAL_TRADE_CONTEXTS:
+                    GLOBAL_TRADE_CONTEXTS[entry_key]['exit_reason'] = exit_reason
+                    GLOBAL_TRADE_CONTEXTS[entry_key]['mae_pct'] = round(self.exit_mgr.last_closed_mae, 2)
+                # Закрываем позицию (close_position() уже вызван внутри check_exit при выходе)
                 self.position.close()
-                self.exit_mgr.close_position()
 
         # --- МАШИНА ВРЕМЕНИ: обновление уровней каждые 12 часов ---
         current_time = pd.to_datetime(self.data.index[-1])
@@ -303,15 +316,29 @@ class SmartSniperUniversal(Strategy):
         }
 
         self.current_trade_level_id = decision['level_id']
+        self.current_trade_signal_time = signal_time
         self.last_entered_level = (level['min'], level['max'], trade_type)
         GLOBAL_DEBUG_STATS["Passed_to_Trade"] += 1
 
+        entry_time = pd.to_datetime(self.data.index[-1])
+        deadline = None
+        if DISABLE_SL_DIAGNOSTIC:
+            deadline = entry_time + pd.Timedelta(days=DIAGNOSTIC_DEADLINE_DAYS)
+
         if trade_type == 'LONG':
-            self.buy(sl=decision['sl'], tp=decision['tp'])
-            self.exit_mgr.open_position('LONG', current_price, decision['tp'], decision['sl'])
+            if DISABLE_SL_DIAGNOSTIC:
+                self.buy(tp=decision['tp'])  # без sl - закрытие только через exit_mgr (TP/DEADLINE)
+            else:
+                self.buy(sl=decision['sl'], tp=decision['tp'])
+            self.exit_mgr.open_position('LONG', current_price, decision['tp'], decision['sl'],
+                                         opened_at=entry_time, deadline=deadline)
         else:
-            self.sell(sl=decision['sl'], tp=decision['tp'])
-            self.exit_mgr.open_position('SHORT', current_price, decision['tp'], decision['sl'])
+            if DISABLE_SL_DIAGNOSTIC:
+                self.sell(tp=decision['tp'])
+            else:
+                self.sell(sl=decision['sl'], tp=decision['tp'])
+            self.exit_mgr.open_position('SHORT', current_price, decision['tp'], decision['sl'],
+                                         opened_at=entry_time, deadline=deadline)
 
 
 # =========================================================
@@ -381,6 +408,18 @@ def print_trade_log(coin, tr, trade_type_filter=None):
         signal_time_str = str(row['EntryTime'] - pd.Timedelta(minutes=15))
         ctx = GLOBAL_TRADE_CONTEXTS.get(signal_time_str, {})
         trade_type = "LONG" if row['Size'] > 0 else "SHORT"
+
+        # --- DIAGNOSTIC: MAE и время удержания (если режим включён) ---
+        if DISABLE_SL_DIAGNOSTIC:
+            hold_time = row['ExitTime'] - row['EntryTime']
+            hold_hours = hold_time.total_seconds() / 3600
+            GLOBAL_MAE_DIAGNOSTIC.append({
+                "coin": coin,
+                "mae_pct": ctx.get('mae_pct', 0.0),
+                "hold_hours": round(hold_hours, 1),
+                "exit_reason": ctx.get('exit_reason', '?'),
+                "result_pct": round(row['ReturnPct'] * 100, 2),
+            })
 
         app = ctx.get('approach', 'UNKNOWN').replace('_DUMP', '').replace('_PUMP', '')
         if app not in GLOBAL_APPROACH_STATS:
@@ -505,6 +544,18 @@ if TARGET_COIN.upper() == "ALL":
     else:
         print("❌ Сделок не найдено.")
 
+    if DISABLE_SL_DIAGNOSTIC and GLOBAL_MAE_DIAGNOSTIC:
+        maes = [d['mae_pct'] for d in GLOBAL_MAE_DIAGNOSTIC]
+        holds = [d['hold_hours'] for d in GLOBAL_MAE_DIAGNOSTIC]
+        tp_hits = [d for d in GLOBAL_MAE_DIAGNOSTIC if d['exit_reason'] == 'TP']
+        deadline_hits = [d for d in GLOBAL_MAE_DIAGNOSTIC if d['exit_reason'] == 'DEADLINE']
+        print("\n" + "=" * 85)
+        print("🩺 ДИАГНОСТИКА ВХОДА (SL отключён - смотрим качество точки входа)")
+        print("=" * 85)
+        print(f"Сделок всего: {len(GLOBAL_MAE_DIAGNOSTIC)} | Дошли до TP: {len(tp_hits)} | Не дошли (deadline): {len(deadline_hits)}")
+        print(f"Средний MAE (макс. просадка от входа): {sum(maes)/len(maes):.2f}%  |  Худший MAE: {max(maes):.2f}%")
+        print(f"Среднее время удержания: {sum(holds)/len(holds):.1f}ч  |  Самое долгое: {max(holds):.1f}ч")
+
     print("\n" + "=" * 115)
     print("🚀 ПРИБЫЛЬНЫЕ СДЕЛКИ")
     print("=" * 115)
@@ -605,6 +656,18 @@ else:
                 print_trade_log(TARGET_COIN, tr)
                 for log in GLOBAL_WINNERS_LOG + GLOBAL_LOSERS_LOG:
                     print(log)
+
+                if DISABLE_SL_DIAGNOSTIC and GLOBAL_MAE_DIAGNOSTIC:
+                    maes = [d['mae_pct'] for d in GLOBAL_MAE_DIAGNOSTIC]
+                    holds = [d['hold_hours'] for d in GLOBAL_MAE_DIAGNOSTIC]
+                    tp_hits = [d for d in GLOBAL_MAE_DIAGNOSTIC if d['exit_reason'] == 'TP']
+                    deadline_hits = [d for d in GLOBAL_MAE_DIAGNOSTIC if d['exit_reason'] == 'DEADLINE']
+                    print("\n" + "=" * 85)
+                    print("🩺 ДИАГНОСТИКА ВХОДА (SL отключён - смотрим качество точки входа)")
+                    print("=" * 85)
+                    print(f"Сделок всего: {len(GLOBAL_MAE_DIAGNOSTIC)} | Дошли до TP: {len(tp_hits)} | Не дошли (deadline): {len(deadline_hits)}")
+                    print(f"Средний MAE (макс. просадка от входа): {sum(maes)/len(maes):.2f}%  |  Худший MAE: {max(maes):.2f}%")
+                    print(f"Среднее время удержания: {sum(holds)/len(holds):.1f}ч  |  Самое долгое: {max(holds):.1f}ч")
 
                 print("\n" + "=" * 85)
                 print("📊 СТАТИСТИКА ПО ТИПАМ ПОДХОДА")
