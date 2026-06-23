@@ -14,6 +14,7 @@ test_simulator.py
 import pandas as pd
 import numpy as np
 import os
+import time
 import warnings
 import json
 
@@ -42,7 +43,7 @@ GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"tr
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "ALL"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ESPORTS"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
@@ -378,7 +379,10 @@ def get_cached_data(coin):
                 # Биржа отдаёт максимум ~1000 свечей за один запрос (молча режет, без ошибки).
                 # Поэтому пагинируем: запрашиваем чанками, сдвигая since на последнюю
                 # полученную свечу, пока не наберём total_limit или данные не закончатся.
+                # Задержка между запросами - чтобы не упереться в rate limit биржи
+                # при большом числе монет x несколько чанков на каждую.
                 EXCHANGE_MAX_PER_CALL = 1000
+                PAGINATION_DELAY_SEC = 0.25
                 ohlcv = []
                 cursor = since_ts
                 while len(ohlcv) < total_limit:
@@ -386,20 +390,28 @@ def get_cached_data(coin):
                                                   limit=min(EXCHANGE_MAX_PER_CALL, total_limit - len(ohlcv)),
                                                   since=cursor)
                     if not chunk:
+                        print(f"   [{coin}] chunk пустой, остановка. Всего набрано: {len(ohlcv)}")
                         break
                     ohlcv.extend(chunk)
                     last_ts = chunk[-1][0]
+                    print(f"   [{coin}] chunk={len(chunk)} свечей, дата последней: {pd.to_datetime(last_ts, unit='ms')}, всего набрано: {len(ohlcv)}/{total_limit}")
                     if last_ts <= cursor:
                         break  # биржа не двигается - защита от бесконечного цикла
                     cursor = last_ts + 1
-                    if len(chunk) < EXCHANGE_MAX_PER_CALL:
-                        break  # данные закончились (дошли до текущего момента)
+                    time.sleep(PAGINATION_DELAY_SEC)
+                    # ВАЖНО: chunk МЕНЬШЕ лимита не значит "данные закончились" -
+                    # биржа может вернуть 999 вместо 1000 из-за технических границ.
+                    # Останавливаемся только когда чанк пустой или достигли now().
+                    if pd.to_datetime(last_ts, unit='ms', utc=True) >= pd.Timestamp.now(tz='UTC') - pd.Timedelta(minutes=30):
+                        print(f"   [{coin}] дошли до текущего момента, остановка")
+                        break
 
             df = pd.DataFrame(ohlcv, columns=["Open_time", "Open", "High", "Low", "Close", "Volume"])
             df.index = pd.to_datetime(df["Open_time"], unit="ms")
             df.to_csv(cache_file)
             return df
-        except Exception:
+        except Exception as e:
+            print(f"⚠️ Ошибка загрузки данных для {coin}: {type(e).__name__}: {e}")
             return pd.DataFrame()
 
 
@@ -465,11 +477,35 @@ def print_trade_log(coin, tr, trade_type_filter=None):
         score = ctx.get('score', 0)
         score_bucket = f"{int(score)}" if score else "?"
         if score_bucket not in GLOBAL_SCORE_STATS:
-            GLOBAL_SCORE_STATS[score_bucket] = {"trades": 0, "win": 0, "pnl": 0.0}
+            GLOBAL_SCORE_STATS[score_bucket] = {"trades": 0, "win": 0, "pnl": 0.0, "mae_list": []}
         GLOBAL_SCORE_STATS[score_bucket]["trades"] += 1
         if row['PnL'] > 0:
             GLOBAL_SCORE_STATS[score_bucket]["win"] += 1
         GLOBAL_SCORE_STATS[score_bucket]["pnl"] += row['ReturnPct'] * 100
+        if DISABLE_SL_DIAGNOSTIC:
+            GLOBAL_SCORE_STATS[score_bucket]["mae_list"].append(ctx.get('mae_pct', 0.0))
+
+        # --- Группировка по Gap (расстояние до следующего уровня) ---
+        gap = ctx.get('gap', 0)
+        if isinstance(gap, (int, float)):
+            if gap < 4:
+                gap_bucket = "0-4%"
+            elif gap < 8:
+                gap_bucket = "4-8%"
+            elif gap < 15:
+                gap_bucket = "8-15%"
+            else:
+                gap_bucket = "15%+"
+        else:
+            gap_bucket = "?"
+        if gap_bucket not in GLOBAL_GAP_STATS:
+            GLOBAL_GAP_STATS[gap_bucket] = {"trades": 0, "win": 0, "pnl": 0.0, "mae_list": []}
+        GLOBAL_GAP_STATS[gap_bucket]["trades"] += 1
+        if row['PnL'] > 0:
+            GLOBAL_GAP_STATS[gap_bucket]["win"] += 1
+        GLOBAL_GAP_STATS[gap_bucket]["pnl"] += row['ReturnPct'] * 100
+        if DISABLE_SL_DIAGNOSTIC:
+            GLOBAL_GAP_STATS[gap_bucket]["mae_list"].append(ctx.get('mae_pct', 0.0))
 
         # --- Группировка по Trend ---
         trend = ctx.get('trend', 'UNKNOWN')
@@ -493,15 +529,11 @@ def print_trade_log(coin, tr, trade_type_filter=None):
             GLOBAL_EMA_STATS[ema_bucket]["win"] += 1
         GLOBAL_EMA_STATS[ema_bucket]["pnl"] += row['ReturnPct'] * 100
 
-        log_str = (f"{coin.upper()} | {trade_type} | Рез: {row['ReturnPct']*100:.2f}% | "
+        mae_str = f" | MAE:-{ctx.get('mae_pct', 0.0):.2f}%" if DISABLE_SL_DIAGNOSTIC else ""
+        log_str = (f"{coin.upper()} | {trade_type} | Рез: {row['ReturnPct']*100:.2f}%{mae_str} | "
                    f"Entry:{ctx.get('entry_price','?')} SL:{ctx.get('sl','?')} TP:{ctx.get('tp','?')} | "
-                   f"УРОВЕНЬ:[{ctx.get('level_min','?')}-{ctx.get('level_max','?')}] | "
-                   f"[{sweep_type} | overshoot:{ctx.get('overshoot_pct','?')}% | свечей_в_sweep:{ctx.get('candles_in_sweep','?')}] | "
-                   f"{ctx.get('state','?')} | {ctx.get('approach','?')} | "
-                   f"TREND:{ctx.get('trend','?')} ENERGY:{ctx.get('energy','?')} | "
-                   f"EMA Dist: {ctx.get('ema_dist','?')}% | Score: {ctx.get('score','?')} | "
-                   f"ГЛУБИНА: {ctx.get('depth','?')}% | Ширина: {ctx.get('width','?')}% | Gap: {ctx.get('gap','?')}% | "
-                   f"CTX: {ctx.get('context_reason','')}")
+                   f"УРОВЕНЬ:[{ctx.get('level_min','?')}-{ctx.get('level_max','?')}] Gap:{ctx.get('gap','?')}% | "
+                   f"Score:{ctx.get('score','?')} EMA:{ctx.get('ema_dist','?')}% Глубина:{ctx.get('depth','?')}%")
 
         if row['PnL'] <= 0:
             GLOBAL_LOSERS_LOG.append("❌ " + log_str)
@@ -511,6 +543,7 @@ def print_trade_log(coin, tr, trade_type_filter=None):
 
 GLOBAL_SWEEP_STATS = {}
 GLOBAL_SCORE_STATS = {}
+GLOBAL_GAP_STATS = {}
 GLOBAL_TREND_STATS = {}
 GLOBAL_EMA_STATS = {}
 
@@ -529,9 +562,12 @@ if TARGET_COIN.upper() == "ALL":
         if not CURRENT_SUPPORTS and not CURRENT_RESISTANCES:
             continue
 
+        cache_exists_before = os.path.exists(f"cache_{coin.lower()}_{TIMEFRAME}_{LIMIT_CANDLES}_w{WARMUP_DAYS}_{TEST_START_DATE[:10] if TEST_START_DATE else 'live'}.csv")
         df = get_cached_data(coin)
         if df.empty:
             continue
+        if not cache_exists_before:
+            time.sleep(0.5)  # пауза между монетами, если только что качали с биржи (не из кэша)
 
         df['sup_max'] = np.nan
         df['res_min'] = np.nan
@@ -546,6 +582,16 @@ if TARGET_COIN.upper() == "ALL":
             longs_loss = len(tr[(tr['Size'] > 0) & (tr['PnL'] <= 0)])
             shorts_win = len(tr[(tr['Size'] < 0) & (tr['PnL'] > 0)])
             shorts_loss = len(tr[(tr['Size'] < 0) & (tr['PnL'] <= 0)])
+
+            # Проверка: если Return [%] сильно отличается от суммы ReturnPct закрытых
+            # сделок - подозрение на ВИСЯЩУЮ ОТКРЫТУЮ позицию на конец теста (особенно
+            # в diagnostic-режиме, если deadline дальше конца самих тестовых данных).
+            closed_sum_pct = tr['ReturnPct'].sum() * 100
+            actual_return_pct = stats['Return [%]']
+            open_position_suspected = abs(actual_return_pct - closed_sum_pct) > 2.0
+            if open_position_suspected:
+                print(f"⚠️ {coin.upper()}: подозрение на незакрытую позицию. "
+                      f"Сумма закрытых сделок={closed_sum_pct:.2f}%, но Return [%]={actual_return_pct:.2f}%")
 
             GLOBAL_REPORT.append({
                 "Монета": coin.upper(),
@@ -626,7 +672,28 @@ if TARGET_COIN.upper() == "ALL":
         if d["trades"] > 0:
             wr = (d["win"] / d["trades"]) * 100
             avg = d["pnl"] / d["trades"]
-            print(f"Score {score}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%")
+            mae_part = ""
+            if DISABLE_SL_DIAGNOSTIC and d.get("mae_list"):
+                avg_mae = sum(d["mae_list"]) / len(d["mae_list"])
+                worst_mae = max(d["mae_list"])
+                mae_part = f"  MAE avg={avg_mae:.2f}% worst={worst_mae:.2f}%"
+            print(f"Score {score}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%{mae_part}")
+
+    print("\n" + "=" * 85)
+    print("📊 GAP vs РЕЗУЛЬТАТ (расстояние до следующего уровня)")
+    print("=" * 85)
+    for gap_b in ["0-4%", "4-8%", "8-15%", "15%+", "?"]:
+        if gap_b in GLOBAL_GAP_STATS:
+            d = GLOBAL_GAP_STATS[gap_b]
+            if d["trades"] > 0:
+                wr = (d["win"] / d["trades"]) * 100
+                avg = d["pnl"] / d["trades"]
+                mae_part = ""
+                if DISABLE_SL_DIAGNOSTIC and d.get("mae_list"):
+                    avg_mae = sum(d["mae_list"]) / len(d["mae_list"])
+                    worst_mae = max(d["mae_list"])
+                    mae_part = f"  MAE avg={avg_mae:.2f}% worst={worst_mae:.2f}%"
+                print(f"Gap {gap_b}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%{mae_part}")
 
     print("\n" + "=" * 85)
     print("📊 TREND vs РЕЗУЛЬТАТ")
@@ -721,7 +788,28 @@ else:
                     if d["trades"] > 0:
                         wr = (d["win"] / d["trades"]) * 100
                         avg = d["pnl"] / d["trades"]
-                        print(f"Score {score}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%")
+                        mae_part = ""
+                        if DISABLE_SL_DIAGNOSTIC and d.get("mae_list"):
+                            avg_mae = sum(d["mae_list"]) / len(d["mae_list"])
+                            worst_mae = max(d["mae_list"])
+                            mae_part = f"  MAE avg={avg_mae:.2f}% worst={worst_mae:.2f}%"
+                        print(f"Score {score}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%{mae_part}")
+
+                print("\n" + "=" * 85)
+                print("📊 GAP vs РЕЗУЛЬТАТ (расстояние до следующего уровня)")
+                print("=" * 85)
+                for gap_b in ["0-4%", "4-8%", "8-15%", "15%+", "?"]:
+                    if gap_b in GLOBAL_GAP_STATS:
+                        d = GLOBAL_GAP_STATS[gap_b]
+                        if d["trades"] > 0:
+                            wr = (d["win"] / d["trades"]) * 100
+                            avg = d["pnl"] / d["trades"]
+                            mae_part = ""
+                            if DISABLE_SL_DIAGNOSTIC and d.get("mae_list"):
+                                avg_mae = sum(d["mae_list"]) / len(d["mae_list"])
+                                worst_mae = max(d["mae_list"])
+                                mae_part = f"  MAE avg={avg_mae:.2f}% worst={worst_mae:.2f}%"
+                            print(f"Gap {gap_b}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%{mae_part}")
 
                 print("\n" + "=" * 85)
                 print("📊 TREND vs РЕЗУЛЬТАТ")
