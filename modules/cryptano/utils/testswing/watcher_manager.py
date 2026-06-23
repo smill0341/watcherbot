@@ -139,25 +139,40 @@ class WatcherManager:
 
     def _calc_structural_target(self, entry_price, sl, trade_type, all_opposite_levels):
         """
-        Считает TP от СТРУКТУРЫ рынка (следующий противоположный уровень),
-        а не от произвольного фиксированного %.
+        Считает TP в одном из двух режимов (config['TP_MODE']):
+          - 'structural' (по умолчанию): TP = следующий противоположный уровень,
+            минус буфер. Если уровня нет - fallback на fixed %.
+          - 'fixed_pct': TP = entry +/- фиксированный % (config['FIXED_TP_PCT']),
+            без привязки к уровням вообще - твой исходный вариант для сравнения.
 
-        Логика (по принципам price action / risk-reward):
-          - Для LONG: TP = ближайшая resistance НАД входом, минус буфер
-          - Для SHORT: TP = ближайшая support ПОД входом, плюс буфер
-          - Если структурного уровня нет -> fallback на TAKE_PROFIT% из конфига
-          - Если R:R до структурного уровня меньше MIN_RR -> сделка отклоняется
+        В обоих режимах применяется фильтр MIN_RR (риск/прибыль).
 
         Returns:
             (tp, allow, reason)
         """
         min_rr = self.config.get('MIN_RR', 1.5)
-        tp_buffer_pct = self.config.get('TP_BUFFER_PCT', 0.3)  # не долетаем до самого уровня
-        fallback_tp_pct = self.config.get('TAKE_PROFIT', 8.0)
+        tp_mode = self.config.get('TP_MODE', 'structural')
 
         risk = abs(entry_price - sl)
         if risk <= 0:
             return None, False, "Invalid risk (SL == entry)"
+
+        if tp_mode == 'fixed_pct':
+            fixed_pct = self.config.get('FIXED_TP_PCT', self.config.get('TAKE_PROFIT', 8.0))
+            if trade_type == 'LONG':
+                tp = entry_price * (1 + fixed_pct / 100)
+                reward = tp - entry_price
+            else:
+                tp = entry_price * (1 - fixed_pct / 100)
+                reward = entry_price - tp
+            rr = reward / risk if risk > 0 else 0
+            if rr < min_rr:
+                return None, False, f"R/R (fixed {fixed_pct}%) {rr:.2f} < {min_rr}"
+            return tp, True, f"Fixed TP {fixed_pct}%, R/R={rr:.2f}"
+
+        # --- structural (по умолчанию) ---
+        tp_buffer_pct = self.config.get('TP_BUFFER_PCT', 0.3)  # не долетаем до самого уровня
+        fallback_tp_pct = self.config.get('TAKE_PROFIT', 8.0)
 
         if trade_type == 'LONG':
             candidates = [lvl['min'] for lvl in all_opposite_levels if lvl['min'] > entry_price]

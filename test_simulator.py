@@ -45,10 +45,10 @@ GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"tr
 TARGET_COIN = "ALL"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
-LIMIT_CANDLES = 1000
+LIMIT_CANDLES = 2880
 
 TEST_START_DATE = "2026-04-01 00:00:00"
-WARMUP_DAYS = 12  # запас данных ДО начала теста - нужен 4H контексту (64 свечи x 4ч = ~10.6 дней)
+WARMUP_DAYS = 18  # запас данных ДО начала теста - нужен 4H контексту (64 свечи x 4ч = ~10.6 дней)
 
 # --- DIAGNOSTIC: проверка качества точки входа без SL ---
 # Если True: SL игнорируется, позиция держится до TP или до конца месяца (DIAGNOSTIC_DEADLINE_DAYS).
@@ -80,7 +80,10 @@ WATCHER_CONFIG = {
     # TP теперь СТРУКТУРНЫЙ: считается от следующего противоположного уровня,
     # не от фиксированного %. TAKE_PROFIT используется только как fallback,
     # если структурного уровня вообще нет на графике.
-    'TAKE_PROFIT': 8.0,       # fallback %, если нет следующего уровня
+    # TP режим: 'structural' (по уровню, текущий) или 'fixed_pct' (твой % без привязки к уровням)
+    'TP_MODE': 'fixed_pct',
+    'FIXED_TP_PCT': 8.0,      # используется только если TP_MODE='fixed_pct'
+    'TAKE_PROFIT': 8.0,       # fallback %, если нет следующего уровня (только для structural режима)
     'TP_BUFFER_PCT': 0.3,     # не долетаем до самого уровня на этот %
     'MIN_RR': 1.5,            # если до следующего уровня R/R меньше - сделка отклоняется
     # только для CHOCH:
@@ -264,7 +267,7 @@ class SmartSniperUniversal(Strategy):
             closed_4h = pd.DataFrame()
 
         if len(closed_4h) >= 20:
-            ctx_window = closed_4h.tail(64)
+            ctx_window = closed_4h.tail(110)
             ctx_eval = analyze_context(ctx_window['Close'].values, ctx_window['High'].values,
                                         ctx_window['Low'].values, c_atr,
                                         trade_type, level['min'], level['max'])
@@ -327,14 +330,14 @@ class SmartSniperUniversal(Strategy):
 
         if trade_type == 'LONG':
             if DISABLE_SL_DIAGNOSTIC:
-                self.buy(tp=decision['tp'])  # без sl - закрытие только через exit_mgr (TP/DEADLINE)
+                self.buy()  # без sl и tp - закрытие ТОЛЬКО через exit_mgr (TP/DEADLINE)
             else:
                 self.buy(sl=decision['sl'], tp=decision['tp'])
             self.exit_mgr.open_position('LONG', current_price, decision['tp'], decision['sl'],
                                          opened_at=entry_time, deadline=deadline)
         else:
             if DISABLE_SL_DIAGNOSTIC:
-                self.sell(tp=decision['tp'])
+                self.sell()
             else:
                 self.sell(sl=decision['sl'], tp=decision['tp'])
             self.exit_mgr.open_position('SHORT', current_price, decision['tp'], decision['sl'],
