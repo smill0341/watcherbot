@@ -43,7 +43,7 @@ GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"tr
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "JTO"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "DOT"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
@@ -253,7 +253,7 @@ class SmartSniperUniversal(Strategy):
             decision = self.manager.evaluate_choch(level, df_slice, trade_type, opposite_levels)
 
         if not decision['allow']:
-            if 'No signal' in decision['reason'] or 'No CHoCH' in decision['reason']:
+            if 'No signal' in decision['reason'] or 'No CHoCH' in decision['reason'] or 'No volume reversal' in decision['reason']:
                 GLOBAL_DEBUG_STATS["No_Signal"] += 1
             else:
                 GLOBAL_DEBUG_STATS["Killed_by_QUALITY"] += 1
@@ -581,7 +581,7 @@ if TARGET_COIN.upper() == "ALL":
         df['sup_max'] = np.nan
         df['res_min'] = np.nan
         
-        df['ema'] = df['Close'].ewm(span=13, adjust=False).mean()
+        df['ema'] = df['Close'].ewm(span=50, adjust=False).mean()
         df['avg_vol'] = df['Volume'].rolling(window=20).mean()
 
         SmartSniperUniversal.context_df_4h = build_4h_context_df(df)

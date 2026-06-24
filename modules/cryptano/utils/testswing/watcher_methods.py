@@ -230,50 +230,53 @@ def check_choch(df, level, direction, lookback=15, sl_buffer_pct=0.5,
 # =========================================================================
 # МЕТОД 3: VOLUME REVERSAL (Нырок под EMA в зоне + Аномальный объем)
 # =========================================================================
-def check_volume_reversal(df, level, direction, vol_mult=2.0, window=10):
+def check_volume_reversal(df, level, direction, vol_mult=3.0, window=10):
     if len(df) < window:
         return None
 
-    # Срез за последние 10 свечей
-    recent = df.tail(window)
-    
-    # Данные текущей свечи (триггерной)
-    c_close = float(recent['close'].iloc[-1])
-    c_open = float(recent['open'].iloc[-1])
-    
-    # Ищем аномалию объема внутри всего окна
-    max_vol = float(recent['volume'].max())
-    c_avg_vol = float(recent['avg_vol'].iloc[-1])
-    
-    if c_avg_vol <= 0:
+    # 1. Создаем срез окна
+    w_df = df.iloc[-window:]
+
+    # 2. Находим индекс свечи с самым гигантским объемом в окне
+    max_vol_idx = w_df['volume'].idxmax()
+    climax_candle = w_df.loc[max_vol_idx]
+
+    # 3. Проверяем, что аномалия реально была (x3 от среднего)
+    if climax_candle['volume'] < (climax_candle['avg_vol'] * vol_mult):
         return None
 
-    vol_spike = max_vol >= (c_avg_vol * vol_mult)
+    # Текущая (последняя закрытая) свеча
+    c_close = float(w_df['close'].iloc[-1])
+    c_open = float(w_df['open'].iloc[-1])
 
     if direction == 'LONG':
-        lowest_price = float(recent['low'].min())
+        # ИМЕННО объемная свеча должна нырнуть в зону и под EMA
+        climax_in_zone = climax_candle['low'] <= level['max']
+        climax_under_ema = climax_candle['low'] < climax_candle['ema']
         
-        # 1. Заходили ли в зону или под нее?
-        in_zone = lowest_price <= level['max']
-        # 2. Ныряли ли под EMA?
-        ema_dip = lowest_price < float(recent['ema'].min())
-        # 3. Вернулись ли выше поддержки?
-        reclaim = c_close > level['min']
-        # 4. Зеленая ли свеча?
-        is_green = c_close > c_open
+        # Если объем прошел в воздухе, а не на уровне — отмена
+        if not (climax_in_zone and climax_under_ema):
+            return None
 
-        if vol_spike and in_zone and ema_dip and reclaim and is_green:
-            return {"action": "BUY", "sl": lowest_price, "reason": f"Vol Climax ({vol_mult}x) 10-candle window"}
+        # Триггер: текущая свеча зеленая и закрылась внутри или чуть выше зоны (защита от улета)
+        if c_close > c_open and c_close >= level['min'] and c_close <= (level['max'] * 1.015):
+            sl_price = float(w_df.loc[max_vol_idx:]['low'].min()) # Стоп под самое дно
+            return {"action": "BUY", "sl": sl_price, "reason": f"Vol Climax {vol_mult}x + EMA Dip"}
 
     elif direction == 'SHORT':
-        highest_price = float(recent['high'].max())
-        
-        in_zone = highest_price >= level['min']
-        ema_surge = highest_price > float(recent['ema'].max())
-        reclaim = c_close < level['max']
-        is_red = c_close < c_open
+        # То же самое зеркально для шорта
+        climax_in_zone = climax_candle['high'] >= level['min']
+        climax_above_ema = climax_candle['high'] > climax_candle['ema']
 
-        if vol_spike and in_zone and ema_surge and reclaim and is_red:
-            return {"action": "SELL", "sl": highest_price, "reason": f"Vol Climax ({vol_mult}x) 10-candle window"}
+        # Если объем прошел в воздухе, а не на уровне — отмена
+        if not (climax_in_zone and climax_above_ema):
+            return None
+
+        min_allowed_entry = level['min'] * 0.985
+        
+        # Триггер: текущая свеча красная и закрылась внутри или чуть ниже зоны
+        if c_close < c_open and c_close <= level['max'] and c_close >= min_allowed_entry:
+            sl_price = float(w_df.loc[max_vol_idx:]['high'].max()) # Стоп за самый хай
+            return {"action": "SELL", "sl": sl_price, "reason": f"Vol Climax {vol_mult}x + EMA Surge"}
 
     return None

@@ -293,22 +293,47 @@ class WatcherManager:
         if not ok:
             return self._deny(reason)
 
-        vol_mult = self.config.get('VOLUME_MULTIPLIER', 2.0)
+        vol_mult = self.config.get('VOLUME_MULTIPLIER', 3.0)
+        from modules.cryptano.utils.testswing.watcher_methods import check_volume_reversal
         signal = check_volume_reversal(df, level, trade_type, vol_mult=vol_mult, window=10)
 
         if signal is None:
             return self._deny("No volume reversal pattern in window")
 
         current_price = float(df['close'].iloc[-1])
-        tp_pct = self.config.get('TAKE_PROFIT', 10.0)
-
         sl = signal['sl']
+
+        # 1. Буфер для стопа
         if trade_type == 'LONG':
-            tp = current_price * (1 + tp_pct / 100)
-            sl = sl * 0.998 # Буфер 0.2% под снайперский минимум
+            sl = sl * 0.998
         else:
-            tp = current_price * (1 - tp_pct / 100)
             sl = sl * 1.002
+
+        # 2. Настоящий расчет Тейк-Профита из твоего WATCHER_CONFIG
+        tp_mode = self.config.get('TP_MODE', 'fixed_pct')
+        tp_pct = self.config.get('FIXED_TP_PCT', 8.0) if tp_mode == 'fixed_pct' else self.config.get('TAKE_PROFIT', 8.0)
+        tp_buffer = self.config.get('TP_BUFFER_PCT', 0.3)
+
+        if tp_mode == 'structural':
+            if trade_type == 'LONG':
+                closest = min([r['min'] for r in all_opposite_levels if r['min'] > current_price], default=None)
+                tp = closest * (1 - tp_buffer / 100) if closest else current_price * (1 + tp_pct / 100)
+            else:
+                closest = max([s['max'] for s in all_opposite_levels if s['max'] < current_price], default=None)
+                tp = closest * (1 + tp_buffer / 100) if closest else current_price * (1 - tp_pct / 100)
+        else: # fixed_pct
+            tp = current_price * (1 + tp_pct / 100) if trade_type == 'LONG' else current_price * (1 - tp_pct / 100)
+
+        # 3. Фильтр Risk/Reward
+        if self.config.get('USE_RR_FILTER', True):
+            risk = (current_price - sl) if trade_type == 'LONG' else (sl - current_price)
+            reward = (tp - current_price) if trade_type == 'LONG' else (current_price - tp)
+            if risk <= 0:
+                return self._deny("Invalid SL")
+            
+            rr = reward / risk
+            if rr < self.config.get('MIN_RR', 1.5):
+                return self._deny(f"Poor R/R: {rr:.1f}")
 
         return {
             'allow': True,
@@ -317,9 +342,9 @@ class WatcherManager:
             'tp': tp,
             'level_id': self._level_id(level, trade_type),
             'extreme_price': sl,
-        }    
-
+            'is_real_sweep': True 
+        }
     @staticmethod
     def _deny(reason):
-        return {'allow': False, 'reason': reason, 'sl': None, 'tp': None, 'level_id': None, 'extreme_price': None,
-                'is_real_sweep': False, 'overshoot_pct': 0.0, 'candles_in_sweep': 0}
+        return {'allow': False, 'reason': reason, 'sl': None, 'tp': None, 'level_id': None, 'extreme_price': None,  
+                'is_real_sweep': True, 'overshoot_pct': 0.0, 'candles_in_sweep': 0}
