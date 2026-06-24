@@ -236,7 +236,6 @@ def check_volume_reversal(df, level, direction, vol_mult=3.0, window=10):
 
     # 1. ЖЕСТКАЯ БАЗА ОБЪЕМА
     # Берем среднее за 50 свечей ДО текущего момента (исключая последние 2).
-    # Это убивает баг "ночного объема" — всплеск должен быть реально огромным на фоне всей сессии.
     baseline_df = df['volume'].iloc[-50:-2] if len(df) >= 50 else df['volume'].iloc[:-2]
     baseline_vol = baseline_df.mean()
     
@@ -244,38 +243,48 @@ def check_volume_reversal(df, level, direction, vol_mult=3.0, window=10):
         return None
 
     # 2. ФОКУС ТОЛЬКО НА ПОСЛЕДНИХ 2 СВЕЧАХ
-    # Свип и разворот должны произойти прямо сейчас, а не 10 свечей назад.
-    p = df.iloc[-2] # Предыдущая свеча (обычно сам вынос)
-    c = df.iloc[-1] # Текущая свеча (разворот/подтверждение)
+    p = df.iloc[-2] # Предыдущая свеча (кульминация: слив или памп)
+    c = df.iloc[-1] # Текущая свеча (разворот: поглощение)
 
+    p_close, p_open = float(p['close']), float(p['open'])
     c_close, c_open = float(c['close']), float(c['open'])
 
     if direction == 'LONG':
-        # Событие 1: Касание зоны было только что?
-        touched_zone = (p['low'] <= level['max']) or (c['low'] <= level['max'])
-        # Событие 2: Нырок под EMA был только что?
-        under_ema = (p['low'] < p['ema']) or (c['low'] < c['ema'])
+        # Событие 1: Свеча слива (p) должна быть КРАСНОЙ, бить в зону, быть под EMA и с ОБЪЕМОМ
+        p_is_red = p_close < p_open
+        touched_zone = float(p['low']) <= level['max']
+        under_ema = float(p['low']) < float(p['ema'])
+        high_vol = float(p['volume']) >= (baseline_vol * vol_mult)
 
-        # Событие 3: РЕАЛЬНЫЙ объем (х3 от 50-свечной базы) ИМЕННО на этих двух свечах
-        high_vol = (p['volume'] >= baseline_vol * vol_mult) or (c['volume'] >= baseline_vol * vol_mult)
-
-        if touched_zone and under_ema and high_vol:
-            # ТРИГГЕР: текущая свеча зеленая и закрылась внутри или чуть выше зоны (Reclaim)
+        if p_is_red and touched_zone and under_ema and high_vol:
+            # ТРИГГЕР: Текущая свеча (c) ЗЕЛЕНАЯ, полностью перекрыла красную, и закрылась в нужной зоне
             max_allowed = level['max'] * 1.015
-            if c_close > c_open and c_close >= level['min'] and c_close <= max_allowed:
+            c_is_green = c_close > c_open
+            c_dominance = c_close > float(p['high']) # Истинное доминирование (перекрыли хай сливной свечи)
+            c_in_range = c_close >= level['min'] and c_close <= max_allowed
+
+            if c_is_green and c_dominance and c_in_range:
                 # Стоп-лосс строго под самый нижний хвост этих двух свечей
                 sl_price = min(float(p['low']), float(c['low']))
-                return {"action": "BUY", "sl": sl_price, "reason": f"Vol Climax {vol_mult}x + Reclaim"}
+                return {"action": "BUY", "sl": sl_price, "reason": f"Strict Climax {vol_mult}x + Reclaim"}
 
     elif direction == 'SHORT':
-        touched_zone = (p['high'] >= level['min']) or (c['high'] >= level['min'])
-        above_ema = (p['high'] > p['ema']) or (c['high'] > c['ema'])
-        high_vol = (p['volume'] >= baseline_vol * vol_mult) or (c['volume'] >= baseline_vol * vol_mult)
+        # Событие 1: Свеча пампа (p) должна быть ЗЕЛЕНОЙ, бить в зону, быть над EMA и с ОБЪЕМОМ
+        p_is_green = p_close > p_open
+        touched_zone = float(p['high']) >= level['min']
+        above_ema = float(p['high']) > float(p['ema'])
+        high_vol = float(p['volume']) >= (baseline_vol * vol_mult)
 
-        if touched_zone and above_ema and high_vol:
+        if p_is_green and touched_zone and above_ema and high_vol:
+            # ТРИГГЕР: Текущая свеча (c) КРАСНАЯ, полностью перекрыла зеленую вниз, и закрылась в нужной зоне
             min_allowed = level['min'] * 0.985
-            if c_close < c_open and c_close <= level['max'] and c_close >= min_allowed:
+            c_is_red = c_close < c_open
+            c_dominance = c_close < float(p['low']) # Истинное доминирование продавца (ушли ниже лоя пампа)
+            c_in_range = c_close <= level['max'] and c_close >= min_allowed
+
+            if c_is_red and c_dominance and c_in_range:
+                # Стоп-лосс строго за самый верхний хвост этих двух свечей
                 sl_price = max(float(p['high']), float(c['high']))
-                return {"action": "SELL", "sl": sl_price, "reason": f"Vol Climax {vol_mult}x + Rejection"}
+                return {"action": "SELL", "sl": sl_price, "reason": f"Strict Climax {vol_mult}x + Rejection"}
 
     return None

@@ -17,6 +17,7 @@ import os
 import time
 import warnings
 import json
+import gc
 
 warnings.filterwarnings("ignore")
 from backtesting import Backtest, Strategy
@@ -25,6 +26,7 @@ from modules.cryptano.utils.storage import load_json
 from modules.cryptano.utils.testswing.context_filter import analyze_context
 from modules.cryptano.utils.testswing.watcher_manager import WatcherManager
 from modules.cryptano.utils.testswing.exit_manager import ExitManager
+from typing import Optional
 
 
 GLOBAL_DEBUG_STATS = {
@@ -43,7 +45,7 @@ GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"tr
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "DOT"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "BCH"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
@@ -56,7 +58,7 @@ WARMUP_DAYS = 18  # запас данных ДО начала теста - ну�
 # Используется чтобы понять - вход реально близко к развороту (MAE маленький),
 # или мы покупаем рано/в падении и просто пересиживаем минус.
 DISABLE_SL_DIAGNOSTIC = True
-DIAGNOSTIC_DEADLINE_DAYS = 30  # принудительное закрытие, если TP не достигнут за этот срок
+DIAGNOSTIC_DEADLINE_DAYS = 7  # принудительное закрытие, если TP не достигнут за этот срок
 
 ALLOW_LONG_TRADES = True
 ALLOW_SHORT_TRADES = False
@@ -64,7 +66,7 @@ ALLOW_SHORT_TRADES = False
 # Какой метод определения точки входа использовать: "SWEEP_RECLAIM" или "CHOCH" или "VOLUME_REVERSAL"
 STRATEGY = "VOLUME_REVERSAL"
 
-USE_CONTEXT_FILTER = True  # макро-контекст (тренд/импульс/поджатие) из context_filter.py
+USE_CONTEXT_FILTER = False  # макро-контекст (тренд/импульс/поджатие) из context_filter.py
 
 # Конфиг для WatcherManager - всё, что реально используется, в одном месте.
 WATCHER_CONFIG = {
@@ -104,8 +106,9 @@ def SMA(arr, n):
 
 
 class SmartSniperUniversal(Strategy):
-    context_df_4h: pd.DataFrame = None  # type: ignore # будет установлен снаружи перед bt.run() через build_4h_context_df()
-
+    context_df_4h: Optional[pd.DataFrame] = None 
+    original_df: Optional[pd.DataFrame] = None
+    
     def init(self):
         self.manager = WatcherManager(strategy=STRATEGY, config=WATCHER_CONFIG)
         self.exit_mgr = ExitManager(disable_sl=DISABLE_SL_DIAGNOSTIC)  # Менеджер выхода из позиции
@@ -123,31 +126,36 @@ class SmartSniperUniversal(Strategy):
 
         self.draw_sup_max = self.I(lambda: self.data.df['sup_max'], name="Support Top", overlay=True)
         self.draw_res_min = self.I(lambda: self.data.df['res_min'], name="Resist Bottom", overlay=True)
+        
+        # 1. Записываем ATR напрямую в original_df (чтобы срез мог его читать)
+        if self.original_df is not None:
+            self.original_df['atr'] = self.atr
+
+        # 2. ПАРСИМ СТРОКУ ОДИН РАЗ (Убивает 40 секунд тормозов)
+        self.test_start_dt = pd.to_datetime(TEST_START_DATE) if TEST_START_DATE else None
 
     def next(self):
         global GLOBAL_DEBUG_STATS, CURRENT_SUPPORTS, CURRENT_RESISTANCES, GLOBAL_TIMELINE, TARGET_COIN_CURRENT
 
+        # Индекс backtesting УЖЕ является временем. Конвертация pd.to_datetime тут НЕ НУЖНА!
+        current_time = self.data.index[-1]
+
         # === ПРОВЕРКА ВЫХОДА ИЗ ПОЗИЦИИ ===
         if self.exit_mgr.is_open() and self.position:
             c_high, c_low, c_close = self.data.High[-1], self.data.Low[-1], self.data.Close[-1]
-            c_time = pd.to_datetime(self.data.index[-1])
-            exit_triggered, exit_reason, exit_price = self.exit_mgr.check_exit(c_high, c_low, c_close, current_time=c_time)
+            exit_triggered, exit_reason, exit_price = self.exit_mgr.check_exit(c_high, c_low, c_close, current_time=current_time)
             if exit_triggered:
-                # Записываем MAE и причину закрытия в контекст этой сделки (по времени входа)
                 entry_key = getattr(self, 'current_trade_signal_time', None)
                 if entry_key is not None and entry_key in GLOBAL_TRADE_CONTEXTS:
                     GLOBAL_TRADE_CONTEXTS[entry_key]['exit_reason'] = exit_reason
                     GLOBAL_TRADE_CONTEXTS[entry_key]['mae_pct'] = round(self.exit_mgr.last_closed_mae, 2)
-                # Закрываем позицию (close_position() уже вызван внутри check_exit при выходе)
                 self.position.close()
 
-        # --- МАШИНА ВРЕМЕНИ: обновление уровней каждые 12 часов ---
-        current_time = pd.to_datetime(self.data.index[-1])
-
-        # === WARMUP: до TEST_START_DATE сделки не открываем, это запас данных для 4H контекста ===
-        if TEST_START_DATE and current_time < pd.to_datetime(TEST_START_DATE):
+        # === WARMUP (Мгновенное сравнение) ===
+        if self.test_start_dt and current_time < self.test_start_dt:
             return
 
+        # --- МАШИНА ВРЕМЕНИ: обновление уровней каждые 12 часов ---
         period_key = current_time.floor('12h').strftime("%Y-%m-%d %H:%M:%S")
 
         if getattr(self, 'current_period_key', None) != period_key:
@@ -157,9 +165,6 @@ class SmartSniperUniversal(Strategy):
                 CURRENT_RESISTANCES = coin_data.get("resistances", [])
                 self.current_period_key = period_key
 
-                # Сжигаем уровни заново под новый список, но НЕ трогаем watcher'ы
-                # в процессе (BELOW/ABOVE) - им нужно дожить свой цикл.
-                # Только для SWEEP_RECLAIM (CHOCH не хранит persistent watcher).
                 if STRATEGY == "SWEEP_RECLAIM":
                     current_level_ids = set()
                     for s in CURRENT_SUPPORTS:
@@ -168,22 +173,23 @@ class SmartSniperUniversal(Strategy):
                         current_level_ids.add(f"SHORT_{r['min']}_{r['max']}")
                     self.manager.clear_dead_watchers(current_level_ids)
 
-        # Отрисовка уровней на графике.
-        # Пока позиция открыта - показываем ИМЕННО тот уровень, по которому вошли
-        # (не первый из списка), чтобы линия на графике совпадала с реальным входом.
-        if self.position and getattr(self, 'last_entered_level', None) is not None:
-            active_min, active_max, entered_type = self.last_entered_level
-            if entered_type == 'LONG':
-                active_sup, active_res = active_max, np.nan
+        # Отрисовка уровней на графике (ТОЛЬКО ДЛЯ ОДИНОЧНОЙ МОНЕТЫ)
+        if TARGET_COIN.upper() != "ALL":
+            if self.position and getattr(self, 'last_entered_level', None) is not None:
+                active_min, active_max, entered_type = self.last_entered_level
+                if entered_type == 'LONG':
+                    active_sup, active_res = active_max, np.nan
+                else:
+                    active_sup, active_res = np.nan, active_min
             else:
-                active_sup, active_res = np.nan, active_min
-        else:
-            active_sup = CURRENT_SUPPORTS[0]['max'] if CURRENT_SUPPORTS else np.nan
-            active_res = CURRENT_RESISTANCES[0]['min'] if CURRENT_RESISTANCES else np.nan
-        self.data.df.loc[self.data.index[-1], 'sup_max'] = active_sup
-        self.data.df.loc[self.data.index[-1], 'res_min'] = active_res
+                active_sup = CURRENT_SUPPORTS[0]['max'] if CURRENT_SUPPORTS else np.nan
+                active_res = CURRENT_RESISTANCES[0]['min'] if CURRENT_RESISTANCES else np.nan
+            
+            if self.original_df is not None:
+                self.original_df.at[current_time, 'sup_max'] = active_sup
+                self.original_df.at[current_time, 'res_min'] = active_res
 
-        # --- Сжигание уровня ТОЛЬКО после прибыльного закрытия ---
+        # --- Сжигание уровня ---
         if len(self.closed_trades) > self.last_closed_trades:
             last_trade = self.closed_trades[-1]
             if last_trade.pl > 0 and self.current_trade_level_id is not None:
@@ -195,10 +201,7 @@ class SmartSniperUniversal(Strategy):
         if len(self.data) < max(15, WATCHER_CONFIG.get('CHOCH_LOOKBACK', 15) + 1):
             return
 
-        if self.position:
-            return
-
-        if not CURRENT_SUPPORTS and not CURRENT_RESISTANCES:
+        if self.position or (not CURRENT_SUPPORTS and not CURRENT_RESISTANCES):
             return
 
         c_open, c_close = self.data.Open[-1], self.data.Close[-1]
@@ -208,37 +211,34 @@ class SmartSniperUniversal(Strategy):
         can_long = len(CURRENT_SUPPORTS) > 0 and ALLOW_LONG_TRADES
         can_short = len(CURRENT_RESISTANCES) > 0 and ALLOW_SHORT_TRADES
 
-        # df-срез для CHOCH (нужна растущая история с колонкой atr)
-        df_slice = None
-        # df-срез (нужна история с колонкой atr, ema и avg_vol)
         df_slice = None
         if STRATEGY in ["CHOCH", "VOLUME_REVERSAL"]:
-            df_slice = self.data.df.iloc[:len(self.data)].copy()
-            df_slice.columns = [c.lower() for c in df_slice.columns]
-            df_slice['atr'] = self.atr[:len(self.data)]
+            lookback_size = 100 
+            current_len = len(self.data)
+            start_idx = max(0, current_len - lookback_size)
+            if self.original_df is not None:
+                df_slice = self.original_df.iloc[start_idx:current_len]
 
-        # =========================================================
-        # LONG
-        # =========================================================
+        recent_low = np.min(self.data.Low[-2:])
+        recent_high = np.max(self.data.High[-2:])
+
         if can_long:
             for sup in CURRENT_SUPPORTS:
-                decision = self._evaluate(sup, 'LONG', c_open, c_high, c_low, c_close,
-                                           CURRENT_RESISTANCES, df_slice)
+                if recent_low > sup['max']:
+                    continue
+                decision = self._evaluate(sup, 'LONG', c_open, c_high, c_low, c_close, CURRENT_RESISTANCES, df_slice)
                 if decision['allow']:
                     self._try_enter(sup, 'LONG', c_close, c_atr, decision)
                     break
 
-        # =========================================================
-        # SHORT
-        # =========================================================
         if can_short:
             for res in CURRENT_RESISTANCES:
-                decision = self._evaluate(res, 'SHORT', c_open, c_high, c_low, c_close,
-                                           CURRENT_SUPPORTS, df_slice)
+                if recent_high < res['min']:
+                    continue
+                decision = self._evaluate(res, 'SHORT', c_open, c_high, c_low, c_close, CURRENT_SUPPORTS, df_slice)
                 if decision['allow']:
                     self._try_enter(res, 'SHORT', c_close, c_atr, decision)
                     break
-
     def _evaluate(self, level, trade_type, c_open, c_high, c_low, c_close, opposite_levels, df_slice):
         """Вызывает нужный метод WatcherManager в зависимости от STRATEGY."""
         if STRATEGY == "SWEEP_RECLAIM":
@@ -272,7 +272,9 @@ class SmartSniperUniversal(Strategy):
         current_time = pd.to_datetime(self.data.index[-1])
         df_4h_ctx = getattr(self, 'context_df_4h', None)
         if df_4h_ctx is not None and len(df_4h_ctx) > 0:
-            closed_4h = df_4h_ctx[df_4h_ctx.index + pd.Timedelta(hours=4) <= current_time]
+            # Быстрая операция: встроенный поиск по индексу (отсекает всё будущее)
+            cutoff_time = current_time - pd.Timedelta(hours=4)
+            closed_4h = df_4h_ctx.loc[:cutoff_time]
         else:
             closed_4h = pd.DataFrame()
 
@@ -362,21 +364,26 @@ macro_db = load_json(macro_path, default={}) if os.path.exists(macro_path) else 
 
 
 def get_cached_data(coin):
-    try:
-        exchange.load_markets()
-    except Exception:
-        pass
-
-    symbol_perp = f"{coin.upper()}/USDT:USDT"
-    symbol_spot = f"{coin.upper()}/USDT"
-    symbol = symbol_perp if exchange.markets and symbol_perp in exchange.markets else symbol_spot
     date_suffix = TEST_START_DATE[:10] if TEST_START_DATE else "live"
     cache_file = f"cache_{coin.lower()}_{TIMEFRAME}_{LIMIT_CANDLES}_w{WARMUP_DAYS}_{date_suffix}.csv"
 
+    # 1. ЕСЛИ ФАЙЛ ЕСТЬ — читаем мгновенно, без интернета
     if os.path.exists(cache_file):
         return pd.read_csv(cache_file, index_col=0, parse_dates=True)
+    
+    # 2. ЕСЛИ ФАЙЛА НЕТ — включаем интернет и качаем (твой старый добрый код)
     else:
         try:
+            # ВОТ ЭТО МЫ ПЕРЕНЕСЛИ СЮДА! Теперь биржа не тормозит загрузку кэша.
+            try:
+                exchange.load_markets()
+            except Exception:
+                pass
+
+            symbol_perp = f"{coin.upper()}/USDT:USDT"
+            symbol_spot = f"{coin.upper()}/USDT"
+            symbol = symbol_perp if exchange.markets and symbol_perp in exchange.markets else symbol_spot
+            
             CANDLES_PER_DAY_15M = 96  # 24ч * 4 свечи/час
             warmup_candles = WARMUP_DAYS * CANDLES_PER_DAY_15M
             total_limit = LIMIT_CANDLES + warmup_candles
@@ -385,11 +392,6 @@ def get_cached_data(coin):
             if since_ts is None:
                 ohlcv = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=LIMIT_CANDLES)
             else:
-                # Биржа отдаёт максимум ~1000 свечей за один запрос (молча режет, без ошибки).
-                # Поэтому пагинируем: запрашиваем чанками, сдвигая since на последнюю
-                # полученную свечу, пока не наберём total_limit или данные не закончатся.
-                # Задержка между запросами - чтобы не упереться в rate limit биржи
-                # при большом числе монет x несколько чанков на каждую.
                 EXCHANGE_MAX_PER_CALL = 1000
                 PAGINATION_DELAY_SEC = 0.25
                 ohlcv = []
@@ -408,9 +410,6 @@ def get_cached_data(coin):
                         break  # биржа не двигается - защита от бесконечного цикла
                     cursor = last_ts + 1
                     time.sleep(PAGINATION_DELAY_SEC)
-                    # ВАЖНО: chunk МЕНЬШЕ лимита не значит "данные закончились" -
-                    # биржа может вернуть 999 вместо 1000 из-за технических границ.
-                    # Останавливаемся только когда чанк пустой или достигли now().
                     if pd.to_datetime(last_ts, unit='ms', utc=True) >= pd.Timestamp.now(tz='UTC') - pd.Timedelta(minutes=30):
                         print(f"   [{coin}] дошли до текущего момента, остановка")
                         break
@@ -422,8 +421,6 @@ def get_cached_data(coin):
         except Exception as e:
             print(f"⚠️ Ошибка загрузки данных для {coin}: {type(e).__name__}: {e}")
             return pd.DataFrame()
-
-
 def build_4h_context_df(df_15m):
     """
     Ресемплит 15m данные в 4H СВЕЧИ для контекста (тренд/энергия/импульс).
@@ -583,8 +580,16 @@ if TARGET_COIN.upper() == "ALL":
         
         df['ema'] = df['Close'].ewm(span=50, adjust=False).mean()
         df['avg_vol'] = df['Volume'].rolling(window=20).mean()
+        
+        # ДОБАВЛЯЕМ МАЛЕНЬКИЕ КОЛОНКИ ОДИН РАЗ
+        df['open'] = df['Open']
+        df['high'] = df['High']
+        df['low'] = df['Low']
+        df['close'] = df['Close']
+        df['volume'] = df['Volume']
 
         SmartSniperUniversal.context_df_4h = build_4h_context_df(df)
+        SmartSniperUniversal.original_df = df
         bt = Backtest(df, SmartSniperUniversal, cash=10000, commission=.0006, hedging=False)
         stats = bt.run()
 
@@ -615,6 +620,9 @@ if TARGET_COIN.upper() == "ALL":
             print_trade_log(coin, tr)
 
         GLOBAL_TRADE_CONTEXTS = {}
+        SmartSniperUniversal.context_df_4h = None
+        del df
+        gc.collect()
 
     print("\n" + "=" * 85)
     print(f"📊 ИТОГОВЫЙ ГЛОБАЛЬНЫЙ ОТЧЕТ (стратегия: {STRATEGY})")
@@ -745,7 +753,18 @@ else:
             df['ema'] = df['Close'].ewm(span=13, adjust=False).mean()
             df['avg_vol'] = df['Volume'].rolling(window=20).mean()
 
+            # Колонки для быстрого доступа, как и в ALL:
+            df['open'] = df['Open']
+            df['high'] = df['High']
+            df['low'] = df['Low']
+            df['close'] = df['Close']
+            df['volume'] = df['Volume']
+
             SmartSniperUniversal.context_df_4h = build_4h_context_df(df)
+            
+            # ПЕРЕДАЕМ original_df, чтобы df_slice не был None!
+            SmartSniperUniversal.original_df = df 
+            
             bt = Backtest(df, SmartSniperUniversal, cash=10000, commission=.0006, hedging=False)
             stats = bt.run()
 
