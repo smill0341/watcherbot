@@ -22,17 +22,15 @@ watcher_manager.py
         sl, tp = decision['sl'], decision['tp']
 """
 
-from modules.cryptano.utils.testswing.watcher_methods import SweepReclaimWatcher, check_choch
+from modules.cryptano.utils.testswing.watcher_methods import SweepReclaimWatcher, check_choch, check_volume_reversal
 
-
-STRATEGIES = ("SWEEP_RECLAIM", "CHOCH")
-
+STRATEGIES = ("SWEEP_RECLAIM", "CHOCH", "VOLUME_REVERSAL")
 
 class WatcherManager:
 
     def __init__(self, strategy, config):
         """
-        strategy: "SWEEP_RECLAIM" или "CHOCH"
+        STRATEGIES = ('SWEEP_RECLAIM', 'CHOCH', 'VOLUME_REVERSAL')
         config: словарь настроек, например:
             {
                 'MIN_SCORE': 5,
@@ -289,6 +287,37 @@ class WatcherManager:
             'level_id': self._level_id(level, trade_type),
             'extreme_price': None,
         }
+        
+    def evaluate_volume_reversal(self, level, df, trade_type, all_opposite_levels):
+        ok, reason = self._passes_quality_filters(level, trade_type, all_opposite_levels)
+        if not ok:
+            return self._deny(reason)
+
+        vol_mult = self.config.get('VOLUME_MULTIPLIER', 2.0)
+        signal = check_volume_reversal(df, level, trade_type, vol_mult=vol_mult, window=10)
+
+        if signal is None:
+            return self._deny("No volume reversal pattern in window")
+
+        current_price = float(df['close'].iloc[-1])
+        tp_pct = self.config.get('TAKE_PROFIT', 10.0)
+
+        sl = signal['sl']
+        if trade_type == 'LONG':
+            tp = current_price * (1 + tp_pct / 100)
+            sl = sl * 0.998 # Буфер 0.2% под снайперский минимум
+        else:
+            tp = current_price * (1 - tp_pct / 100)
+            sl = sl * 1.002
+
+        return {
+            'allow': True,
+            'reason': signal['reason'],
+            'sl': sl,
+            'tp': tp,
+            'level_id': self._level_id(level, trade_type),
+            'extreme_price': sl,
+        }    
 
     @staticmethod
     def _deny(reason):

@@ -226,3 +226,54 @@ def check_choch(df, level, direction, lookback=15, sl_buffer_pct=0.5,
                         active_level = level
 
     return None
+
+# =========================================================================
+# МЕТОД 3: VOLUME REVERSAL (Нырок под EMA в зоне + Аномальный объем)
+# =========================================================================
+def check_volume_reversal(df, level, direction, vol_mult=2.0, window=10):
+    if len(df) < window:
+        return None
+
+    # Срез за последние 10 свечей
+    recent = df.tail(window)
+    
+    # Данные текущей свечи (триггерной)
+    c_close = float(recent['close'].iloc[-1])
+    c_open = float(recent['open'].iloc[-1])
+    
+    # Ищем аномалию объема внутри всего окна
+    max_vol = float(recent['volume'].max())
+    c_avg_vol = float(recent['avg_vol'].iloc[-1])
+    
+    if c_avg_vol <= 0:
+        return None
+
+    vol_spike = max_vol >= (c_avg_vol * vol_mult)
+
+    if direction == 'LONG':
+        lowest_price = float(recent['low'].min())
+        
+        # 1. Заходили ли в зону или под нее?
+        in_zone = lowest_price <= level['max']
+        # 2. Ныряли ли под EMA?
+        ema_dip = lowest_price < float(recent['ema'].min())
+        # 3. Вернулись ли выше поддержки?
+        reclaim = c_close > level['min']
+        # 4. Зеленая ли свеча?
+        is_green = c_close > c_open
+
+        if vol_spike and in_zone and ema_dip and reclaim and is_green:
+            return {"action": "BUY", "sl": lowest_price, "reason": f"Vol Climax ({vol_mult}x) 10-candle window"}
+
+    elif direction == 'SHORT':
+        highest_price = float(recent['high'].max())
+        
+        in_zone = highest_price >= level['min']
+        ema_surge = highest_price > float(recent['ema'].max())
+        reclaim = c_close < level['max']
+        is_red = c_close < c_open
+
+        if vol_spike and in_zone and ema_surge and reclaim and is_red:
+            return {"action": "SELL", "sl": highest_price, "reason": f"Vol Climax ({vol_mult}x) 10-candle window"}
+
+    return None

@@ -43,7 +43,7 @@ GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"tr
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "ESPORTS"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "JTO"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
@@ -61,8 +61,8 @@ DIAGNOSTIC_DEADLINE_DAYS = 30  # принудительное закрытие, 
 ALLOW_LONG_TRADES = True
 ALLOW_SHORT_TRADES = False
 
-# Какой метод определения точки входа использовать: "SWEEP_RECLAIM" или "CHOCH"
-STRATEGY = "SWEEP_RECLAIM"
+# Какой метод определения точки входа использовать: "SWEEP_RECLAIM" или "CHOCH" или "VOLUME_REVERSAL"
+STRATEGY = "VOLUME_REVERSAL"
 
 USE_CONTEXT_FILTER = True  # макро-контекст (тренд/импульс/поджатие) из context_filter.py
 
@@ -90,6 +90,9 @@ WATCHER_CONFIG = {
     # только для CHOCH:
     'CHOCH_LOOKBACK': 15,
     'CHOCH_ANTI_KNIFE_ATR_MULT': 0.8,
+    # НАСТРОЙКИ ДЛЯ VOLUME_REVERSAL ---
+    'VOLUME_MULTIPLIER': 3.0,
+    'VOLUME_WINDOW': 10,
 }
 
 CURRENT_SUPPORTS = []
@@ -207,7 +210,9 @@ class SmartSniperUniversal(Strategy):
 
         # df-срез для CHOCH (нужна растущая история с колонкой atr)
         df_slice = None
-        if STRATEGY == "CHOCH":
+        # df-срез (нужна история с колонкой atr, ema и avg_vol)
+        df_slice = None
+        if STRATEGY in ["CHOCH", "VOLUME_REVERSAL"]:
             df_slice = self.data.df.iloc[:len(self.data)].copy()
             df_slice.columns = [c.lower() for c in df_slice.columns]
             df_slice['atr'] = self.atr[:len(self.data)]
@@ -239,6 +244,10 @@ class SmartSniperUniversal(Strategy):
         if STRATEGY == "SWEEP_RECLAIM":
             decision = self.manager.evaluate_sweep_reclaim(
                 level, c_open, c_high, c_low, c_close, opposite_levels, trade_type
+            )
+        elif STRATEGY == "VOLUME_REVERSAL":
+            decision = self.manager.evaluate_volume_reversal(
+                level, df_slice, trade_type, opposite_levels
             )
         else:  # CHOCH
             decision = self.manager.evaluate_choch(level, df_slice, trade_type, opposite_levels)
@@ -571,6 +580,9 @@ if TARGET_COIN.upper() == "ALL":
 
         df['sup_max'] = np.nan
         df['res_min'] = np.nan
+        
+        df['ema'] = df['Close'].ewm(span=13, adjust=False).mean()
+        df['avg_vol'] = df['Volume'].rolling(window=20).mean()
 
         SmartSniperUniversal.context_df_4h = build_4h_context_df(df)
         bt = Backtest(df, SmartSniperUniversal, cash=10000, commission=.0006, hedging=False)
@@ -729,6 +741,9 @@ else:
         else:
             df['sup_max'] = np.nan
             df['res_min'] = np.nan
+            
+            df['ema'] = df['Close'].ewm(span=13, adjust=False).mean()
+            df['avg_vol'] = df['Volume'].rolling(window=20).mean()
 
             SmartSniperUniversal.context_df_4h = build_4h_context_df(df)
             bt = Backtest(df, SmartSniperUniversal, cash=10000, commission=.0006, hedging=False)
