@@ -228,16 +228,20 @@ def check_choch(df, level, direction, lookback=15, sl_buffer_pct=0.5,
     return None
 
 def check_volume_reversal(df, level, direction, vol_mult=3.0, window=10):
-    # Нужно минимум 55 свечей для расчета базы объема
     if len(df) < 55:
         return None
 
-    # База объема: среднее за 50 свечей до текущего момента
+    # 1. ЖЕСТКИЙ ФИЛЬТР ЗОНЫ (Блокировка входа в воздухе)
+    # Если цена выше max (для LONG), мы даже не смотрим объемы
+    if float(df['close'].iloc[-1]) > level['max']:
+        return None
+
+    # База объема
     baseline_vol = df['volume'].iloc[-52:-2].mean()
     if baseline_vol <= 0:
         return None
 
-    # p = свеча паники (в яме), c = свеча перехвата (вход)
+    # p = свеча паники, c = свеча перехвата
     p = df.iloc[-2]
     c = df.iloc[-1]
 
@@ -248,46 +252,40 @@ def check_volume_reversal(df, level, direction, vol_mult=3.0, window=10):
     p_spread = float(p['high']) - float(p['low'])
 
     if direction == 'LONG':
-        # 1. ЛОКАЦИЯ: Строго провалились телом под max (никаких касаний)
-        if float(p['close']) > level['max']:
-            return None 
-
-        # 2. КАПИТУЛЯЦИЯ: Красная свеча паники + объем
-        p_is_red = p_close < p_open
+        # 2. ПРОВЕРКА ПАНИКИ (Только если мы в яме)
         is_big_dump = p_spread >= (p_atr * 1.5)
         high_vol = float(p['volume']) >= (baseline_vol * vol_mult)
 
-        if p_is_red and is_big_dump and high_vol:
-            # 3. ПЕРЕХВАТ: Зеленая свеча закрывается выше открытия красной
+        if p_close < p_open and is_big_dump and high_vol:
+            # 3. ПОДТВЕРЖДЕНИЕ ВХОДА
             if c_close > c_open and c_close > p_open:
-                # 4. PIVOT: Ищем абсолютный минимум с момента пробоя
-                # Сканируем срез от входа в яму до текущей свечи
-                start_search = max(0, len(df) - 30)
-                dip_slice = df.iloc[start_search:len(df)]
-                sl_price = float(dip_slice['low'].min())
                 
-                return {"action": "BUY", "sl": sl_price, 
-                        "reason": f"Structural Pivot {vol_mult}x + Early Reclaim"}
+                # 4. PIVOT: Сканируем только тот участок, где цена БЫЛА под max
+                # Берем срез с момента входа в зону и до сейчас
+                # Если цена была выше max, это "воздух", мы его не берем в расчет
+                mask = df['close'] <= level['max']
+                deep_dip = df[mask].iloc[-30:] # Берем последние 30 свечей из ямы
+                
+                if len(deep_dip) > 0:
+                    sl_price = float(deep_dip['low'].min())
+                    return {"action": "BUY", "sl": sl_price, "reason": "Structural Pivot inside Zone"}
 
     elif direction == 'SHORT':
-        # 1. ЛОКАЦИЯ: Строго провалились телом выше min
-        if float(p['close']) < level['min']:
+        # Аналогично для SHORT: блокировка если ниже min
+        if float(df['close'].iloc[-1]) < level['min']:
             return None
             
-        # 2. КАПИТУЛЯЦИЯ: Зеленая свеча паники + объем
-        p_is_green = p_close > p_open
         is_big_pump = p_spread >= (p_atr * 1.5)
         high_vol = float(p['volume']) >= (baseline_vol * vol_mult)
 
-        if p_is_green and is_big_pump and high_vol:
-            # 3. ПЕРЕХВАТ: Красная свеча закрывается ниже открытия зеленой
+        if p_close > p_open and is_big_pump and high_vol:
             if c_close < c_open and c_close < p_open:
-                # 4. PIVOT: Ищем абсолютный максимум с момента пробоя
-                start_search = max(0, len(df) - 30)
-                spike_slice = df.iloc[start_search:len(df)]
-                sl_price = float(spike_slice['high'].max())
                 
-                return {"action": "SELL", "sl": sl_price, 
-                        "reason": f"Structural Pivot {vol_mult}x + Early Rejection"}
+                mask = df['close'] >= level['min']
+                deep_spike = df[mask].iloc[-30:]
+                
+                if len(deep_spike) > 0:
+                    sl_price = float(deep_spike['high'].max())
+                    return {"action": "SELL", "sl": sl_price, "reason": "Structural Pivot inside Zone"}
 
     return None
