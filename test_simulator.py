@@ -66,11 +66,11 @@ ALLOW_SHORT_TRADES = False
 # Какой метод определения точки входа использовать: "SWEEP_RECLAIM" или "CHOCH" или "VOLUME_REVERSAL"
 STRATEGY = "VOLUME_REVERSAL"
 
-USE_CONTEXT_FILTER = False  # макро-контекст (тренд/импульс/поджатие) из context_filter.py
+USE_CONTEXT_FILTER = True  # макро-контекст (тренд/импульс/поджатие) из context_filter.py
 
 # Конфиг для WatcherManager - всё, что реально используется, в одном месте.
 WATCHER_CONFIG = {
-    'MIN_SCORE': 5,
+    'MIN_SCORE': 6,
     'USE_ZONE_GAP': True,
     'MIN_ZONE_GAP_PCT': 2.0,
     'USE_LEVEL_BURN': True,
@@ -88,7 +88,7 @@ WATCHER_CONFIG = {
     'FIXED_TP_PCT': 8.0,      # используется только если TP_MODE='fixed_pct'
     'TAKE_PROFIT': 8.0,       # fallback %, если нет следующего уровня (только для structural режима)
     'TP_BUFFER_PCT': 0.3,     # не долетаем до самого уровня на этот %
-    'MIN_RR': 1.5,            # если до следующего уровня R/R меньше - сделка отклоняется
+    'MIN_RR': 2.0,            # если до следующего уровня R/R меньше - сделка отклоняется
     # только для CHOCH:
     'CHOCH_LOOKBACK': 15,
     'CHOCH_ANTI_KNIFE_ATR_MULT': 0.8,

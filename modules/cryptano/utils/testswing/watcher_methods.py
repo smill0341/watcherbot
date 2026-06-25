@@ -227,64 +227,67 @@ def check_choch(df, level, direction, lookback=15, sl_buffer_pct=0.5,
 
     return None
 
-# =========================================================================
-# МЕТОД 3: VOLUME REVERSAL (Нырок под EMA в зоне + Аномальный объем)
-# =========================================================================
 def check_volume_reversal(df, level, direction, vol_mult=3.0, window=10):
-    if len(df) < 20:
+    # Нужно минимум 55 свечей для расчета базы объема
+    if len(df) < 55:
         return None
 
-    # 1. ЖЕСТКАЯ БАЗА ОБЪЕМА
-    # Берем среднее за 50 свечей ДО текущего момента (исключая последние 2).
-    baseline_df = df['volume'].iloc[-50:-2] if len(df) >= 50 else df['volume'].iloc[:-2]
-    baseline_vol = baseline_df.mean()
-    
+    # База объема: среднее за 50 свечей до текущего момента
+    baseline_vol = df['volume'].iloc[-52:-2].mean()
     if baseline_vol <= 0:
         return None
 
-    # 2. ФОКУС ТОЛЬКО НА ПОСЛЕДНИХ 2 СВЕЧАХ
-    p = df.iloc[-2] # Предыдущая свеча (кульминация: слив или памп)
-    c = df.iloc[-1] # Текущая свеча (разворот: поглощение)
+    # p = свеча паники (в яме), c = свеча перехвата (вход)
+    p = df.iloc[-2]
+    c = df.iloc[-1]
 
     p_close, p_open = float(p['close']), float(p['open'])
     c_close, c_open = float(c['close']), float(c['open'])
+    
+    p_atr = float(p['atr']) if not pd.isna(p.get('atr', float('nan'))) else (float(p['high']) - float(p['low']))
+    p_spread = float(p['high']) - float(p['low'])
 
     if direction == 'LONG':
-        # Событие 1: Свеча слива (p) должна быть КРАСНОЙ, бить в зону, быть под EMA и с ОБЪЕМОМ
+        # 1. ЛОКАЦИЯ: Строго провалились телом под max (никаких касаний)
+        if float(p['close']) > level['max']:
+            return None 
+
+        # 2. КАПИТУЛЯЦИЯ: Красная свеча паники + объем
         p_is_red = p_close < p_open
-        touched_zone = float(p['low']) <= level['max']
-        under_ema = float(p['low']) < float(p['ema'])
+        is_big_dump = p_spread >= (p_atr * 1.5)
         high_vol = float(p['volume']) >= (baseline_vol * vol_mult)
 
-        if p_is_red and touched_zone and under_ema and high_vol:
-            # ТРИГГЕР: Текущая свеча (c) ЗЕЛЕНАЯ, полностью перекрыла красную, и закрылась в нужной зоне
-            max_allowed = level['max'] * 1.015
-            c_is_green = c_close > c_open
-            c_dominance = c_close > float(p['high']) # Истинное доминирование (перекрыли хай сливной свечи)
-            c_in_range = c_close >= level['min'] and c_close <= max_allowed
-
-            if c_is_green and c_dominance and c_in_range:
-                # Стоп-лосс строго под самый нижний хвост этих двух свечей
-                sl_price = min(float(p['low']), float(c['low']))
-                return {"action": "BUY", "sl": sl_price, "reason": f"Strict Climax {vol_mult}x + Reclaim"}
+        if p_is_red and is_big_dump and high_vol:
+            # 3. ПЕРЕХВАТ: Зеленая свеча закрывается выше открытия красной
+            if c_close > c_open and c_close > p_open:
+                # 4. PIVOT: Ищем абсолютный минимум с момента пробоя
+                # Сканируем срез от входа в яму до текущей свечи
+                start_search = max(0, len(df) - 30)
+                dip_slice = df.iloc[start_search:len(df)]
+                sl_price = float(dip_slice['low'].min())
+                
+                return {"action": "BUY", "sl": sl_price, 
+                        "reason": f"Structural Pivot {vol_mult}x + Early Reclaim"}
 
     elif direction == 'SHORT':
-        # Событие 1: Свеча пампа (p) должна быть ЗЕЛЕНОЙ, бить в зону, быть над EMA и с ОБЪЕМОМ
+        # 1. ЛОКАЦИЯ: Строго провалились телом выше min
+        if float(p['close']) < level['min']:
+            return None
+            
+        # 2. КАПИТУЛЯЦИЯ: Зеленая свеча паники + объем
         p_is_green = p_close > p_open
-        touched_zone = float(p['high']) >= level['min']
-        above_ema = float(p['high']) > float(p['ema'])
+        is_big_pump = p_spread >= (p_atr * 1.5)
         high_vol = float(p['volume']) >= (baseline_vol * vol_mult)
 
-        if p_is_green and touched_zone and above_ema and high_vol:
-            # ТРИГГЕР: Текущая свеча (c) КРАСНАЯ, полностью перекрыла зеленую вниз, и закрылась в нужной зоне
-            min_allowed = level['min'] * 0.985
-            c_is_red = c_close < c_open
-            c_dominance = c_close < float(p['low']) # Истинное доминирование продавца (ушли ниже лоя пампа)
-            c_in_range = c_close <= level['max'] and c_close >= min_allowed
-
-            if c_is_red and c_dominance and c_in_range:
-                # Стоп-лосс строго за самый верхний хвост этих двух свечей
-                sl_price = max(float(p['high']), float(c['high']))
-                return {"action": "SELL", "sl": sl_price, "reason": f"Strict Climax {vol_mult}x + Rejection"}
+        if p_is_green and is_big_pump and high_vol:
+            # 3. ПЕРЕХВАТ: Красная свеча закрывается ниже открытия зеленой
+            if c_close < c_open and c_close < p_open:
+                # 4. PIVOT: Ищем абсолютный максимум с момента пробоя
+                start_search = max(0, len(df) - 30)
+                spike_slice = df.iloc[start_search:len(df)]
+                sl_price = float(spike_slice['high'].max())
+                
+                return {"action": "SELL", "sl": sl_price, 
+                        "reason": f"Structural Pivot {vol_mult}x + Early Rejection"}
 
     return None
