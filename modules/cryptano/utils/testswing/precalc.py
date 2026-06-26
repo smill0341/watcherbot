@@ -12,8 +12,8 @@ import json
 # Теперь импорт сработает без ошибок из любой папки
 from modules.cryptano.utils.testswing.swing_hunter import build_macro_levels
 
-START_DATE = "2026-04-01"
-END_DATE = "2026-04-30"
+START_DATE = "2026-02-01"
+END_DATE = "2026-03-30"
 
 def build_timeline():
     # freq='12h' нарежет месяц на даты: 01.04 00:00, 01.04 12:00, 02.04 00:00 и т.д.

@@ -289,10 +289,9 @@ class WatcherManager:
         }
         
     def evaluate_volume_reversal(self, level, df, trade_type, all_opposite_levels):
-        ok, reason = self._passes_quality_filters(level, trade_type, all_opposite_levels)
-        if not ok:
-            return self._deny(reason)
-
+        # Без проверки score/gap/burn - эта стратегия не зависит от качества уровня,
+        # level тут используется только как контекст "в яме/над уровнем" внутри
+        # check_volume_reversal, не как фильтр качества входа.
         vol_mult = self.config.get('VOLUME_MULTIPLIER', 3.0)
         from modules.cryptano.utils.testswing.watcher_methods import check_volume_reversal
         signal = check_volume_reversal(df, level, trade_type, vol_mult=vol_mult, window=10)

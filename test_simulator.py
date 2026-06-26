@@ -45,12 +45,12 @@ GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"tr
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "ALL"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ETH"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
 
-TEST_START_DATE = "2026-04-01 00:00:00"
+TEST_START_DATE = "2026-02-01 00:00:00"
 WARMUP_DAYS = 18  # запас данных ДО начала теста - нужен 4H контексту (64 свечи x 4ч = ~10.6 дней)
 
 # --- DIAGNOSTIC: проверка качества точки входа без SL ---
@@ -93,7 +93,7 @@ WATCHER_CONFIG = {
     'CHOCH_LOOKBACK': 15,
     'CHOCH_ANTI_KNIFE_ATR_MULT': 0.8,
     # НАСТРОЙКИ ДЛЯ VOLUME_REVERSAL ---
-    'VOLUME_MULTIPLIER': 3.0,
+    'VOLUME_MULTIPLIER': 0.5,
     'VOLUME_WINDOW': 10,
 }
 
@@ -115,6 +115,14 @@ class SmartSniperUniversal(Strategy):
         self.level_states = {}
         self.last_closed_trades = 0
         self.current_trade_level_id = None
+
+        # Уровень "исхода" — тот, от которого начался слив (LONG) или памп (SHORT).
+        # Фиксируется в момент свежего пробоя и держится, пока цена не вернется
+        # назад выше/ниже него или не случится сделка. Нужен только для VOLUME_REVERSAL,
+        # чтобы рисовать/логировать тот уровень, ОТКУДА пошло движение, а не тот,
+        # который случайно проходит фильтры в моменте входа.
+        self.origin_level_long = None
+        self.origin_level_short = None
 
         high_low = pd.Series(self.data.High) - pd.Series(self.data.Low)
         self.atr = self.I(SMA, high_low, 14)
@@ -181,6 +189,13 @@ class SmartSniperUniversal(Strategy):
                     active_sup, active_res = active_max, np.nan
                 else:
                     active_sup, active_res = np.nan, active_min
+            elif STRATEGY == "VOLUME_REVERSAL":
+                # Пока ждем вход - рисуем зафиксированный уровень исхода (если есть),
+                # не первый попавшийся из списка (чтобы не скакало ступеньками без причины)
+                ol_long = self.origin_level_long
+                ol_short = self.origin_level_short
+                active_sup = ol_long['max'] if ol_long is not None else np.nan
+                active_res = ol_short['min'] if ol_short is not None else np.nan
             else:
                 active_sup = CURRENT_SUPPORTS[0]['max'] if CURRENT_SUPPORTS else np.nan
                 active_res = CURRENT_RESISTANCES[0]['min'] if CURRENT_RESISTANCES else np.nan
@@ -213,7 +228,10 @@ class SmartSniperUniversal(Strategy):
 
         df_slice = None
         if STRATEGY in ["CHOCH", "VOLUME_REVERSAL"]:
-            lookback_size = 100 
+            # VOLUME_REVERSAL нужно больше истории для стабильной базы объема
+            # (BASELINE_BARS=200 в check_volume_reversal) - 100 баров не хватало,
+            # из-за этого функция всегда упиралась в min_len и возвращала None.
+            lookback_size = 260 if STRATEGY == "VOLUME_REVERSAL" else 100
             current_len = len(self.data)
             start_idx = max(0, current_len - lookback_size)
             if self.original_df is not None:
@@ -222,23 +240,86 @@ class SmartSniperUniversal(Strategy):
         recent_low = np.min(self.data.Low[-2:])
         recent_high = np.max(self.data.High[-2:])
 
+        # --- Отслеживание уровня "исхода" (от которого начался слив/памп) ---
+        # Работает независимо от того, какая стратегия активна, но используется
+        # только для VOLUME_REVERSAL ниже.
+        if CURRENT_SUPPORTS:
+            if self.origin_level_long is None:
+                # Сначала пробуем поймать живой пробой (свежий, прямо сейчас)
+                prev_close = float(self.data.Close[-2]) if len(self.data.Close) > 1 else c_close
+                found = None
+                for sup in CURRENT_SUPPORTS:
+                    if c_close < sup['min'] and prev_close >= sup['min']:
+                        found = sup
+                        break
+                # Если живого пробоя не было, но цена УЖЕ ниже уровня (например,
+                # уровни только обновились, а мы уже в яме) - тоже считаем исходом,
+                # иначе монета может вообще никогда не получить сигнал.
+                if found is None:
+                    for sup in CURRENT_SUPPORTS:
+                        if c_close < sup['min']:
+                            found = sup
+                            break
+                if found is not None:
+                    self.origin_level_long = dict(found)
+            else:
+                if c_close > self.origin_level_long['max']:
+                    self.origin_level_long = None
+
+        if CURRENT_RESISTANCES:
+            if self.origin_level_short is None:
+                prev_close = float(self.data.Close[-2]) if len(self.data.Close) > 1 else c_close
+                found = None
+                for res in CURRENT_RESISTANCES:
+                    if c_close > res['max'] and prev_close <= res['max']:
+                        found = res
+                        break
+                if found is None:
+                    for res in CURRENT_RESISTANCES:
+                        if c_close > res['max']:
+                            found = res
+                            break
+                if found is not None:
+                    self.origin_level_short = dict(found)
+            else:
+                if c_close < self.origin_level_short['min']:
+                    self.origin_level_short = None
+
         if can_long:
-            for sup in CURRENT_SUPPORTS:
-                if recent_low > sup['max']:
-                    continue
-                decision = self._evaluate(sup, 'LONG', c_open, c_high, c_low, c_close, CURRENT_RESISTANCES, df_slice)
-                if decision['allow']:
-                    self._try_enter(sup, 'LONG', c_close, c_atr, decision)
-                    break
+            if STRATEGY == "VOLUME_REVERSAL":
+                # Не перебираем уровни - используем зафиксированный уровень исхода.
+                # Без него (пока не было свежего пробоя) сигнала быть не может.
+                if self.origin_level_long is not None:
+                    decision = self._evaluate(self.origin_level_long, 'LONG', c_open, c_high, c_low, c_close,
+                                               CURRENT_RESISTANCES, df_slice)
+                    if decision['allow']:
+                        self._try_enter(self.origin_level_long, 'LONG', c_close, c_atr, decision)
+                        self.origin_level_long = None
+            else:
+                for sup in CURRENT_SUPPORTS:
+                    if recent_low > sup['max']:
+                        continue
+                    decision = self._evaluate(sup, 'LONG', c_open, c_high, c_low, c_close, CURRENT_RESISTANCES, df_slice)
+                    if decision['allow']:
+                        self._try_enter(sup, 'LONG', c_close, c_atr, decision)
+                        break
 
         if can_short:
-            for res in CURRENT_RESISTANCES:
-                if recent_high < res['min']:
-                    continue
-                decision = self._evaluate(res, 'SHORT', c_open, c_high, c_low, c_close, CURRENT_SUPPORTS, df_slice)
-                if decision['allow']:
-                    self._try_enter(res, 'SHORT', c_close, c_atr, decision)
-                    break
+            if STRATEGY == "VOLUME_REVERSAL":
+                if self.origin_level_short is not None:
+                    decision = self._evaluate(self.origin_level_short, 'SHORT', c_open, c_high, c_low, c_close,
+                                               CURRENT_SUPPORTS, df_slice)
+                    if decision['allow']:
+                        self._try_enter(self.origin_level_short, 'SHORT', c_close, c_atr, decision)
+                        self.origin_level_short = None
+            else:
+                for res in CURRENT_RESISTANCES:
+                    if recent_high < res['min']:
+                        continue
+                    decision = self._evaluate(res, 'SHORT', c_open, c_high, c_low, c_close, CURRENT_SUPPORTS, df_slice)
+                    if decision['allow']:
+                        self._try_enter(res, 'SHORT', c_close, c_atr, decision)
+                        break
     def _evaluate(self, level, trade_type, c_open, c_high, c_low, c_close, opposite_levels, df_slice):
         """Вызывает нужный метод WatcherManager в зависимости от STRATEGY."""
         if STRATEGY == "SWEEP_RECLAIM":

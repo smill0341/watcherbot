@@ -15,6 +15,7 @@ watcher_methods.py
 """
 
 import pandas as pd
+import numpy as np
 
 
 # =========================================================================
@@ -227,65 +228,76 @@ def check_choch(df, level, direction, lookback=15, sl_buffer_pct=0.5,
 
     return None
 
-def check_volume_reversal(df, level, direction, vol_mult=3.0, window=10):
-    if len(df) < 55:
+CONFIRM_BARS = 2  # после климакс-свечи столько баров должны держать higher-low, не пробивая её low
+
+
+def check_volume_reversal(df, level, direction, vol_mult=0.5, window=10):
+    if len(df) < 30: 
         return None
 
-    # 1. ЖЕСТКИЙ ФИЛЬТР ЗОНЫ (Блокировка входа в воздухе)
-    # Если цена выше max (для LONG), мы даже не смотрим объемы
-    if float(df['close'].iloc[-1]) > level['max']:
-        return None
-
-    # База объема
-    baseline_vol = df['volume'].iloc[-52:-2].mean()
-    if baseline_vol <= 0:
-        return None
-
-    # p = свеча паники, c = свеча перехвата
-    p = df.iloc[-2]
-    c = df.iloc[-1]
-
-    p_close, p_open = float(p['close']), float(p['open'])
-    c_close, c_open = float(c['close']), float(c['open'])
-    
-    p_atr = float(p['atr']) if not pd.isna(p.get('atr', float('nan'))) else (float(p['high']) - float(p['low']))
-    p_spread = float(p['high']) - float(p['low'])
+    current = df.iloc[-1]
+    c_close, c_open = float(current['close']), float(current['open'])
+    c_vol = float(current['volume'])
 
     if direction == 'LONG':
-        # 2. ПРОВЕРКА ПАНИКИ (Только если мы в яме)
-        is_big_dump = p_spread >= (p_atr * 1.5)
-        high_vol = float(p['volume']) >= (baseline_vol * vol_mult)
-
-        if p_close < p_open and is_big_dump and high_vol:
-            # 3. ПОДТВЕРЖДЕНИЕ ВХОДА
-            if c_close > c_open and c_close > p_open:
-                
-                # 4. PIVOT: Сканируем только тот участок, где цена БЫЛА под max
-                # Берем срез с момента входа в зону и до сейчас
-                # Если цена была выше max, это "воздух", мы его не берем в расчет
-                mask = df['close'] <= level['max']
-                deep_dip = df[mask].iloc[-30:] # Берем последние 30 свечей из ямы
-                
-                if len(deep_dip) > 0:
-                    sl_price = float(deep_dip['low'].min())
-                    return {"action": "BUY", "sl": sl_price, "reason": "Structural Pivot inside Zone"}
-
-    elif direction == 'SHORT':
-        # Аналогично для SHORT: блокировка если ниже min
-        if float(df['close'].iloc[-1]) < level['min']:
+        # 1. Мы должны быть в яме (закрытие ниже или равно верхней границе)
+        if c_close > level['max']: 
             return None
             
-        is_big_pump = p_spread >= (p_atr * 1.5)
-        high_vol = float(p['volume']) >= (baseline_vol * vol_mult)
+        # Текущая свеча должна быть разворотной (зеленой)
+        if c_close <= c_open: 
+            return None
 
-        if p_close > p_open and is_big_pump and high_vol:
-            if c_close < c_open and c_close < p_open:
-                
-                mask = df['close'] >= level['min']
-                deep_spike = df[mask].iloc[-30:]
-                
-                if len(deep_spike) > 0:
-                    sl_price = float(deep_spike['high'].max())
-                    return {"action": "SELL", "sl": sl_price, "reason": "Structural Pivot inside Zone"}
+        # 2. Ищем границу ямы (срез свечей, которые находятся под уровнем)
+        close_arr = df['close'].values
+        # Находим индексы, где цена была выше ямы
+        above_idx = np.where(close_arr[:-1] > level['max'])[0]
+        # Яма начинается сразу после последнего раза, когда мы были над зоной
+        pit_start = int(above_idx[-1] + 1) if len(above_idx) > 0 else max(0, len(df)-30)
+        
+        pit_df = df.iloc[pit_start:-1] # Все свечи в яме ДО текущей зеленой
+        if len(pit_df) == 0: 
+            return None
+            
+        # 3. Ищем Climax (самую громкую КРАСНУЮ свечу в яме)
+        red_candles = pit_df[pit_df['close'] < pit_df['open']]
+        if len(red_candles) == 0: 
+            return None
+            
+        climax_vol = float(red_candles['volume'].max())
+        
+        # 4. Проверяем наш порог (Зеленый объем >= 50% от максимального красного)
+        if c_vol >= (climax_vol * vol_mult):
+            # SL ставим под абсолютное дно всей этой ямы
+            sl_price = float(df['low'].iloc[pit_start:].min())
+            return {"action": "BUY", "sl": sl_price, "reason": f"Confirm >= {int(vol_mult*100)}% of Pit Climax"}
+
+    elif direction == 'SHORT':
+        # Зеркально для шорта: мы над зоной (level['min'])
+        if c_close < level['min']: 
+            return None
+            
+        # Текущая свеча медвежья (красная)
+        if c_close >= c_open: 
+            return None
+
+        close_arr = df['close'].values
+        below_idx = np.where(close_arr[:-1] < level['min'])[0]
+        spike_start = int(below_idx[-1] + 1) if len(below_idx) > 0 else max(0, len(df)-30)
+        
+        spike_df = df.iloc[spike_start:-1]
+        if len(spike_df) == 0: 
+            return None
+            
+        # Climax эйфории: самая громкая ЗЕЛЕНАЯ свеча
+        green_candles = spike_df[spike_df['close'] > spike_df['open']]
+        if len(green_candles) == 0: 
+            return None
+            
+        climax_vol = float(green_candles['volume'].max())
+        
+        if c_vol >= (climax_vol * vol_mult):
+            sl_price = float(df['high'].iloc[spike_start:].max())
+            return {"action": "SELL", "sl": sl_price, "reason": f"Confirm >= {int(vol_mult*100)}% of Peak Climax"}
 
     return None
