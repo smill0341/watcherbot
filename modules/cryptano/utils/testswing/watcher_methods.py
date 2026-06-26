@@ -231,73 +231,89 @@ def check_choch(df, level, direction, lookback=15, sl_buffer_pct=0.5,
 CONFIRM_BARS = 2  # после климакс-свечи столько баров должны держать higher-low, не пробивая её low
 
 
-def check_volume_reversal(df, level, direction, vol_mult=0.5, window=10):
+
+# МЕТОД 3: volume_reversal
+
+def check_volume_reversal(df, level, direction, **kwargs):
     if len(df) < 30: 
         return None
 
+    # 1. ЖЕЛЕЗОБЕТОННЫЙ ПАРСИНГ АРГУМЕНТОВ
+    # Теперь мы точно ловим твою цифру из конфига (например, 0.5)
+    confirm_mult = kwargs.get('vol_mult', kwargs.get('VOLUME_MULTIPLIER', 0.5))
+
     current = df.iloc[-1]
+    prev = df.iloc[-2]
+    
     c_close, c_open = float(current['close']), float(current['open'])
     c_vol = float(current['volume'])
+    
+    p_close, p_open = float(prev['close']), float(prev['open'])
+    p_high, p_low = float(prev['high']), float(prev['low'])
 
     if direction == 'LONG':
-        # 1. Мы должны быть в яме (закрытие ниже или равно верхней границе)
-        if c_close > level['max']: 
-            return None
-            
-        # Текущая свеча должна быть разворотной (зеленой)
-        if c_close <= c_open: 
-            return None
+        # Локация: строго внутри зоны
+        if c_close > level['max']: return None
+        if c_close <= c_open: return None # Только зеленая свеча
 
-        # 2. Ищем границу ямы (срез свечей, которые находятся под уровнем)
+        # 2. ПРАЙС-ЭКШЕН (Защита от ранних входов как на 3 фото)
+        # Зеленая свеча ОБЯЗАНА перекрыть тело предыдущей свечи.
+        # Если красная свеча была огромной, бот не сможет войти сразу, 
+        # ему придется подождать мелких свечей проторговки на дне, чтобы поглотить их.
+        if p_close < p_open:
+            if c_close <= p_open: return None
+        else:
+            if c_close <= p_high: return None
+
+        # Ищем границы текущей ямы
         close_arr = df['close'].values
-        # Находим индексы, где цена была выше ямы
         above_idx = np.where(close_arr[:-1] > level['max'])[0]
-        # Яма начинается сразу после последнего раза, когда мы были над зоной
         pit_start = int(above_idx[-1] + 1) if len(above_idx) > 0 else max(0, len(df)-30)
         
-        pit_df = df.iloc[pit_start:-1] # Все свечи в яме ДО текущей зеленой
-        if len(pit_df) == 0: 
+        pit_df = df.iloc[pit_start:-1]
+        if len(pit_df) < 1: 
             return None
             
-        # 3. Ищем Climax (самую громкую КРАСНУЮ свечу в яме)
+        # 3. Ищем Climax (самую жирную красную свечу в яме)
         red_candles = pit_df[pit_df['close'] < pit_df['open']]
         if len(red_candles) == 0: 
             return None
             
         climax_vol = float(red_candles['volume'].max())
         
-        # 4. Проверяем наш порог (Зеленый объем >= 50% от максимального красного)
-        if c_vol >= (climax_vol * vol_mult):
-            # SL ставим под абсолютное дно всей этой ямы
+        # 4. ВХОД: Сравниваем напрямую (Зеленая >= 50% от Климакса)
+        if c_vol >= (climax_vol * confirm_mult):
             sl_price = float(df['low'].iloc[pit_start:].min())
-            return {"action": "BUY", "sl": sl_price, "reason": f"Confirm >= {int(vol_mult*100)}% of Pit Climax"}
+            return {"action": "BUY", "sl": sl_price, 
+                    "reason": f"Confirm >= {int(confirm_mult*100)}% of Pit Climax"}
 
     elif direction == 'SHORT':
-        # Зеркально для шорта: мы над зоной (level['min'])
-        if c_close < level['min']: 
-            return None
-            
-        # Текущая свеча медвежья (красная)
-        if c_close >= c_open: 
-            return None
+        if c_close < level['min']: return None
+        if c_close >= c_open: return None
+
+        if p_close > p_open:
+            if c_close >= p_open: return None
+        else:
+            if c_close >= p_low: return None
 
         close_arr = df['close'].values
         below_idx = np.where(close_arr[:-1] < level['min'])[0]
         spike_start = int(below_idx[-1] + 1) if len(below_idx) > 0 else max(0, len(df)-30)
         
         spike_df = df.iloc[spike_start:-1]
-        if len(spike_df) == 0: 
+        if len(spike_df) < 1: 
             return None
             
-        # Climax эйфории: самая громкая ЗЕЛЕНАЯ свеча
         green_candles = spike_df[spike_df['close'] > spike_df['open']]
         if len(green_candles) == 0: 
             return None
             
         climax_vol = float(green_candles['volume'].max())
         
-        if c_vol >= (climax_vol * vol_mult):
+        if c_vol >= (climax_vol * confirm_mult):
             sl_price = float(df['high'].iloc[spike_start:].max())
-            return {"action": "SELL", "sl": sl_price, "reason": f"Confirm >= {int(vol_mult*100)}% of Peak Climax"}
+            return {"action": "SELL", "sl": sl_price, 
+                    "reason": f"Confirm >= {int(confirm_mult*100)}% of Peak Climax"}
 
     return None
+  

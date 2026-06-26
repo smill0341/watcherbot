@@ -84,16 +84,17 @@ WATCHER_CONFIG = {
     # не от фиксированного %. TAKE_PROFIT используется только как fallback,
     # если структурного уровня вообще нет на графике.
     # TP режим: 'structural' (по уровню, текущий) или 'fixed_pct' (твой % без привязки к уровням)
-    'TP_MODE': 'fixed_pct',
+    'TP_MODE': 'structural',
     'FIXED_TP_PCT': 8.0,      # используется только если TP_MODE='fixed_pct'
     'TAKE_PROFIT': 8.0,       # fallback %, если нет следующего уровня (только для structural режима)
-    'TP_BUFFER_PCT': 0.3,     # не долетаем до самого уровня на этот %
+    'TP_BUFFER_PCT': 0.5,     # не долетаем до самого уровня на этот %
     'MIN_RR': 2.0,            # если до следующего уровня R/R меньше - сделка отклоняется
     # только для CHOCH:
     'CHOCH_LOOKBACK': 15,
     'CHOCH_ANTI_KNIFE_ATR_MULT': 0.8,
+
     # НАСТРОЙКИ ДЛЯ VOLUME_REVERSAL ---
-    'VOLUME_MULTIPLIER': 0.5,
+    'VOLUME_MULTIPLIER': 0.5,  # Ищем свечу паники, которая минимум в 3 раза громче базы
     'VOLUME_WINDOW': 10,
 }
 
