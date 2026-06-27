@@ -16,6 +16,8 @@ watcher_methods.py
 
 import pandas as pd
 import numpy as np
+from smartmoneyconcepts import smc
+
 
 
 # =========================================================================
@@ -228,92 +230,90 @@ def check_choch(df, level, direction, lookback=15, sl_buffer_pct=0.5,
 
     return None
 
-CONFIRM_BARS = 2  # после климакс-свечи столько баров должны держать higher-low, не пробивая её low
+SWING_LENGTH = 5     # окно поиска пивотов для smc.swing_highs_lows (5 свечей в каждую
+                      # сторону - подобрано под 15m, не дефолтные 50)
+CHOCH_VOL_RATIO = 2.0  # объем на свече, подтвердившей слом структуры, должен быть
+                        # минимум x2 от средней - отсекает "пустые" CHoCH без капитуляции
+                        # (проверено на реальных данных: CHoCH без объема ~46% WR / -0.12%,
+                        # CHoCH с объемом x2+ ~50% WR / +0.20% на 5ч горизонте)
+BASELINE_BARS = 200    # ~2 суток на 15m - база объема не должна "забывать" масштаб
 
 
+def check_volume_reversal(df, level, direction, vol_mult=3.0, window=10):
+    """
+    Финальная логика (структура + объемный фильтр):
+      1. Локация: цена под/над уровнем ИСХОДА (level - зафиксированный origin_level
+         из test_simulator.py, не "первый попавшийся" уровень).
+      2. Структура: используем smc.bos_choch (smart-money-concepts) - находим
+         подтвержденный слом структуры (CHoCH) именно НА ТЕКУЩЕЙ свече (BrokenIndex
+         совпадает с текущим индексом - слом подтвердился прямо сейчас).
+      3. Объемный фильтр: свеча, подтвердившая слом (BrokenIndex), должна иметь
+         объем >= CHOCH_VOL_RATIO от базы - это и есть капитуляция, не пустой перегиб.
+      4. SL - под уровень свинга, который был сломан (Level из bos_choch).
 
-# МЕТОД 3: volume_reversal
-
-def check_volume_reversal(df, level, direction, **kwargs):
-    if len(df) < 30: 
+    Требует пакет smartmoneyconcepts (pip install smartmoneyconcepts).
+    """
+    
+    min_len = BASELINE_BARS + SWING_LENGTH * 4 + 10
+    if len(df) < min_len:
         return None
 
-    # 1. ЖЕЛЕЗОБЕТОННЫЙ ПАРСИНГ АРГУМЕНТОВ
-    # Теперь мы точно ловим твою цифру из конфига (например, 0.5)
-    confirm_mult = kwargs.get('vol_mult', kwargs.get('VOLUME_MULTIPLIER', 0.5))
+    now_idx = len(df) - 1
+    baseline_vol = df['volume'].iloc[-(BASELINE_BARS + 2):-2].mean()
+    if baseline_vol <= 0:
+        return None
 
-    current = df.iloc[-1]
-    prev = df.iloc[-2]
-    
-    c_close, c_open = float(current['close']), float(current['open'])
-    c_vol = float(current['volume'])
-    
-    p_close, p_open = float(prev['close']), float(prev['open'])
-    p_high, p_low = float(prev['high']), float(prev['low'])
+    # Очистка колонок от дубликатов симулятора (чтобы не было краша N, 2)
+    df_smc = pd.DataFrame({
+        'open': df['open'],
+        'high': df['high'],
+        'low': df['low'],
+        'close': df['close'],
+        'volume': df['volume']
+    })
+
+    # Передаем ВЕСЬ график, как хотел Клод, без обрезаний
+    sh = pd.DataFrame(smc.swing_highs_lows(df_smc, swing_length=SWING_LENGTH))
+    bc = pd.DataFrame(smc.bos_choch(df_smc, sh, close_break=True))
+
+    # Ищем строку, где слом структуры подтвердился ИМЕННО на текущей свече
+    # (BrokenIndex == now_idx) - это и значит "разворот подтвердился прямо сейчас"
+    broken_now = bc[bc['BrokenIndex'] == now_idx]
+    if len(broken_now) == 0:
+        return None
 
     if direction == 'LONG':
-        # Локация: строго внутри зоны
-        if c_close > level['max']: return None
-        if c_close <= c_open: return None # Только зеленая свеча
-
-        # 2. ПРАЙС-ЭКШЕН (Защита от ранних входов как на 3 фото)
-        # Зеленая свеча ОБЯЗАНА перекрыть тело предыдущей свечи.
-        # Если красная свеча была огромной, бот не сможет войти сразу, 
-        # ему придется подождать мелких свечей проторговки на дне, чтобы поглотить их.
-        if p_close < p_open:
-            if c_close <= p_open: return None
-        else:
-            if c_close <= p_high: return None
-
-        # Ищем границы текущей ямы
-        close_arr = df['close'].values
-        above_idx = np.where(close_arr[:-1] > level['max'])[0]
-        pit_start = int(above_idx[-1] + 1) if len(above_idx) > 0 else max(0, len(df)-30)
-        
-        pit_df = df.iloc[pit_start:-1]
-        if len(pit_df) < 1: 
+        bullish = broken_now[broken_now['CHOCH'] == 1]
+        if len(bullish) == 0:
             return None
-            
-        # 3. Ищем Climax (самую жирную красную свечу в яме)
-        red_candles = pit_df[pit_df['close'] < pit_df['open']]
-        if len(red_candles) == 0: 
-            return None
-            
-        climax_vol = float(red_candles['volume'].max())
-        
-        # 4. ВХОД: Сравниваем напрямую (Зеленая >= 50% от Климакса)
-        if c_vol >= (climax_vol * confirm_mult):
-            sl_price = float(df['low'].iloc[pit_start:].min())
-            return {"action": "BUY", "sl": sl_price, 
-                    "reason": f"Confirm >= {int(confirm_mult*100)}% of Pit Climax"}
+
+        c_close_now = float(df['close'].iloc[now_idx])
+        if c_close_now > level['max']:
+            return None  # подтверждение случилось не в яме - не наш сигнал
+
+        vol_at_break = float(df['volume'].iloc[now_idx])
+        if vol_at_break < (baseline_vol * CHOCH_VOL_RATIO):
+            return None  # слом без капитуляции - статистически слабый сигнал
+
+        sl_price = float(bullish['Level'].iloc[0])
+        return {"action": "BUY", "sl": sl_price,
+                "reason": f"CHoCH + Vol x{CHOCH_VOL_RATIO} confirm"}
 
     elif direction == 'SHORT':
-        if c_close < level['min']: return None
-        if c_close >= c_open: return None
-
-        if p_close > p_open:
-            if c_close >= p_open: return None
-        else:
-            if c_close >= p_low: return None
-
-        close_arr = df['close'].values
-        below_idx = np.where(close_arr[:-1] < level['min'])[0]
-        spike_start = int(below_idx[-1] + 1) if len(below_idx) > 0 else max(0, len(df)-30)
-        
-        spike_df = df.iloc[spike_start:-1]
-        if len(spike_df) < 1: 
+        bearish = broken_now[broken_now['CHOCH'] == -1]
+        if len(bearish) == 0:
             return None
-            
-        green_candles = spike_df[spike_df['close'] > spike_df['open']]
-        if len(green_candles) == 0: 
+
+        c_close_now = float(df['close'].iloc[now_idx])
+        if c_close_now < level['min']:
             return None
-            
-        climax_vol = float(green_candles['volume'].max())
-        
-        if c_vol >= (climax_vol * confirm_mult):
-            sl_price = float(df['high'].iloc[spike_start:].max())
-            return {"action": "SELL", "sl": sl_price, 
-                    "reason": f"Confirm >= {int(confirm_mult*100)}% of Peak Climax"}
+
+        vol_at_break = float(df['volume'].iloc[now_idx])
+        if vol_at_break < (baseline_vol * CHOCH_VOL_RATIO):
+            return None
+
+        sl_price = float(bearish['Level'].iloc[0])
+        return {"action": "SELL", "sl": sl_price,
+                "reason": f"CHoCH + Vol x{CHOCH_VOL_RATIO} confirm"}
 
     return None
-  
