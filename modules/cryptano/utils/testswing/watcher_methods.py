@@ -18,6 +18,8 @@ import pandas as pd
 import numpy as np
 from smartmoneyconcepts import smc
 
+SWING_LENGTH = 5      # окно поиска пивотов для smc.swing_highs_lows (подобрано под 15m)
+BASELINE_BARS = 200   # ~2 суток на 15m - база объема для check_volume_reversal
 
 
 # =========================================================================
@@ -230,16 +232,13 @@ def check_choch(df, level, direction, lookback=15, sl_buffer_pct=0.5,
 
     return None
 
-SWING_LENGTH = 5     # окно поиска пивотов для smc.swing_highs_lows (5 свечей в каждую
-                      # сторону - подобрано под 15m, не дефолтные 50)
-CHOCH_VOL_RATIO = 2.0  # объем на свече, подтвердившей слом структуры, должен быть
-                        # минимум x2 от средней - отсекает "пустые" CHoCH без капитуляции
-                        # (проверено на реальных данных: CHoCH без объема ~46% WR / -0.12%,
-                        # CHoCH с объемом x2+ ~50% WR / +0.20% на 5ч горизонте)
-BASELINE_BARS = 200    # ~2 суток на 15m - база объема не должна "забывать" масштаб
+CONFIRM_BARS = 2  # после климакс-свечи столько баров должны держать higher-low, не пробивая её low
 
 
-def check_volume_reversal(df, level, direction, vol_mult=3.0, window=10):
+
+# МЕТОД 3: volume_reversal
+
+def check_volume_reversal(df, level, direction, vol_mult=2.0, window=10):
     """
     Финальная логика (структура + объемный фильтр):
       1. Локация: цена под/над уровнем ИСХОДА (level - зафиксированный origin_level
@@ -248,8 +247,13 @@ def check_volume_reversal(df, level, direction, vol_mult=3.0, window=10):
          подтвержденный слом структуры (CHoCH) именно НА ТЕКУЩЕЙ свече (BrokenIndex
          совпадает с текущим индексом - слом подтвердился прямо сейчас).
       3. Объемный фильтр: свеча, подтвердившая слом (BrokenIndex), должна иметь
-         объем >= CHOCH_VOL_RATIO от базы - это и есть капитуляция, не пустой перегиб.
+         объем >= vol_mult от базы - это и есть капитуляция, не пустой перегиб.
+         (проверено на реальных данных: CHoCH без объема ~46% WR / -0.12%,
+         CHoCH с объемом x2+ ~50% WR / +0.20% на 5ч горизонте)
       4. SL - под уровень свинга, который был сломан (Level из bos_choch).
+
+    vol_mult: множитель объёма для подтверждения (из WATCHER_CONFIG['VOLUME_MULTIPLIER']).
+              Раньше игнорировался, использовался хардкод CHOCH_VOL_RATIO=2.0 - починено.
 
     Требует пакет smartmoneyconcepts (pip install smartmoneyconcepts).
     """
@@ -292,12 +296,12 @@ def check_volume_reversal(df, level, direction, vol_mult=3.0, window=10):
             return None  # подтверждение случилось не в яме - не наш сигнал
 
         vol_at_break = float(df['volume'].iloc[now_idx])
-        if vol_at_break < (baseline_vol * CHOCH_VOL_RATIO):
+        if vol_at_break < (baseline_vol * vol_mult):
             return None  # слом без капитуляции - статистически слабый сигнал
 
         sl_price = float(bullish['Level'].iloc[0])
         return {"action": "BUY", "sl": sl_price,
-                "reason": f"CHoCH + Vol x{CHOCH_VOL_RATIO} confirm"}
+                "reason": f"CHoCH + Vol x{vol_mult} confirm"}
 
     elif direction == 'SHORT':
         bearish = broken_now[broken_now['CHOCH'] == -1]
@@ -309,11 +313,188 @@ def check_volume_reversal(df, level, direction, vol_mult=3.0, window=10):
             return None
 
         vol_at_break = float(df['volume'].iloc[now_idx])
-        if vol_at_break < (baseline_vol * CHOCH_VOL_RATIO):
+        if vol_at_break < (baseline_vol * vol_mult):
             return None
 
         sl_price = float(bearish['Level'].iloc[0])
         return {"action": "SELL", "sl": sl_price,
-                "reason": f"CHoCH + Vol x{CHOCH_VOL_RATIO} confirm"}
+                "reason": f"CHoCH + Vol x{vol_mult} confirm"}
+
+    return None
+
+
+# =========================================================================
+# МЕТОД 4: pit_climax (Wyckoff Selling Climax + Secondary Test)
+# =========================================================================
+# Не структурный CHoCH (метод 3) - классический паттерн Wyckoff, целиком
+# завязан на ОБЪЁМ, не на количество свечей:
+#   1. Локация - цена в яме под уровнем
+#   2. Climax - ПЕРВАЯ красная свеча в яме, чей объём - реальный всплеск
+#      (>= climax_vol_mult от средней базы объёма). Это и есть капитуляция -
+#      может быть одна свеча, может две, не привязано к времени вообще.
+#   3. Secondary Test - ПОСЛЕ climax должен быть ВТОРОЙ объёмный слив:
+#      красная свеча, делающая новый/равный минимум относительно climax,
+#      с объёмом тоже выше нормы, но слабее climax (как будто уровень
+#      пробили второй раз, на меньшей панике)
+#   4. Вход - зелёная свеча после secondary test, объём >= confirm_mult от
+#      climax, тело перекрывает предыдущую свечу (защита от мелкого дёрга)
+def check_pit_climax(df, level, direction, **kwargs):
+    if len(df) < 30:
+        return None
+
+    confirm_mult = kwargs.get('vol_mult', kwargs.get('VOLUME_MULTIPLIER', 0.5))
+    # Порог всплеска объёма, который вообще считается climax-капитуляцией
+    climax_vol_mult = kwargs.get('climax_vol_mult', 2.0)
+    # Secondary Test засчитывается только если его объём < этой доли от climax
+    test_vol_ratio = kwargs.get('test_vol_ratio', 0.7)
+
+    current = df.iloc[-1]
+    prev = df.iloc[-2]
+
+    c_close, c_open = float(current['close']), float(current['open'])
+    c_vol = float(current['volume'])
+
+    p_close, p_open = float(prev['close']), float(prev['open'])
+    p_high, p_low = float(prev['high']), float(prev['low'])
+
+    # База объёма для определения "что такое всплеск" - средний объём за
+    # BASELINE_BARS свечей перед текущим моментом (не за саму яму - яма
+    # может быть короче базы)
+    baseline_window = min(BASELINE_BARS, max(20, len(df) - 2))
+    baseline_vol = float(df['volume'].iloc[-(baseline_window + 2):-2].mean())
+    if baseline_vol <= 0:
+        return None
+
+    if direction == 'LONG':
+        if c_close > level['max']:
+            return None
+        if c_close <= c_open:
+            return None  # только зелёная свеча
+
+        # Защита от ранних входов - зелёная свеча обязана перекрыть тело
+        # предыдущей свечи
+        if p_close < p_open:
+            if c_close <= p_open:
+                return None
+        else:
+            if c_close <= p_high:
+                return None
+
+        # Границы ямы - используем ЗАПОМНЕННЫЙ момент пробоя (если он есть -
+        # проставляется в test_simulator.py в момент фиксации origin), а не
+        # ищем его задним числом по ограниченному окну df. Иначе если origin
+        # держится дольше окна, яма обрезается неправильно - climax считается
+        # по случайному кусочку, а не по настоящей яме.
+        pit_start_time = level.get('_pit_start_time')
+        if pit_start_time is not None and pit_start_time in df.index:
+            pit_start = df.index.get_loc(pit_start_time)
+        else:
+            close_arr = df['close'].values
+            above_idx = np.where(close_arr[:-1] > level['max'])[0]
+            pit_start = int(above_idx[-1] + 1) if len(above_idx) > 0 else max(0, len(df) - 30)
+
+        pit_df = df.iloc[pit_start:-1]
+        if len(pit_df) < 1:
+            return None  # яма ещё не успела образоваться (origin только что зафиксирован)
+
+        red_candles = pit_df[pit_df['close'] < pit_df['open']]
+        if len(red_candles) == 0:
+            return None
+
+        # Climax - ПЕРВАЯ красная свеча в яме с реальным всплеском объёма
+        # (>= climax_vol_mult от базы). Не "самая громкая за всю яму" - именно
+        # первая, хронологически, потому что капитуляция это конкретное
+        # событие, не результат перебора истории.
+        climax_candidates = red_candles[red_candles['volume'] >= baseline_vol * climax_vol_mult]
+        if len(climax_candidates) == 0:
+            return None  # ещё не было настоящего объёмного слива - не наш сетап
+        climax_idx = climax_candidates.index[0]
+        climax_vol = float(df.loc[climax_idx, 'volume'])
+        climax_low = float(df.loc[climax_idx, 'low'])
+
+        # Secondary Test - ВТОРОЙ объёмный слив ПОСЛЕ climax: красная свеча,
+        # делающая новый/равный минимум относительно climax (как будто уровень
+        # пробили второй раз), с объёмом тоже выше нормы, но слабее climax.
+        # Не просто "касание на любом объёме" - должен быть реальный повторный
+        # слив, просто менее панический, чем первый.
+        after_climax = pit_df[pit_df.index > climax_idx]
+        after_climax_red = after_climax[after_climax['close'] < after_climax['open']]
+        test_candidates = after_climax_red[
+            (after_climax_red['low'] <= climax_low * 1.005) &
+            (after_climax_red['volume'] >= baseline_vol) &
+            (after_climax_red['volume'] < climax_vol * test_vol_ratio)
+        ]
+        if len(test_candidates) == 0:
+            return None  # второго слива ещё не было - продавцы не подтвердили дно
+        secondary_idx = test_candidates.index[-1]
+        secondary_low = float(df.loc[secondary_idx, 'low'])
+
+        # Вход возможен только ПОСЛЕ secondary test
+        if current.name <= secondary_idx:
+            return None
+
+        if c_vol >= (climax_vol * confirm_mult):
+            sl_price = min(climax_low, secondary_low)
+            return {"action": "BUY", "sl": sl_price,
+                    "reason": f"PitClimax: Confirm >= {int(confirm_mult*100)}% of Climax + Secondary Test"}
+
+    elif direction == 'SHORT':
+        if c_close < level['min']:
+            return None
+        if c_close >= c_open:
+            return None
+
+        if p_close > p_open:
+            if c_close >= p_open:
+                return None
+        else:
+            if c_close >= p_low:
+                return None
+
+        pit_start_time = level.get('_pit_start_time')
+        if pit_start_time is not None and pit_start_time in df.index:
+            spike_start = df.index.get_loc(pit_start_time)
+        else:
+            close_arr = df['close'].values
+            below_idx = np.where(close_arr[:-1] < level['min'])[0]
+            spike_start = int(below_idx[-1] + 1) if len(below_idx) > 0 else max(0, len(df) - 30)
+
+        spike_df = df.iloc[spike_start:-1]
+        if len(spike_df) < 1:
+            return None
+
+        green_candles = spike_df[spike_df['close'] > spike_df['open']]
+        if len(green_candles) == 0:
+            return None
+
+        # Climax - ПЕРВАЯ зелёная свеча (памп) с реальным всплеском объёма
+        climax_candidates = green_candles[green_candles['volume'] >= baseline_vol * climax_vol_mult]
+        if len(climax_candidates) == 0:
+            return None
+        climax_idx = climax_candidates.index[0]
+        climax_vol = float(df.loc[climax_idx, 'volume'])
+        climax_high = float(df.loc[climax_idx, 'high'])
+
+        # Secondary Test - ВТОРОЙ объёмный памп ПОСЛЕ climax, делающий
+        # новый/равный максимум, но слабее climax
+        after_climax = spike_df[spike_df.index > climax_idx]
+        after_climax_green = after_climax[after_climax['close'] > after_climax['open']]
+        test_candidates = after_climax_green[
+            (after_climax_green['high'] >= climax_high * 0.995) &
+            (after_climax_green['volume'] >= baseline_vol) &
+            (after_climax_green['volume'] < climax_vol * test_vol_ratio)
+        ]
+        if len(test_candidates) == 0:
+            return None
+        secondary_idx = test_candidates.index[-1]
+        secondary_high = float(df.loc[secondary_idx, 'high'])
+
+        if current.name <= secondary_idx:
+            return None
+
+        if c_vol >= (climax_vol * confirm_mult):
+            sl_price = max(climax_high, secondary_high)
+            return {"action": "SELL", "sl": sl_price,
+                    "reason": f"PitClimax: Confirm >= {int(confirm_mult*100)}% of Climax + Secondary Test"}
 
     return None

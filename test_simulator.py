@@ -7,6 +7,8 @@ test_simulator.py
 
 Вся логика "входить или нет" живёт в watcher_manager.py / watcher_methods.py.
 Этот файл не содержит правил входа — только их вызов и учёт результатов.
+
+Переключение стратегии: STRATEGY = "SWEEP_RECLAIM" или "CHOCH" (см. ниже).
 """
 
 import pandas as pd
@@ -43,7 +45,7 @@ GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"tr
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
 # =========================================================
-TARGET_COIN = "XMR"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ETH"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
@@ -61,14 +63,14 @@ DIAGNOSTIC_DEADLINE_DAYS = 7  # принудительное закрытие, �
 ALLOW_LONG_TRADES = True
 ALLOW_SHORT_TRADES = False
 
-# Какой метод определения точки входа использовать: "SWEEP_RECLAIM" или "CHOCH" или "VOLUME_REVERSAL"
+# Какой метод определения точки входа использовать: "SWEEP_RECLAIM" или "CHOCH" или "VOLUME_REVERSAL" PIT_CLIMAX 
 STRATEGY = "VOLUME_REVERSAL"
 
 USE_CONTEXT_FILTER = True  # макро-контекст (тренд/импульс/поджатие) из context_filter.py
 
 # Конфиг для WatcherManager - всё, что реально используется, в одном месте.
 WATCHER_CONFIG = {
-    'MIN_SCORE': 6,
+    'MIN_SCORE': 0,
     'USE_ZONE_GAP': True,
     'MIN_ZONE_GAP_PCT': 2.0,
     'USE_LEVEL_BURN': True,
@@ -82,16 +84,18 @@ WATCHER_CONFIG = {
     # не от фиксированного %. TAKE_PROFIT используется только как fallback,
     # если структурного уровня вообще нет на графике.
     # TP режим: 'structural' (по уровню, текущий) или 'fixed_pct' (твой % без привязки к уровням)
-    'TP_MODE': 'fixed_pct',
+    'TP_MODE': 'structural',
     'FIXED_TP_PCT': 8.0,      # используется только если TP_MODE='fixed_pct'
     'TAKE_PROFIT': 8.0,       # fallback %, если нет следующего уровня (только для structural режима)
-    'TP_BUFFER_PCT': 0.3,     # не долетаем до самого уровня на этот %
+    'TP_BUFFER_PCT': 0.5,     # не долетаем до самого уровня на этот %
     'MIN_RR': 2.0,            # если до следующего уровня R/R меньше - сделка отклоняется
     # только для CHOCH:
     'CHOCH_LOOKBACK': 15,
     'CHOCH_ANTI_KNIFE_ATR_MULT': 0.8,
+
     # НАСТРОЙКИ ДЛЯ VOLUME_REVERSAL ---
-    'VOLUME_MULTIPLIER': 2.0,
+    'VOLUME_MULTIPLIER': 0.5,  # Ищем свечу паники, которая минимум в 3 раза громче базы
+    'VOLUME_WINDOW': 10,
 }
 
 CURRENT_SUPPORTS = []
@@ -186,7 +190,7 @@ class SmartSniperUniversal(Strategy):
                     active_sup, active_res = active_max, np.nan
                 else:
                     active_sup, active_res = np.nan, active_min
-            elif STRATEGY == "VOLUME_REVERSAL":
+            elif STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX"):
                 # Пока ждем вход - рисуем зафиксированный уровень исхода (если есть),
                 # не первый попавшийся из списка (чтобы не скакало ступеньками без причины)
                 ol_long = self.origin_level_long
@@ -224,13 +228,31 @@ class SmartSniperUniversal(Strategy):
         can_short = len(CURRENT_RESISTANCES) > 0 and ALLOW_SHORT_TRADES
 
         df_slice = None
-        if STRATEGY in ["CHOCH", "VOLUME_REVERSAL"]:
+        if STRATEGY in ["CHOCH", "VOLUME_REVERSAL", "PIT_CLIMAX"]:
             # VOLUME_REVERSAL нужно больше истории для стабильной базы объема
             # (BASELINE_BARS=200 в check_volume_reversal) - 100 баров не хватало,
             # из-за этого функция всегда упиралась в min_len и возвращала None.
+            # PIT_CLIMAX не использует базу за 200 баров - хватает как CHOCH.
             lookback_size = 260 if STRATEGY == "VOLUME_REVERSAL" else 100
             current_len = len(self.data)
             start_idx = max(0, current_len - lookback_size)
+
+            # ВАЖНО: если origin держится дольше, чем lookback_size свечей назад,
+            # фиксированное окно отрежет момент настоящего пробоя - check_volume_reversal
+            # не увидит его и свалится в fallback на случайный кусок. Расширяем
+            # окно назад настолько, чтобы момент пробоя (_pit_start_time) точно
+            # попадал внутрь, независимо от того, сколько он там уже сидит.
+            if self.original_df is not None:
+                for origin in (self.origin_level_long, self.origin_level_short):
+                    if origin is not None and '_pit_start_time' in origin:
+                        try:
+                            origin_idx = self.original_df.index.get_loc(origin['_pit_start_time'])
+                            if isinstance(origin_idx, slice):
+                                origin_idx = origin_idx.start
+                            start_idx = min(start_idx, origin_idx)
+                        except KeyError:
+                            pass
+
             if self.original_df is not None:
                 df_slice = self.original_df.iloc[start_idx:current_len]
 
@@ -259,6 +281,12 @@ class SmartSniperUniversal(Strategy):
                             break
                 if found is not None:
                     self.origin_level_long = dict(found)
+                    # ВАЖНО: запоминаем момент пробоя ЗДЕСЬ, в момент когда он
+                    # реально произошёл - а не пытаемся потом искать его задним
+                    # числом через ограниченное окно (260 свечей), куда старый
+                    # пробой может не попасть. Живой бот следит непрерывно со
+                    # свечи пробоя - яма растёт естественно, без поиска назад.
+                    self.origin_level_long['_pit_start_time'] = current_time
             else:
                 if c_close > self.origin_level_long['max']:
                     self.origin_level_long = None
@@ -278,12 +306,13 @@ class SmartSniperUniversal(Strategy):
                             break
                 if found is not None:
                     self.origin_level_short = dict(found)
+                    self.origin_level_short['_pit_start_time'] = current_time
             else:
                 if c_close < self.origin_level_short['min']:
                     self.origin_level_short = None
 
         if can_long:
-            if STRATEGY == "VOLUME_REVERSAL":
+            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX"):
                 # Не перебираем уровни - используем зафиксированный уровень исхода.
                 # Без него (пока не было свежего пробоя) сигнала быть не может.
                 if self.origin_level_long is not None:
@@ -302,7 +331,7 @@ class SmartSniperUniversal(Strategy):
                         break
 
         if can_short:
-            if STRATEGY == "VOLUME_REVERSAL":
+            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX"):
                 if self.origin_level_short is not None:
                     decision = self._evaluate(self.origin_level_short, 'SHORT', c_open, c_high, c_low, c_close,
                                                CURRENT_SUPPORTS, df_slice)
@@ -327,11 +356,16 @@ class SmartSniperUniversal(Strategy):
             decision = self.manager.evaluate_volume_reversal(
                 level, df_slice, trade_type, opposite_levels
             )
+        elif STRATEGY == "PIT_CLIMAX":
+            decision = self.manager.evaluate_pit_climax(
+                level, df_slice, trade_type, opposite_levels
+            )
         else:  # CHOCH
             decision = self.manager.evaluate_choch(level, df_slice, trade_type, opposite_levels)
 
         if not decision['allow']:
-            if 'No signal' in decision['reason'] or 'No CHoCH' in decision['reason'] or 'No volume reversal' in decision['reason']:
+            if ('No signal' in decision['reason'] or 'No CHoCH' in decision['reason']
+                    or 'No volume reversal' in decision['reason'] or 'No pit climax' in decision['reason']):
                 GLOBAL_DEBUG_STATS["No_Signal"] += 1
             else:
                 GLOBAL_DEBUG_STATS["Killed_by_QUALITY"] += 1

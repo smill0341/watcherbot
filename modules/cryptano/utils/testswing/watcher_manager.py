@@ -24,13 +24,13 @@ watcher_manager.py
 
 from modules.cryptano.utils.testswing.watcher_methods import SweepReclaimWatcher, check_choch, check_volume_reversal
 
-STRATEGIES = ("SWEEP_RECLAIM", "CHOCH", "VOLUME_REVERSAL")
+STRATEGIES = ("SWEEP_RECLAIM", "CHOCH", "VOLUME_REVERSAL", "PIT_CLIMAX")
 
 class WatcherManager:
 
     def __init__(self, strategy, config):
         """
-        STRATEGIES = ('SWEEP_RECLAIM', 'CHOCH', 'VOLUME_REVERSAL')
+        STRATEGIES = ('SWEEP_RECLAIM', 'CHOCH', 'VOLUME_REVERSAL', 'PIT_CLIMAX')
         config: словарь настроек, например:
             {
                 'MIN_SCORE': 5,
@@ -347,3 +347,59 @@ class WatcherManager:
     def _deny(reason):
         return {'allow': False, 'reason': reason, 'sl': None, 'tp': None, 'level_id': None, 'extreme_price': None,  
                 'is_real_sweep': True, 'overshoot_pct': 0.0, 'candles_in_sweep': 0}
+
+    def evaluate_pit_climax(self, level, df, trade_type, all_opposite_levels):
+        # МЕТОД 4 - не трогает evaluate_volume_reversal (метод 3, smc).
+        # Без проверки score/gap/burn - та же логика, что у метода 3:
+        # level используется только как контекст "в яме", не как фильтр.
+        vol_mult = self.config.get('VOLUME_MULTIPLIER', 0.5)
+        climax_vol_mult = self.config.get('CLIMAX_VOL_MULT', 2.0)
+        test_vol_ratio = self.config.get('TEST_VOL_RATIO', 0.7)
+        from modules.cryptano.utils.testswing.watcher_methods import check_pit_climax
+        signal = check_pit_climax(df, level, trade_type, vol_mult=vol_mult,
+                                   climax_vol_mult=climax_vol_mult, test_vol_ratio=test_vol_ratio)
+
+        if signal is None:
+            return self._deny("No pit climax pattern in window")
+
+        current_price = float(df['close'].iloc[-1])
+        sl = signal['sl']
+
+        if trade_type == 'LONG':
+            sl = sl * 0.998
+        else:
+            sl = sl * 1.002
+
+        tp_mode = self.config.get('TP_MODE', 'fixed_pct')
+        tp_pct = self.config.get('FIXED_TP_PCT', 8.0) if tp_mode == 'fixed_pct' else self.config.get('TAKE_PROFIT', 8.0)
+        tp_buffer = self.config.get('TP_BUFFER_PCT', 0.3)
+
+        if tp_mode == 'structural':
+            if trade_type == 'LONG':
+                closest = min([r['min'] for r in all_opposite_levels if r['min'] > current_price], default=None)
+                tp = closest * (1 - tp_buffer / 100) if closest else current_price * (1 + tp_pct / 100)
+            else:
+                closest = max([s['max'] for s in all_opposite_levels if s['max'] < current_price], default=None)
+                tp = closest * (1 + tp_buffer / 100) if closest else current_price * (1 - tp_pct / 100)
+        else:
+            tp = current_price * (1 + tp_pct / 100) if trade_type == 'LONG' else current_price * (1 - tp_pct / 100)
+
+        if self.config.get('USE_RR_FILTER', True):
+            risk = (current_price - sl) if trade_type == 'LONG' else (sl - current_price)
+            reward = (tp - current_price) if trade_type == 'LONG' else (current_price - tp)
+            if risk <= 0:
+                return self._deny("Invalid SL")
+
+            rr = reward / risk
+            if rr < self.config.get('MIN_RR', 1.5):
+                return self._deny(f"Poor R/R: {rr:.1f}")
+
+        return {
+            'allow': True,
+            'reason': signal['reason'],
+            'sl': sl,
+            'tp': tp,
+            'level_id': self._level_id(level, trade_type),
+            'extreme_price': sl,
+            'is_real_sweep': True
+        }

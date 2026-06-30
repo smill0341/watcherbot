@@ -48,14 +48,15 @@ from scipy.signal import find_peaks
 # find_peaks = цена РЕАЛЬНО развернулась здесь (price evidence) - самый сильный
 # POC        = здесь торговали больше всего объёма (volume evidence) - тоже самостоятельный
 # PWH/PMH/PDH = просто "вчера/на неделе/в месяце был такой-то экстремум" -
-#               НЕТ собственного доказательства, работают только как бонус
-#               при совпадении с find_peaks или POC
+#               НЕТ собственного доказательства, БЕЗ CONFLUENCE = score 0 (мусор)
+#               С confluence (find_peaks или POC) = получают базовый score как бонус
 SCORE_FIND_PEAKS = 4.0
 SCORE_POC = 3.0
-SCORE_PWH_PWL = 1.0
-SCORE_PMH_PML = 1.0
-SCORE_PDH_PDL = 1.0
-POC_BONUS = 1.0  # бонус к существующей зоне, если POC совпал с ней (отдельно от SCORE_POC)
+SCORE_PWH_PWL = 0.0  # Без confluence — календарная метка = мусор
+SCORE_PMH_PML = 0.0  # Без confluence — календарная метка = мусор
+SCORE_PDH_PDL = 0.0  # Без confluence — календарная метка = мусор
+CONFLUENCE_BONUS = 2.0  # бонус за совпадение с find_peaks или POC
+POC_BONUS = 1.0  # дополнительный бонус если POC совпал с существующей зоной
 
 # find_peaks-слой (lookahead-фильтр - старый алгоритм)
 IMPULSE_ATR_MULTIPLIER = 2.5
@@ -183,16 +184,44 @@ def _volume_bonus(df, idx, lookback=30):
     return 0.0
 
 
+def _calculate_zone_age(df, idx, current_idx=None):
+    """Считает количество дней между формированием уровня (idx) и текущим моментом."""
+    if current_idx is None:
+        current_idx = len(df) - 1
+    
+    ts_zone = pd.to_datetime(df['timestamp'].iloc[idx], unit='ms')
+    ts_current = pd.to_datetime(df['timestamp'].iloc[current_idx], unit='ms')
+    age_days = (ts_current - ts_zone).days
+    return max(0, age_days)
+
+
 def _build_zone(price, atr_value, base_score, zone_type, date_str,
                  mitigated, reaction_count=0, volume_bonus=0.0):
     """
     Собирает зону. mitigated-зоны тоже строятся (нужно для фильтрации выше),
     но в финальный результат build_levels() они не попадают.
+    
+    Логика scoring:
+    - base_score: find_peaks (4.0) или POC (3.0) или 0 (календарная метка без confluence)
+    - reaction_count: до 3 касаний +0.5 за каждое (подтверждение уровня), 
+                      после 4+ касаний -0.5 каждое (истощение ликвидности)
+    - volume_bonus: +0.5 за спайк объёма на формирующей свече
+    
+    Freshness (возраст уровня) НЕ учитывается — по SMC теории уровень
+    актуален до момента пробоя (mitigated), возраст вторичен.
     """
     score = base_score
-    score += min(reaction_count * 0.5, 2.0)
+    
+    # Reaction count логика: до 3 бонус, после 4+ штраф (истощение ликвидности)
+    if reaction_count <= 3:
+        score += reaction_count * 0.5
+    else:
+        score += 1.5  # макс бонус за 3 касания
+        score -= (reaction_count - 3) * 0.5  # штраф за каждое касание свыше 3
+    
     score += volume_bonus
-    score = max(score, 0.5)
+    
+    score = max(score, 0.0)  # score не может быть отрицательным
 
     return {
         "min": float(price - atr_value * 0.5),
@@ -213,6 +242,9 @@ def _extract_period_extremes(df_1d, freq, n_periods_back, current_price, atr_1d,
     Ресемплит df_1d в недели/месяцы, берёт последние n_periods_back ЗАКРЫТЫХ
     периодов, для каждого создаёт зону по high и по low.
     Зоны дальше max_distance от текущей цены не создаются.
+    
+    ВАЖНО: PWH/PWL/PMH/PML БЕЗ confluence (совпадение с find_peaks или POC)
+    получают base_score = 0 (мусор). С confluence — получают бонус.
     """
     if current_idx is None:
         current_idx = len(df_1d) - 1
@@ -258,12 +290,16 @@ def _extract_period_extremes(df_1d, freq, n_periods_back, current_price, atr_1d,
 
             mitigated = _is_mitigated(df_1d, idx_ref, price, is_support, current_idx)
             reactions = _count_reactions(df_1d, idx_ref, price, atr_1d, is_support, current_idx)
+            vol_bonus = _volume_bonus(df_1d, idx_ref)
 
+            # Определяем base_score: 0 по умолчанию (без confluence = мусор)
+            # Confluence добавится через merge_overlapping_zones и _apply_poc_confluence
             date_str = period_start.strftime('%Y-%m-%d')
-            base_score = SCORE_PMH_PML if 'M' in label.split('_')[0] else SCORE_PWH_PWL
+            base_score = 0.0  # PWH/PWL/PMH/PML БЕЗ confluence = score 0
 
             zone = _build_zone(price, atr_1d, base_score, label, date_str,
-                                mitigated=mitigated, reaction_count=reactions)
+                                mitigated=mitigated, reaction_count=reactions, 
+                                volume_bonus=vol_bonus)
             zone['_is_support'] = is_support
             zones.append(zone)
 
@@ -272,7 +308,8 @@ def _extract_period_extremes(df_1d, freq, n_periods_back, current_price, atr_1d,
 
 def _extract_daily_extremes(df_1d, n_days_back, current_price, atr_1d,
                              max_distance, current_idx=None):
-    """PDH/PDL - последние n закрытых дней, в пределах max_distance от цены."""
+    """PDH/PDL - последние n закрытых дней, в пределах max_distance от цены.
+    БЕЗ confluence = score 0 (мусор), WITH confluence = бонус."""
     if current_idx is None:
         current_idx = len(df_1d) - 1
 
@@ -292,7 +329,9 @@ def _extract_daily_extremes(df_1d, n_days_back, current_price, atr_1d,
             vol_bonus = _volume_bonus(df_1d, idx)
 
             label = "1d_low_PDL" if is_support else "1d_high_PDH"
-            zone = _build_zone(price, atr_1d, SCORE_PDH_PDL, label, date_str,
+            base_score = 0.0  # PDH/PDL БЕЗ confluence = score 0
+            
+            zone = _build_zone(price, atr_1d, base_score, label, date_str,
                                 mitigated=mitigated, reaction_count=reactions,
                                 volume_bonus=vol_bonus)
             zone['_is_support'] = is_support
@@ -305,6 +344,7 @@ def _extract_find_peaks_layer(df_1d, current_price, atr_1d, max_distance, curren
     """
     find_peaks слой с lookahead-фильтром. Зоны дальше max_distance отсекаются -
     единственный фильтр по расстоянию, без понятия архива/давности.
+    find_peaks имеет собственное доказательство (цена развернулась здесь) = base_score 4.0
     """
     if current_idx is None:
         current_idx = len(df_1d) - 1
@@ -348,7 +388,8 @@ def _extract_find_peaks_layer(df_1d, current_price, atr_1d, max_distance, curren
         vol_bonus = _volume_bonus(df_1d, v)
 
         zone = _build_zone(price, local_atr, SCORE_FIND_PEAKS, "1d_extreme_peak", date_str,
-                            mitigated=mitigated, reaction_count=reactions, volume_bonus=vol_bonus)
+                            mitigated=mitigated, reaction_count=reactions, 
+                            volume_bonus=vol_bonus)
         zone['_is_support'] = True
         zones.append(zone)
 
@@ -375,7 +416,8 @@ def _extract_find_peaks_layer(df_1d, current_price, atr_1d, max_distance, curren
         vol_bonus = _volume_bonus(df_1d, p)
 
         zone = _build_zone(price, local_atr, SCORE_FIND_PEAKS, "1d_extreme_peak", date_str,
-                            mitigated=mitigated, reaction_count=reactions, volume_bonus=vol_bonus)
+                            mitigated=mitigated, reaction_count=reactions, 
+                            volume_bonus=vol_bonus)
         zone['_is_support'] = False
         zones.append(zone)
 
@@ -410,10 +452,13 @@ def _get_poc(df_4h, current_price):
 def _apply_poc_confluence(zones, poc_price, atr_4h, current_idx_date=None):
     """
     Если POC попадает в существующую зону (find_peaks/PWH/PMH/PDH) -
-    добавляем бонус (confluence: цена + объём совпали - сильный сигнал).
+    добавляем бонус + confluence bonus за совпадение.
     Если POC НЕ совпал ни с одной зоной - создаёт СВОЮ самостоятельную зону
-    со SCORE_POC, потому что объём - это собственное рыночное доказательство,
-    а не календарная метка (как PMH/PWH/PDH).
+    со SCORE_POC, потому что объём - это собственное рыночное доказательство.
+    
+    При совпадении:
+    - найти ЛЮБУЮ существующую зону = даём ей CONFLUENCE_BONUS (2.0)
+    - плюс дополнительный POC_BONUS (1.0) к её score
     """
     if poc_price is None:
         return zones
@@ -424,6 +469,9 @@ def _apply_poc_confluence(zones, poc_price, atr_4h, current_idx_date=None):
     for z in zones:
         overlap = min(z['max'], poc_max) - max(z['min'], poc_min)
         if overlap > 0:
+            # POC совпал с зоной -> только POC_BONUS (+1.0).
+            # CONFLUENCE_BONUS тут НЕ добавляем - за "источники совпали" уже отвечает
+            # merge_overlapping_zones. Иначе одно совпадение считается дважды.
             z['score'] = round(z['score'] + POC_BONUS, 2)
             existing_type = z.get('type', '')
             if '4h_poc' not in existing_type:
@@ -446,17 +494,47 @@ def _apply_poc_confluence(zones, poc_price, atr_4h, current_idx_date=None):
     return zones
 
 
+def _apply_confluence_bonus(zones):
+    """
+    Раздаёт confluence бонус календарным уровням (PWH/PMH/PDH с score=0)
+    если они пересекаются с найденными пиками/впадинами (find_peaks с score=4).
+    После этого календарный уровень получит score = 0 + CONFLUENCE_BONUS = 2.0
+    """
+    find_peaks_zones = [z for z in zones if 'extreme_peak' in z.get('type', '')]
+    calendar_zones = [z for z in zones if 'PMH' in z.get('type', '') or 'PWH' in z.get('type', '') 
+                      or 'PDH' in z.get('type', '')]
+    
+    for cal_zone in calendar_zones:
+        for fp_zone in find_peaks_zones:
+            # Проверяем пересечение
+            overlap = min(cal_zone['max'], fp_zone['max']) - max(cal_zone['min'], fp_zone['min'])
+            if overlap > 0:
+                # Даём calendar уровню confluence бонус
+                cal_zone['score'] = round(cal_zone['score'] + CONFLUENCE_BONUS, 2)
+                cal_zone['type'] = f"{cal_zone['type']}+confluence"
+                break  # достаточно одного совпадения с find_peaks
+    
+    return zones
+
+
 def merge_overlapping_zones(zones):
-    """Слияние пересекающихся зон. Score = сильнейшая база + бонус за наслоения,
-    с потолком MAX_MERGE_BONUS."""
+    """Слияние пересекающихся зон.
+    Score = база сильнейшего источника. БОНУС за количество наслоений УБРАН -
+    раньше он задваивал confluence (один и тот же факт "уровни совпали" считался
+    и тут, и в _apply_confluence_bonus). Теперь merge только объединяет геометрию,
+    а за подтверждение find_peaks/POC отвечают отдельные функции ПОСЛЕ merge.
+
+    Исключение: если слились РАЗНЫЕ по природе источники (календарный + find_peaks),
+    это настоящая confluence -> +CONFLUENCE_BONUS один раз."""
     if not zones:
         return []
 
     sorted_zones = sorted(zones, key=lambda x: x['min'])
 
     for z in sorted_zones:
-        z['base_score'] = z.get('score', 1.0)
-        z['components'] = 1
+        z['base_score'] = z.get('score', 0.0)
+        z['_has_peak'] = 'extreme_peak' in z.get('type', '')
+        z['_has_calendar'] = any(t in z.get('type', '') for t in ('PMH', 'PML', 'PWH', 'PWL'))
 
     merged = [sorted_zones[0]]
 
@@ -465,9 +543,12 @@ def merge_overlapping_zones(zones):
         if current['min'] <= last['max']:
             last['max'] = max(last['max'], current['max'])
             last['base_score'] = max(last['base_score'], current['base_score'])
-            last['components'] += 1
-            merge_bonus = min(last['components'] - 1, MAX_MERGE_BONUS)
-            last['score'] = round(last['base_score'] + merge_bonus, 2)
+            last['_has_peak'] = last['_has_peak'] or current['_has_peak']
+            last['_has_calendar'] = last['_has_calendar'] or current['_has_calendar']
+
+            # Настоящая confluence: календарный уровень совпал с find_peaks -> бонус ОДИН раз
+            confluence = CONFLUENCE_BONUS if (last['_has_peak'] and last['_has_calendar']) else 0.0
+            last['score'] = round(last['base_score'] + confluence, 2)
 
             if current.get('type') and last.get('type') and current['type'] not in last['type']:
                 last['type'] = f"{last['type']} + {current['type']}"
@@ -477,7 +558,8 @@ def merge_overlapping_zones(zones):
 
     for m in merged:
         m.pop('base_score', None)
-        m.pop('components', None)
+        m.pop('_has_peak', None)
+        m.pop('_has_calendar', None)
 
     return merged
 
@@ -552,34 +634,31 @@ def build_levels(df_1d, df_4h, coin, current_idx=None):
 
     all_zones = []
 
-    # 1. PMH/PML
+    # 1. PMH/PML (месячные - старший масштаб)
     all_zones += _extract_period_extremes(
         df_1d, 'ME', PERIODS_MONTHS_BACK, current_price, atr_1d, max_distance,
         "1M_high_PMH", "1M_low_PML", current_idx
     )
 
-    # 2. PWH/PWL
+    # 2. PWH/PWL (недельные)
     all_zones += _extract_period_extremes(
         df_1d, 'W', PERIODS_WEEKS_BACK, current_price, atr_1d, max_distance,
         "1W_high_PWH", "1W_low_PWL", current_idx
     )
 
-    # 3. find_peaks слой
+    # 3. find_peaks слой (реальные развороты с импульсом)
     all_zones += _extract_find_peaks_layer(df_1d, current_price, atr_1d, max_distance, current_idx)
 
-    # 4. PDH/PDL
-    all_zones += _extract_daily_extremes(df_1d, PERIODS_DAYS_BACK, current_price, atr_1d,
-                                          max_distance, current_idx)
-
-    # 5. POC: если совпал с существующей зоной - бонус, если нет - своя зона (volume evidence)
-    if df_4h is not None and len(df_4h) >= 50:
-        poc_price, atr_4h = _get_poc(df_4h, current_price)
-        poc_date_str = pd.to_datetime(df_4h['timestamp'].iloc[-1], unit='ms').strftime('%Y-%m-%d')
-        all_zones = _apply_poc_confluence(all_zones, poc_price, atr_4h, poc_date_str)
+    # ПРИМЕЧАНИЕ: дневной слой (PDH/PDL) убран намеренно.
+    # Проверено на данных: дневные зоны на 100% дублируют недельные/месячные/find_peaks
+    # (0-2 уникальных из 10), не дают новой информации, только раздували score.
 
     # Убираем mitigated-зоны - они не актуальны без подтверждённого слома структуры.
     all_zones = [z for z in all_zones if not z['mitigated']]
 
+    # Разделяем на supports/resistances и СНАЧАЛА сливаем дубли в одну зону.
+    # Бонусы за confluence (find_peaks/POC) раздаём ТОЛЬКО ПОСЛЕ merge -
+    # иначе одно совпадение считается несколько раз (на каждом дубле + merge_bonus).
     supports, resistances = [], []
     for z in all_zones:
         is_sup = z.pop('_is_support', None)
@@ -591,8 +670,33 @@ def build_levels(df_1d, df_4h, coin, current_idx=None):
 
     supports = merge_overlapping_zones(supports)
     resistances = merge_overlapping_zones(resistances)
-    supports = compress_fat_zones(supports, coin)
-    resistances = compress_fat_zones(resistances, coin)
+
+    # POC: ПОСЛЕ merge. Если совпал со слитой зоной - бонус один раз, иначе своя зона.
+    if df_4h is not None and len(df_4h) >= 50:
+        poc_price, atr_4h = _get_poc(df_4h, current_price)
+        poc_date_str = pd.to_datetime(df_4h['timestamp'].iloc[-1], unit='ms').strftime('%Y-%m-%d')
+        # POC отдельно для supports и resistances (poc - это уровень, может попасть в любой)
+        all_merged = supports + resistances
+        all_merged = _apply_poc_confluence(all_merged, poc_price, atr_4h, poc_date_str)
+        # пересобираем: standalone POC-зона не имеет _is_support, кладём по стороне от цены
+        supports, resistances = [], []
+        for z in all_merged:
+            if z.get('type') == '4h_poc_standalone':
+                if z['max'] < current_price:
+                    supports.append(z)
+                else:
+                    resistances.append(z)
+            elif z['max'] <= current_price or z['min'] < current_price <= z['max']:
+                # зона уже была среди supports/resistances, восстанавливаем сторону по цене
+                if (z['min'] + z['max']) / 2 < current_price:
+                    supports.append(z)
+                else:
+                    resistances.append(z)
+            else:
+                resistances.append(z)
+
+    compress_fat_zones(supports, coin)
+    compress_fat_zones(resistances, coin)
     supports, resistances = resolve_cross_overlaps(supports, resistances)
 
     return {
