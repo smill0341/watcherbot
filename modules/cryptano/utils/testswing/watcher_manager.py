@@ -23,9 +23,8 @@ class WatcherManager:
         return f"{trade_type}_{level['min']}_{level['max']}"
 
     def _deny(self, reason):
-        # Возвращаем полную структуру, чтобы избежать ошибок при распаковке
-        return {'allow': "False", 'reason': reason, 'sl': 0.0, 'tp': 0.0, 'level_id': None, 'extreme_price': "0.0",
-                'is_real_sweep': "False", 'overshoot_pct': 0.0, 'candles_in_sweep': 0}
+        return {'allow': False, 'reason': reason, 'sl': 0.0, 'tp': 0.0, 'level_id': None, 'extreme_price': "0.0",
+                'is_real_sweep': False, 'overshoot_pct': 0.0, 'candles_in_sweep': 0}
 
 
     def clear_dead_watchers(self, active_level_ids):
@@ -54,8 +53,9 @@ class WatcherManager:
         # Защита от ошибки калькулятора
         if 'error' in signal:
             return self._deny(signal['error'])
+        self.burned_levels.add(level_id)
 
-        signal['allow'] = "True"
+        signal['allow'] = True
         signal['level_id'] = level_id
         signal['extreme_price'] = str(watcher.extreme_price) if watcher.extreme_price is not None else "0.0"
         return signal
@@ -77,11 +77,12 @@ class WatcherManager:
         # Защита от ошибки калькулятора
         if 'error' in signal:
             return self._deny(signal['error'])
+        self.burned_levels.add(level_id)
 
-        signal['allow'] = "True"
+        signal['allow'] = True # type: ignore
         signal['level_id'] = level_id
         signal['extreme_price'] = str(signal.get('sl', '0.0'))
-        signal['is_real_sweep'] = "True"
+        signal['is_real_sweep'] = True # type: ignore
         return signal
 
     # -------------------------------------------------------------------------
@@ -101,9 +102,10 @@ class WatcherManager:
         # Защита от ошибки калькулятора
         if 'error' in signal:
             return self._deny(signal['error'])
+        self.burned_levels.add(level_id)
 
-        signal['allow'] = "True"
+        signal['allow'] = True # type: ignore
         signal['level_id'] = level_id
         signal['extreme_price'] = str(signal.get('sl', '0.0'))
-        signal['is_real_sweep'] = "True"
+        signal['is_real_sweep'] = True# type: ignore
         return signal

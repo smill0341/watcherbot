@@ -44,13 +44,17 @@ GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"tr
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "XMR"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ALL"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
 
 TEST_START_DATE = "2026-02-01 00:00:00"
 WARMUP_DAYS = 18  
+MIN_LEVEL_SCORE = 1.0
+
+# Метод определения точки входа: "SWEEP_RECLAIM" или "VOLUME_REVERSAL" или "PIT_CLIMAX"
+STRATEGY = "VOLUME_REVERSAL"
 
 # --- DIAGNOSTIC: проверка качества точки входа без SL ---
 # Если True: SL игнорируется, позиция держится до TP или до конца дедлайна.
@@ -59,9 +63,6 @@ DIAGNOSTIC_DEADLINE_DAYS = 2
 
 ALLOW_LONG_TRADES = True
 ALLOW_SHORT_TRADES = False
-
-# Метод определения точки входа: "SWEEP_RECLAIM" или "VOLUME_REVERSAL" или "PIT_CLIMAX"
-STRATEGY = "VOLUME_REVERSAL"
 
 USE_CONTEXT_FILTER = True  
 USE_LEVEL_BURN = True # Сжигать ли уровень после успешной сделки
@@ -212,6 +213,10 @@ class SmartSniperUniversal(Strategy):
 
         recent_low = np.min(self.data.Low[-2:])
         recent_high = np.max(self.data.High[-2:])
+        
+        # ---  ФИЛЬТР ПО БАЛЛАМ ---
+        CURRENT_SUPPORTS = [s for s in CURRENT_SUPPORTS if s.get('score', 0) >= MIN_LEVEL_SCORE]
+        CURRENT_RESISTANCES = [r for r in CURRENT_RESISTANCES if r.get('score', 0) >= MIN_LEVEL_SCORE]
 
         # --- Отслеживание уровня "исхода" ---
         if CURRENT_SUPPORTS:
