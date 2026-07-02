@@ -44,7 +44,7 @@ GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"tr
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "XRP"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "XMR"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
@@ -61,7 +61,7 @@ ALLOW_LONG_TRADES = True
 ALLOW_SHORT_TRADES = False
 
 # Метод определения точки входа: "SWEEP_RECLAIM" или "VOLUME_REVERSAL" или "PIT_CLIMAX"
-STRATEGY = "PIT_CLIMAX"
+STRATEGY = "VOLUME_REVERSAL"
 
 USE_CONTEXT_FILTER = True  
 USE_LEVEL_BURN = True # Сжигать ли уровень после успешной сделки
@@ -372,8 +372,8 @@ class SmartSniperUniversal(Strategy):
             "context_reason": ctx_eval.get("reason", ""),  
             "reason": decision['reason'],
             "ema_dist": round(ema_dist_pct, 2),
-            "dist_from_level": round(dist_from_level_pct, 2),
-            "is_real_sweep": decision.get('is_real_sweep', False),
+            "dist_from_level": round(dist_from_level_pct, 2),            
+            "is_real_sweep": str(decision.get('is_real_sweep', 'False')),
             "overshoot_pct": round(decision.get('overshoot_pct', 0.0), 3),
             "candles_in_sweep": decision.get('candles_in_sweep', 0),
             "entry_price": round(current_price, 8),

@@ -125,7 +125,7 @@ def check_volume_reversal(df, level, direction, all_opposite_levels):
     CONFIG = {
         'SWING_LENGTH': 15,       # Важно: 15, чтобы ослепнуть к микро-отскокам
         'BASELINE_BARS': 200,     # База объема
-        'VOLUME_MULTIPLIER': 1.5, # Во сколько раз объем должен превышать базу
+        'VOLUME_MULTIPLIER': 3.0, # Во сколько раз объем должен превышать базу
         'TP_MODE': 'structural',
         'FIXED_TP_PCT': 8.0,
         'TAKE_PROFIT': 8.0,
@@ -201,9 +201,9 @@ def check_pit_climax(df, level, direction, all_opposite_levels):
     # ЛИЧНЫЕ НАСТРОЙКИ СТРАТЕГИИ PIT_CLIMAX
     # ---------------------------------------------------------
     CONFIG = {
-        'CLIMAX_VOL_MULT': 2.0,   # Множитель паники
-        'TEST_VOL_RATIO': 0.5,    # Объем второго удара (50% от первого)
-        'MIN_GAP': 5,             # Важно: минимум 5 свечей между ударами, чтобы ждать каскад
+        'CLIMAX_VOL_MULT': 3.5,   # Множитель паники
+        'TEST_VOL_RATIO': 0.4,    # Объем второго удара (50% от первого)
+        'MIN_GAP': 6,             # Важно: минимум 5 свечей между ударами, чтобы ждать каскад
         'BASELINE_BARS': 52,
         'TP_MODE': 'fixed_pct',
         'FIXED_TP_PCT': 8.0,
