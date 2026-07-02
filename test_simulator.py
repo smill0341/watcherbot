@@ -5,10 +5,7 @@ test_simulator.py
 загружает данные -> для каждой свечи спрашивает WatcherManager "входить?"
 -> если да, исполняет ордер в backtesting.py -> копит статистику.
 
-Вся логика "входить или нет" живёт в watcher_manager.py / watcher_methods.py.
-Этот файл не содержит правил входа — только их вызов и учёт результатов.
-
-Переключение стратегии: STRATEGY = "SWEEP_RECLAIM" или "CHOCH" (см. ниже).
+Вся логика "входить или нет", а также расчеты TP/SL живут в watcher_methods.py.
 """
 
 import pandas as pd
@@ -31,72 +28,46 @@ from typing import Optional
 
 GLOBAL_DEBUG_STATS = {
     "Killed_by_CONTEXT": 0,
-    "Killed_by_QUALITY": 0,   # score / zone_gap / level_burn отсеяли до watcher
-    "No_Signal": 0,           # watcher не дал сигнала
+    "Killed_by_QUALITY": 0,   
+    "No_Signal": 0,           
     "Passed_to_Trade": 0,
+    "Origins_Long_Total": 0,  
+    "Origins_Short_Total": 0, 
 }
 GLOBAL_REPORT = []
 GLOBAL_LOSERS_LOG = []
 GLOBAL_TRADE_CONTEXTS = {}
-GLOBAL_MAE_DIAGNOSTIC = []  # [{coin, mae_pct, hold_hours, exit_reason, result_pct}, ...]
+GLOBAL_MAE_DIAGNOSTIC = []  
 GLOBAL_WINNERS_LOG = []
 GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"trades": 0, "win": 0}, "NORMAL": {"trades": 0, "win": 0}}
 
 # =========================================================
-# 1. ОСНОВНЫЕ НАСТРОЙКИ (ЕДИНЫЙ ПУЛЬТ УПРАВЛЕНИЯ)
+# 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "ETH"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "XRP"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
 
 TEST_START_DATE = "2026-02-01 00:00:00"
-WARMUP_DAYS = 18  # запас данных ДО начала теста - нужен 4H контексту (64 свечи x 4ч = ~10.6 дней)
+WARMUP_DAYS = 18  
 
 # --- DIAGNOSTIC: проверка качества точки входа без SL ---
-# Если True: SL игнорируется, позиция держится до TP или до конца месяца (DIAGNOSTIC_DEADLINE_DAYS).
-# Используется чтобы понять - вход реально близко к развороту (MAE маленький),
-# или мы покупаем рано/в падении и просто пересиживаем минус.
+# Если True: SL игнорируется, позиция держится до TP или до конца дедлайна.
 DISABLE_SL_DIAGNOSTIC = True
-DIAGNOSTIC_DEADLINE_DAYS = 7  # принудительное закрытие, если TP не достигнут за этот срок
+DIAGNOSTIC_DEADLINE_DAYS = 2  
 
 ALLOW_LONG_TRADES = True
 ALLOW_SHORT_TRADES = False
 
-# Какой метод определения точки входа использовать: "SWEEP_RECLAIM" или "CHOCH" или "VOLUME_REVERSAL" PIT_CLIMAX 
-STRATEGY = "VOLUME_REVERSAL"
+# Метод определения точки входа: "SWEEP_RECLAIM" или "VOLUME_REVERSAL" или "PIT_CLIMAX"
+STRATEGY = "PIT_CLIMAX"
 
-USE_CONTEXT_FILTER = True  # макро-контекст (тренд/импульс/поджатие) из context_filter.py
+USE_CONTEXT_FILTER = True  
+USE_LEVEL_BURN = True # Сжигать ли уровень после успешной сделки
 
-# Конфиг для WatcherManager - всё, что реально используется, в одном месте.
-WATCHER_CONFIG = {
-    'MIN_SCORE': 0,
-    'USE_ZONE_GAP': True,
-    'MIN_ZONE_GAP_PCT': 2.0,
-    'USE_LEVEL_BURN': True,
-    'SL_BUFFER': 1.0,
-    # Изоляция двух разных паттернов внутри SWEEP_RECLAIM, чтобы тестировать их раздельно:
-    # ALLOW_BOUNCE - касание + отказ БЕЗ выноса ликвидности за уровень
-    # ALLOW_SWEEP  - настоящий вынос за уровень + возврат (Reclaim)
-    'ALLOW_BOUNCE': True,
-    'ALLOW_SWEEP': True,
-    # TP теперь СТРУКТУРНЫЙ: считается от следующего противоположного уровня,
-    # не от фиксированного %. TAKE_PROFIT используется только как fallback,
-    # если структурного уровня вообще нет на графике.
-    # TP режим: 'structural' (по уровню, текущий) или 'fixed_pct' (твой % без привязки к уровням)
-    'TP_MODE': 'structural',
-    'FIXED_TP_PCT': 8.0,      # используется только если TP_MODE='fixed_pct'
-    'TAKE_PROFIT': 8.0,       # fallback %, если нет следующего уровня (только для structural режима)
-    'TP_BUFFER_PCT': 0.5,     # не долетаем до самого уровня на этот %
-    'MIN_RR': 2.0,            # если до следующего уровня R/R меньше - сделка отклоняется
-    # только для CHOCH:
-    'CHOCH_LOOKBACK': 15,
-    'CHOCH_ANTI_KNIFE_ATR_MULT': 0.8,
-
-    # НАСТРОЙКИ ДЛЯ VOLUME_REVERSAL ---
-    'VOLUME_MULTIPLIER': 0.5,  # Ищем свечу паники, которая минимум в 3 раза громче базы
-    'VOLUME_WINDOW': 10,
-}
+# ВАЖНО: Настройки самих стратегий (TP_MODE, FIXED_TP_PCT, SL_BUFFER, MIN_RR, SWING_LENGTH и т.д.)
+# теперь находятся строго внутри файла watcher_methods.py в личных словарях CONFIG!
 
 CURRENT_SUPPORTS = []
 CURRENT_RESISTANCES = []
@@ -111,17 +82,13 @@ class SmartSniperUniversal(Strategy):
     original_df: Optional[pd.DataFrame] = None
     
     def init(self):
-        self.manager = WatcherManager(strategy=STRATEGY, config=WATCHER_CONFIG)
-        self.exit_mgr = ExitManager(disable_sl=DISABLE_SL_DIAGNOSTIC)  # Менеджер выхода из позиции
+        # Инициализируем менеджера без передачи глобального конфига
+        self.manager = WatcherManager(strategy=STRATEGY)
+        self.exit_mgr = ExitManager(disable_sl=DISABLE_SL_DIAGNOSTIC)  
         self.level_states = {}
         self.last_closed_trades = 0
         self.current_trade_level_id = None
 
-        # Уровень "исхода" — тот, от которого начался слив (LONG) или памп (SHORT).
-        # Фиксируется в момент свежего пробоя и держится, пока цена не вернется
-        # назад выше/ниже него или не случится сделка. Нужен только для VOLUME_REVERSAL,
-        # чтобы рисовать/логировать тот уровень, ОТКУДА пошло движение, а не тот,
-        # который случайно проходит фильтры в моменте входа.
         self.origin_level_long = None
         self.origin_level_short = None
 
@@ -136,17 +103,14 @@ class SmartSniperUniversal(Strategy):
         self.draw_sup_max = self.I(lambda: self.data.df['sup_max'], name="Support Top", overlay=True)
         self.draw_res_min = self.I(lambda: self.data.df['res_min'], name="Resist Bottom", overlay=True)
         
-        # 1. Записываем ATR напрямую в original_df (чтобы срез мог его читать)
         if self.original_df is not None:
             self.original_df['atr'] = self.atr
 
-        # 2. ПАРСИМ СТРОКУ ОДИН РАЗ (Убивает 40 секунд тормозов)
         self.test_start_dt = pd.to_datetime(TEST_START_DATE) if TEST_START_DATE else None
 
     def next(self):
         global GLOBAL_DEBUG_STATS, CURRENT_SUPPORTS, CURRENT_RESISTANCES, GLOBAL_TIMELINE, TARGET_COIN_CURRENT
 
-        # Индекс backtesting УЖЕ является временем. Конвертация pd.to_datetime тут НЕ НУЖНА!
         current_time = self.data.index[-1]
 
         # === ПРОВЕРКА ВЫХОДА ИЗ ПОЗИЦИИ ===
@@ -160,7 +124,7 @@ class SmartSniperUniversal(Strategy):
                     GLOBAL_TRADE_CONTEXTS[entry_key]['mae_pct'] = round(self.exit_mgr.last_closed_mae, 2)
                 self.position.close()
 
-        # === WARMUP (Мгновенное сравнение) ===
+        # === WARMUP ===
         if self.test_start_dt and current_time < self.test_start_dt:
             return
 
@@ -182,7 +146,7 @@ class SmartSniperUniversal(Strategy):
                         current_level_ids.add(f"SHORT_{r['min']}_{r['max']}")
                     self.manager.clear_dead_watchers(current_level_ids)
 
-        # Отрисовка уровней на графике (ТОЛЬКО ДЛЯ ОДИНОЧНОЙ МОНЕТЫ)
+        # Отрисовка уровней на графике (БЕЗ МУСОРНЫХ СТУПЕНЕК)
         if TARGET_COIN.upper() != "ALL":
             if self.position and getattr(self, 'last_entered_level', None) is not None:
                 active_min, active_max, entered_type = self.last_entered_level
@@ -191,15 +155,14 @@ class SmartSniperUniversal(Strategy):
                 else:
                     active_sup, active_res = np.nan, active_min
             elif STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX"):
-                # Пока ждем вход - рисуем зафиксированный уровень исхода (если есть),
-                # не первый попавшийся из списка (чтобы не скакало ступеньками без причины)
                 ol_long = self.origin_level_long
                 ol_short = self.origin_level_short
                 active_sup = ol_long['max'] if ol_long is not None else np.nan
                 active_res = ol_short['min'] if ol_short is not None else np.nan
             else:
-                active_sup = CURRENT_SUPPORTS[0]['max'] if CURRENT_SUPPORTS else np.nan
-                active_res = CURRENT_RESISTANCES[0]['min'] if CURRENT_RESISTANCES else np.nan
+                # График остается чистым, пока цена не подойдет к уровню
+                active_sup = np.nan
+                active_res = np.nan
             
             if self.original_df is not None:
                 self.original_df.at[current_time, 'sup_max'] = active_sup
@@ -209,12 +172,12 @@ class SmartSniperUniversal(Strategy):
         if len(self.closed_trades) > self.last_closed_trades:
             last_trade = self.closed_trades[-1]
             if last_trade.pl > 0 and self.current_trade_level_id is not None:
-                if WATCHER_CONFIG.get('USE_LEVEL_BURN', True):
+                if USE_LEVEL_BURN:
                     self.manager.burned_levels.add(self.current_trade_level_id)
             self.current_trade_level_id = None
             self.last_closed_trades = len(self.closed_trades)
 
-        if len(self.data) < max(15, WATCHER_CONFIG.get('CHOCH_LOOKBACK', 15) + 1):
+        if len(self.data) < 20: # Жесткий минимум свечей для старта
             return
 
         if self.position or (not CURRENT_SUPPORTS and not CURRENT_RESISTANCES):
@@ -228,20 +191,11 @@ class SmartSniperUniversal(Strategy):
         can_short = len(CURRENT_RESISTANCES) > 0 and ALLOW_SHORT_TRADES
 
         df_slice = None
-        if STRATEGY in ["CHOCH", "VOLUME_REVERSAL", "PIT_CLIMAX"]:
-            # VOLUME_REVERSAL нужно больше истории для стабильной базы объема
-            # (BASELINE_BARS=200 в check_volume_reversal) - 100 баров не хватало,
-            # из-за этого функция всегда упиралась в min_len и возвращала None.
-            # PIT_CLIMAX не использует базу за 200 баров - хватает как CHOCH.
+        if STRATEGY in ["VOLUME_REVERSAL", "PIT_CLIMAX"]:
             lookback_size = 260 if STRATEGY == "VOLUME_REVERSAL" else 100
             current_len = len(self.data)
             start_idx = max(0, current_len - lookback_size)
 
-            # ВАЖНО: если origin держится дольше, чем lookback_size свечей назад,
-            # фиксированное окно отрежет момент настоящего пробоя - check_volume_reversal
-            # не увидит его и свалится в fallback на случайный кусок. Расширяем
-            # окно назад настолько, чтобы момент пробоя (_pit_start_time) точно
-            # попадал внутрь, независимо от того, сколько он там уже сидит.
             if self.original_df is not None:
                 for origin in (self.origin_level_long, self.origin_level_short):
                     if origin is not None and '_pit_start_time' in origin:
@@ -259,21 +213,15 @@ class SmartSniperUniversal(Strategy):
         recent_low = np.min(self.data.Low[-2:])
         recent_high = np.max(self.data.High[-2:])
 
-        # --- Отслеживание уровня "исхода" (от которого начался слив/памп) ---
-        # Работает независимо от того, какая стратегия активна, но используется
-        # только для VOLUME_REVERSAL ниже.
+        # --- Отслеживание уровня "исхода" ---
         if CURRENT_SUPPORTS:
             if self.origin_level_long is None:
-                # Сначала пробуем поймать живой пробой (свежий, прямо сейчас)
                 prev_close = float(self.data.Close[-2]) if len(self.data.Close) > 1 else c_close
                 found = None
                 for sup in CURRENT_SUPPORTS:
                     if c_close < sup['min'] and prev_close >= sup['min']:
                         found = sup
                         break
-                # Если живого пробоя не было, но цена УЖЕ ниже уровня (например,
-                # уровни только обновились, а мы уже в яме) - тоже считаем исходом,
-                # иначе монета может вообще никогда не получить сигнал.
                 if found is None:
                     for sup in CURRENT_SUPPORTS:
                         if c_close < sup['min']:
@@ -281,11 +229,7 @@ class SmartSniperUniversal(Strategy):
                             break
                 if found is not None:
                     self.origin_level_long = dict(found)
-                    # ВАЖНО: запоминаем момент пробоя ЗДЕСЬ, в момент когда он
-                    # реально произошёл - а не пытаемся потом искать его задним
-                    # числом через ограниченное окно (260 свечей), куда старый
-                    # пробой может не попасть. Живой бот следит непрерывно со
-                    # свечи пробоя - яма растёт естественно, без поиска назад.
+                    GLOBAL_DEBUG_STATS["Origins_Long_Total"] += 1
                     self.origin_level_long['_pit_start_time'] = current_time
             else:
                 if c_close > self.origin_level_long['max']:
@@ -306,6 +250,7 @@ class SmartSniperUniversal(Strategy):
                             break
                 if found is not None:
                     self.origin_level_short = dict(found)
+                    GLOBAL_DEBUG_STATS["Origins_Short_Total"] += 1
                     self.origin_level_short['_pit_start_time'] = current_time
             else:
                 if c_close < self.origin_level_short['min']:
@@ -313,12 +258,10 @@ class SmartSniperUniversal(Strategy):
 
         if can_long:
             if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX"):
-                # Не перебираем уровни - используем зафиксированный уровень исхода.
-                # Без него (пока не было свежего пробоя) сигнала быть не может.
                 if self.origin_level_long is not None:
                     decision = self._evaluate(self.origin_level_long, 'LONG', c_open, c_high, c_low, c_close,
                                                CURRENT_RESISTANCES, df_slice)
-                    if decision['allow']:
+                    if decision.get('allow'):
                         self._try_enter(self.origin_level_long, 'LONG', c_close, c_atr, decision)
                         self.origin_level_long = None
             else:
@@ -326,7 +269,7 @@ class SmartSniperUniversal(Strategy):
                     if recent_low > sup['max']:
                         continue
                     decision = self._evaluate(sup, 'LONG', c_open, c_high, c_low, c_close, CURRENT_RESISTANCES, df_slice)
-                    if decision['allow']:
+                    if decision.get('allow'):
                         self._try_enter(sup, 'LONG', c_close, c_atr, decision)
                         break
 
@@ -335,7 +278,7 @@ class SmartSniperUniversal(Strategy):
                 if self.origin_level_short is not None:
                     decision = self._evaluate(self.origin_level_short, 'SHORT', c_open, c_high, c_low, c_close,
                                                CURRENT_SUPPORTS, df_slice)
-                    if decision['allow']:
+                    if decision.get('allow'):
                         self._try_enter(self.origin_level_short, 'SHORT', c_close, c_atr, decision)
                         self.origin_level_short = None
             else:
@@ -343,11 +286,11 @@ class SmartSniperUniversal(Strategy):
                     if recent_high < res['min']:
                         continue
                     decision = self._evaluate(res, 'SHORT', c_open, c_high, c_low, c_close, CURRENT_SUPPORTS, df_slice)
-                    if decision['allow']:
+                    if decision.get('allow'):
                         self._try_enter(res, 'SHORT', c_close, c_atr, decision)
                         break
+                        
     def _evaluate(self, level, trade_type, c_open, c_high, c_low, c_close, opposite_levels, df_slice):
-        """Вызывает нужный метод WatcherManager в зависимости от STRATEGY."""
         if STRATEGY == "SWEEP_RECLAIM":
             decision = self.manager.evaluate_sweep_reclaim(
                 level, c_open, c_high, c_low, c_close, opposite_levels, trade_type
@@ -360,31 +303,24 @@ class SmartSniperUniversal(Strategy):
             decision = self.manager.evaluate_pit_climax(
                 level, df_slice, trade_type, opposite_levels
             )
-        else:  # CHOCH
-            decision = self.manager.evaluate_choch(level, df_slice, trade_type, opposite_levels)
+        else: 
+            decision = {'allow': False, 'reason': 'Unknown strategy'}
 
-        if not decision['allow']:
-            if ('No signal' in decision['reason'] or 'No CHoCH' in decision['reason']
-                    or 'No volume reversal' in decision['reason'] or 'No pit climax' in decision['reason']):
+        if not decision.get('allow'):
+            reason_str = decision.get('reason', '')
+            if ('No signal' in reason_str or 'No CHoCH' in reason_str
+                    or 'No volume reversal' in reason_str or 'No pit climax' in reason_str):
                 GLOBAL_DEBUG_STATS["No_Signal"] += 1
             else:
                 GLOBAL_DEBUG_STATS["Killed_by_QUALITY"] += 1
         return decision
 
     def _try_enter(self, level, trade_type, current_price, c_atr, decision):
-        """
-        Общая точка входа для LONG и SHORT.
-        Проверяет context_filter, логирует контекст сделки, исполняет ордер.
-        """
         global GLOBAL_TRADE_CONTEXTS, GLOBAL_DEBUG_STATS
 
-        # --- Контекст теперь считается на 4H, не на 15m ---
-        # Берём только ЗАКРЫТЫЕ 4H свечи (открытая текущая 4H свеча не используется,
-        # чтобы не заглядывать в будущее относительно текущего 15m бара).
         current_time = pd.to_datetime(self.data.index[-1])
         df_4h_ctx = getattr(self, 'context_df_4h', None)
         if df_4h_ctx is not None and len(df_4h_ctx) > 0:
-            # Быстрая операция: встроенный поиск по индексу (отсекает всё будущее)
             cutoff_time = current_time - pd.Timedelta(hours=4)
             closed_4h = df_4h_ctx.loc[:cutoff_time]
         else:
@@ -410,10 +346,12 @@ class SmartSniperUniversal(Strategy):
             entry_depth = ((level['max'] - current_price) / zone_range) * 100 if zone_range > 0 else 0.0
             closest = min([r['min'] for r in CURRENT_RESISTANCES if r['min'] > level['max']], default=None)
             gap_pct = ((closest - level['max']) / level['max']) * 100 if closest else 999.0
+            dist_from_level_pct = ((level['max'] - current_price) / current_price) * 100
         else:
             entry_depth = ((current_price - level['min']) / zone_range) * 100 if zone_range > 0 else 0.0
             closest = max([s['max'] for s in CURRENT_SUPPORTS if s['max'] < level['min']], default=None)
             gap_pct = ((level['min'] - closest) / closest) * 100 if closest else 999.0
+            dist_from_level_pct = ((current_price - level['min']) / current_price) * 100
 
         ema_val = self.ema_4h_200[-1]
         ema_dist_pct = ((current_price - ema_val) / ema_val) * 100 if ema_val and ema_val > 0 else 0.0
@@ -431,9 +369,10 @@ class SmartSniperUniversal(Strategy):
             "approach": ctx_eval.get("approach", "UNKNOWN"),
             "trend": ctx_eval.get("trend", "UNKNOWN"),
             "energy": ctx_eval.get("energy", "UNKNOWN"),
-            "context_reason": ctx_eval.get("reason", ""),  # Полное описание контекста
+            "context_reason": ctx_eval.get("reason", ""),  
             "reason": decision['reason'],
             "ema_dist": round(ema_dist_pct, 2),
+            "dist_from_level": round(dist_from_level_pct, 2),
             "is_real_sweep": decision.get('is_real_sweep', False),
             "overshoot_pct": round(decision.get('overshoot_pct', 0.0), 3),
             "candles_in_sweep": decision.get('candles_in_sweep', 0),
@@ -454,7 +393,7 @@ class SmartSniperUniversal(Strategy):
 
         if trade_type == 'LONG':
             if DISABLE_SL_DIAGNOSTIC:
-                self.buy()  # без sl и tp - закрытие ТОЛЬКО через exit_mgr (TP/DEADLINE)
+                self.buy()  
             else:
                 self.buy(sl=decision['sl'], tp=decision['tp'])
             self.exit_mgr.open_position('LONG', current_price, decision['tp'], decision['sl'],
@@ -479,14 +418,10 @@ def get_cached_data(coin):
     date_suffix = TEST_START_DATE[:10] if TEST_START_DATE else "live"
     cache_file = f"cache_{coin.lower()}_{TIMEFRAME}_{LIMIT_CANDLES}_w{WARMUP_DAYS}_{date_suffix}.csv"
 
-    # 1. ЕСЛИ ФАЙЛ ЕСТЬ — читаем мгновенно, без интернета
     if os.path.exists(cache_file):
         return pd.read_csv(cache_file, index_col=0, parse_dates=True)
-    
-    # 2. ЕСЛИ ФАЙЛА НЕТ — включаем интернет и качаем (твой старый добрый код)
     else:
         try:
-            # ВОТ ЭТО МЫ ПЕРЕНЕСЛИ СЮДА! Теперь биржа не тормозит загрузку кэша.
             try:
                 exchange.load_markets()
             except Exception:
@@ -496,7 +431,7 @@ def get_cached_data(coin):
             symbol_spot = f"{coin.upper()}/USDT"
             symbol = symbol_perp if exchange.markets and symbol_perp in exchange.markets else symbol_spot
             
-            CANDLES_PER_DAY_15M = 96  # 24ч * 4 свечи/час
+            CANDLES_PER_DAY_15M = 96  
             warmup_candles = WARMUP_DAYS * CANDLES_PER_DAY_15M
             total_limit = LIMIT_CANDLES + warmup_candles
             since_ts = int((pd.to_datetime(TEST_START_DATE) - pd.Timedelta(days=WARMUP_DAYS)).timestamp() * 1000) if TEST_START_DATE else None
@@ -519,7 +454,7 @@ def get_cached_data(coin):
                     last_ts = chunk[-1][0]
                     print(f"   [{coin}] chunk={len(chunk)} свечей, дата последней: {pd.to_datetime(last_ts, unit='ms')}, всего набрано: {len(ohlcv)}/{total_limit}")
                     if last_ts <= cursor:
-                        break  # биржа не двигается - защита от бесконечного цикла
+                        break  
                     cursor = last_ts + 1
                     time.sleep(PAGINATION_DELAY_SEC)
                     if pd.to_datetime(last_ts, unit='ms', utc=True) >= pd.Timestamp.now(tz='UTC') - pd.Timedelta(minutes=30):
@@ -533,12 +468,8 @@ def get_cached_data(coin):
         except Exception as e:
             print(f"⚠️ Ошибка загрузки данных для {coin}: {type(e).__name__}: {e}")
             return pd.DataFrame()
+
 def build_4h_context_df(df_15m):
-    """
-    Ресемплит 15m данные в 4H СВЕЧИ для контекста (тренд/энергия/импульс).
-    Без сетевых запросов - чистая агрегация уже загруженных 15m данных.
-    Контекст теперь смотрит на 4H картину, а не на последние ~16 часов 15m шума.
-    """
     if df_15m.empty:
         return pd.DataFrame()
     df_4h = df_15m.resample('4h').agg({
@@ -559,23 +490,21 @@ macro_db = GLOBAL_TIMELINE.get(first_time_key, {}) if first_time_key else {}
 
 
 def print_trade_log(coin, tr, trade_type_filter=None):
-    """Печатает лог сделок монеты, заполняет GLOBAL_WINNERS/LOSERS_LOG и GLOBAL_APPROACH_STATS."""
     for idx, row in tr.iterrows():
         signal_time_str = str(row['EntryTime'] - pd.Timedelta(minutes=15))
         ctx = GLOBAL_TRADE_CONTEXTS.get(signal_time_str, {})
         trade_type = "LONG" if row['Size'] > 0 else "SHORT"
 
-        # --- DIAGNOSTIC: MAE и время удержания (если режим включён) ---
-        if DISABLE_SL_DIAGNOSTIC:
-            hold_time = row['ExitTime'] - row['EntryTime']
-            hold_hours = hold_time.total_seconds() / 3600
-            GLOBAL_MAE_DIAGNOSTIC.append({
-                "coin": coin,
-                "mae_pct": ctx.get('mae_pct', 0.0),
-                "hold_hours": round(hold_hours, 1),
-                "exit_reason": ctx.get('exit_reason', '?'),
-                "result_pct": round(row['ReturnPct'] * 100, 2),
-            })
+        # --- ВСЕГДА считаем MAE и время удержания ---
+        hold_time = row['ExitTime'] - row['EntryTime']
+        hold_hours = hold_time.total_seconds() / 3600
+        GLOBAL_MAE_DIAGNOSTIC.append({
+            "coin": coin,
+            "mae_pct": ctx.get('mae_pct', 0.0),
+            "hold_hours": round(hold_hours, 1),
+            "exit_reason": ctx.get('exit_reason', '?'),
+            "result_pct": round(row['ReturnPct'] * 100, 2),
+        })
 
         app = ctx.get('approach', 'UNKNOWN').replace('_DUMP', '').replace('_PUMP', '')
         if app not in GLOBAL_APPROACH_STATS:
@@ -591,7 +520,6 @@ def print_trade_log(coin, tr, trade_type_filter=None):
         if row['PnL'] > 0:
             GLOBAL_SWEEP_STATS[sweep_type]["win"] += 1
 
-        # --- Группировка по Score ---
         score = ctx.get('score', 0)
         score_bucket = f"{int(score)}" if score else "?"
         if score_bucket not in GLOBAL_SCORE_STATS:
@@ -600,20 +528,14 @@ def print_trade_log(coin, tr, trade_type_filter=None):
         if row['PnL'] > 0:
             GLOBAL_SCORE_STATS[score_bucket]["win"] += 1
         GLOBAL_SCORE_STATS[score_bucket]["pnl"] += row['ReturnPct'] * 100
-        if DISABLE_SL_DIAGNOSTIC:
-            GLOBAL_SCORE_STATS[score_bucket]["mae_list"].append(ctx.get('mae_pct', 0.0))
+        GLOBAL_SCORE_STATS[score_bucket]["mae_list"].append(ctx.get('mae_pct', 0.0))
 
-        # --- Группировка по Gap (расстояние до следующего уровня) ---
         gap = ctx.get('gap', 0)
         if isinstance(gap, (int, float)):
-            if gap < 4:
-                gap_bucket = "0-4%"
-            elif gap < 8:
-                gap_bucket = "4-8%"
-            elif gap < 15:
-                gap_bucket = "8-15%"
-            else:
-                gap_bucket = "15%+"
+            if gap < 4: gap_bucket = "0-4%"
+            elif gap < 8: gap_bucket = "4-8%"
+            elif gap < 15: gap_bucket = "8-15%"
+            else: gap_bucket = "15%+"
         else:
             gap_bucket = "?"
         if gap_bucket not in GLOBAL_GAP_STATS:
@@ -622,10 +544,8 @@ def print_trade_log(coin, tr, trade_type_filter=None):
         if row['PnL'] > 0:
             GLOBAL_GAP_STATS[gap_bucket]["win"] += 1
         GLOBAL_GAP_STATS[gap_bucket]["pnl"] += row['ReturnPct'] * 100
-        if DISABLE_SL_DIAGNOSTIC:
-            GLOBAL_GAP_STATS[gap_bucket]["mae_list"].append(ctx.get('mae_pct', 0.0))
+        GLOBAL_GAP_STATS[gap_bucket]["mae_list"].append(ctx.get('mae_pct', 0.0))
 
-        # --- Группировка по Trend ---
         trend = ctx.get('trend', 'UNKNOWN')
         if trend not in GLOBAL_TREND_STATS:
             GLOBAL_TREND_STATS[trend] = {"trades": 0, "win": 0, "pnl": 0.0}
@@ -634,7 +554,6 @@ def print_trade_log(coin, tr, trade_type_filter=None):
             GLOBAL_TREND_STATS[trend]["win"] += 1
         GLOBAL_TREND_STATS[trend]["pnl"] += row['ReturnPct'] * 100
 
-        # --- Группировка по EMA позиции ---
         ema_dist = ctx.get('ema_dist', 0)
         if ema_dist is not None and isinstance(ema_dist, (int, float)):
             ema_bucket = "ВЫШЕ EMA" if ema_dist > 0 else "НИЖЕ EMA"
@@ -647,11 +566,13 @@ def print_trade_log(coin, tr, trade_type_filter=None):
             GLOBAL_EMA_STATS[ema_bucket]["win"] += 1
         GLOBAL_EMA_STATS[ema_bucket]["pnl"] += row['ReturnPct'] * 100
 
-        mae_str = f" | MAE:-{ctx.get('mae_pct', 0.0):.2f}%" if DISABLE_SL_DIAGNOSTIC else ""
+        # Вывод MAE в лог теперь происходит ВСЕГДА
+        mae_str = f" | MAE:-{ctx.get('mae_pct', 0.0):.2f}%"
         log_str = (f"{coin.upper()} | {trade_type} | Рез: {row['ReturnPct']*100:.2f}%{mae_str} | "
                    f"Entry:{ctx.get('entry_price','?')} SL:{ctx.get('sl','?')} TP:{ctx.get('tp','?')} | "
                    f"УРОВЕНЬ:[{ctx.get('level_min','?')}-{ctx.get('level_max','?')}] Gap:{ctx.get('gap','?')}% | "
-                   f"Score:{ctx.get('score','?')} EMA:{ctx.get('ema_dist','?')}% Глубина:{ctx.get('depth','?')}%")
+                   f"Score:{ctx.get('score','?')} EMA:{ctx.get('ema_dist','?')}% "
+                   f"УрВыше:{ctx.get('dist_from_level','?')}% Глубина:{ctx.get('depth','?')}%")
 
         if row['PnL'] <= 0:
             GLOBAL_LOSERS_LOG.append("❌ " + log_str)
@@ -666,34 +587,25 @@ GLOBAL_TREND_STATS = {}
 GLOBAL_EMA_STATS = {}
 
 
-GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"trades": 0, "win": 0}, "NORMAL": {"trades": 0, "win": 0}}
-
 if TARGET_COIN.upper() == "ALL":
     print(f"🤖 Аудит запущен (стратегия: {STRATEGY}). Собираем данные...")
 
     for coin, data in macro_db.items():
         TARGET_COIN_CURRENT = coin
-        if not isinstance(data, dict):
-            continue
+        if not isinstance(data, dict): continue
         CURRENT_SUPPORTS = data.get("supports", [])
         CURRENT_RESISTANCES = data.get("resistances", [])
-        if not CURRENT_SUPPORTS and not CURRENT_RESISTANCES:
-            continue
+        if not CURRENT_SUPPORTS and not CURRENT_RESISTANCES: continue
 
         cache_exists_before = os.path.exists(f"cache_{coin.lower()}_{TIMEFRAME}_{LIMIT_CANDLES}_w{WARMUP_DAYS}_{TEST_START_DATE[:10] if TEST_START_DATE else 'live'}.csv")
         df = get_cached_data(coin)
-        if df.empty:
-            continue
-        if not cache_exists_before:
-            time.sleep(0.5)  # пауза между монетами, если только что качали с биржи (не из кэша)
+        if df.empty: continue
+        if not cache_exists_before: time.sleep(0.5)
 
         df['sup_max'] = np.nan
         df['res_min'] = np.nan
-        
         df['ema'] = df['Close'].ewm(span=50, adjust=False).mean()
         df['avg_vol'] = df['Volume'].rolling(window=20).mean()
-        
-        # ДОБАВЛЯЕМ МАЛЕНЬКИЕ КОЛОНКИ ОДИН РАЗ
         df['open'] = df['Open']
         df['high'] = df['High']
         df['low'] = df['Low']
@@ -712,15 +624,12 @@ if TARGET_COIN.upper() == "ALL":
             shorts_win = len(tr[(tr['Size'] < 0) & (tr['PnL'] > 0)])
             shorts_loss = len(tr[(tr['Size'] < 0) & (tr['PnL'] <= 0)])
 
-            # Проверка: если Return [%] сильно отличается от суммы ReturnPct закрытых
-            # сделок - подозрение на ВИСЯЩУЮ ОТКРЫТУЮ позицию на конец теста (особенно
-            # в diagnostic-режиме, если deadline дальше конца самих тестовых данных).
             closed_sum_pct = tr['ReturnPct'].sum() * 100
             actual_return_pct = stats['Return [%]']
             open_position_suspected = abs(actual_return_pct - closed_sum_pct) > 2.0
             if open_position_suspected:
                 print(f"⚠️ {coin.upper()}: подозрение на незакрытую позицию. "
-                      f"Сумма закрытых сделок={closed_sum_pct:.2f}%, но Return [%]={actual_return_pct:.2f}%")
+                      f"Сумма закрытых={closed_sum_pct:.2f}%, но Return [%]={actual_return_pct:.2f}%")
 
             GLOBAL_REPORT.append({
                 "Монета": coin.upper(),
@@ -748,43 +657,46 @@ if TARGET_COIN.upper() == "ALL":
     else:
         print("❌ Сделок не найдено.")
 
-    if DISABLE_SL_DIAGNOSTIC and GLOBAL_MAE_DIAGNOSTIC:
+    # Вывод блока диагностики теперь происходит ВСЕГДА, если были сделки
+    if GLOBAL_MAE_DIAGNOSTIC:
         maes = [d['mae_pct'] for d in GLOBAL_MAE_DIAGNOSTIC]
         holds = [d['hold_hours'] for d in GLOBAL_MAE_DIAGNOSTIC]
         tp_hits = [d for d in GLOBAL_MAE_DIAGNOSTIC if d['exit_reason'] == 'TP']
         deadline_hits = [d for d in GLOBAL_MAE_DIAGNOSTIC if d['exit_reason'] == 'DEADLINE']
+        sl_hits = [d for d in GLOBAL_MAE_DIAGNOSTIC if d['exit_reason'] == 'SL']
         print("\n" + "=" * 85)
-        print("🩺 ДИАГНОСТИКА ВХОДА (SL отключён - смотрим качество точки входа)")
+        print("🩺 ДИАГНОСТИКА ВХОДА И УДЕРЖАНИЯ (МАЕ)")
         print("=" * 85)
-        print(f"Сделок всего: {len(GLOBAL_MAE_DIAGNOSTIC)} | Дошли до TP: {len(tp_hits)} | Не дошли (deadline): {len(deadline_hits)}")
+        print(f"Сделок всего: {len(GLOBAL_MAE_DIAGNOSTIC)} | Дошли до TP: {len(tp_hits)} | По стопу: {len(sl_hits)} | Дедлайн: {len(deadline_hits)}")
         print(f"Средний MAE (макс. просадка от входа): {sum(maes)/len(maes):.2f}%  |  Худший MAE: {max(maes):.2f}%")
         print(f"Среднее время удержания: {sum(holds)/len(holds):.1f}ч  |  Самое долгое: {max(holds):.1f}ч")
 
     print("\n" + "=" * 115)
     print("🚀 ПРИБЫЛЬНЫЕ СДЕЛКИ")
     print("=" * 115)
-    for log in GLOBAL_WINNERS_LOG:
-        print(log)
+    for log in GLOBAL_WINNERS_LOG: print(log)
 
     print("\n" + "=" * 115)
     print("📉 УБЫТОЧНЫЕ СДЕЛКИ")
     print("=" * 115)
-    for log in GLOBAL_LOSERS_LOG:
-        print(log)
+    for log in GLOBAL_LOSERS_LOG: print(log)
 
     print("\n" + "=" * 115)
     print("🕵️ ДИАГНОСТИКА ОТМЕН")
     print("=" * 115)
-    for key, val in GLOBAL_DEBUG_STATS.items():
-        print(f"  {key}: {val}")
+    for key, val in GLOBAL_DEBUG_STATS.items(): print(f"  {key}: {val}")
+
+    total_origins = GLOBAL_DEBUG_STATS["Origins_Long_Total"] + GLOBAL_DEBUG_STATS["Origins_Short_Total"]
+    if total_origins > 0:
+        conversion = (GLOBAL_DEBUG_STATS["Passed_to_Trade"] / total_origins) * 100
+        print(f"\n  📐 КОНВЕРСИЯ: из {total_origins} пробитых уровней получилось {GLOBAL_DEBUG_STATS['Passed_to_Trade']} сделок = {conversion:.1f}%")
 
     print("\n" + "=" * 85)
     print("📊 СТАТИСТИКА ПО ТИПАМ ПОДХОДА")
     print("=" * 85)
     for app, data in GLOBAL_APPROACH_STATS.items():
         if data["trades"] > 0:
-            wr = (data["win"] / data["trades"]) * 100
-            print(f"{app}: trades={data['trades']}  WR={wr:.1f}%")
+            print(f"{app}: trades={data['trades']}  WR={(data['win'] / data['trades']) * 100:.1f}%")
 
     print("\n" + "=" * 85)
     print("🔍 ПРОВЕРКА: BOUNCE (без sweep) vs РЕАЛЬНЫЙ SWEEP+RECLAIM")
@@ -802,14 +714,13 @@ if TARGET_COIN.upper() == "ALL":
     for score in sorted(GLOBAL_SCORE_STATS.keys()):
         d = GLOBAL_SCORE_STATS[score]
         if d["trades"] > 0:
-            wr = (d["win"] / d["trades"]) * 100
             avg = d["pnl"] / d["trades"]
             mae_part = ""
-            if DISABLE_SL_DIAGNOSTIC and d.get("mae_list"):
+            if d.get("mae_list"): # Вывод MAE теперь работает для всех режимов
                 avg_mae = sum(d["mae_list"]) / len(d["mae_list"])
                 worst_mae = max(d["mae_list"])
                 mae_part = f"  MAE avg={avg_mae:.2f}% worst={worst_mae:.2f}%"
-            print(f"Score {score}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%{mae_part}")
+            print(f"Score {score}: trades={d['trades']}  WR={(d['win'] / d['trades']) * 100:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%{mae_part}")
 
     print("\n" + "=" * 85)
     print("📊 GAP vs РЕЗУЛЬТАТ (расстояние до следующего уровня)")
@@ -818,32 +729,27 @@ if TARGET_COIN.upper() == "ALL":
         if gap_b in GLOBAL_GAP_STATS:
             d = GLOBAL_GAP_STATS[gap_b]
             if d["trades"] > 0:
-                wr = (d["win"] / d["trades"]) * 100
                 avg = d["pnl"] / d["trades"]
                 mae_part = ""
-                if DISABLE_SL_DIAGNOSTIC and d.get("mae_list"):
+                if d.get("mae_list"): # Вывод MAE теперь работает для всех режимов
                     avg_mae = sum(d["mae_list"]) / len(d["mae_list"])
                     worst_mae = max(d["mae_list"])
                     mae_part = f"  MAE avg={avg_mae:.2f}% worst={worst_mae:.2f}%"
-                print(f"Gap {gap_b}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%{mae_part}")
+                print(f"Gap {gap_b}: trades={d['trades']}  WR={(d['win'] / d['trades']) * 100:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%{mae_part}")
 
     print("\n" + "=" * 85)
     print("📊 TREND vs РЕЗУЛЬТАТ")
     print("=" * 85)
     for trend, d in GLOBAL_TREND_STATS.items():
         if d["trades"] > 0:
-            wr = (d["win"] / d["trades"]) * 100
-            avg = d["pnl"] / d["trades"]
-            print(f"{trend}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%")
+            print(f"{trend}: trades={d['trades']}  WR={(d['win'] / d['trades']) * 100:.1f}%  Σ profit={d['pnl']:.2f}%  avg={d['pnl'] / d['trades']:.2f}%")
 
     print("\n" + "=" * 85)
     print("📊 ПОЗИЦИЯ vs EMA (LONG выше/ниже EMA)")
     print("=" * 85)
     for ema, d in GLOBAL_EMA_STATS.items():
         if d["trades"] > 0:
-            wr = (d["win"] / d["trades"]) * 100
-            avg = d["pnl"] / d["trades"]
-            print(f"{ema}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%")
+            print(f"{ema}: trades={d['trades']}  WR={(d['win'] / d['trades']) * 100:.1f}%  Σ profit={d['pnl']:.2f}%  avg={d['pnl'] / d['trades']:.2f}%")
 
 else:
     print(f"📥 Запускаю детальный тест для {TARGET_COIN.upper()} (стратегия: {STRATEGY})...")
@@ -861,11 +767,8 @@ else:
         else:
             df['sup_max'] = np.nan
             df['res_min'] = np.nan
-            
             df['ema'] = df['Close'].ewm(span=13, adjust=False).mean()
             df['avg_vol'] = df['Volume'].rolling(window=20).mean()
-
-            # Колонки для быстрого доступа, как и в ALL:
             df['open'] = df['Open']
             df['high'] = df['High']
             df['low'] = df['Low']
@@ -873,8 +776,6 @@ else:
             df['volume'] = df['Volume']
 
             SmartSniperUniversal.context_df_4h = build_4h_context_df(df)
-            
-            # ПЕРЕДАЕМ original_df, чтобы df_slice не был None!
             SmartSniperUniversal.original_df = df 
             
             bt = Backtest(df, SmartSniperUniversal, cash=10000, commission=.0006, hedging=False)
@@ -896,15 +797,16 @@ else:
                 for log in GLOBAL_WINNERS_LOG + GLOBAL_LOSERS_LOG:
                     print(log)
 
-                if DISABLE_SL_DIAGNOSTIC and GLOBAL_MAE_DIAGNOSTIC:
+                if GLOBAL_MAE_DIAGNOSTIC:
                     maes = [d['mae_pct'] for d in GLOBAL_MAE_DIAGNOSTIC]
                     holds = [d['hold_hours'] for d in GLOBAL_MAE_DIAGNOSTIC]
                     tp_hits = [d for d in GLOBAL_MAE_DIAGNOSTIC if d['exit_reason'] == 'TP']
                     deadline_hits = [d for d in GLOBAL_MAE_DIAGNOSTIC if d['exit_reason'] == 'DEADLINE']
+                    sl_hits = [d for d in GLOBAL_MAE_DIAGNOSTIC if d['exit_reason'] == 'SL']
                     print("\n" + "=" * 85)
-                    print("🩺 ДИАГНОСТИКА ВХОДА (SL отключён - смотрим качество точки входа)")
+                    print("🩺 ДИАГНОСТИКА ВХОДА И УДЕРЖАНИЯ (МАЕ)")
                     print("=" * 85)
-                    print(f"Сделок всего: {len(GLOBAL_MAE_DIAGNOSTIC)} | Дошли до TP: {len(tp_hits)} | Не дошли (deadline): {len(deadline_hits)}")
+                    print(f"Сделок всего: {len(GLOBAL_MAE_DIAGNOSTIC)} | Дошли до TP: {len(tp_hits)} | По стопу: {len(sl_hits)} | Дедлайн: {len(deadline_hits)}")
                     print(f"Средний MAE (макс. просадка от входа): {sum(maes)/len(maes):.2f}%  |  Худший MAE: {max(maes):.2f}%")
                     print(f"Среднее время удержания: {sum(holds)/len(holds):.1f}ч  |  Самое долгое: {max(holds):.1f}ч")
 
@@ -912,9 +814,7 @@ else:
                 print("📊 СТАТИСТИКА ПО ТИПАМ ПОДХОДА")
                 print("=" * 85)
                 for app, data in GLOBAL_APPROACH_STATS.items():
-                    if data["trades"] > 0:
-                        wr = (data["win"] / data["trades"]) * 100
-                        print(f"{app}: trades={data['trades']}  WR={wr:.1f}%")
+                    if data["trades"] > 0: print(f"{app}: trades={data['trades']}  WR={(data['win'] / data['trades']) * 100:.1f}%")
 
                 print("\n" + "=" * 85)
                 print("🔍 ПРОВЕРКА: BOUNCE (без sweep) vs РЕАЛЬНЫЙ SWEEP+RECLAIM")
@@ -927,19 +827,15 @@ else:
                         print(f"{sweep_type}: trades={data['trades']} ({share:.0f}% от всех)  WR={wr:.1f}%")
 
                 print("\n" + "=" * 85)
-                print("📊 SCORE vs РЕЗУЛЬТАТ (даёт ли Score преимущество?)")
+                print("📊 SCORE vs РЕЗУЛЬТАТ")
                 print("=" * 85)
                 for score in sorted(GLOBAL_SCORE_STATS.keys()):
                     d = GLOBAL_SCORE_STATS[score]
                     if d["trades"] > 0:
-                        wr = (d["win"] / d["trades"]) * 100
-                        avg = d["pnl"] / d["trades"]
                         mae_part = ""
-                        if DISABLE_SL_DIAGNOSTIC and d.get("mae_list"):
-                            avg_mae = sum(d["mae_list"]) / len(d["mae_list"])
-                            worst_mae = max(d["mae_list"])
-                            mae_part = f"  MAE avg={avg_mae:.2f}% worst={worst_mae:.2f}%"
-                        print(f"Score {score}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%{mae_part}")
+                        if d.get("mae_list"):
+                            mae_part = f"  MAE avg={sum(d['mae_list']) / len(d['mae_list']):.2f}% worst={max(d['mae_list']):.2f}%"
+                        print(f"Score {score}: trades={d['trades']}  WR={(d['win'] / d['trades']) * 100:.1f}%  Σ profit={d['pnl']:.2f}%  avg={d['pnl'] / d['trades']:.2f}%{mae_part}")
 
                 print("\n" + "=" * 85)
                 print("📊 GAP vs РЕЗУЛЬТАТ (расстояние до следующего уровня)")
@@ -948,32 +844,10 @@ else:
                     if gap_b in GLOBAL_GAP_STATS:
                         d = GLOBAL_GAP_STATS[gap_b]
                         if d["trades"] > 0:
-                            wr = (d["win"] / d["trades"]) * 100
-                            avg = d["pnl"] / d["trades"]
                             mae_part = ""
-                            if DISABLE_SL_DIAGNOSTIC and d.get("mae_list"):
-                                avg_mae = sum(d["mae_list"]) / len(d["mae_list"])
-                                worst_mae = max(d["mae_list"])
-                                mae_part = f"  MAE avg={avg_mae:.2f}% worst={worst_mae:.2f}%"
-                            print(f"Gap {gap_b}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%{mae_part}")
-
-                print("\n" + "=" * 85)
-                print("📊 TREND vs РЕЗУЛЬТАТ")
-                print("=" * 85)
-                for trend, d in GLOBAL_TREND_STATS.items():
-                    if d["trades"] > 0:
-                        wr = (d["win"] / d["trades"]) * 100
-                        avg = d["pnl"] / d["trades"]
-                        print(f"{trend}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%")
-
-                print("\n" + "=" * 85)
-                print("📊 ПОЗИЦИЯ vs EMA (LONG выше/ниже EMA)")
-                print("=" * 85)
-                for ema, d in GLOBAL_EMA_STATS.items():
-                    if d["trades"] > 0:
-                        wr = (d["win"] / d["trades"]) * 100
-                        avg = d["pnl"] / d["trades"]
-                        print(f"{ema}: trades={d['trades']}  WR={wr:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%")
+                            if d.get("mae_list"):
+                                mae_part = f"  MAE avg={sum(d['mae_list']) / len(d['mae_list']):.2f}% worst={max(d['mae_list']):.2f}%"
+                            print(f"Gap {gap_b}: trades={d['trades']}  WR={(d['win'] / d['trades']) * 100:.1f}%  Σ profit={d['pnl']:.2f}%  avg={d['pnl'] / d['trades']:.2f}%{mae_part}")
 
             chart_path = os.path.abspath(f'chart_{TARGET_COIN.lower()}.html')
             try:
