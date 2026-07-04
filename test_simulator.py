@@ -44,7 +44,7 @@ GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"tr
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "ETH"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "XMR"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
@@ -151,20 +151,20 @@ class SmartSniperUniversal(Strategy):
         if TARGET_COIN.upper() != "ALL":
             active_sup, active_res = np.nan, np.nan
             
-            # 1. Если мы УЖЕ в позиции — рисуем макро-уровень, от которого вошли
-            if self.position and getattr(self, 'last_entered_level', None) is not None:
-                entered_type = self.last_entered_level[2]
-                if entered_type == 'LONG':
-                    active_sup = self.last_entered_level[1]
-                else:
-                    active_res = self.last_entered_level[0]
-                    
-            # 2. Если ищем вход — рисуем ТОЛЬКО ТОТ УРОВЕНЬ, КОТОРЫЙ СЕЙЧАС ПРОБИТ (origin_level)
-            elif STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP"):
+            # 1. Приоритет: Активный пробитый уровень, за которым мы СЕЙЧАС следим
+            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP"):
                 if self.origin_level_long is not None:
                     active_sup = self.origin_level_long['max']
                 if self.origin_level_short is not None:
                     active_res = self.origin_level_short['min']
+                    
+            # 2. Если активного поиска нет (ждем пробоя или сидим в сделке), тянем линию последнего уровня
+            if np.isnan(active_sup) and getattr(self, 'last_entered_level', None) is not None:
+                if self.last_entered_level[2] == 'LONG':
+                    active_sup = self.last_entered_level[1]
+            if np.isnan(active_res) and getattr(self, 'last_entered_level', None) is not None:
+                if self.last_entered_level[2] == 'SHORT':
+                    active_res = self.last_entered_level[0]
             
             if self.original_df is not None:
                 self.original_df.at[current_time, 'sup_max'] = active_sup
@@ -172,10 +172,9 @@ class SmartSniperUniversal(Strategy):
 
         # --- Сжигание уровня ---
         if len(self.closed_trades) > self.last_closed_trades:
-            last_trade = self.closed_trades[-1]
-            if last_trade.pl > 0 and self.current_trade_level_id is not None:
-                if USE_LEVEL_BURN:
-                    self.manager.burned_levels.add(self.current_trade_level_id)
+            # Сжигаем отработанный уровень (и плюсовой, и минусовой), чтобы не входить в него дважды
+            if self.current_trade_level_id is not None:
+                self.manager.burned_levels.add(self.current_trade_level_id)
             self.current_trade_level_id = None
             self.last_closed_trades = len(self.closed_trades)
 
@@ -263,7 +262,8 @@ class SmartSniperUniversal(Strategy):
                     self.origin_level_short = None
 
         if can_long:
-            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX"):
+            # ТЕПЕРЬ КАПКАН ЗДЕСЬ. Работает строго с одним пробитым уровнем.
+            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP"):
                 if self.origin_level_long is not None:
                     decision = self._evaluate(self.origin_level_long, 'LONG', c_open, c_high, c_low, c_close,
                                                CURRENT_RESISTANCES, df_slice)
@@ -272,24 +272,15 @@ class SmartSniperUniversal(Strategy):
                         self.origin_level_long = None
             else:
                 for sup in CURRENT_SUPPORTS:
-                    skip_level = recent_low > sup['max']
-                    
-                    # ПРОВЕРКА ДЛЯ КАПКАНА: если он уже ждет желтый круг, не сметь прерывать!
-                    if STRATEGY == "PANIC_TRAP":
-                        level_id = f"LONG_{sup['min']}_{sup['max']}"
-                        if level_id in self.manager._watchers:
-                            skip_level = False 
-                            
-                    if skip_level:
+                    if recent_low > sup['max']:
                         continue
-                        
                     decision = self._evaluate(sup, 'LONG', c_open, c_high, c_low, c_close, CURRENT_RESISTANCES, df_slice)
                     if decision.get('allow'):
                         self._try_enter(sup, 'LONG', c_close, c_atr, decision)
                         break
 
         if can_short:
-            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX"):
+            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP"):
                 if self.origin_level_short is not None:
                     decision = self._evaluate(self.origin_level_short, 'SHORT', c_open, c_high, c_low, c_close,
                                                CURRENT_SUPPORTS, df_slice)
@@ -298,16 +289,8 @@ class SmartSniperUniversal(Strategy):
                         self.origin_level_short = None
             else:
                 for res in CURRENT_RESISTANCES:
-                    skip_level = recent_high < res['min']
-                    
-                    if STRATEGY == "PANIC_TRAP":
-                        level_id = f"SHORT_{res['min']}_{res['max']}"
-                        if level_id in self.manager._watchers:
-                            skip_level = False
-                            
-                    if skip_level:
+                    if recent_high < res['min']:
                         continue
-                        
                     decision = self._evaluate(res, 'SHORT', c_open, c_high, c_low, c_close, CURRENT_SUPPORTS, df_slice)
                     if decision.get('allow'):
                         self._try_enter(res, 'SHORT', c_close, c_atr, decision)
