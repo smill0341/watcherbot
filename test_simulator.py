@@ -44,7 +44,7 @@ GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"tr
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "ALL"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ETH"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
@@ -53,13 +53,13 @@ TEST_START_DATE = "2026-02-01 00:00:00"
 WARMUP_DAYS = 18  
 MIN_LEVEL_SCORE = 1.0
 
-# Метод определения точки входа: "SWEEP_RECLAIM" или "VOLUME_REVERSAL" или "PIT_CLIMAX"
-STRATEGY = "VOLUME_REVERSAL"
+# Метод определения точки входа: "SWEEP_RECLAIM" или "VOLUME_REVERSAL" или "PIT_CLIMAX" или "PANIC_TRAP"
+STRATEGY = "PANIC_TRAP"
 
 # --- DIAGNOSTIC: проверка качества точки входа без SL ---
 # Если True: SL игнорируется, позиция держится до TP или до конца дедлайна.
 DISABLE_SL_DIAGNOSTIC = True
-DIAGNOSTIC_DEADLINE_DAYS = 2  
+DIAGNOSTIC_DEADLINE_DAYS = 4  
 
 ALLOW_LONG_TRADES = True
 ALLOW_SHORT_TRADES = False
@@ -149,21 +149,22 @@ class SmartSniperUniversal(Strategy):
 
         # Отрисовка уровней на графике (БЕЗ МУСОРНЫХ СТУПЕНЕК)
         if TARGET_COIN.upper() != "ALL":
+            active_sup, active_res = np.nan, np.nan
+            
+            # 1. Если мы УЖЕ в позиции — рисуем макро-уровень, от которого вошли
             if self.position and getattr(self, 'last_entered_level', None) is not None:
-                active_min, active_max, entered_type = self.last_entered_level
+                entered_type = self.last_entered_level[2]
                 if entered_type == 'LONG':
-                    active_sup, active_res = active_max, np.nan
+                    active_sup = self.last_entered_level[1]
                 else:
-                    active_sup, active_res = np.nan, active_min
-            elif STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX"):
-                ol_long = self.origin_level_long
-                ol_short = self.origin_level_short
-                active_sup = ol_long['max'] if ol_long is not None else np.nan
-                active_res = ol_short['min'] if ol_short is not None else np.nan
-            else:
-                # График остается чистым, пока цена не подойдет к уровню
-                active_sup = np.nan
-                active_res = np.nan
+                    active_res = self.last_entered_level[0]
+                    
+            # 2. Если ищем вход — рисуем ТОЛЬКО ТОТ УРОВЕНЬ, КОТОРЫЙ СЕЙЧАС ПРОБИТ (origin_level)
+            elif STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP"):
+                if self.origin_level_long is not None:
+                    active_sup = self.origin_level_long['max']
+                if self.origin_level_short is not None:
+                    active_res = self.origin_level_short['min']
             
             if self.original_df is not None:
                 self.original_df.at[current_time, 'sup_max'] = active_sup
@@ -192,7 +193,7 @@ class SmartSniperUniversal(Strategy):
         can_short = len(CURRENT_RESISTANCES) > 0 and ALLOW_SHORT_TRADES
 
         df_slice = None
-        if STRATEGY in ["VOLUME_REVERSAL", "PIT_CLIMAX"]:
+        if STRATEGY in ["VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP"]:
             lookback_size = 260 if STRATEGY == "VOLUME_REVERSAL" else 100
             current_len = len(self.data)
             start_idx = max(0, current_len - lookback_size)
@@ -271,8 +272,17 @@ class SmartSniperUniversal(Strategy):
                         self.origin_level_long = None
             else:
                 for sup in CURRENT_SUPPORTS:
-                    if recent_low > sup['max']:
+                    skip_level = recent_low > sup['max']
+                    
+                    # ПРОВЕРКА ДЛЯ КАПКАНА: если он уже ждет желтый круг, не сметь прерывать!
+                    if STRATEGY == "PANIC_TRAP":
+                        level_id = f"LONG_{sup['min']}_{sup['max']}"
+                        if level_id in self.manager._watchers:
+                            skip_level = False 
+                            
+                    if skip_level:
                         continue
+                        
                     decision = self._evaluate(sup, 'LONG', c_open, c_high, c_low, c_close, CURRENT_RESISTANCES, df_slice)
                     if decision.get('allow'):
                         self._try_enter(sup, 'LONG', c_close, c_atr, decision)
@@ -288,8 +298,16 @@ class SmartSniperUniversal(Strategy):
                         self.origin_level_short = None
             else:
                 for res in CURRENT_RESISTANCES:
-                    if recent_high < res['min']:
+                    skip_level = recent_high < res['min']
+                    
+                    if STRATEGY == "PANIC_TRAP":
+                        level_id = f"SHORT_{res['min']}_{res['max']}"
+                        if level_id in self.manager._watchers:
+                            skip_level = False
+                            
+                    if skip_level:
                         continue
+                        
                     decision = self._evaluate(res, 'SHORT', c_open, c_high, c_low, c_close, CURRENT_SUPPORTS, df_slice)
                     if decision.get('allow'):
                         self._try_enter(res, 'SHORT', c_close, c_atr, decision)
@@ -306,6 +324,10 @@ class SmartSniperUniversal(Strategy):
             )
         elif STRATEGY == "PIT_CLIMAX":
             decision = self.manager.evaluate_pit_climax(
+                level, df_slice, trade_type, opposite_levels
+            )
+        elif STRATEGY == "PANIC_TRAP":
+            decision = self.manager.evaluate_panic_trap(
                 level, df_slice, trade_type, opposite_levels
             )
         else: 
@@ -388,6 +410,7 @@ class SmartSniperUniversal(Strategy):
 
         self.current_trade_level_id = decision['level_id']
         self.current_trade_signal_time = signal_time
+        # ВОТ ЭТА СТРОКА ДОЛЖНА БЫТЬ ТОЛЬКО ЗДЕСЬ:
         self.last_entered_level = (level['min'], level['max'], trade_type)
         GLOBAL_DEBUG_STATS["Passed_to_Trade"] += 1
 
@@ -420,8 +443,12 @@ macro_db = load_json(macro_path, default={}) if os.path.exists(macro_path) else 
 
 
 def get_cached_data(coin):
+    os.makedirs("data_cache", exist_ok=True)
+    
     date_suffix = TEST_START_DATE[:10] if TEST_START_DATE else "live"
-    cache_file = f"cache_{coin.lower()}_{TIMEFRAME}_{LIMIT_CANDLES}_w{WARMUP_DAYS}_{date_suffix}.csv"
+    # Название файла остается строго твоим:
+    file_name = f"cache_{coin.lower()}_{TIMEFRAME}_{LIMIT_CANDLES}_w{WARMUP_DAYS}_{date_suffix}.csv"
+    cache_file = os.path.join("data_cache", file_name)
 
     if os.path.exists(cache_file):
         return pd.read_csv(cache_file, index_col=0, parse_dates=True)
@@ -571,6 +598,15 @@ def print_trade_log(coin, tr, trade_type_filter=None):
             GLOBAL_EMA_STATS[ema_bucket]["win"] += 1
         GLOBAL_EMA_STATS[ema_bucket]["pnl"] += row['ReturnPct'] * 100
 
+        lvl_type = ctx.get('type', 'UNKNOWN')
+        if lvl_type not in GLOBAL_LEVEL_TYPE_STATS:
+            GLOBAL_LEVEL_TYPE_STATS[lvl_type] = {"trades": 0, "win": 0, "pnl": 0.0, "mae_list": []}
+        GLOBAL_LEVEL_TYPE_STATS[lvl_type]["trades"] += 1
+        if row['PnL'] > 0:
+            GLOBAL_LEVEL_TYPE_STATS[lvl_type]["win"] += 1
+        GLOBAL_LEVEL_TYPE_STATS[lvl_type]["pnl"] += row['ReturnPct'] * 100
+        GLOBAL_LEVEL_TYPE_STATS[lvl_type]["mae_list"].append(ctx.get('mae_pct', 0.0))
+
         # Вывод MAE в лог теперь происходит ВСЕГДА
         mae_str = f" | MAE:-{ctx.get('mae_pct', 0.0):.2f}%"
         log_str = (f"{coin.upper()} | {trade_type} | Рез: {row['ReturnPct']*100:.2f}%{mae_str} | "
@@ -590,6 +626,7 @@ GLOBAL_SCORE_STATS = {}
 GLOBAL_GAP_STATS = {}
 GLOBAL_TREND_STATS = {}
 GLOBAL_EMA_STATS = {}
+GLOBAL_LEVEL_TYPE_STATS = {}
 
 
 if TARGET_COIN.upper() == "ALL":
@@ -602,8 +639,9 @@ if TARGET_COIN.upper() == "ALL":
         CURRENT_RESISTANCES = data.get("resistances", [])
         if not CURRENT_SUPPORTS and not CURRENT_RESISTANCES: continue
 
-        cache_exists_before = os.path.exists(f"cache_{coin.lower()}_{TIMEFRAME}_{LIMIT_CANDLES}_w{WARMUP_DAYS}_{TEST_START_DATE[:10] if TEST_START_DATE else 'live'}.csv")
+        cache_exists_before = os.path.exists(os.path.join("data_cache", f"cache_{coin.lower()}_{TIMEFRAME}_{LIMIT_CANDLES}_w{WARMUP_DAYS}_{TEST_START_DATE[:10] if TEST_START_DATE else 'live'}.csv"))
         df = get_cached_data(coin)
+        
         if df.empty: continue
         if not cache_exists_before: time.sleep(0.5)
 
@@ -756,6 +794,17 @@ if TARGET_COIN.upper() == "ALL":
         if d["trades"] > 0:
             print(f"{ema}: trades={d['trades']}  WR={(d['win'] / d['trades']) * 100:.1f}%  Σ profit={d['pnl']:.2f}%  avg={d['pnl'] / d['trades']:.2f}%")
 
+    print("\n" + "=" * 85)
+    print("📊 ТИП УРОВНЯ vs РЕЗУЛЬТАТ")
+    print("=" * 85)
+    for l_type in sorted(GLOBAL_LEVEL_TYPE_STATS.keys()):
+        d = GLOBAL_LEVEL_TYPE_STATS[l_type]
+        if d["trades"] > 0:
+            avg = d["pnl"] / d["trades"]
+            avg_mae = sum(d["mae_list"]) / len(d["mae_list"]) if d["mae_list"] else 0.0
+            print(f"{l_type}: trades={d['trades']}  WR={(d['win'] / d['trades']) * 100:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%  MAE avg={avg_mae:.2f}%")
+
+
 else:
     print(f"📥 Запускаю детальный тест для {TARGET_COIN.upper()} (стратегия: {STRATEGY})...")
     TARGET_COIN_CURRENT = TARGET_COIN.upper()
@@ -853,6 +902,17 @@ else:
                             if d.get("mae_list"):
                                 mae_part = f"  MAE avg={sum(d['mae_list']) / len(d['mae_list']):.2f}% worst={max(d['mae_list']):.2f}%"
                             print(f"Gap {gap_b}: trades={d['trades']}  WR={(d['win'] / d['trades']) * 100:.1f}%  Σ profit={d['pnl']:.2f}%  avg={d['pnl'] / d['trades']:.2f}%{mae_part}")
+
+                print("\n" + "=" * 85)
+                print("📊 ТИП УРОВНЯ vs РЕЗУЛЬТАТ")
+                print("=" * 85)
+                for l_type in sorted(GLOBAL_LEVEL_TYPE_STATS.keys()):
+                    d = GLOBAL_LEVEL_TYPE_STATS[l_type]
+                    if d["trades"] > 0:
+                        avg = d["pnl"] / d["trades"]
+                        avg_mae = sum(d["mae_list"]) / len(d["mae_list"]) if d["mae_list"] else 0.0
+                        print(f"{l_type}: trades={d['trades']}  WR={(d['win'] / d['trades']) * 100:.1f}%  Σ profit={d['pnl']:.2f}%  avg={avg:.2f}%  MAE avg={avg_mae:.2f}%")
+
 
             chart_path = os.path.abspath(f'chart_{TARGET_COIN.lower()}.html')
             try:
