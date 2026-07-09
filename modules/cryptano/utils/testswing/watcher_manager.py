@@ -145,7 +145,7 @@ class WatcherManager:
     # -------------------------------------------------------------------------
     # 4. PANIC TRAP (Вторичный тест дна/вершины)
     # -------------------------------------------------------------------------
-    def evaluate_panic_trap(self, level, df, trade_type, all_opposite_levels):
+    def evaluate_panic_trap(self, level, df, trade_type, all_opposite_levels, trend='UNKNOWN'):
         level_id = self._level_id(level, trade_type)
         if level_id in self.burned_levels:
             return self._deny("Level already burned")
@@ -166,7 +166,7 @@ class WatcherManager:
             float(c['open']), float(c['high']), float(c['low']), float(c['close']), float(c['volume'])
         )
 
-        signal = watcher.update(c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels)
+        signal = watcher.update(c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, trend=trend)
 
         if not signal:
             return self._deny("No signal") # <-- Отдаем чистую строку, чтобы симулятор её узнал

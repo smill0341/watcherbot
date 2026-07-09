@@ -44,7 +44,7 @@ GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"tr
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "XMR"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "BNB"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
@@ -237,7 +237,7 @@ class SmartSniperUniversal(Strategy):
                     GLOBAL_DEBUG_STATS["Origins_Long_Total"] += 1
                     self.origin_level_long['_pit_start_time'] = current_time
             else:
-                if c_close > self.origin_level_long['max']:
+                if c_close > self.origin_level_long['max'] and not self._origin_still_needed(self.origin_level_long, 'LONG'):
                     self.origin_level_long = None
 
         if CURRENT_RESISTANCES:
@@ -258,17 +258,18 @@ class SmartSniperUniversal(Strategy):
                     GLOBAL_DEBUG_STATS["Origins_Short_Total"] += 1
                     self.origin_level_short['_pit_start_time'] = current_time
             else:
-                if c_close < self.origin_level_short['min']:
+                if c_close < self.origin_level_short['min'] and not self._origin_still_needed(self.origin_level_short, 'SHORT'):
                     self.origin_level_short = None
 
         if can_long:
             # ТЕПЕРЬ КАПКАН ЗДЕСЬ. Работает строго с одним пробитым уровнем.
             if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP"):
                 if self.origin_level_long is not None:
+                    ctx_eval_long = self._get_context(self.origin_level_long, 'LONG', c_atr)
                     decision = self._evaluate(self.origin_level_long, 'LONG', c_open, c_high, c_low, c_close,
-                                               CURRENT_RESISTANCES, df_slice)
+                                               CURRENT_RESISTANCES, df_slice, trend=ctx_eval_long.get('trend', 'UNKNOWN'))
                     if decision.get('allow'):
-                        self._try_enter(self.origin_level_long, 'LONG', c_close, c_atr, decision)
+                        self._try_enter(self.origin_level_long, 'LONG', c_close, c_atr, decision, ctx_eval=ctx_eval_long)
                         self.origin_level_long = None
             else:
                 for sup in CURRENT_SUPPORTS:
@@ -282,10 +283,11 @@ class SmartSniperUniversal(Strategy):
         if can_short:
             if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP"):
                 if self.origin_level_short is not None:
+                    ctx_eval_short = self._get_context(self.origin_level_short, 'SHORT', c_atr)
                     decision = self._evaluate(self.origin_level_short, 'SHORT', c_open, c_high, c_low, c_close,
-                                               CURRENT_SUPPORTS, df_slice)
+                                               CURRENT_SUPPORTS, df_slice, trend=ctx_eval_short.get('trend', 'UNKNOWN'))
                     if decision.get('allow'):
-                        self._try_enter(self.origin_level_short, 'SHORT', c_close, c_atr, decision)
+                        self._try_enter(self.origin_level_short, 'SHORT', c_close, c_atr, decision, ctx_eval=ctx_eval_short)
                         self.origin_level_short = None
             else:
                 for res in CURRENT_RESISTANCES:
@@ -296,7 +298,7 @@ class SmartSniperUniversal(Strategy):
                         self._try_enter(res, 'SHORT', c_close, c_atr, decision)
                         break
                         
-    def _evaluate(self, level, trade_type, c_open, c_high, c_low, c_close, opposite_levels, df_slice):
+    def _evaluate(self, level, trade_type, c_open, c_high, c_low, c_close, opposite_levels, df_slice, trend='UNKNOWN'):
         if STRATEGY == "SWEEP_RECLAIM":
             decision = self.manager.evaluate_sweep_reclaim(
                 level, c_open, c_high, c_low, c_close, opposite_levels, trade_type
@@ -311,7 +313,7 @@ class SmartSniperUniversal(Strategy):
             )
         elif STRATEGY == "PANIC_TRAP":
             decision = self.manager.evaluate_panic_trap(
-                level, df_slice, trade_type, opposite_levels
+                level, df_slice, trade_type, opposite_levels, trend=trend
             )
         else: 
             decision = {'allow': False, 'reason': 'Unknown strategy'}
@@ -325,9 +327,20 @@ class SmartSniperUniversal(Strategy):
                 GLOBAL_DEBUG_STATS["Killed_by_QUALITY"] += 1
         return decision
 
-    def _try_enter(self, level, trade_type, current_price, c_atr, decision):
-        global GLOBAL_TRADE_CONTEXTS, GLOBAL_DEBUG_STATS
+    def _origin_still_needed(self, level, trade_type):
+        """Не сбрасываем origin_level, пока PanicTrapWatcher для этого уровня ещё ждёт
+        подтверждения входа в каскаде (WAIT_GREEN/WAIT_RED/TRAP_SET) — иначе сделка
+        теряется насовсем, даже если через пару свечей появился бы валидный ретест."""
+        level_id = self.manager._level_id(level, trade_type)
+        watcher = self.manager._watchers.get(level_id)
+        if watcher is not None and hasattr(watcher, 'state'):
+            return watcher.state in ("WAIT_GREEN", "WAIT_RED", "TRAP_SET")
+        return False
 
+    def _get_context(self, level, trade_type, c_atr):
+        """Считает макро-контекст (TREND/ENERGY/APPROACH) на 4H. Вынесено из _try_enter,
+        чтобы можно было узнать trend ДО того, как стратегия примет решение о входе
+        (нужно для volume-decay фильтра в PanicTrapWatcher)."""
         current_time = pd.to_datetime(self.data.index[-1])
         df_4h_ctx = getattr(self, 'context_df_4h', None)
         if df_4h_ctx is not None and len(df_4h_ctx) > 0:
@@ -338,12 +351,18 @@ class SmartSniperUniversal(Strategy):
 
         if len(closed_4h) >= 20:
             ctx_window = closed_4h.tail(110)
-            ctx_eval = analyze_context(ctx_window['Close'].values, ctx_window['High'].values,
-                                        ctx_window['Low'].values, c_atr,
-                                        trade_type, level['min'], level['max'])
-        else:
-            ctx_eval = {"allowed": True, "reason": "Not enough 4H data", "approach": "UNKNOWN",
-                        "trend": "UNKNOWN", "energy": "UNKNOWN"}
+            return analyze_context(ctx_window['Close'].values, ctx_window['High'].values,
+                                    ctx_window['Low'].values, c_atr,
+                                    trade_type, level['min'], level['max'])
+        return {"allowed": True, "reason": "Not enough 4H data", "approach": "UNKNOWN",
+                "trend": "UNKNOWN", "energy": "UNKNOWN"}
+
+    def _try_enter(self, level, trade_type, current_price, c_atr, decision, ctx_eval=None):
+        global GLOBAL_TRADE_CONTEXTS, GLOBAL_DEBUG_STATS
+
+        if ctx_eval is None:
+            ctx_eval = self._get_context(level, trade_type, c_atr)
+
         if USE_CONTEXT_FILTER and not ctx_eval['allowed']:
             GLOBAL_DEBUG_STATS["Killed_by_CONTEXT"] += 1
             return
@@ -386,6 +405,7 @@ class SmartSniperUniversal(Strategy):
             "is_real_sweep": str(decision.get('is_real_sweep', 'False')),
             "overshoot_pct": round(decision.get('overshoot_pct', 0.0), 3),
             "candles_in_sweep": decision.get('candles_in_sweep', 0),
+            "legs_count": decision.get('legs_count', '?'),
             "entry_price": round(current_price, 8),
             "sl": round(decision.get('sl', 0.0), 8),
             "tp": round(decision.get('tp', 0.0), 8),
@@ -569,6 +589,10 @@ def print_trade_log(coin, tr, trade_type_filter=None):
             GLOBAL_TREND_STATS[trend]["win"] += 1
         GLOBAL_TREND_STATS[trend]["pnl"] += row['ReturnPct'] * 100
 
+        GLOBAL_COIN_TRENDS.setdefault(coin, []).append(
+            f"{trend}(ног:{ctx.get('legs_count', '?')},{'W' if row['PnL'] > 0 else 'L'})"
+        )
+
         ema_dist = ctx.get('ema_dist', 0)
         if ema_dist is not None and isinstance(ema_dist, (int, float)):
             ema_bucket = "ВЫШЕ EMA" if ema_dist > 0 else "НИЖЕ EMA"
@@ -596,7 +620,8 @@ def print_trade_log(coin, tr, trade_type_filter=None):
                    f"Entry:{ctx.get('entry_price','?')} SL:{ctx.get('sl','?')} TP:{ctx.get('tp','?')} | "
                    f"УРОВЕНЬ:[{ctx.get('level_min','?')}-{ctx.get('level_max','?')}] Gap:{ctx.get('gap','?')}% | "
                    f"Score:{ctx.get('score','?')} EMA:{ctx.get('ema_dist','?')}% "
-                   f"УрВыше:{ctx.get('dist_from_level','?')}% Глубина:{ctx.get('depth','?')}%")
+                   f"УрВыше:{ctx.get('dist_from_level','?')}% Глубина:{ctx.get('depth','?')}% | "
+                   f"Trend:{ctx.get('trend','?')} Ноги:{ctx.get('legs_count','?')}")
 
         if row['PnL'] <= 0:
             GLOBAL_LOSERS_LOG.append("❌ " + log_str)
@@ -610,6 +635,7 @@ GLOBAL_GAP_STATS = {}
 GLOBAL_TREND_STATS = {}
 GLOBAL_EMA_STATS = {}
 GLOBAL_LEVEL_TYPE_STATS = {}
+GLOBAL_COIN_TRENDS = {}
 
 
 if TARGET_COIN.upper() == "ALL":
@@ -657,14 +683,16 @@ if TARGET_COIN.upper() == "ALL":
                 print(f"⚠️ {coin.upper()}: подозрение на незакрытую позицию. "
                       f"Сумма закрытых={closed_sum_pct:.2f}%, но Return [%]={actual_return_pct:.2f}%")
 
+            print_trade_log(coin, tr)
+
             GLOBAL_REPORT.append({
                 "Монета": coin.upper(),
                 "Лонг (+/-)": f"{longs_win}/{longs_loss}",
                 "Шорт (+/-)": f"{shorts_win}/{shorts_loss}",
                 "Win Rate %": round(stats['Win Rate [%]'], 2),
-                "Профит %": round(stats['Return [%]'], 2)
+                "Профит %": round(stats['Return [%]'], 2),
+                "Trend": ", ".join(GLOBAL_COIN_TRENDS.get(coin, []))
             })
-            print_trade_log(coin, tr)
 
         GLOBAL_TRADE_CONTEXTS = {}
         SmartSniperUniversal.context_df_4h = None

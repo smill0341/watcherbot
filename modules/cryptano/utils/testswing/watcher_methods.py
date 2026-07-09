@@ -421,6 +421,8 @@ class PanicTrapWatcher:
     CONFIG = {
         'CLIMAX_VOL_MULT': 2.0,   
         'MIN_GAP': 8,             # ВОТ ОНО! Минимальное кол-во свечей между красным и желтым кругом
+        'RETEST_VOL_DECAY_MAX': 0.5,   # объём подтверждающей свечи должен быть < 50% от объёма последней climax-ноги
+        'MIN_LEGS_FOR_DECAY': 2,       # фильтр включается либо в DOWN(LONG)/UP(SHORT), либо если каскад уже >= N ног (локальный обвал, даже если макро-тренд считается RANGE)
         'TP_MODE': 'fixed_pct',
         'FIXED_TP_PCT': 10.0,     
         'TAKE_PROFIT': 10.0,
@@ -439,8 +441,10 @@ class PanicTrapWatcher:
         self.sl_price = None
         self.climax_extreme = None
         self.bars_since_climax = 0
+        self.climax_vol = None     # объём последней (самой глубокой) climax-ноги каскада
+        self.legs_count = 0        # сколько раз climax_extreme обновлялся ниже/выше — глубина каскада
 
-    def update(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels):
+    def update(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, trend='UNKNOWN'):
         if self.state in ["DEAD", "TRIGGERED"]:
             return None
 
@@ -450,16 +454,32 @@ class PanicTrapWatcher:
                 if c_close < c_open and c_vol >= baseline_vol * self.CONFIG['CLIMAX_VOL_MULT']:
                     self.state = "WAIT_GREEN"
                     self.climax_extreme = c_low 
+                    self.climax_vol = c_vol
+                    self.legs_count = 1
                     self.bars_since_climax = 0
                 return None
 
             elif self.state == "WAIT_GREEN":
                 self.bars_since_climax += 1
-                if c_close < c_open: 
-                    self.climax_extreme = min(self.climax_extreme if self.climax_extreme else c_low, c_low)
+                if c_close < c_open:
+                    prev_extreme = self.climax_extreme if self.climax_extreme is not None else c_low
+                    new_extreme = min(prev_extreme, c_low)
+                    if new_extreme < prev_extreme:
+                        # цена пробила предыдущее дно каскада — это новая, более глубокая climax-нога.
+                        # Именно её объём становится новой базой для сравнения на "тихий" ретест.
+                        self.climax_vol = c_vol
+                        self.legs_count += 1
+                    self.climax_extreme = new_extreme
                     self.bars_since_climax = 0 # Обновляем красное дно - счетчик сбрасывается
                     return None
-                if c_close > c_open: 
+                if c_close > c_open:
+                    # Доп. подтверждение только для DOWN-тренда: продавцы должны реально выдохнуться.
+                    # Если зелёная свеча идёт всё ещё на заметном объёме — это не тихий ретест,
+                    # а просто отскок внутри каскада. Не считаем это подтверждением, ждём дальше.
+                    if (trend == 'DOWN' or self.legs_count >= self.CONFIG['MIN_LEGS_FOR_DECAY']) and self.climax_vol:
+                        decay_ratio = c_vol / self.climax_vol
+                        if decay_ratio > self.CONFIG['RETEST_VOL_DECAY_MAX']:
+                            return None
                     self.state = "TRAP_SET"
                     safe_extreme = self.climax_extreme if self.climax_extreme is not None else c_low
                     self.entry_price = safe_extreme * 1.001
@@ -473,6 +493,8 @@ class PanicTrapWatcher:
                 if c_low < self.climax_extreme:
                     self.state = "WAIT_GREEN"
                     self.climax_extreme = c_low
+                    self.climax_vol = c_vol
+                    self.legs_count += 1
                     self.bars_since_climax = 0
                     return None
 
@@ -485,7 +507,8 @@ class PanicTrapWatcher:
                     risk_data, err = _calc_tp_and_rr(self.entry_price, self.sl_price, self.trade_type, all_opposite_levels, self.CONFIG)
                     if err or not risk_data: return {'error': err or "Risk data is None"}
                     return {"action": "BUY", "sl": risk_data['sl'], "tp": risk_data['tp'],
-                            "reason": f"Капкан (Пауза: {self.bars_since_climax}св)"}
+                            "reason": f"Капкан (Пауза: {self.bars_since_climax}св, ног:{self.legs_count})",
+                            "legs_count": self.legs_count, "trend_at_entry": trend}
             return None
 
         elif self.trade_type == 'SHORT':
@@ -494,16 +517,29 @@ class PanicTrapWatcher:
                 if c_close > c_open and c_vol >= baseline_vol * self.CONFIG['CLIMAX_VOL_MULT']:
                     self.state = "WAIT_RED"
                     self.climax_extreme = c_high
+                    self.climax_vol = c_vol
+                    self.legs_count = 1
                     self.bars_since_climax = 0
                 return None
 
             elif self.state == "WAIT_RED":
                 self.bars_since_climax += 1
                 if c_close > c_open:
-                    self.climax_extreme = max(self.climax_extreme if self.climax_extreme else c_high, c_high)
+                    prev_extreme = self.climax_extreme if self.climax_extreme is not None else c_high
+                    new_extreme = max(prev_extreme, c_high)
+                    if new_extreme > prev_extreme:
+                        # цена пробила предыдущий пик каскада — новая, более высокая climax-нога.
+                        self.climax_vol = c_vol
+                        self.legs_count += 1
+                    self.climax_extreme = new_extreme
                     self.bars_since_climax = 0
                     return None
                 if c_close < c_open:
+                    # Зеркальный фильтр для SHORT: актуален в UP-тренде (растущий нож).
+                    if (trend == 'UP' or self.legs_count >= self.CONFIG['MIN_LEGS_FOR_DECAY']) and self.climax_vol:
+                        decay_ratio = c_vol / self.climax_vol
+                        if decay_ratio > self.CONFIG['RETEST_VOL_DECAY_MAX']:
+                            return None
                     self.state = "TRAP_SET"
                     safe_extreme = self.climax_extreme if self.climax_extreme is not None else c_high
                     self.entry_price = safe_extreme * 0.999
@@ -516,6 +552,8 @@ class PanicTrapWatcher:
                 if c_high > self.climax_extreme:
                     self.state = "WAIT_RED"
                     self.climax_extreme = c_high
+                    self.climax_vol = c_vol
+                    self.legs_count += 1
                     self.bars_since_climax = 0
                     return None
 
@@ -527,7 +565,8 @@ class PanicTrapWatcher:
                     risk_data, err = _calc_tp_and_rr(self.entry_price, self.sl_price, self.trade_type, all_opposite_levels, self.CONFIG)
                     if err or not risk_data: return {'error': err or "Risk data is None"}
                     return {"action": "SELL", "sl": risk_data['sl'], "tp": risk_data['tp'],
-                            "reason": f"Капкан (Пауза: {self.bars_since_climax}св)"}
+                            "reason": f"Капкан (Пауза: {self.bars_since_climax}св, ног:{self.legs_count})",
+                            "legs_count": self.legs_count, "trend_at_entry": trend}
             return None
 
         return None
