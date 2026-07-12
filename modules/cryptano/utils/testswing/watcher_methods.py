@@ -423,6 +423,7 @@ class PanicTrapWatcher:
         'MIN_GAP': 8,             # ВОТ ОНО! Минимальное кол-во свечей между красным и желтым кругом
         'RETEST_VOL_DECAY_MAX': 0.5,   # объём подтверждающей свечи должен быть < 50% от объёма последней climax-ноги
         'MIN_LEGS_FOR_DECAY': 2,       # фильтр включается либо в DOWN(LONG)/UP(SHORT), либо если каскад уже >= N ног (локальный обвал, даже если макро-тренд считается RANGE)
+        'MAX_WAIT_FOR_DECAY': 24,      # после стольки свечей ожидания тихого ретеста — берём сделку по факту, а не теряем её насовсем
         'TP_MODE': 'fixed_pct',
         'FIXED_TP_PCT': 10.0,     
         'TAKE_PROFIT': 10.0,
@@ -443,6 +444,7 @@ class PanicTrapWatcher:
         self.bars_since_climax = 0
         self.climax_vol = None     # объём последней (самой глубокой) climax-ноги каскада
         self.legs_count = 0        # сколько раз climax_extreme обновлялся ниже/выше — глубина каскада
+        self.total_wait_bars = 0   # сколько свечей ждём тихий ретест с самого начала каскада (не сбрасывается)
 
     def update(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, trend='UNKNOWN'):
         if self.state in ["DEAD", "TRIGGERED"]:
@@ -461,6 +463,7 @@ class PanicTrapWatcher:
 
             elif self.state == "WAIT_GREEN":
                 self.bars_since_climax += 1
+                self.total_wait_bars += 1
                 if c_close < c_open:
                     prev_extreme = self.climax_extreme if self.climax_extreme is not None else c_low
                     new_extreme = min(prev_extreme, c_low)
@@ -476,10 +479,14 @@ class PanicTrapWatcher:
                     # Доп. подтверждение только для DOWN-тренда: продавцы должны реально выдохнуться.
                     # Если зелёная свеча идёт всё ещё на заметном объёме — это не тихий ретест,
                     # а просто отскок внутри каскада. Не считаем это подтверждением, ждём дальше.
-                    if (trend == 'DOWN' or self.legs_count >= self.CONFIG['MIN_LEGS_FOR_DECAY']) and self.climax_vol:
+                    need_decay_check = (trend == 'DOWN' or self.legs_count >= self.CONFIG['MIN_LEGS_FOR_DECAY']) and self.climax_vol
+                    timed_out = self.total_wait_bars >= self.CONFIG['MAX_WAIT_FOR_DECAY']
+                    if need_decay_check and not timed_out:
                         decay_ratio = c_vol / self.climax_vol
                         if decay_ratio > self.CONFIG['RETEST_VOL_DECAY_MAX']:
                             return None
+                    # Если timed_out — ловим сделку по факту (не идеальный тихий ретест,
+                    # но лучше поймать её, чем потерять насовсем), помечаем это в reason ниже.
                     self.state = "TRAP_SET"
                     safe_extreme = self.climax_extreme if self.climax_extreme is not None else c_low
                     self.entry_price = safe_extreme * 1.001
@@ -506,8 +513,9 @@ class PanicTrapWatcher:
                     self.state = "TRIGGERED"
                     risk_data, err = _calc_tp_and_rr(self.entry_price, self.sl_price, self.trade_type, all_opposite_levels, self.CONFIG)
                     if err or not risk_data: return {'error': err or "Risk data is None"}
+                    fallback_tag = " [fallback:timeout]" if self.total_wait_bars >= self.CONFIG['MAX_WAIT_FOR_DECAY'] else ""
                     return {"action": "BUY", "sl": risk_data['sl'], "tp": risk_data['tp'],
-                            "reason": f"Капкан (Пауза: {self.bars_since_climax}св, ног:{self.legs_count})",
+                            "reason": f"Капкан (Пауза: {self.bars_since_climax}св, ног:{self.legs_count}){fallback_tag}",
                             "legs_count": self.legs_count, "trend_at_entry": trend}
             return None
 
@@ -524,6 +532,7 @@ class PanicTrapWatcher:
 
             elif self.state == "WAIT_RED":
                 self.bars_since_climax += 1
+                self.total_wait_bars += 1
                 if c_close > c_open:
                     prev_extreme = self.climax_extreme if self.climax_extreme is not None else c_high
                     new_extreme = max(prev_extreme, c_high)
@@ -536,7 +545,9 @@ class PanicTrapWatcher:
                     return None
                 if c_close < c_open:
                     # Зеркальный фильтр для SHORT: актуален в UP-тренде (растущий нож).
-                    if (trend == 'UP' or self.legs_count >= self.CONFIG['MIN_LEGS_FOR_DECAY']) and self.climax_vol:
+                    need_decay_check = (trend == 'UP' or self.legs_count >= self.CONFIG['MIN_LEGS_FOR_DECAY']) and self.climax_vol
+                    timed_out = self.total_wait_bars >= self.CONFIG['MAX_WAIT_FOR_DECAY']
+                    if need_decay_check and not timed_out:
                         decay_ratio = c_vol / self.climax_vol
                         if decay_ratio > self.CONFIG['RETEST_VOL_DECAY_MAX']:
                             return None
@@ -564,8 +575,9 @@ class PanicTrapWatcher:
                     self.state = "TRIGGERED"
                     risk_data, err = _calc_tp_and_rr(self.entry_price, self.sl_price, self.trade_type, all_opposite_levels, self.CONFIG)
                     if err or not risk_data: return {'error': err or "Risk data is None"}
+                    fallback_tag = " [fallback:timeout]" if self.total_wait_bars >= self.CONFIG['MAX_WAIT_FOR_DECAY'] else ""
                     return {"action": "SELL", "sl": risk_data['sl'], "tp": risk_data['tp'],
-                            "reason": f"Капкан (Пауза: {self.bars_since_climax}св, ног:{self.legs_count})",
+                            "reason": f"Капкан (Пауза: {self.bars_since_climax}св, ног:{self.legs_count}){fallback_tag}",
                             "legs_count": self.legs_count, "trend_at_entry": trend}
             return None
 

@@ -69,6 +69,7 @@ def analyze_context(closes, highs, lows, current_atr, trade_type, level_min, lev
     is_downtrend = (h1 > h2 > h3 > h4) and (l1 > l2 > l3 > l4)  # Lower Highs & Lower Lows
     
     trend = "UP" if is_uptrend else ("DOWN" if is_downtrend else "RANGE")
+
     
     # ===== 2. IMPULSE vs CORRECTION =====
     # Смотрим на последние 16 свечей (1 час на 15m)
@@ -117,14 +118,14 @@ def analyze_context(closes, highs, lows, current_atr, trade_type, level_min, lev
     # Ищем панические аномалии (одна свеча сильно больше остальных)
     max_body = max(last_16_bodies) if last_16_bodies.size > 0 else 0
     is_panic = max_body > (current_atr * 2.5)
-    
+
     # Ищем "распил" (цена зацикливается в одной зоне)
     zone_buffer = current_atr * 0.3
     candles_in_zone = sum(
         1 for c in closes[-30:] if (level_min - zone_buffer) <= c <= (level_max + zone_buffer)
     )
     is_chopped = candles_in_zone > 10  # Более 10 свечей из 30 в зоне = распил
-    
+
     energy = "PANIC" if is_panic else ("CHOPPED" if is_chopped else "NORMAL")
     
     # ===== 4. ЛОГИРОВАНИЕ (БЕЗ ФИЛЬТРАЦИИ) =====

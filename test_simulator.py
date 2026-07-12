@@ -44,7 +44,7 @@ GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"tr
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "BNB"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ALL"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
@@ -53,13 +53,13 @@ TEST_START_DATE = "2026-02-01 00:00:00"
 WARMUP_DAYS = 18  
 MIN_LEVEL_SCORE = 1.0
 
-# Метод определения точки входа: "SWEEP_RECLAIM" или "VOLUME_REVERSAL" или "PIT_CLIMAX" или "PANIC_TRAP"
-STRATEGY = "PANIC_TRAP"
+# Метод определения точки входа: "SWEEP_RECLAIM" или "VOLUME_REVERSAL" или "PIT_CLIMAX" или "PANIC_TRAP" V_BOTTOM 
+STRATEGY = "V_BOTTOM"
 
 # --- DIAGNOSTIC: проверка качества точки входа без SL ---
 # Если True: SL игнорируется, позиция держится до TP или до конца дедлайна.
 DISABLE_SL_DIAGNOSTIC = True
-DIAGNOSTIC_DEADLINE_DAYS = 4  
+DIAGNOSTIC_DEADLINE_DAYS = 3  
 
 ALLOW_LONG_TRADES = True
 ALLOW_SHORT_TRADES = False
@@ -152,7 +152,7 @@ class SmartSniperUniversal(Strategy):
             active_sup, active_res = np.nan, np.nan
             
             # 1. Приоритет: Активный пробитый уровень, за которым мы СЕЙЧАС следим
-            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP"):
+            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM"):
                 if self.origin_level_long is not None:
                     active_sup = self.origin_level_long['max']
                 if self.origin_level_short is not None:
@@ -192,7 +192,7 @@ class SmartSniperUniversal(Strategy):
         can_short = len(CURRENT_RESISTANCES) > 0 and ALLOW_SHORT_TRADES
 
         df_slice = None
-        if STRATEGY in ["VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP"]:
+        if STRATEGY in ["VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM"]:
             lookback_size = 260 if STRATEGY == "VOLUME_REVERSAL" else 100
             current_len = len(self.data)
             start_idx = max(0, current_len - lookback_size)
@@ -263,11 +263,12 @@ class SmartSniperUniversal(Strategy):
 
         if can_long:
             # ТЕПЕРЬ КАПКАН ЗДЕСЬ. Работает строго с одним пробитым уровнем.
-            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP"):
+            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM"):
                 if self.origin_level_long is not None:
                     ctx_eval_long = self._get_context(self.origin_level_long, 'LONG', c_atr)
                     decision = self._evaluate(self.origin_level_long, 'LONG', c_open, c_high, c_low, c_close,
-                                               CURRENT_RESISTANCES, df_slice, trend=ctx_eval_long.get('trend', 'UNKNOWN'))
+                                               CURRENT_RESISTANCES, df_slice, trend=ctx_eval_long.get('trend', 'UNKNOWN'),
+                                               c_atr=c_atr)
                     if decision.get('allow'):
                         self._try_enter(self.origin_level_long, 'LONG', c_close, c_atr, decision, ctx_eval=ctx_eval_long)
                         self.origin_level_long = None
@@ -281,11 +282,12 @@ class SmartSniperUniversal(Strategy):
                         break
 
         if can_short:
-            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP"):
+            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM"):
                 if self.origin_level_short is not None:
                     ctx_eval_short = self._get_context(self.origin_level_short, 'SHORT', c_atr)
                     decision = self._evaluate(self.origin_level_short, 'SHORT', c_open, c_high, c_low, c_close,
-                                               CURRENT_SUPPORTS, df_slice, trend=ctx_eval_short.get('trend', 'UNKNOWN'))
+                                               CURRENT_SUPPORTS, df_slice, trend=ctx_eval_short.get('trend', 'UNKNOWN'),
+                                               c_atr=c_atr)
                     if decision.get('allow'):
                         self._try_enter(self.origin_level_short, 'SHORT', c_close, c_atr, decision, ctx_eval=ctx_eval_short)
                         self.origin_level_short = None
@@ -298,7 +300,7 @@ class SmartSniperUniversal(Strategy):
                         self._try_enter(res, 'SHORT', c_close, c_atr, decision)
                         break
                         
-    def _evaluate(self, level, trade_type, c_open, c_high, c_low, c_close, opposite_levels, df_slice, trend='UNKNOWN'):
+    def _evaluate(self, level, trade_type, c_open, c_high, c_low, c_close, opposite_levels, df_slice, trend='UNKNOWN', c_atr=None):
         if STRATEGY == "SWEEP_RECLAIM":
             decision = self.manager.evaluate_sweep_reclaim(
                 level, c_open, c_high, c_low, c_close, opposite_levels, trade_type
@@ -315,13 +317,18 @@ class SmartSniperUniversal(Strategy):
             decision = self.manager.evaluate_panic_trap(
                 level, df_slice, trade_type, opposite_levels, trend=trend
             )
+        elif STRATEGY == "V_BOTTOM":
+            decision = self.manager.evaluate_v_bottom(
+                level, df_slice, trade_type, opposite_levels, trend=trend, c_atr=c_atr
+            )
         else: 
             decision = {'allow': False, 'reason': 'Unknown strategy'}
 
         if not decision.get('allow'):
             reason_str = decision.get('reason', '')
             if ('No signal' in reason_str or 'No CHoCH' in reason_str
-                    or 'No volume reversal' in reason_str or 'No pit climax' in reason_str):
+                    or 'No volume reversal' in reason_str or 'No pit climax' in reason_str
+                    or 'No V bottom' in reason_str):
                 GLOBAL_DEBUG_STATS["No_Signal"] += 1
             else:
                 GLOBAL_DEBUG_STATS["Killed_by_QUALITY"] += 1
@@ -334,7 +341,7 @@ class SmartSniperUniversal(Strategy):
         level_id = self.manager._level_id(level, trade_type)
         watcher = self.manager._watchers.get(level_id)
         if watcher is not None and hasattr(watcher, 'state'):
-            return watcher.state in ("WAIT_GREEN", "WAIT_RED", "TRAP_SET")
+            return watcher.state in ("WAIT_GREEN", "WAIT_RED", "TRAP_SET", "CANDIDATE_ARMED")
         return False
 
     def _get_context(self, level, trade_type, c_atr):
@@ -353,7 +360,8 @@ class SmartSniperUniversal(Strategy):
             ctx_window = closed_4h.tail(110)
             return analyze_context(ctx_window['Close'].values, ctx_window['High'].values,
                                     ctx_window['Low'].values, c_atr,
-                                    trade_type, level['min'], level['max'])
+                                    trade_type, level['min'], level['max'],
+                                    opens=ctx_window['Open'].values)
         return {"allowed": True, "reason": "Not enough 4H data", "approach": "UNKNOWN",
                 "trend": "UNKNOWN", "energy": "UNKNOWN"}
 
@@ -621,7 +629,7 @@ def print_trade_log(coin, tr, trade_type_filter=None):
                    f"УРОВЕНЬ:[{ctx.get('level_min','?')}-{ctx.get('level_max','?')}] Gap:{ctx.get('gap','?')}% | "
                    f"Score:{ctx.get('score','?')} EMA:{ctx.get('ema_dist','?')}% "
                    f"УрВыше:{ctx.get('dist_from_level','?')}% Глубина:{ctx.get('depth','?')}% | "
-                   f"Trend:{ctx.get('trend','?')} Ноги:{ctx.get('legs_count','?')}")
+                   f"{ctx.get('reason', '')}")
 
         if row['PnL'] <= 0:
             GLOBAL_LOSERS_LOG.append("❌ " + log_str)
