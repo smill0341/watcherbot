@@ -341,7 +341,7 @@ class SmartSniperUniversal(Strategy):
         level_id = self.manager._level_id(level, trade_type)
         watcher = self.manager._watchers.get(level_id)
         if watcher is not None and hasattr(watcher, 'state'):
-            return watcher.state in ("WAIT_GREEN", "WAIT_RED", "TRAP_SET", "CANDIDATE_ARMED")
+            return watcher.state in ("WAIT_GREEN", "WAIT_RED", "TRAP_SET", "CANDIDATE_ARMED", "TRACKING_CASCADE")
         return False
 
     def _get_context(self, level, trade_type, c_atr):
