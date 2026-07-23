@@ -44,7 +44,7 @@ GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"tr
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "ETH"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ALL"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
@@ -53,8 +53,9 @@ TEST_START_DATE = "2026-02-01 00:00:00"
 WARMUP_DAYS = 18  
 MIN_LEVEL_SCORE = 1.0
 
-# Метод определения точки входа: "SWEEP_RECLAIM" или "VOLUME_REVERSAL" или "PIT_CLIMAX" или "PANIC_TRAP" V_BOTTOM 
+# STRATEGY "SWEEP_RECLAIM" или "VOLUME_REVERSAL" или "PIT_CLIMAX" или "PANIC_TRAP" или "V_BOTTOM" 
 STRATEGY = "V_BOTTOM"
+VBOTTOM_BREATH_BUFFER_PCT = 3.0  # должно совпадать с CONFIG['BREATH_BUFFER_PCT'] в v_bottom_watcher.py
 
 # --- DIAGNOSTIC: проверка качества точки входа без SL ---
 # Если True: SL игнорируется, позиция держится до TP или до конца дедлайна.
@@ -64,7 +65,7 @@ DIAGNOSTIC_DEADLINE_DAYS = 3
 ALLOW_LONG_TRADES = True
 ALLOW_SHORT_TRADES = False
 
-USE_CONTEXT_FILTER = True  
+USE_CONTEXT_FILTER = False  
 USE_LEVEL_BURN = True # Сжигать ли уровень после успешной сделки
 
 # ВАЖНО: Настройки самих стратегий (TP_MODE, FIXED_TP_PCT, SL_BUFFER, MIN_RR, SWING_LENGTH и т.д.)
@@ -103,11 +104,13 @@ class SmartSniperUniversal(Strategy):
 
         self.draw_sup_max = self.I(lambda: self.data.df['sup_max'], name="Support Top", overlay=True)
         self.draw_res_min = self.I(lambda: self.data.df['res_min'], name="Resist Bottom", overlay=True)
+        self.draw_vbottom_event = self.I(lambda: self.data.df['vbottom_event'], name="V_BOTTOM событие",
+                                          overlay=True, scatter=True, color='yellow')
         
         if self.original_df is not None:
             self.original_df['atr'] = self.atr
 
-        self.test_start_dt = pd.to_datetime(TEST_START_DATE) if TEST_START_DATE else None
+        self.test_start_dt = pd.Timestamp(TEST_START_DATE) if TEST_START_DATE else None
 
     def next(self):
         global GLOBAL_DEBUG_STATS, CURRENT_SUPPORTS, CURRENT_RESISTANCES, GLOBAL_TIMELINE, TARGET_COIN_CURRENT
@@ -139,6 +142,11 @@ class SmartSniperUniversal(Strategy):
                 CURRENT_RESISTANCES = coin_data.get("resistances", [])
                 self.current_period_key = period_key
 
+                if STRATEGY == "V_BOTTOM":
+                    n_before = len(CURRENT_SUPPORTS)
+                    n_after = len([s for s in CURRENT_SUPPORTS if s.get('score', 0) >= MIN_LEVEL_SCORE])
+                    
+
                 if STRATEGY == "SWEEP_RECLAIM":
                     current_level_ids = set()
                     for s in CURRENT_SUPPORTS:
@@ -146,6 +154,9 @@ class SmartSniperUniversal(Strategy):
                     for r in CURRENT_RESISTANCES:
                         current_level_ids.add(f"SHORT_{r['min']}_{r['max']}")
                     self.manager.clear_dead_watchers(current_level_ids)
+            elif STRATEGY == "V_BOTTOM":
+                print(f"🗓️ [ПЕРИОД {period_key}] ОТСУТСТВУЕТ в GLOBAL_TIMELINE вообще (нет данных на этот период)")
+                self.current_period_key = period_key
 
         # Отрисовка уровней на графике (БЕЗ МУСОРНЫХ СТУПЕНЕК)
         if TARGET_COIN.upper() != "ALL":
@@ -181,15 +192,23 @@ class SmartSniperUniversal(Strategy):
         if len(self.data) < 20: # Жесткий минимум свечей для старта
             return
 
-        if self.position or (not CURRENT_SUPPORTS and not CURRENT_RESISTANCES):
+        # Не выходим досрочно, если уже идёт активное слежение за уровнем
+        # (origin_level_long/short) — оно не должно зависеть от того, пуст ли
+        # СЕЙЧАС внешний список уровней: у origin уже есть своя сохранённая
+        # зона, найденная в момент старта слежения.
+        has_active_origin = self.origin_level_long is not None or self.origin_level_short is not None
+        if self.position or (not CURRENT_SUPPORTS and not CURRENT_RESISTANCES and not has_active_origin):
             return
 
         c_open, c_close = self.data.Open[-1], self.data.Close[-1]
         c_high, c_low = self.data.High[-1], self.data.Low[-1]
         c_atr = self.atr[-1] if not np.isnan(self.atr[-1]) else (c_high - c_low)
 
-        can_long = len(CURRENT_SUPPORTS) > 0 and ALLOW_LONG_TRADES
-        can_short = len(CURRENT_RESISTANCES) > 0 and ALLOW_SHORT_TRADES
+        # can_long/can_short разрешают либо поиск НОВОГО уровня (когда список
+        # не пуст), либо продолжение слежения за УЖЕ АКТИВНЫМ origin —
+        # это не должно зависеть от текущего состояния списка уровней.
+        can_long = (len(CURRENT_SUPPORTS) > 0 or self.origin_level_long is not None) and ALLOW_LONG_TRADES
+        can_short = (len(CURRENT_RESISTANCES) > 0 or self.origin_level_short is not None) and ALLOW_SHORT_TRADES
 
         df_slice = None
         if STRATEGY in ["VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM"]:
@@ -236,9 +255,22 @@ class SmartSniperUniversal(Strategy):
                     self.origin_level_long = dict(found)
                     GLOBAL_DEBUG_STATS["Origins_Long_Total"] += 1
                     self.origin_level_long['_pit_start_time'] = current_time
+                    if STRATEGY == "V_BOTTOM":
+                        # новое пробитие уровня: математика вотчера с нуля + лимит повторов
+                        self.manager.notify_breach(self.origin_level_long, 'LONG')
             else:
-                if c_close > self.origin_level_long['max'] and not self._origin_still_needed(self.origin_level_long, 'LONG'):
-                    self.origin_level_long = None
+                origin_max = self.origin_level_long['max']
+                if STRATEGY == "V_BOTTOM":
+                    # буфер должен совпадать с BREATH_BUFFER_PCT в v_bottom_watcher.py
+                    origin_max = origin_max * (1 + VBOTTOM_BREATH_BUFFER_PCT / 100.0)
+                
+                if c_close > origin_max:
+                    # Для V_BOTTOM жестко сбрасываем при пробое буфера, игнорируя 'still_needed'
+                    if STRATEGY == "V_BOTTOM" or not self._origin_still_needed(self.origin_level_long, 'LONG'):
+                        if STRATEGY == "V_BOTTOM":
+                            
+                            self.manager.force_reset_watcher(self.origin_level_long, 'LONG')
+                        self.origin_level_long = None
 
         if CURRENT_RESISTANCES:
             if self.origin_level_short is None:
@@ -269,6 +301,13 @@ class SmartSniperUniversal(Strategy):
                     decision = self._evaluate(self.origin_level_long, 'LONG', c_open, c_high, c_low, c_close,
                                                CURRENT_RESISTANCES, df_slice, trend=ctx_eval_long.get('trend', 'UNKNOWN'),
                                                c_atr=c_atr)
+                    if STRATEGY == "V_BOTTOM" and self.original_df is not None:
+                        # Авто-маркер: если у вотчера этого уровня было debug-событие
+                        # ИМЕННО на текущей свече — отмечаем точкой на графике.
+                        level_id = self.manager._level_id(self.origin_level_long, 'LONG')
+                        watcher = self.manager._watchers.get(level_id)
+                        if watcher is not None and getattr(watcher, 'last_event_time', None) == current_time:
+                            self.original_df.at[current_time, 'vbottom_event'] = c_close
                     if decision.get('allow'):
                         self._try_enter(self.origin_level_long, 'LONG', c_close, c_atr, decision, ctx_eval=ctx_eval_long)
                         self.origin_level_long = None
@@ -335,13 +374,15 @@ class SmartSniperUniversal(Strategy):
         return decision
 
     def _origin_still_needed(self, level, trade_type):
-        """Не сбрасываем origin_level, пока PanicTrapWatcher для этого уровня ещё ждёт
-        подтверждения входа в каскаде (WAIT_GREEN/WAIT_RED/TRAP_SET) — иначе сделка
-        теряется насовсем, даже если через пару свечей появился бы валидный ретест."""
+        """Не сбрасываем origin_level, пока watcher для этого уровня ещё ждёт
+        подтверждения входа (WAIT_GREEN/WAIT_RED/TRAP_SET/... для старых стратегий,
+        WAIT_START/WAIT_PEAK/WAIT_GREEN/WAIT_NEW_PEAK для V_BOTTOM) — иначе сделка
+        теряется насовсем, даже если через пару свечей появился бы валидный вход."""
         level_id = self.manager._level_id(level, trade_type)
         watcher = self.manager._watchers.get(level_id)
         if watcher is not None and hasattr(watcher, 'state'):
-            return watcher.state in ("WAIT_GREEN", "WAIT_RED", "TRAP_SET", "CANDIDATE_ARMED", "TRACKING_CASCADE")
+            return watcher.state in ("WAIT_GREEN", "WAIT_RED", "TRAP_SET", "CANDIDATE_ARMED", "TRACKING_CASCADE",
+                                      "WAIT_START", "WAIT_PEAK", "WAIT_NEW_PEAK")
         return False
 
     def _get_context(self, level, trade_type, c_atr):
@@ -664,6 +705,7 @@ if TARGET_COIN.upper() == "ALL":
 
         df['sup_max'] = np.nan
         df['res_min'] = np.nan
+        df['vbottom_event'] = np.nan
         df['ema'] = df['Close'].ewm(span=50, adjust=False).mean()
         df['avg_vol'] = df['Volume'].rolling(window=20).mean()
         df['open'] = df['Open']
@@ -840,6 +882,7 @@ else:
         else:
             df['sup_max'] = np.nan
             df['res_min'] = np.nan
+            df['vbottom_event'] = np.nan
             df['ema'] = df['Close'].ewm(span=13, adjust=False).mean()
             df['avg_vol'] = df['Volume'].rolling(window=20).mean()
             df['open'] = df['Open']

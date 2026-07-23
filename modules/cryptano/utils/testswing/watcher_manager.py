@@ -28,6 +28,26 @@ class WatcherManager:
         return {'allow': False, 'reason': reason, 'sl': 0.0, 'tp': 0.0, 'level_id': None, 'extreme_price': "0.0",
                 'is_real_sweep': False, 'overshoot_pct': 0.0, 'candles_in_sweep': 0}
 
+    def notify_breach(self, level, trade_type):
+        """Симулятор зовёт это в момент НОВОГО пробития уровня (создание origin).
+        Для V_BOTTOM: гарантированный сброс математики вотчера с нуля + учёт
+        лимита повторных пробитий. Если вотчера ещё нет — ничего не делаем
+        (он создастся свежим при первом evaluate)."""
+        level_id = self._level_id(level, trade_type)
+        watcher = self._watchers.get(level_id)
+        if watcher is not None and hasattr(watcher, 'on_breach_start'):
+            watcher.on_breach_start()
+
+
+    def force_reset_watcher(self, level, trade_type):
+        """Жестко обнуляет математику вотчера по прямому приказу симулятора."""
+        level_id = self._level_id(level, trade_type)
+        watcher = self._watchers.get(level_id)
+        if watcher is not None and hasattr(watcher, '_reset_chain'):
+            # ДОБАВЛЕНО: Запись в лог перед смертью
+            if hasattr(watcher, '_dbg') and getattr(watcher, 'history_log', ''):
+                watcher._dbg(f"⚡ [ПРИНУДИТЕЛЬНЫЙ СБРОС СИМУЛЯТОРОМ] Цена ушла за буфер. Память очищена.")
+            watcher._reset_chain()
 
     def clear_dead_watchers(self, active_level_ids):
         """Удаляет инстансы стейт-машин для уровней, которые ушли с графика."""
@@ -168,7 +188,7 @@ class WatcherManager:
         )
 
         signal = watcher.update(c_open, c_high, c_low, c_close, c_vol, baseline_vol, c_atr, all_opposite_levels,
-                                 trend=trend, vol_std=vol_std)
+                         trend=trend, vol_std=vol_std, candle_time=df.index[-1])
 
         if not signal:
             return self._deny("No V bottom signal")
