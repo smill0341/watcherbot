@@ -38,7 +38,7 @@ from .watcher_methods import _calc_tp_and_rr
 class VBottomWatcher:
     CONFIG = {
         'ELEVATED_VOL_MULT': 2.0,
-        'PEAK_TOLERANCE_PCT': 90.0,   # допуск: красная >= этого % от текущего пика тоже считается новым пиком (+-10%)
+        'PEAK_TOLERANCE_PCT': 85.0,   # допуск: красная >= этого % от текущего пика тоже считается новым пиком (+-10%)
         'MAX_REBREACHES': 5.0,          # сколько ПОВТОРНЫХ заходов под уровень разрешено (вниз-вверх-вниз = 1 повтор)
         'BREATH_BUFFER_PCT': 3.0,     # буфер над уровнем (%): мелкое выныривание в этой зоне НЕ сбрасывает цепочку
         'VOL_MATCH_PCT': 110.0,
@@ -173,11 +173,15 @@ class VBottomWatcher:
                 # выкуп на нём НЕ проверяется. Сразу идём искать следующий,
                 # более сильный/сопоставимый пик (блок 6) — вот у НЕГО уже
                 # будет проверка одной свечи на выкуп.
+                need_peak = self.start_vol * (self.CONFIG['PEAK_TOLERANCE_PCT'] / 100.0)
+                
                 if is_red and self.CONFIG.get('DEBUG'):
-                    self._dbg(f"[ищем Пик1] red vol={c_vol:.0f} need>{self.start_vol:.0f}")
-                if is_red and c_vol > self.start_vol:
+                    self._dbg(f"[ищем Пик1] red vol={c_vol:.0f} need>={need_peak:.0f} (старт={self.start_vol:.0f})")
+                    
+                if is_red and c_vol >= need_peak:
                     self.cand_low = c_low
-                    self.cand_vol = c_vol
+                    # Если объем меньше старта, эталоном для будущего выкупа все равно оставляем старт (чтобы не занижать планку для зеленой свечи)
+                    self.cand_vol = c_vol if c_vol > self.start_vol else self.start_vol
                     self.state = "WAIT_NEW_PEAK"
                     self.history_log += f" -> Пик:{self._fmt(c_vol)}"
                     if self.CONFIG.get('DEBUG'):

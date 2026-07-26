@@ -44,7 +44,7 @@ GLOBAL_APPROACH_STATS = {"IMPULSE": {"trades": 0, "win": 0}, "COMPRESSION": {"tr
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "ALL"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "APT"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
@@ -54,7 +54,7 @@ WARMUP_DAYS = 18
 MIN_LEVEL_SCORE = 1.0
 
 # STRATEGY "SWEEP_RECLAIM" или "VOLUME_REVERSAL" или "PIT_CLIMAX" или "PANIC_TRAP" или "V_BOTTOM" 
-STRATEGY = "V_BOTTOM"
+STRATEGY = "PANIC_TRAP"
 VBOTTOM_BREATH_BUFFER_PCT = 3.0  # должно совпадать с CONFIG['BREATH_BUFFER_PCT'] в v_bottom_watcher.py
 
 # --- DIAGNOSTIC: проверка качества точки входа без SL ---
@@ -138,8 +138,16 @@ class SmartSniperUniversal(Strategy):
         if getattr(self, 'current_period_key', None) != period_key:
             if period_key in GLOBAL_TIMELINE:
                 coin_data = GLOBAL_TIMELINE[period_key].get(TARGET_COIN_CURRENT.upper(), {})
-                CURRENT_SUPPORTS = coin_data.get("supports", [])
-                CURRENT_RESISTANCES = coin_data.get("resistances", [])
+                
+                # Сохраняем старый уровень, если база прислала пустоту
+                new_sups = coin_data.get("supports", [])
+                if new_sups:
+                    CURRENT_SUPPORTS = new_sups
+                    
+                new_res = coin_data.get("resistances", [])
+                if new_res:
+                    CURRENT_RESISTANCES = new_res
+                    
                 self.current_period_key = period_key
 
                 if STRATEGY == "V_BOTTOM":
@@ -243,12 +251,18 @@ class SmartSniperUniversal(Strategy):
                 prev_close = float(self.data.Close[-2]) if len(self.data.Close) > 1 else c_close
                 found = None
                 for sup in CURRENT_SUPPORTS:
-                    if c_close < sup['min'] and prev_close >= sup['min']:
+                    # Ловим пробой, даже если тело осталось выше, но тень (c_low) прошила уровень
+                    if (c_close < sup['min'] or c_low < sup['min']) and prev_close >= sup['min']:
                         found = sup
                         break
                 if found is None:
                     for sup in CURRENT_SUPPORTS:
-                        if c_close < sup['min']:
+                        if c_close < sup['min'] or c_low < sup['min']:
+                            found = sup
+                            break
+                if found is None:
+                    for sup in CURRENT_SUPPORTS:
+                        if c_close < sup['min'] or c_low < sup['min']:
                             found = sup
                             break
                 if found is not None:
@@ -301,7 +315,7 @@ class SmartSniperUniversal(Strategy):
                     decision = self._evaluate(self.origin_level_long, 'LONG', c_open, c_high, c_low, c_close,
                                                CURRENT_RESISTANCES, df_slice, trend=ctx_eval_long.get('trend', 'UNKNOWN'),
                                                c_atr=c_atr)
-                    if STRATEGY == "V_BOTTOM" and self.original_df is not None:
+                    if STRATEGY in ("V_BOTTOM", "PANIC_TRAP") and self.original_df is not None:
                         # Авто-маркер: если у вотчера этого уровня было debug-событие
                         # ИМЕННО на текущей свече — отмечаем точкой на графике.
                         level_id = self.manager._level_id(self.origin_level_long, 'LONG')

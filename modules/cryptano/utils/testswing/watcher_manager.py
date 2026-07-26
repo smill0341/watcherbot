@@ -7,8 +7,9 @@ watcher_manager.py
 """
 
 from .watcher_methods import (SweepReclaimWatcher, ChochRetestWatcher, check_choch_zone,
-                               check_pit_climax, PanicTrapWatcher, _calc_tp_and_rr)
+                               check_pit_climax, _calc_tp_and_rr)
 from .v_bottom_watcher import VBottomWatcher
+from .panic_trap_watcher import PanicTrapWatcher
 
 STRATEGIES = ["SWEEP_RECLAIM", "VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM"]
 
@@ -228,10 +229,14 @@ class WatcherManager:
             float(c['open']), float(c['high']), float(c['low']), float(c['close']), float(c['volume'])
         )
 
-        signal = watcher.update(c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, trend=trend)
+        # КРАСИВОЕ РЕШЕНИЕ: передаем время прямо из датафрейма, как в V-Bottom
+        signal = watcher.update(
+            c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, 
+            trend=trend, candle_time=df.index[-1]
+        )
 
         if not signal:
-            return self._deny("No signal") # <-- Отдаем чистую строку, чтобы симулятор её узнал
+            return self._deny("No signal") 
             
         if 'error' in signal:
             return self._deny(signal['error'])
