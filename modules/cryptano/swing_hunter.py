@@ -8,287 +8,131 @@ from scipy.signal import find_peaks
 import schedule  
 from modules.cryptano.utils.crypto_utils import exchange
 from modules.cryptano.utils.storage import load_json, save_json_atomic
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MACRO_LEVELS_FILE = os.path.join(BASE_DIR, "macro_levels.json")
-WATCHLIST_FILE = os.path.join(BASE_DIR, "watchlist.json")
+from modules.cryptano.utils.levels_builder import build_levels
 
 # =========================================================
 # ⚙️ НАСТРОЙКИ РАСПИСАНИЯ
 # =========================================================
-TEST_TIME = "23:16"  
-
 TIME_ASIAN_CLOSE = "03:05"
-TIME_US_OPEN = "15:05"      
-# =========================================================
-# =========================================================
+TIME_US_OPEN = "15:05"       
 
-# 🧪 ТУМБЛЕР МАШИНЫ ВРЕМЕНИ (None для лайва, или дата "YYYY-MM-DD 00:00:00" для теста)
-BACKTEST_DATE = "2024-05-01 00:00:00"  
+# 🎛 НАСТРОЙКИ V2 ФИЛЬТРОВ
+IMPULSE_ATR_MULTIPLIER = 2.5  # Цена должна улететь минимум на 2.5 ATR от зоны
+IMPULSE_LOOKAHEAD_DAYS = 10   # Даем цене 10 дней на то, чтобы показать этот импульс
 
+# BASE_DIR указывает на modules/cryptano/
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Автовыбор файла: для теста создается отдельный слепок, чтобы не портить боевой macro_levels.json
-if BACKTEST_DATE:
-    MACRO_LEVELS_FILE = os.path.join(BASE_DIR, f"macro_test_{BACKTEST_DATE[:10]}.json")
-else:
-    MACRO_LEVELS_FILE = os.path.join(BASE_DIR, "macro_levels.json")
-    
-# =========================================================
-# =========================================================
-
+MACRO_LEVELS_FILE = os.path.join(BASE_DIR, "macro_levels.json")
 WATCHLIST_FILE = os.path.join(BASE_DIR, "watchlist.json")
+
 LIGHT_RADAR_INTERVAL_SEC = 60
 MIN_VOLUME_USD = 10_000_000
 
 _hunter_lock = threading.Lock()
 
-def calculate_atr(df, period=14):
-    """Быстрый расчет ATR для вычисления ширины Зоны ликвидности"""
-    high_low = df["high"] - df["low"]
-    high_cp = (df["high"] - df["close"].shift()).abs()
-    low_cp = (df["low"] - df["close"].shift()).abs()
-    tr = pd.concat([high_low, high_cp, low_cp], axis=1).max(axis=1)
-    return tr.rolling(window=period).mean()
-
-def merge_overlapping_zones(zones):
-    """
-    Математическое слияние пересекающихся зон (Классический алгоритм Interval Merging).
-    """
-    if not zones:
-        return []
-        
-    # Сортируем зоны снизу вверх по их минимальной границе
-    sorted_zones = sorted(zones, key=lambda x: x['min'])
-    merged = [sorted_zones[0]]
-    
-    for current in sorted_zones[1:]:
-        last = merged[-1]
-        
-        # Если зоны пересекаются (текущая начинается до того, как закончилась предыдущая)
-        if current['min'] <= last['max']:
-            # Расширяем границы склеенной зоны до максимума
-            last['max'] = max(last['max'], current['max'])
-            
-            # Если слились уровни разной силы (например 4H и 1D) - берем максимальный вес
-            last['score'] = max(last['score'], current['score'])
-            
-            # Отмечаем, что зона усилена слиянием разных таймфреймов
-            if current['type'] not in last['type']:
-                last['type'] = f"{last['type']} + {current['type']}"
-        else:
-            merged.append(current)
-            
-    return merged
-
-def build_levels_for_single_coin(coin):
-    """Изолированный расчет макро-уровней для одной монеты."""
-    print(f"[SWING HUNTER] Расчет институциональных зон для {coin}...")
-    try:
-        symbol = f"{coin}/USDT"
-        supports = []
-        resistances = []
-
-        try:
-            ohlcv_1d = exchange.fetch_ohlcv(symbol, timeframe="1d", limit=365)
-            if len(ohlcv_1d) >= 50:
-                df_1d = pd.DataFrame(ohlcv_1d, columns=["timestamp", "open", "high", "low", "close", "volume"])
-                df_1d['atr'] = calculate_atr(df_1d, 14)
-                atr_1d = df_1d['atr'].iloc[-1]
-                if pd.isna(atr_1d) or atr_1d == 0: atr_1d = df_1d['close'].iloc[-1] * 0.05
-
-                peaks, _ = find_peaks(df_1d['high'], distance=15, prominence=atr_1d * 1.5)
-                valleys, _ = find_peaks(-df_1d['low'], distance=15, prominence=atr_1d * 1.5)
-
-                current_price_1d = float(df_1d['close'].iloc[-1])
-
-                for v in valleys:
-                    price = float(df_1d['low'].iloc[v])
-                    if abs(price - current_price_1d) / current_price_1d > 0.15:
-                        continue
-
-                    zone = {"min": price - (atr_1d * 0.5), "max": price + (atr_1d * 0.5), "score": 3.0, "type": "1d_extreme"}
-                    if price < current_price_1d: supports.append(zone)
-                    else: resistances.append(zone)
-
-                for p in peaks:
-                    price = float(df_1d['high'].iloc[p])
-                    if abs(price - current_price_1d) / current_price_1d > 0.15:
-                        continue
-
-                    zone = {"min": price - (atr_1d * 0.5), "max": price + (atr_1d * 0.5), "score": 3.0, "type": "1d_extreme"}
-                    if price > current_price_1d: resistances.append(zone)
-                    else: supports.append(zone)
-        except Exception as e:
-            print(f"[SWING ERROR] Ошибка 1D для {coin}: {e}")
-
-        try:
-            ohlcv_4h = exchange.fetch_ohlcv(symbol, timeframe="4h", limit=200)
-            if len(ohlcv_4h) >= 50:
-                df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"])
-                df_4h['atr'] = calculate_atr(df_4h, 14)
-                atr_4h = df_4h['atr'].iloc[-1]
-                if pd.isna(atr_4h) or atr_4h == 0: atr_4h = df_4h['close'].iloc[-1] * 0.02
-
-                df_4h['typical'] = (df_4h['high'] + df_4h['low'] + df_4h['close']) / 3
-                min_val, max_val = df_4h['low'].min(), df_4h['high'].max()
-
-                if max_val > min_val:
-                    bins = np.linspace(min_val, max_val, 50)
-                    df_4h['bin'] = pd.cut(df_4h['typical'], bins=bins)
-                    vol_profile = df_4h.groupby('bin', observed=False)['volume'].sum()
-
-                    poc_bin = vol_profile.idxmax()
-                    if pd.notna(poc_bin) and hasattr(poc_bin, "mid"):
-                        poc_price = float(getattr(poc_bin, "mid"))
-                        current_price = float(df_4h['close'].iloc[-1])
-
-                        zone = {
-                            "min": poc_price - (atr_4h * 0.5),
-                            "max": poc_price + (atr_4h * 0.5),
-                            "score": 2.0,
-                            "type": "4h_poc"
-                        }
-
-                        if current_price > poc_price: supports.append(zone)
-                        else: resistances.append(zone)
-        except Exception as e:
-            print(f"[SWING ERROR] Ошибка 4H для {coin}: {e}")
-
-        if supports or resistances:
-            macro_base = load_json(MACRO_LEVELS_FILE, default={})
-            macro_base[coin] = {
-                "supports": merge_overlapping_zones(supports),
-                "resistances": merge_overlapping_zones(resistances),
-                "updated_at": datetime.datetime.now().isoformat()
-            }
-            save_json_atomic(MACRO_LEVELS_FILE, macro_base)
-            print(f"✅ [SWING HUNTER] Уровни для {coin} обновлены.")
-        else:
-            print(f"⚠️ [SWING HUNTER] Нет зон для {coin}.")
-
-    except Exception as e:
-        print(f"❌ [SWING HUNTER] КРИТИЧЕСКАЯ ОШИБКА генерации {coin}: {e}")
-
 def build_macro_levels(bot=None, admin_chat_id=None):
-    print("[SWING HUNTER] Запуск генерации институциональных зон (1D Экстремумы + 4H POC)...")
+    print(f"[SWING HUNTER] Запуск генерации институциональных зон...")
     try:
-        exchange.load_markets(reload=True)
+        # Загружаем рынки из сети только один раз
+        if not exchange.markets:
+            exchange.load_markets(reload=True)
+        else:
+            exchange.load_markets(reload=False)
         tickers = exchange.fetch_tickers()
-        valid_symbols = []
         
+        # Собираем пары с их объемами для последующей сортировки
+        symbols_with_volume = []
         for sym, tick in tickers.items():
             if sym.endswith('/USDT') or sym.endswith(':USDT'):
                 vol = float(tick.get('quoteVolume') or 0)
                 if vol >= MIN_VOLUME_USD:
-                    valid_symbols.append(sym)
+                    symbols_with_volume.append((sym, vol))
                     
+        # Сортируем по убыванию объема торгов и берем ТОП-70
+        symbols_with_volume.sort(key=lambda x: x[1], reverse=True)
+        valid_symbols = [sym for sym, vol in symbols_with_volume[:70]]
+        
+        print(f"🔥 Найдено {len(symbols_with_volume)} монет. Фильтруем до ТОП-70 самых ликвидных.")
         macro_base = {}
         
+        # Safe fetcher with retry logic against rate limits
+        def safe_fetch_ohlcv(sym, tf, lim):
+            for attempt in range(5):  # 5 попыток пробить блок
+                try:
+                    return exchange.fetch_ohlcv(sym, timeframe=tf, limit=lim)
+                except Exception as e:
+                    if "10006" in str(e) or "Rate Limit" in str(e) or "Too many visits" in str(e):
+                        print(f"⚠️  Bybit Rate Limit. Ждем 4 сек (Попытка {attempt+1}/5)...")
+                        time.sleep(4.0)
+                    else:
+                        raise e
+            raise Exception("Биржа заблокировала запросы после 5 попыток")
+        
         for symbol in valid_symbols:
-            time.sleep(0.15)
+            time.sleep(0.3)
             coin = symbol.split("/")[0].replace(":USDT", "")
-            
+
             try:
-                supports = []
-                resistances = []
-                
-                # ==========================================================
-                # === 1. АНАЛИЗ 1D (Исторические экстремумы через Scipy) ===
-                # ==========================================================
-                ohlcv_1d = exchange.fetch_ohlcv(symbol, timeframe="1d", limit=365)
-                if len(ohlcv_1d) >= 50:
-                    df_1d = pd.DataFrame(ohlcv_1d, columns=["timestamp", "open", "high", "low", "close", "volume"])
-                    df_1d['atr'] = calculate_atr(df_1d, 14)
-                    atr_1d = df_1d['atr'].iloc[-1]
-                    if pd.isna(atr_1d) or atr_1d == 0: atr_1d = df_1d['close'].iloc[-1] * 0.05
-                    
-                    # Ищем пики (Сопротивление)
-                    peaks, _ = find_peaks(df_1d['high'], distance=15, prominence=atr_1d * 1.5)
-                    # Ищем впадины (Поддержка) - инвертируем low для scipy
-                    valleys, _ = find_peaks(-df_1d['low'], distance=15, prominence=atr_1d * 1.5)
-                    
-                    # Берем текущую цену для фильтрации
-                    current_price_1d = float(df_1d['close'].iloc[-1])
-                    
-                    for v in valleys:
-                        price = float(df_1d['low'].iloc[v])
-                        # Игнорируем уровни, которые находятся дальше 15% от текущей цены
-                        if abs(price - current_price_1d) / current_price_1d > 0.15: 
-                            continue
-                        
-                        zone = {"min": price - (atr_1d * 0.5), "max": price + (atr_1d * 0.5), "score": 3.0, "type": "1d_extreme"}
-                        # Если старая впадина сейчас ВЫШЕ цены — она стала сопротивлением
-                        if price < current_price_1d: supports.append(zone)
-                        else: resistances.append(zone)
-                        
-                    for p in peaks:
-                        price = float(df_1d['high'].iloc[p])
-                        # Игнорируем уровни, которые находятся дальше 15% от текущей цены
-                        if abs(price - current_price_1d) / current_price_1d > 0.15: 
-                            continue
-                        
-                        zone = {"min": price - (atr_1d * 0.5), "max": price + (atr_1d * 0.5), "score": 3.0, "type": "1d_extreme"}
-                        # Если старый пик сейчас НИЖЕ цены — он стал поддержкой
-                        if price > current_price_1d: resistances.append(zone)
-                        else: supports.append(zone)
+                # === АНАЛИЗ через новый levels_builder ===
+                ohlcv_1d = safe_fetch_ohlcv(symbol, "1d", 365)
+                ohlcv_4h = safe_fetch_ohlcv(symbol, "4h", 200)
 
-                # ==========================================================
-                # === 2. АНАЛИЗ 4H (Volume Profile / Точка POC) ============
-                # ==========================================================
-                ohlcv_4h = exchange.fetch_ohlcv(symbol, timeframe="4h", limit=200)
-                if len(ohlcv_4h) >= 50:
-                    df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"])
-                    df_4h['atr'] = calculate_atr(df_4h, 14)
-                    atr_4h = df_4h['atr'].iloc[-1]
-                    if pd.isna(atr_4h) or atr_4h == 0: atr_4h = df_4h['close'].iloc[-1] * 0.02
-                    
-                    # Жесткий и безотказный расчет Профиля Объема (50 уровней плотности)
-                    df_4h['typical'] = (df_4h['high'] + df_4h['low'] + df_4h['close']) / 3
-                    min_val, max_val = df_4h['low'].min(), df_4h['high'].max()
-                    
-                    if max_val > min_val:
-                        bins = np.linspace(min_val, max_val, 50)
-                        df_4h['bin'] = pd.cut(df_4h['typical'], bins=bins)
-                        # Суммируем объем в каждом "блоке" цен
-                        vol_profile = df_4h.groupby('bin', observed=False)['volume'].sum()
-                        
-                        # Находим бин с максимальным объемом (Point of Control)
-                        poc_bin = vol_profile.idxmax()
-                        if pd.notna(poc_bin) and hasattr(poc_bin, "mid"):
-                            poc_price = float(getattr(poc_bin, "mid"))
-                            current_price = float(df_4h['close'].iloc[-1])
-                            
-                            zone = {
-                                "min": poc_price - (atr_4h * 0.5),
-                                "max": poc_price + (atr_4h * 0.5),
-                                "score": 2.0,
-                                "type": "4h_poc"
-                            }
-                            
-                            if current_price > poc_price:
-                                supports.append(zone)
-                            else:
-                                resistances.append(zone)
+                if len(ohlcv_1d) < 50:
+                    continue
 
-                # Записываем в базу, пропустив через фильтр склейки
-                if supports or resistances:
+                df_1d = pd.DataFrame(ohlcv_1d, columns=["timestamp", "open", "high", "low", "close", "volume"])
+                df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_4h) >= 50 else None
+
+                levels = build_levels(df_1d, df_4h, coin)
+
+                has_any = (levels["supports"] or levels["resistances"])
+                if has_any:
                     macro_base[coin] = {
-                        "supports": merge_overlapping_zones(supports),
-                        "resistances": merge_overlapping_zones(resistances),
+                        "supports": levels["supports"],
+                        "resistances": levels["resistances"],
                         "updated_at": datetime.datetime.now().isoformat()
                     }
-                    
+
             except Exception as e:
-                print(f"[SWING ERROR] Ошибка 4H/1D для {coin}: {e}")
-                continue 
+                print(f"[HUNTER ERROR] Ошибка для {coin}: {e}")
+                continue
                 
         save_json_atomic(MACRO_LEVELS_FILE, macro_base)
-        print(f"✅ [SWING HUNTER] Сбор завершен! Сохранено {len(macro_base)} монет с зонами POC и 1D.")
+        print(f"✅ [SWING HUNTER] Сбор завершен! Зоны сохранены: {MACRO_LEVELS_FILE}")
+        return macro_base
             
     except Exception as e:
-        print(f"❌ [SWING HUNTER] КРИТИЧЕСКАЯ ОШИБКА генерации: {e}")
+        print(f"❌ [SWING HUNTER] КРИТИЧЕСКАЯ ОШИБКА: {e}")
+        return {}
 
+def build_levels_for_single_coin(coin):
+    """Быстрая генерация уровней для одной монеты (для авто-добавлений)."""
+    symbol = f"{coin}/USDT"
+    try:
+        ohlcv_1d = exchange.fetch_ohlcv(symbol, "1d", 365)
+        ohlcv_4h = exchange.fetch_ohlcv(symbol, "4h", 200)
+        
+        if len(ohlcv_1d) < 50:
+            return None
+            
+        df_1d = pd.DataFrame(ohlcv_1d, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_4h) >= 50 else None
+        
+        levels = build_levels(df_1d, df_4h, coin)
+        
+        macro_base = load_json(MACRO_LEVELS_FILE, default={})
+        macro_base[coin] = {
+            "supports": levels["supports"],
+            "resistances": levels["resistances"],
+            "updated_at": datetime.datetime.now().isoformat()
+        }
+        save_json_atomic(MACRO_LEVELS_FILE, macro_base)
+        
+        return levels
+    except Exception as e:
+        print(f"[HUNTER ERROR] Ошибка при построении уровней для {coin}: {e}")
+        return None
 
 def minute_radar(bot, admin_chat_id):
     """
@@ -344,20 +188,27 @@ def minute_radar(bot, admin_chat_id):
             
             if added_coins:
                 save_json_atomic(WATCHLIST_FILE, watchlist)
-                print(f"🎯 [SWING HUNTER] Радар: В Watchlist залетело {len(added_coins)} монет. Ждем подтверждения на 15М.")
+                print(f"🎯 [SWING HUNTER] Радар: В Watchlist залетело {len(added_coins)} монет.")
 
         except Exception as e:
-            pass
+            print(f"[RADAR ERROR] {e}")
 
 def run_heavy_generator(bot, admin_chat_id):
+    """Фоновый поток для генерации уровней по расписанию."""
     schedule.every().day.at(TIME_ASIAN_CLOSE).do(build_macro_levels, bot, admin_chat_id)
     schedule.every().day.at(TIME_US_OPEN).do(build_macro_levels, bot, admin_chat_id)
-    if TEST_TIME:
-        schedule.every().day.at(TEST_TIME).do(build_macro_levels, bot, admin_chat_id)
     while True:
         schedule.run_pending()
         time.sleep(1)
 
 def start_swing_hunter(bot, admin_chat_id):
+    """Инициализация Swing Hunter: запускает фоновые потоки, не блокируя старт бота."""
     threading.Thread(target=run_heavy_generator, args=(bot, admin_chat_id), daemon=True).start()
     threading.Thread(target=minute_radar, args=(bot, admin_chat_id), daemon=True).start()
+    print("[SWING HUNTER] Инициализирован (heavy_generator + minute_radar запущены в фоне)")
+
+# ТОЧКА ВХОДА ДЛЯ ПРЯМОГО ЗАПУСКА
+if __name__ == "__main__":
+    print("🚀 [SWING HUNTER] Начинаем принудительный сбор уровней...")
+    build_macro_levels()
+    print("🏁 [SWING HUNTER] Сбор завершен.")

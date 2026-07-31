@@ -33,7 +33,8 @@ v_bottom_watcher.py
     зоне не сбрасывает цепочку, только выход ЗА буфер — полный сброс.
 """
 
-from .watcher_methods import _calc_tp_and_rr
+from .risk_calc import calc_tp_and_rr
+
 
 class VBottomWatcher:
     CONFIG = {
@@ -256,7 +257,7 @@ class VBottomWatcher:
         if self.CONFIG.get('DEBUG'):
             self._dbg(f"🚪 Попытка входа! Entry: {actual_entry:.4f}, SL: {actual_sl:.4f}")
 
-        risk_data, err = _calc_tp_and_rr(actual_entry, actual_sl, self.trade_type, all_opposite_levels, self.CONFIG)
+        risk_data, err = calc_tp_and_rr(actual_entry, actual_sl, self.trade_type, all_opposite_levels, self.CONFIG)
         if err or not risk_data:
             self.state = "DEAD"
             if self.CONFIG.get('DEBUG'):

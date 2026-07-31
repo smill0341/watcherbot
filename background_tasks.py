@@ -108,8 +108,8 @@ def crypto_orchestrator(bot, admin_chat_id):
                 last_watcher = time.time()
                 
                 try:
-                    from modules.cryptano.live_scan import _load_watchlist, _save_watchlist, watcher_cooldown_cache, _watcher_lock, AUTO_REMOVE_AFTER_SIGNAL, COOLDOWN_HOURS
-                    from modules.cryptano.watcher_plan import check_manual_extreme
+                    from modules.cryptano.live_scan import _load_watchlist, _save_watchlist, watcher_cooldown_cache, _watcher_lock, AUTO_REMOVE_AFTER_SIGNAL, COOLDOWN_HOURS, v_bottom_mgr
+                    from modules.cryptano.watcher_plan import check_manual_extreme, check_v_bottom
                     
                     wl = _load_watchlist()
                     if wl:
@@ -135,13 +135,24 @@ def crypto_orchestrator(bot, admin_chat_id):
                                     for d in dirs:
                                         if f"{coin}_{d}" in watcher_cooldown_cache: continue
                                         
-                                        # Передаем source в функцию
+                                        coin_signal_found = False
+
+                                        # --- 1. SFP стратегия (старая) ---
                                         is_ready, report = check_manual_extreme(coin, d, source)
-                                        if not report or report.startswith("❌") or report.startswith("⚠️"): continue
-                                        
-                                        if is_ready:
+                                        if report and not report.startswith("❌") and not report.startswith("⚠️") and is_ready:
                                             signals_found += 1
+                                            coin_signal_found = True
                                             bot.send_message(admin_chat_id, report, parse_mode="Markdown")
+
+                                        # --- 2. V-BOTTOM стратегия (новая, тестово) ---
+                                        # Проверяем НЕЗАВИСИМО от результата SFP — если сработали обе, шлём обе
+                                        v_is_ready, v_report = check_v_bottom(coin, d, v_bottom_mgr)
+                                        if v_report and not v_report.startswith("❌") and not v_report.startswith("⚠️") and v_is_ready:
+                                            signals_found += 1
+                                            coin_signal_found = True
+                                            bot.send_message(admin_chat_id, v_report, parse_mode="Markdown")
+
+                                        if coin_signal_found:
                                             watcher_cooldown_cache[f"{coin}_{d}"] = now_dt
                                             if AUTO_REMOVE_AFTER_SIGNAL: coins_to_remove.append(coin)
                                             break

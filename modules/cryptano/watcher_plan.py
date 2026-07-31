@@ -10,6 +10,7 @@ from modules.cryptano.utils.common import calculate_rsi, exchange, format_price 
 from modules.cryptano.utils.market_cache import load_markets_cached
 from modules.cryptano.utils.indicators import pandas_get_local_structure
 from modules.cryptano.utils.watcher_logic import analyze_extreme_pattern
+from modules.cryptano.utils.vbottom_manager import VBottomManager
 
 SCAN_COINS_LIMIT = 150
 
@@ -161,3 +162,117 @@ def check_manual_extreme(coin, direction, source="Manual"):
         traceback.print_exc()  # Печатает полный стек вызовов ошибки в терминал
         return False, f"❌ Ошибка ручного экспресс-анализа {coin}: {e}"
     
+
+
+def check_v_bottom(coin, direction, vbottom_mgr=None):
+    """
+    Проверяет V-BOTTOM паттерн на уровнях по 15-минутным свечам.
+    Возвращает (is_ready, report_text) в том же формате что check_manual_extreme.
+    """
+    try:
+        time.sleep(0.3)
+
+        coin = coin.upper().replace("USDT", "").replace("/", "").strip()
+        symbol = f"{coin}/USDT"
+        
+        # Резолвим символ на бирже
+        markets = load_markets_cached(exchange)
+        if symbol not in markets:
+            symbol_fut = f"{coin}/USDT:USDT"
+            if symbol_fut in markets:
+                symbol = symbol_fut
+            else:
+                return False, f"❌ Монета *{coin}* не найдена на Bybit."
+
+        # Тянем 15m-свечи (120 свечей = 30 часов истории, достаточно для 52-свечи baseline)
+        ohlcv = None
+        for attempt in range(3):
+            try:
+                ohlcv = exchange.fetch_ohlcv(symbol, timeframe="15m", limit=120)
+                break
+            except Exception as e:
+                if "Rate Limit" in str(e) or "10006" in str(e):
+                    print(f"[V_BOTTOM WARNING] Bybit rate limit на {coin}. Пауза 1.5 сек...")
+                    time.sleep(1.5)
+                else:
+                    raise e
+
+        if not ohlcv or len(ohlcv) < 52:
+            return False, f"⚠️ Недостаточно данных V-BOTTOM для {coin} ({len(ohlcv) if ohlcv else 0} свечей)."
+
+        # Формируем DataFrame с индексом по времени для VBottomManager
+        df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+        df.set_index("timestamp", inplace=True)
+        df = df[["open", "high", "low", "close", "volume"]].astype(float)
+
+        # Загружаем макро-уровни
+        macro_path = os.path.join(os.path.dirname(__file__), "macro_levels.json")
+        macro_db = load_json(macro_path, default={})
+        coin_macro = macro_db.get(coin, {})
+
+        if not coin_macro:
+            return False, f"⚠️ Нет уровней для {coin} в macro_levels.json."
+
+        # Инициализируем менеджер если не передан
+        if vbottom_mgr is None:
+            vbottom_mgr = VBottomManager()
+
+        # Берём уровни поддержки для LONG, сопротивления для расчёта TP
+        supports = coin_macro.get("supports", [])
+        resistances = coin_macro.get("resistances", [])
+
+        if not supports and direction == "LONG":
+            return False, f"⚠️ Нет поддержек для V-BOTTOM на {coin}."
+
+        signals = []
+
+        # Проверяем каждый уровень поддержки для LONG
+        if direction == "LONG":
+            for level in supports:
+                result = vbottom_mgr.evaluate_v_bottom(
+                    level, df, "LONG", resistances,
+                    trend="UNKNOWN", c_atr=None
+                )
+                if result.get('allow'):
+                    signals.append(result)
+
+        # Для SHORT аналогично, но на сопротивлениях
+        elif direction == "SHORT":
+            for level in resistances:
+                result = vbottom_mgr.evaluate_v_bottom(
+                    level, df, "SHORT", supports,
+                    trend="UNKNOWN", c_atr=None
+                )
+                if result.get('allow'):
+                    signals.append(result)
+
+        if not signals:
+            return False, None
+
+        # Если есть сигналы — берём первый (обычно один)
+        signal = signals[0]
+        entry_price = signal.get('entry_price', 0.0)
+        sl = signal.get('sl', 0.0)
+        tp = signal.get('tp', 0.0)
+        history_log = signal.get('history_log', '')
+        level_id = signal.get('level_id', 'unknown')
+
+        # Форматируем отчёт для телеграма
+        icon = "🔴" if direction == "SHORT" else "🟢"
+        report = (
+            f"{icon} *V-BOTTOM {direction}* _{coin}_\n\n"
+            f"Entry: `{entry_price:.8f}`\n"
+            f"SL: `{sl:.8f}`\n"
+            f"TP: `{tp:.8f}`\n"
+            f"R/R: `{(tp-entry_price)/(entry_price-sl) if entry_price > sl else 0:.2f}`\n\n"
+            f"📊 {history_log}\n"
+            f"Level: `{level_id}`"
+        )
+
+        return True, report
+
+    except Exception as e:
+        print(f"\n[V_BOTTOM ERROR] ❌ ОШИБКА ПРИ ПРОВЕРКЕ V-BOTTOM ({coin}): {e}")
+        traceback.print_exc()
+        return False, f"❌ Ошибка V-BOTTOM анализа {coin}: {e}"

@@ -4,8 +4,9 @@ import datetime
 import os
 import threading
 import re
-from modules.cryptano.watcher_plan import check_manual_extreme
+from modules.cryptano.watcher_plan import check_manual_extreme, check_v_bottom
 from modules.cryptano.utils.storage import load_json, save_json_atomic
+from modules.cryptano.utils.vbottom_manager import VBottomManager
 import json
 
 # ================= НАСТРОЙКИ WATCHER =================
@@ -17,6 +18,7 @@ AUTO_ADD_FROM_CRITICAL = True   # Разрешить Critical фильтру с�
 AUTO_REMOVE_AFTER_SIGNAL = True # Удалять монету из Watchlist после успешного сигнала
 
 watcher_cooldown_cache = {}
+v_bottom_mgr = VBottomManager()  # Менеджер V-BOTTOM стратегии
 _watcher_lock = threading.Lock()
 
 def auto_add_to_watchlist(coin, direction, source="Critical"):
@@ -242,13 +244,24 @@ def run_live_scanner(bot, admin_chat_id):
                         # Вызываем готовую логику с передачей источника
                         is_ready, report = check_manual_extreme(coin, d, source=data.get("source", "Manual"))
                         
-                        if not report or report.startswith("❌") or report.startswith("⚠️"):
-                            continue
+                        signal_found = False
                         
-                        if is_ready:
-                            # Сигнал подтвержден! Пересылаем готовый отчет
-                            bot.send_message(admin_chat_id, report, parse_mode="Markdown")
-                            
+                        if report and not report.startswith("❌") and not report.startswith("⚠️"):
+                            if is_ready:
+                                # SFP Сигнал подтвержден! Пересылаем готовый отчет
+                                bot.send_message(admin_chat_id, report, parse_mode="Markdown")
+                                signal_found = True
+                        
+                        # Если SFP не дал сигнал — пытаемся V-BOTTOM (параллельная стратегия)
+                        if not signal_found:
+                            v_is_ready, v_report = check_v_bottom(coin, d, vbottom_mgr)
+                            if v_report and not v_report.startswith("❌") and not v_report.startswith("⚠️"):
+                                if v_is_ready:
+                                    bot.send_message(admin_chat_id, v_report, parse_mode="Markdown")
+                                    signal_found = True
+                                    report = v_report  # Для логирования
+                        
+                        if signal_found:
                             # Замораживаем, чтобы не спамить
                             watcher_cooldown_cache[cache_key] = now
                             
