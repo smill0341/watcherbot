@@ -10,6 +10,12 @@ RANGE_FILTER_PCT = 0.30
 USE_DYNAMIC_TP = True  # Включить динамический тейк по макро-уровням (NO TRADE zone)
 MIN_PROFIT_PCT = 5.0   # Минимальный % хода до следующей зоны (если USE_DYNAMIC_TP = True)
 
+# --- РЕАЛЬНЫЕ ФИЛЬТРЫ КАЧЕСТВА (раньше были заглушками) ---
+RSI_OVERSOLD = 35.0      # RSI на свече касания должен быть <= этого для LONG (признак перепроданности)
+RSI_OVERBOUGHT = 65.0    # RSI на свече касания должен быть >= этого для SHORT (признак перекупленности)
+VOL_CLIMAX_MULT = 1.8    # Объём на свече касания должен быть >= X * средний фон (признак реального sweep'а)
+VOL_BASELINE_WINDOW = 30 # Сколько свечей брать для расчёта среднего фона объёма
+
 # =========================================================================
 # ФУНКЦИЯ ИСКЛЮЧИТЕЛЬНО ДЛЯ WATCHER (15M СНАЙПЕР С ОБЪЕМОМ И ТЕНЬЮ)
 # =========================================================================
@@ -21,6 +27,11 @@ def analyze_extreme_pattern(df, direction, current_price, price_precision, sourc
         
     df = df.copy()
     df["atr"] = calculate_atr(df, 14)
+
+    # Средний фон объёма (сдвинут на 1 назад, чтобы текущая свеча сама себя не портила)
+    df["vol_baseline"] = df["volume"].rolling(window=VOL_BASELINE_WINDOW, min_periods=10).mean().shift(1)
+
+    has_rsi = "rsi" in df.columns
     
     # ---------------------------------------------------------
     # НАСТРОЙКИ 1 В 1 ИЗ TEST_SIMULATOR_3.PY
@@ -38,6 +49,10 @@ def analyze_extreme_pattern(df, direction, current_price, price_precision, sourc
 
     trigger_fired = False
     trigger_type = "Ожидание CHoCH"
+
+    # Реальные значения фильтров на свече касания (для отчёта и проверки R/R)
+    touch_rsi_value = 50.0
+    touch_vol_ratio = 0.0
     
     # Симуляция последних 15 свечей (как в тестере)
     lookback = 15
@@ -91,22 +106,45 @@ def analyze_extreme_pattern(df, direction, current_price, price_precision, sourc
 
         # 3. ПОИСК КАСАНИЯ (Если не ждем CHoCH)
         if not wait_for_choch:
+            # Реальный RSI и объём на ЭТОЙ свече — считаем один раз для обеих сторон
+            candle_rsi = float(df['rsi'].iloc[i]) if has_rsi and not pd.isna(df['rsi'].iloc[i]) else 50.0
+            vol_baseline = float(df['vol_baseline'].iloc[i]) if not pd.isna(df['vol_baseline'].iloc[i]) else None
+            candle_vol_ratio = (c_vol / vol_baseline) if vol_baseline and vol_baseline > 0 else 0.0
+
             if direction == "LONG":
                 for sup in supports:
                     if c_low <= sup['max'] and c_close > sup['min']:
                         if is_falling_knife: break
+                        # РЕАЛЬНЫЙ ФИЛЬТР: перепроданность + объёмный climax на свече касания
+                        if candle_rsi > RSI_OVERSOLD:
+                            trigger_type = f"ПРОПУСК: RSI слишком высокий для LONG ({candle_rsi:.1f} > {RSI_OVERSOLD})"
+                            continue
+                        if candle_vol_ratio < VOL_CLIMAX_MULT:
+                            trigger_type = f"ПРОПУСК: нет объёмного climax ({candle_vol_ratio:.2f}x < {VOL_CLIMAX_MULT}x)"
+                            continue
                         wait_for_choch = True
                         choch_level = max(float(df['high'].iloc[i]), float(df['high'].iloc[i-1]))
                         active_level = sup
+                        touch_rsi_value = candle_rsi
+                        touch_vol_ratio = candle_vol_ratio
                         break
             elif direction == "SHORT":
                 for res in resistances:
                     # Исправленная математика касания шорт-зоны
                     if c_high >= res['min'] and c_close < res['max']:
                         if is_flying_rocket: break
+                        # РЕАЛЬНЫЙ ФИЛЬТР: перекупленность + объёмный climax на свече касания
+                        if candle_rsi < RSI_OVERBOUGHT:
+                            trigger_type = f"ПРОПУСК: RSI слишком низкий для SHORT ({candle_rsi:.1f} < {RSI_OVERBOUGHT})"
+                            continue
+                        if candle_vol_ratio < VOL_CLIMAX_MULT:
+                            trigger_type = f"ПРОПУСК: нет объёмного climax ({candle_vol_ratio:.2f}x < {VOL_CLIMAX_MULT}x)"
+                            continue
                         wait_for_choch = True
                         choch_level = min(float(df['low'].iloc[i]), float(df['low'].iloc[i-1]))
                         active_level = res
+                        touch_rsi_value = candle_rsi
+                        touch_vol_ratio = candle_vol_ratio
                         break
 
     # =========================================================
@@ -135,15 +173,15 @@ def analyze_extreme_pattern(df, direction, current_price, price_precision, sourc
         # УСПЕХ!
         return {
             "trigger_fired": True,
-            "rsi_filter_passed": True,  
-            "volume_climax": True,      
-            "trigger_type": "CHoCH Пробой (Подтвержден)",
+            "rsi_filter_passed": True,
+            "volume_climax": True,
+            "trigger_type": "CHoCH Пробой (RSI + Объём подтверждены)",
             "sl_price": round(sl_price, price_precision),
             "tp1_price": round(tp_price, price_precision),
             "tp2_price": round(tp_price, price_precision), 
             "tp3_price": round(tp_price, price_precision), 
-            "rsi_value": round(float(df.get("rsi", pd.Series(50)).iloc[-1]), 1) if "rsi" in df else 50.0,
-            "vol_ratio": 1.0 
+            "rsi_value": round(touch_rsi_value, 1),
+            "vol_ratio": round(touch_vol_ratio, 2)
         }
 
     return {"trigger_fired": False, "rsi_filter_passed": False, "volume_climax": False, "trigger_type": trigger_type}

@@ -6,7 +6,7 @@ from modules.cryptano.utils.storage import load_json
 import pandas as pd
 import gc
 import traceback
-from modules.cryptano.utils.common import calculate_rsi, exchange, format_price as fmt_p, price_precision_from_market
+from modules.cryptano.utils.common import calculate_rsi, exchange, format_price as fmt_p, price_precision_from_market, resolve_symbol, KNOWN_TICKER_ALIASES
 from modules.cryptano.utils.market_cache import load_markets_cached
 from modules.cryptano.utils.indicators import pandas_get_local_structure
 from modules.cryptano.utils.watcher_logic import analyze_extreme_pattern
@@ -25,16 +25,12 @@ def check_manual_extreme(coin, direction, source="Manual"):
         time.sleep(0.3)
 
         coin = coin.upper().replace("USDT", "").replace("/", "").strip()
-        symbol = f"{coin}/USDT"
         
         markets = load_markets_cached(exchange)
-        if symbol not in markets:
-            symbol_fut = f"{coin}/USDT:USDT"
-            if symbol_fut in markets:
-                symbol = symbol_fut
-            else:
-                print(f"[WATCHER DEBUG] ❌ Ошибка: {symbol} не найдена на бирже.")
-                return False, f"❌ Монета *{coin}* не найдена на Bybit."
+        symbol = resolve_symbol(coin, markets)
+        if not symbol:
+            print(f"[WATCHER DEBUG] ❌ Ошибка: {coin}/USDT не найдена на бирже.")
+            return False, f"❌ Монета *{coin}* не найдена на Bybit."
 
         market_info = markets[symbol]
         price_precision = price_precision_from_market(market_info)
@@ -68,7 +64,7 @@ def check_manual_extreme(coin, direction, source="Manual"):
         
         macro_path = os.path.join(os.path.dirname(__file__), "macro_levels.json")
         macro_db = load_json(macro_path, default={})
-        coin_macro = macro_db.get(coin, {})
+        coin_macro = macro_db.get(coin) or macro_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
         # ------------------------------------
         
         # Передаем source и coin_macro
@@ -167,22 +163,19 @@ def check_manual_extreme(coin, direction, source="Manual"):
 def check_v_bottom(coin, direction, vbottom_mgr=None):
     """
     Проверяет V-BOTTOM паттерн на уровнях по 15-минутным свечам.
-    Возвращает (is_ready, report_text) в том же формате что check_manual_extreme.
+    Возвращает (is_ready, report_text, levels_checked) — третье значение
+    нужно для статистики скана (сколько уровней вообще оценили).
     """
     try:
         time.sleep(0.3)
 
         coin = coin.upper().replace("USDT", "").replace("/", "").strip()
-        symbol = f"{coin}/USDT"
         
-        # Резолвим символ на бирже
+        # Резолвим символ на бирже (учитывает алиасы тикеров типа TON/TONCOIN)
         markets = load_markets_cached(exchange)
-        if symbol not in markets:
-            symbol_fut = f"{coin}/USDT:USDT"
-            if symbol_fut in markets:
-                symbol = symbol_fut
-            else:
-                return False, f"❌ Монета *{coin}* не найдена на Bybit."
+        symbol = resolve_symbol(coin, markets)
+        if not symbol:
+            return False, f"❌ Монета *{coin}* не найдена на Bybit.", 0
 
         # Тянем 15m-свечи (120 свечей = 30 часов истории, достаточно для 52-свечи baseline)
         ohlcv = None
@@ -198,7 +191,7 @@ def check_v_bottom(coin, direction, vbottom_mgr=None):
                     raise e
 
         if not ohlcv or len(ohlcv) < 52:
-            return False, f"⚠️ Недостаточно данных V-BOTTOM для {coin} ({len(ohlcv) if ohlcv else 0} свечей)."
+            return False, f"⚠️ Недостаточно данных V-BOTTOM для {coin} ({len(ohlcv) if ohlcv else 0} свечей).", 0
 
         # Формируем DataFrame с индексом по времени для VBottomManager
         df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
@@ -209,10 +202,10 @@ def check_v_bottom(coin, direction, vbottom_mgr=None):
         # Загружаем макро-уровни
         macro_path = os.path.join(os.path.dirname(__file__), "macro_levels.json")
         macro_db = load_json(macro_path, default={})
-        coin_macro = macro_db.get(coin, {})
+        coin_macro = macro_db.get(coin) or macro_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
 
         if not coin_macro:
-            return False, f"⚠️ Нет уровней для {coin} в macro_levels.json."
+            return False, f"⚠️ Нет уровней для {coin} в macro_levels.json.", 0
 
         # Инициализируем менеджер если не передан
         if vbottom_mgr is None:
@@ -223,13 +216,15 @@ def check_v_bottom(coin, direction, vbottom_mgr=None):
         resistances = coin_macro.get("resistances", [])
 
         if not supports and direction == "LONG":
-            return False, f"⚠️ Нет поддержек для V-BOTTOM на {coin}."
+            return False, f"⚠️ Нет поддержек для V-BOTTOM на {coin}.", 0
 
         signals = []
+        levels_checked = 0
 
         # Проверяем каждый уровень поддержки для LONG
         if direction == "LONG":
             for level in supports:
+                levels_checked += 1
                 result = vbottom_mgr.evaluate_v_bottom(
                     level, df, "LONG", resistances,
                     trend="UNKNOWN", c_atr=None
@@ -240,6 +235,7 @@ def check_v_bottom(coin, direction, vbottom_mgr=None):
         # Для SHORT аналогично, но на сопротивлениях
         elif direction == "SHORT":
             for level in resistances:
+                levels_checked += 1
                 result = vbottom_mgr.evaluate_v_bottom(
                     level, df, "SHORT", supports,
                     trend="UNKNOWN", c_atr=None
@@ -248,7 +244,7 @@ def check_v_bottom(coin, direction, vbottom_mgr=None):
                     signals.append(result)
 
         if not signals:
-            return False, None
+            return False, None, levels_checked
 
         # Если есть сигналы — берём первый (обычно один)
         signal = signals[0]
@@ -270,9 +266,9 @@ def check_v_bottom(coin, direction, vbottom_mgr=None):
             f"Level: `{level_id}`"
         )
 
-        return True, report
+        return True, report, levels_checked
 
     except Exception as e:
         print(f"\n[V_BOTTOM ERROR] ❌ ОШИБКА ПРИ ПРОВЕРКЕ V-BOTTOM ({coin}): {e}")
         traceback.print_exc()
-        return False, f"❌ Ошибка V-BOTTOM анализа {coin}: {e}"
+        return False, f"❌ Ошибка V-BOTTOM анализа {coin}: {e}", 0

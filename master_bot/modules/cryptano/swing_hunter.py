@@ -7,6 +7,7 @@ import numpy as np
 from scipy.signal import find_peaks
 import schedule  
 from modules.cryptano.utils.crypto_utils import exchange
+from modules.cryptano.utils.common import resolve_symbol
 from modules.cryptano.utils.storage import load_json, save_json_atomic
 from modules.cryptano.utils.levels_builder import build_levels
 
@@ -98,6 +99,12 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                 print(f"[HUNTER ERROR] Ошибка для {coin}: {e}")
                 continue
                 
+        # 🕒 Метаданные всего файла — чтобы одним взглядом видеть, когда последний раз обновлялось
+        macro_base["_meta"] = {
+            "last_build": datetime.datetime.now().isoformat(),
+            "coins_count": len([k for k in macro_base if k != "_meta"]),
+        }
+
         save_json_atomic(MACRO_LEVELS_FILE, macro_base)
         print(f"✅ [SWING HUNTER] Сбор завершен! Зоны сохранены: {MACRO_LEVELS_FILE}")
         return macro_base
@@ -108,8 +115,21 @@ def build_macro_levels(bot=None, admin_chat_id=None):
 
 def build_levels_for_single_coin(coin):
     """Быстрая генерация уровней для одной монеты (для авто-добавлений)."""
-    symbol = f"{coin}/USDT"
     try:
+        # Резолвим реальный символ на бирже (спот/футы + известные алиасы
+        # тикеров типа TON->TONCOIN) — не все монеты торгуются как SPOT
+        # COIN/USDT, часть только как COIN/USDT:USDT (перпы), либо не
+        # торгуются на Bybit вообще (например токенизированные акции).
+        if not exchange.markets:
+            exchange.load_markets(reload=False)
+
+        markets = exchange.markets or {}
+        symbol = resolve_symbol(coin, markets)
+
+        if not symbol:
+            print(f"[HUNTER SKIP] {coin}: нет рынка ни SPOT, ни FUTURES на Bybit — пропускаю.")
+            return None
+
         ohlcv_1d = exchange.fetch_ohlcv(symbol, "1d", 365)
         ohlcv_4h = exchange.fetch_ohlcv(symbol, "4h", 200)
         

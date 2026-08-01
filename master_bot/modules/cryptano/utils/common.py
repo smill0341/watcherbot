@@ -5,6 +5,43 @@ import ccxt
 from modules.cryptano.utils.market_cache import get_top_usdt_coins_cached
 from modules.cryptano.utils.crypto_utils import exchange
 
+# Известные расхождения тикеров: некоторые монеты на Bybit торгуются
+# под другим базовым тикером, чем принято (например TON -> TONCOIN,
+# т.к. тикер TON изначально был занят другим проектом на бирже).
+KNOWN_TICKER_ALIASES = {
+    "TON": "TONCOIN",
+}
+
+def resolve_symbol(coin, markets):
+    """
+    Надёжно находит реальный символ монеты на Bybit.
+    Проверяет: спот -> фьючерс -> известный алиас (спот/фьючерс) ->
+    нечёткий поиск по всем рынкам с котировкой USDT.
+    Возвращает найденный symbol (str) или None, если монеты нет вообще.
+    """
+    coin = coin.upper().strip()
+
+    candidates = [f"{coin}/USDT", f"{coin}/USDT:USDT"]
+
+    alias = KNOWN_TICKER_ALIASES.get(coin)
+    if alias:
+        candidates += [f"{alias}/USDT", f"{alias}/USDT:USDT"]
+
+    for symbol in candidates:
+        if symbol in markets:
+            return symbol
+
+    # Последняя попытка — нечёткое совпадение по базовой валюте
+    # (на случай других расхождений, которых нет в таблице алиасов)
+    for symbol, m in markets.items():
+        if not symbol.endswith("/USDT") and ":USDT" not in symbol:
+            continue
+        base = (m.get("base") or "").upper()
+        if base == coin or base == alias:
+            return symbol
+
+    return None
+
 def calculate_rsi(df, period=14):
     delta = df["close"].diff()
     up = delta.clip(lower=0)

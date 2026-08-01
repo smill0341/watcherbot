@@ -21,6 +21,11 @@ watcher_cooldown_cache = {}
 v_bottom_mgr = VBottomManager()  # Менеджер V-BOTTOM стратегии
 _watcher_lock = threading.Lock()
 
+def is_in_watchlist(coin):
+    """Проверяет, есть ли монета уже в списке слежения (чтобы не дублировать сообщения)."""
+    wl = _load_watchlist()
+    return coin in wl
+
 def auto_add_to_watchlist(coin, direction, source="Critical"):
     """Универсальное автодобавление монет из фильтров"""
     # Блокируем ТОЛЬКО если пришло от Critical и его рубильник выключен
@@ -254,7 +259,7 @@ def run_live_scanner(bot, admin_chat_id):
                         
                         # Если SFP не дал сигнал — пытаемся V-BOTTOM (параллельная стратегия)
                         if not signal_found:
-                            v_is_ready, v_report = check_v_bottom(coin, d, vbottom_mgr)
+                            v_is_ready, v_report, v_levels = check_v_bottom(coin, d, v_bottom_mgr)
                             if v_report and not v_report.startswith("❌") and not v_report.startswith("⚠️"):
                                 if v_is_ready:
                                     bot.send_message(admin_chat_id, v_report, parse_mode="Markdown")

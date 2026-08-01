@@ -75,8 +75,12 @@ def crypto_orchestrator(bot, admin_chat_id):
                 try:
                     res = scan_market(scan_type="auto")
                     if res:
+                        from modules.cryptano.live_scan import auto_add_to_watchlist, is_in_watchlist
+                        # Отсекаем монеты, которые уже в списке слежения — по ним сообщение не нужно
+                        res = [r for r in res if not is_in_watchlist(r["coin"])]
+
+                    if res:
                         msg = format_results(res, "⏰ Авто-находка: Сильный RSI + Аномальный объем!")
-                        from modules.cryptano.live_scan import auto_add_to_watchlist 
                         added_coins = []
                         for r in res:
                             coin = r["coin"]
@@ -104,7 +108,7 @@ def crypto_orchestrator(bot, admin_chat_id):
             # 3. ОЧЕРЕДЬ: 👀 WATCHER SCAN (Старт на 5-й минуте, далее каждые 15 минут)
             # =========================================================
             if elapsed >= 300 and (time.time() - last_watcher >= 900 or last_watcher == 0):
-                print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [DISPATCHER] ⏱ Каскад: Запуск сканирования Watcher списка...")
+                print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [DISPATCHER] ⏱ Начало анализа Watcher списка...")
                 last_watcher = time.time()
                 
                 try:
@@ -122,14 +126,14 @@ def crypto_orchestrator(bot, admin_chat_id):
                                 coins_to_remove = []
                                 total_scanned = 0
                                 signals_found = 0
+                                sfp_signals = 0
+                                vbottom_signals = 0
+                                vbottom_levels_checked = 0
                                 
                                 for coin, data in list(wl.items()):
                                     total_scanned += 1
                                     # Достаем реальный источник (Swing, Momentum, Manual)
                                     source = data.get("source", "Manual") 
-                                    
-                                    # ПЕЧАТАЕМ КАЖДЫЙ ШАГ, ЧТОБЫ ВИДЕТЬ, ЧТО БОТ НЕ ВИСНЕТ
-                                    print(f"   -> [WATCHER] Анализирую монету: {coin} ({total_scanned}/{len(wl)})...")
                                     
                                     dirs = ["LONG", "SHORT"] if data["direction"] == "ANY" else [data["direction"]]
                                     for d in dirs:
@@ -141,14 +145,17 @@ def crypto_orchestrator(bot, admin_chat_id):
                                         is_ready, report = check_manual_extreme(coin, d, source)
                                         if report and not report.startswith("❌") and not report.startswith("⚠️") and is_ready:
                                             signals_found += 1
+                                            sfp_signals += 1
                                             coin_signal_found = True
                                             bot.send_message(admin_chat_id, report, parse_mode="Markdown")
 
                                         # --- 2. V-BOTTOM стратегия (новая, тестово) ---
                                         # Проверяем НЕЗАВИСИМО от результата SFP — если сработали обе, шлём обе
-                                        v_is_ready, v_report = check_v_bottom(coin, d, v_bottom_mgr)
+                                        v_is_ready, v_report, v_levels = check_v_bottom(coin, d, v_bottom_mgr)
+                                        vbottom_levels_checked += v_levels
                                         if v_report and not v_report.startswith("❌") and not v_report.startswith("⚠️") and v_is_ready:
                                             signals_found += 1
+                                            vbottom_signals += 1
                                             coin_signal_found = True
                                             bot.send_message(admin_chat_id, v_report, parse_mode="Markdown")
 
@@ -164,8 +171,10 @@ def crypto_orchestrator(bot, admin_chat_id):
                                         if c in current_wl: del current_wl[c]
                                     _save_watchlist(current_wl)
                                     
-                                # 🚀 ФИНАЛЬНЫЙ ПРИНТ СО СТАТИСТИКОЙ
-                                print(f"✅ [DISPATCHER] Скан завершен. Просканировано: {total_scanned} | Найдено точек входа: {signals_found}")
+                                # 🚀 ФИНАЛЬНЫЙ ПРИНТ СО СТАТИСТИКОЙ (общий + отдельно по каждой стратегии)
+                                print(f"✅ [DISPATCHER] Анализ прошел. Монет просканировано: {total_scanned} | Сигналов найдено: {signals_found}")
+                                print(f"   -> SFP: Сигналов найдено: {sfp_signals}")
+                                print(f"   -> V_BOTTOM: Уровней оценено: {vbottom_levels_checked} | Сделок найдено: {vbottom_signals}")
                                 
                             finally:
                                 _watcher_lock.release()

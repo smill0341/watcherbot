@@ -57,7 +57,7 @@ GLOBAL_SKIPPED_COINS = []
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "ETH"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "XPL"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
@@ -117,8 +117,9 @@ class SmartSniperUniversal(Strategy):
 
         self.draw_sup_max = self.I(lambda: self.data.df['sup_max'], name="Support Top", overlay=True)
         self.draw_res_min = self.I(lambda: self.data.df['res_min'], name="Resist Bottom", overlay=True)
-        self.draw_vbottom_event = self.I(lambda: self.data.df['vbottom_event'], name="V_BOTTOM событие",
-                                          overlay=True, scatter=True, color='yellow')
+        self.draw_vbottom_pit = self.I(lambda: self.data.df['vbottom_pit'], name="Яма (PIT)", overlay=True, scatter=True, color='red')
+        self.draw_vbottom_scan = self.I(lambda: self.data.df['vbottom_scan'], name="Поиск (SCAN)", overlay=True, scatter=True, color='yellow')
+        self.draw_vbottom_good = self.I(lambda: self.data.df['vbottom_good'], name="Кандидат (GOOD)", overlay=True, scatter=True, color='blue')
         
         if self.original_df is not None:
             self.original_df['atr'] = self.atr
@@ -330,7 +331,13 @@ class SmartSniperUniversal(Strategy):
                         level_id = self.manager._level_id(self.origin_level_long, 'LONG')
                         watcher = self.manager._watchers.get(level_id)
                         if watcher is not None and getattr(watcher, 'last_event_time', None) == current_time:
-                            self.original_df.at[current_time, 'vbottom_event'] = c_close
+                            event_type = getattr(watcher, 'last_event_type', None)
+                            if event_type == "PIT":
+                                self.original_df.at[current_time, 'vbottom_pit'] = c_close
+                            elif event_type == "SCAN":
+                                self.original_df.at[current_time, 'vbottom_scan'] = c_close
+                            elif event_type == "GOOD_GREEN":
+                                self.original_df.at[current_time, 'vbottom_good'] = c_close
                     if decision.get('allow'):
                         self._try_enter(self.origin_level_long, 'LONG', c_close, c_atr, decision, ctx_eval=ctx_eval_long)
                         self.origin_level_long = None
@@ -584,7 +591,7 @@ def build_4h_context_df(df_15m):
 
 
 try:
-    with open('levels_timeline.json', 'r') as f:
+    with open(r'D:\bot\test\levels_timeline.json', 'r') as f:
         GLOBAL_TIMELINE = json.load(f)
 except Exception:
     print("❌ Файл levels_timeline.json не найден. Сначала запусти precalc.py!")
@@ -725,7 +732,9 @@ if TARGET_COIN.upper() == "ALL":
 
         df['sup_max'] = np.nan
         df['res_min'] = np.nan
-        df['vbottom_event'] = np.nan
+        df['vbottom_pit'] = np.nan
+        df['vbottom_scan'] = np.nan
+        df['vbottom_good'] = np.nan
         df['ema'] = df['Close'].ewm(span=50, adjust=False).mean()
         df['avg_vol'] = df['Volume'].rolling(window=20).mean()
         df['open'] = df['Open']
@@ -903,7 +912,9 @@ else:
         else:
             df['sup_max'] = np.nan
             df['res_min'] = np.nan
-            df['vbottom_event'] = np.nan
+            df['vbottom_pit'] = np.nan
+            df['vbottom_scan'] = np.nan
+            df['vbottom_good'] = np.nan
             df['ema'] = df['Close'].ewm(span=13, adjust=False).mean()
             df['avg_vol'] = df['Volume'].rolling(window=20).mean()
             df['open'] = df['Open']

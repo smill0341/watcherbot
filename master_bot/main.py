@@ -36,6 +36,24 @@ def start(message):
     if str(message.chat.id) == str(ADMIN_CHAT_ID):
         bot.send_message(message.chat.id, "Главное меню:", reply_markup=keyboards.get_main_menu())
 
+@bot.message_handler(commands=['rebuild_levels'])
+def rebuild_levels(message):
+    """Ручной форс-запуск построения macro_levels.json, не дожидаясь расписания."""
+    if str(message.chat.id) != str(ADMIN_CHAT_ID): return
+
+    bot.send_message(message.chat.id, "⏳ Запускаю построение уровней вручную (может занять пару минут)...")
+
+    def _run():
+        from modules.cryptano.swing_hunter import build_macro_levels
+        try:
+            result = build_macro_levels(bot, ADMIN_CHAT_ID)
+            coins_count = len([k for k in result if k != "_meta"]) if result else 0
+            bot.send_message(message.chat.id, f"✅ Готово. Уровни построены для {coins_count} монет.")
+        except Exception as e:
+            bot.send_message(message.chat.id, f"❌ Ошибка при построении уровней: {e}")
+
+    threading.Thread(target=_run, daemon=True).start()
+
 @bot.message_handler(content_types=['text'])
 def handle_text(message):
     if str(message.chat.id) != str(ADMIN_CHAT_ID): return

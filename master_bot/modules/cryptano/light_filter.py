@@ -252,6 +252,12 @@ def _execute_scan_cycle(bot, admin_chat_id, is_auto=False):
         for setup in setups:
             coin_name = setup["coin"]
             found_something = True
+
+            # Если монета уже в списке слежения — сообщение не нужно, оно лишнее
+            if is_auto:
+                from modules.cryptano.live_scan import is_in_watchlist
+                if is_in_watchlist(coin_name):
+                    continue
             
             msg = format_light_signal(setup)
             bot.send_message(admin_chat_id, msg, parse_mode="Markdown")

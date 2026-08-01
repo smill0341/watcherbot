@@ -1,15 +1,19 @@
 # -*- coding: utf-8 -*-
 from .watcher_methods import _calc_tp_and_rr
 
-
 class VGreenBottomWatcher:
     CONFIG = {
-        'RED_TRIGGER_MULT': 2.0,      # Шаг 1: Триггер (красная свеча х2 фона)
-        'GREEN_VOL_MULT': 3.0,        # Шаг 3: Выкупная зеленая (х3 фона)
-        'MIN_BODY_PCT': 60.0,         # Шаг 3: Плотность зеленой (>= 60%)
-        'MIN_PREV_RED_PCT': 40.0,     # ФИЛЬТР: Красная перед зеленой должна быть >= 30% от объема зеленой
-        'BREATH_BUFFER_PCT': 1.5,  
-        'MIN_ATR_MULT': 1.5,          # Отмена, если цена ушла высоко вверх (зазор 1.5%)
+        'RED_TRIGGER_MULT': 2.0,      # Во сколько раз объем первой красной свечи должен превысить средний (avg_vol), чтобы капкан активировался и засчитал старт Ямы №1.
+        'MIN_BODY_PCT': 60.0,         # Минимальная плотность тела зеленой свечи. Тело (от Open до Close) должно занимать не менее 60% от всей длины свечи (от Low до High). Отсекает доджи и свечи с огромными тенями сверху.
+        'BREATH_BUFFER_PCT': 1.5,     # Буфер отмены (зона дыхания). Если цена до начала падения улетит вверх на 1.5% выше верхней границы твоего уровня — капкан сбрасывается (убивается).
+        'MIN_DUMP_VOL_PCT': 85.0,     # Требование к объему зеленой свечи. Она должна набрать минимум 85% от максимального объема падающей красной свечи в текущей яме (trigger_dump_vol).
+        'MIN_ATR_MULT': 1.5,  
+        # Минимальный физический размер зеленой свечи (High - Low). Она должна быть больше среднего ATR минимум в 1.5 раза. Отсекает рыночный микро-шум.
+        
+        # --- НАСТРОЙКИ СТРУКТУРЫ ---
+        'MIN_PITS_TO_ARM': 3,         # Начиная с какой по счету ямы бот включает радар и начинает сканировать каждую зеленую свечу на дне.
+        'MIN_PULLBACK_PCT': 3.0,      # Фильтр структуры. На сколько процентов цена должна физически отскочить от локального дна вверх, чтобы бот признал отскок состоявшимся и позволил начать следующую яму при пробое.
+        'MAX_BARS_IN_PIT': 10,        # Максимальное количество свечей в яме.   
         'TP_MODE': 'fixed_pct',
         'FIXED_TP_PCT': 10.0,
         'TAKE_PROFIT': 10.0,
@@ -26,14 +30,22 @@ class VGreenBottomWatcher:
         self.trade_type = trade_type
         
         self.state = "WAIT_FIRST_DUMP"
-        self.temp_trigger_low = 0.0
-        self.trigger_low = 0.0
         
-        # Память для предыдущей свечи
+        # --- Чистая макро-структура (ChoCh) ---
+        self.pits_count = 0             
+        self.current_pit_low = 0.0      
+        self.pit_ceiling = 0.0          
+        self.highest_since_low = 0.0    
+        self.pullback_confirmed = False 
+        self.trigger_dump_vol = 0.0
+        self.bars_since_low = 0         # <-- ДОБАВИЛИ: Таймер свечей на дне
+
+        # --- Память для предыдущей свечи ---
         self.prev_is_red = False
         self.prev_red_vol = 0.0
         self.prev_low = 0.0
 
+        # --- Служебные переменные ---
         self.sl_price: float | None = None
         self.entry_price: float | None = None
         self.history_log = ""
@@ -41,6 +53,7 @@ class VGreenBottomWatcher:
         self._last_time = None
         self.last_event_time = None
         self.last_event_msg = None
+        self.last_event_type = None  # Для раскраски свечей на графике (red, yellow, blue)
 
     def _tp(self):
         return f"{self._last_time} " if self._last_time is not None else ""
@@ -60,12 +73,16 @@ class VGreenBottomWatcher:
 
     def _reset(self):
         self.state = "WAIT_FIRST_DUMP"
-        self.temp_trigger_low = 0.0
-        self.trigger_low = 0.0
+        self.pits_count = 0       
+        self.current_pit_low = 0.0
+        self.highest_since_low = 0.0
+        self.trigger_dump_vol = 0.0
+        
         self.prev_is_red = False
         self.prev_red_vol = 0.0
         self.prev_low = 0.0
         self.history_log = ""
+        self.last_event_type = None
 
     def on_breach_start(self):
         if self.state in ("DEAD", "TRIGGERED"):
@@ -74,121 +91,121 @@ class VGreenBottomWatcher:
 
     def update(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, c_atr, all_opposite_levels, **kwargs):
         self._last_time = kwargs.get('candle_time')
-        
-        # 1. ДОСТАЕМ EMA ИЗ ПАРАМЕТРОВ БОТА/ТЕСТЕРА
-        c_ema = kwargs.get('c_ema')
+        # ИСПРАВЛЕНИЕ: принудительно обновляем время на каждом тике, чтобы тестер мог рисовать КАЖДУЮ свечу
+        self.last_event_time = self._last_time  
+        self.last_event_type = None
         
         if self.state in ("DEAD", "TRIGGERED"): return None
         if not baseline_vol or baseline_vol <= 0: return None
         if self.trade_type != 'LONG': return None
 
-        # 2. ЖЕСТКАЯ ПРОВЕРКА ИЗНАЧАЛЬНО (только до старта)
-        # Проверяем положение относительно EMA только пока мы в режиме "ожидания первого удара".
-        if self.state == "WAIT_FIRST_DUMP" and c_ema is not None and c_ema == c_ema:
-            # Если изначально уровень ИЛИ цена выше EMA — убиваем капкан сразу и навсегда
-            if self.max > c_ema or c_close > c_ema:
-                self._dbg(f"🛑 [ОТМЕНА ИЗНАЧАЛЬНО] Уровень или цена выше EMA ({c_ema:.2f}). Капкан убит до старта.")
-                self.state = "DEAD"
-                return None
-
+        safe_atr = float(c_atr) if (c_atr is not None and c_atr == c_atr) else 0.0001
         is_red = c_close < c_open
-    
-        # --- 0. ПРОВЕРКА ОТМЕНЫ (УХОД ЗА БУФЕР) ---
+
         buffer_top = self.max * (1 + self.CONFIG['BREATH_BUFFER_PCT'] / 100.0)
-        
-        # Если тело свечи закрылось выше уровня + N% зазор
-        if c_close > buffer_top:
-            if self.state != "DEAD":
-                self._dbg(f"🛑 [ОТМЕНА СДЕЛКИ] Тело ушло выше уровня (+{self.CONFIG['BREATH_BUFFER_PCT']}% зазор). Уровень мертв.")
-                self.state = "DEAD"  # Наглухо закрываем капкан
+        if c_close > buffer_top and self.state == "WAIT_FIRST_DUMP":
+            self.state = "DEAD" 
             return None
 
-        # --- ШАГ 1: НАЧАЛО ПЕРВОГО ПРОЛИВА ---
+        # --- ШАГ 1: ПЕРВЫЙ УДАР В УРОВЕНЬ ---
         if self.state == "WAIT_FIRST_DUMP":
             if is_red and c_vol >= (baseline_vol * self.CONFIG['RED_TRIGGER_MULT']):
-                self.state = "WAIT_FIRST_BOTTOM"
-                self.temp_trigger_low = float(c_low)
-                self.history_log = f"Фон:{self._fmt(baseline_vol)} -> Старт:{self._fmt(c_vol)}"
-                self._dbg(f"🔴 [ШАГ 1] Удар продавца. {self.history_log}")
+                self.state = "TRACKING_PIT"
+                self.pits_count = 1
+                self.current_pit_low = float(c_low)     
+                self.pit_ceiling = float(c_high)
+                self.highest_since_low = float(c_high)
+                self.pullback_confirmed = False
+                self.trigger_dump_vol = float(c_vol)
+                self.last_event_type = "PIT"
+                self._dbg(f"🔴 ЯМА №1 СТАРТ. Лой: {self.current_pit_low:.4f}")
             
-            # Сохраняем стейт свечи перед выходом
             self.prev_is_red = is_red
-            self.prev_red_vol = float(c_vol) if is_red else 0.0
             self.prev_low = float(c_low)
             return None
 
-        # --- ШАГ 1.5: ФИКСАЦИЯ ПЕРВОГО ДНА ---
-        elif self.state == "WAIT_FIRST_BOTTOM":
-            if is_red:
-                # Цена продолжает падать, дна еще нет, просто тянем минимум вниз
-                self.temp_trigger_low = min(self.temp_trigger_low, float(c_low))
+        # --- ШАГ 2: ВЕДЕНИЕ МАКРО-СТРУКТУРЫ ---
+        elif self.state == "TRACKING_PIT":
+            
+            # РИСУЕМ КРАСНЫМ: красим все красные свечи, пока летим на дно
+            if is_red and not self.pullback_confirmed:
+                self.last_event_type = "PIT"
+
+            # 1. ЕСЛИ ЦЕНА ОБНОВЛЯЕТ ДНО (Летим ниже)
+            if float(c_low) < self.current_pit_low:
+                self.bars_since_low = 0  # <-- НОВОЕ ДНО: СБРАСЫВАЕМ ТАЙМЕР
+                
+                # Новая яма засчитывается ТОЛЬКО если до этого цена отскочила на нужный процент
+                if self.pullback_confirmed:
+                    self.pits_count += 1
+                    bounce_pct = (self.highest_since_low - self.current_pit_low) / self.current_pit_low * 100.0 if self.current_pit_low > 0 else 0.0
+                    self.trigger_dump_vol = float(c_vol) if is_red else 0.0
+                    self.last_event_type = "PIT" 
+                    self._dbg(f"📉 ЯМА №{self.pits_count}. Отскок {bounce_pct:.1f}%")
+                else:
+                    if is_red:
+                        self.trigger_dump_vol = max(self.trigger_dump_vol, float(c_vol))
+                
+                # Обновляем дно и сбрасываем трекеры
+                self.current_pit_low = float(c_low)
+                self.highest_since_low = float(c_high)
+                self.pullback_confirmed = False 
+            
+            # 2. ЕСЛИ ЦЕНА НЕ ПРОБИВАЕТ ДНО (Флэт или рост)
             else:
-                # Появилась зеленая свеча! Первое дно зафиксировано.
-                self.state = "WAIT_SECOND_BOTTOM"
-                self.trigger_low = self.temp_trigger_low
-                self.history_log += f" -> Дно_1:{self.trigger_low:.2f}"
-                self._dbg(f"✅ Первое дно зафиксировано: {self.trigger_low:.4f}. Ждем пробоя вниз.")
-            
-            self.prev_is_red = is_red
-            self.prev_red_vol = float(c_vol) if is_red else 0.0
-            self.prev_low = float(c_low)
-            return None
+                self.bars_since_low += 1 # <-- ДНА НЕТ: ТАЙМЕР ТИКАЕТ
+                
+                self.highest_since_low = max(self.highest_since_low, float(c_high))
+                
+                if is_red:
+                    self.trigger_dump_vol = max(self.trigger_dump_vol, float(c_vol))
+                else:
+                    # ЗЕЛЕНАЯ СВЕЧА. Замеряем процент отскока
+                    current_bounce_pct = (self.highest_since_low - self.current_pit_low) / self.current_pit_low * 100.0 if self.current_pit_low > 0 else 0.0
+                    if current_bounce_pct >= self.CONFIG.get('MIN_PULLBACK_PCT', 3.0):
+                        self.pullback_confirmed = True
 
-        # --- ШАГ 2: ОЖИДАНИЕ ВТОРОГО ДНА ---
-        elif self.state == "WAIT_SECOND_BOTTOM":
-            if float(c_low) < self.trigger_low:
-                self.state = "ARMED"
-                self.history_log += f" -> Дно_2:{float(c_low):.2f}"
-                self._dbg(f"📉 [ШАГ 2] Цена пробила первое дно (Low: {c_low:.4f}). Ищем снайперский выкуп!")
-                # Проваливаемся в ШАГ 3
+            # 3. ПОИСК ЗЕЛЕНОЙ СВЕЧИ (ВНУТРИ ЯМЫ)
+            if self.pits_count >= self.CONFIG.get('MIN_PITS_TO_ARM', 3) and not is_red:
+                
+                # ПРОВЕРКА НА ТАЙМАУТ СВЕЧЕЙ: Ищем вход, только если мы свежие на дне
+                if self.bars_since_low <= self.CONFIG.get('MAX_BARS_IN_PIT', 10):
+                    self.last_event_type = "SCAN" 
+                    
+                    need_vol = self.trigger_dump_vol * (self.CONFIG.get('MIN_DUMP_VOL_PCT', 100.0) / 100.0)
+                    is_vol_ok = c_vol >= need_vol
 
-        # --- ШАГ 3: БОЕВОЙ РЕЖИМ (ПОИСК ВЫКУПА) ---
-        if self.state == "ARMED":
-            if not is_red: # ЗЕЛЕНАЯ СВЕЧА
-                need_vol = baseline_vol * self.CONFIG['GREEN_VOL_MULT']
-                is_vol_ok = c_vol >= need_vol
-
-                # ПРОПУСКАЕМ ТЕСТ ТОЛЬКО ДЛЯ АНОМАЛЬНЫХ ЗЕЛЕНЫХ (спама больше не будет)
-                if is_vol_ok:
                     high_low = float(c_high - c_low)
                     body = float(c_close - c_open)
                     body_pct = (body / high_low * 100.0) if high_low > 0 else 0.0
                     is_body_ok = body_pct >= self.CONFIG['MIN_BODY_PCT']
 
-                    # НОВОЕ: Считаем требование по ATR (размер свечи)
-                    min_req_size = c_atr * self.CONFIG.get('MIN_ATR_MULT', 1.5) if c_atr else 0.0
-                    is_atr_ok = high_low >= min_req_size if min_req_size > 0 else True
+                    min_req_size = safe_atr * self.CONFIG.get('MIN_ATR_MULT', 1.5)
+                    is_atr_ok = high_low >= min_req_size
 
-                    # Обновленный лог со всеми данными
-                    self._dbg(f"🔍 [ТЕСТ ЗЕЛЕНОЙ] Фон:{self._fmt(baseline_vol)} | Vol:{self._fmt(c_vol)} (надо>{self._fmt(need_vol)}), Плотность:{body_pct:.1f}% (надо>{self.CONFIG['MIN_BODY_PCT']}%), ATR-размер: {high_low:.4f} (надо>{min_req_size:.4f})")
+                    self._dbg(f"🔍 [ТЕСТ ВХОДА] Яма:{self.pits_count} | Vol:{self._fmt(c_vol)} (надо>{self._fmt(need_vol)}) | Плотн:{body_pct:.1f}%")
 
-                    if is_body_ok and is_atr_ok:
-                        # Считаем минимальный требуемый объем для красной свечи
-                        min_red_vol = c_vol * (self.CONFIG['MIN_PREV_RED_PCT'] / 100.0)
-
-                        if self.prev_is_red and c_vol > self.prev_red_vol and self.prev_red_vol >= min_red_vol:
-                            self.history_log += f" -> Выкуп:{self._fmt(c_vol)}"
-                            return self._enter(c_low, c_close, all_opposite_levels)
-                        else:
-                            if not self.prev_is_red:
-                                self._dbg("❌ [ОТМЕНА] Перед зеленой свечой не было красной.")
-                            elif self.prev_red_vol < min_red_vol:
-                                self._dbg(f"❌ [ОТМЕНА] Объем красной ({self._fmt(self.prev_red_vol)}) меньше {self.CONFIG['MIN_PREV_RED_PCT']}% от зеленой ({self._fmt(min_red_vol)}).")
-                            else:
-                                self._dbg(f"❌ [ОТМЕНА] Объем зеленой ({self._fmt(c_vol)}) МЕНЬШЕ предыдущей красной ({self._fmt(self.prev_red_vol)}).")
+                    if is_vol_ok and is_body_ok and is_atr_ok:
+                        self.last_event_type = "GOOD_GREEN" 
+                        self.history_log += f" -> Вход(Яма {self.pits_count}):{self._fmt(c_vol)}"
+                        return self._enter(c_low, c_close, all_opposite_levels)
                     else:
-                        if not is_body_ok:
-                            self._dbg(f"❌ [ОТМЕНА] Тело свечи рыхлое (< {self.CONFIG['MIN_BODY_PCT']}%)")
-                        if not is_atr_ok:
-                            self._dbg(f"❌ [ОТМЕНА] Размер свечи ({high_low:.4f}) меньше {self.CONFIG.get('MIN_ATR_MULT', 1.5)} ATR ({min_req_size:.4f}). Это не импульс.")
-
-            # Обновляем память в конце шага
+                        if not is_vol_ok:
+                            self._dbg(f"❌ [ОТМЕНА ВХОДА] Не хватило объема ({self._fmt(c_vol)} < {self._fmt(need_vol)})")
+                        elif not is_body_ok:
+                            self._dbg(f"❌ [ОТМЕНА ВХОДА] Рыхлое тело ({body_pct:.1f}% < {self.CONFIG['MIN_BODY_PCT']}%)")
+                        elif not is_atr_ok:
+                            self._dbg(f"❌ [ОТМЕНА ВХОДА] Свеча слишком мелкая (< {self.CONFIG['MIN_ATR_MULT']} ATR)")
+                else:
+                    # Если прошло больше 10 свечей, просто молча скипаем и ждем новую панику или яму
+                    self._dbg(f"⏳ [БЛОК ВХОДА] Прошло {self.bars_since_low} св. Окно входа для этой ямы закрыто.")
+            
             self.prev_is_red = is_red
-            self.prev_red_vol = float(c_vol) if is_red else 0.0
             self.prev_low = float(c_low)
             return None
 
         return None
+       
 
     def _enter(self, c_low, c_close, all_opposite_levels):
         self.state = "TRIGGERED"
