@@ -6,14 +6,15 @@ class VGreenBottomWatcher:
         'RED_TRIGGER_MULT': 2.0,      # Во сколько раз объем первой красной свечи должен превысить средний (avg_vol), чтобы капкан активировался и засчитал старт Ямы №1.
         'MIN_BODY_PCT': 60.0,         # Минимальная плотность тела зеленой свечи. Тело (от Open до Close) должно занимать не менее 60% от всей длины свечи (от Low до High). Отсекает доджи и свечи с огромными тенями сверху.
         'BREATH_BUFFER_PCT': 1.5,     # Буфер отмены (зона дыхания). Если цена до начала падения улетит вверх на 1.5% выше верхней границы твоего уровня — капкан сбрасывается (убивается).
-        'MIN_DUMP_VOL_PCT': 85.0,     # Требование к объему зеленой свечи. Она должна набрать минимум 85% от максимального объема падающей красной свечи в текущей яме (trigger_dump_vol).
-        'MIN_ATR_MULT': 1.5,  
-        # Минимальный физический размер зеленой свечи (High - Low). Она должна быть больше среднего ATR минимум в 1.5 раза. Отсекает рыночный микро-шум.
+        'MIN_DUMP_VOL_PCT': 50.0,     # Требование к объему зеленой свечи. Она должна набрать минимум 85% от максимального объема падающей красной свечи в текущей яме (trigger_dump_vol).
+        'MIN_ATR_MULT': 1.5,          # Минимальный физический размер зеленой свечи (High - Low). Она должна быть больше среднего ATR минимум в 1.5 раза. Отсекает рыночный микро-шум.
         
         # --- НАСТРОЙКИ СТРУКТУРЫ ---
+        'MIN_BREAKDOWN_PCT': 2.0,     # На сколько процентов цена должна пробить старое дно, чтобы начать новую яму
         'MIN_PITS_TO_ARM': 3,         # Начиная с какой по счету ямы бот включает радар и начинает сканировать каждую зеленую свечу на дне.
         'MIN_PULLBACK_PCT': 3.0,      # Фильтр структуры. На сколько процентов цена должна физически отскочить от локального дна вверх, чтобы бот признал отскок состоявшимся и позволил начать следующую яму при пробое.
-        'MAX_BARS_IN_PIT': 10,        # Максимальное количество свечей в яме.   
+        'MAX_BARS_IN_PIT': 10, 
+        'MAX_PREV_RED_BODY_PCT': 40.0, #  Максимальный размер тела предыдущей красной свечи (в %)# Максимальное количество свечей в яме.   
         'TP_MODE': 'fixed_pct',
         'FIXED_TP_PCT': 10.0,
         'TAKE_PROFIT': 10.0,
@@ -38,12 +39,14 @@ class VGreenBottomWatcher:
         self.highest_since_low = 0.0    
         self.pullback_confirmed = False 
         self.trigger_dump_vol = 0.0
-        self.bars_since_low = 0         # <-- ДОБАВИЛИ: Таймер свечей на дне
+        self.bars_since_low = 0         #  Таймер свечей на дне
+        self.locked_pit_low = 0.0   
 
         # --- Память для предыдущей свечи ---
         self.prev_is_red = False
         self.prev_red_vol = 0.0
         self.prev_low = 0.0
+        self.prev_body_pct = 0.0
 
         # --- Служебные переменные ---
         self.sl_price: float | None = None
@@ -83,6 +86,11 @@ class VGreenBottomWatcher:
         self.prev_low = 0.0
         self.history_log = ""
         self.last_event_type = None
+        
+        self.prev_body_pct = 0.0
+        
+        self.locked_pit_low = 0.0  # 
+        self.bars_since_low = 0    # 
 
     def on_breach_start(self):
         if self.state in ("DEAD", "TRIGGERED"):
@@ -112,7 +120,8 @@ class VGreenBottomWatcher:
             if is_red and c_vol >= (baseline_vol * self.CONFIG['RED_TRIGGER_MULT']):
                 self.state = "TRACKING_PIT"
                 self.pits_count = 1
-                self.current_pit_low = float(c_low)     
+                self.current_pit_low = float(c_low)
+                self.locked_pit_low = float(c_low)    # <-- ФИКСИРУЕМ СТРУКТУРНОЕ ДНО
                 self.pit_ceiling = float(c_high)
                 self.highest_since_low = float(c_high)
                 self.pullback_confirmed = False
@@ -131,25 +140,42 @@ class VGreenBottomWatcher:
             if is_red and not self.pullback_confirmed:
                 self.last_event_type = "PIT"
 
-            # 1. ЕСЛИ ЦЕНА ОБНОВЛЯЕТ ДНО (Летим ниже)
+            # 1. ЕСЛИ ЦЕНА ОБНОВЛЯЕТ ЛОКАЛЬНОЕ ДНО (Летим ниже)
             if float(c_low) < self.current_pit_low:
-                self.bars_since_low = 0  # <-- НОВОЕ ДНО: СБРАСЫВАЕМ ТАЙМЕР
+                self.bars_since_low = 0  # <-- НОВОЕ ДНО: СБРАСЫВАЕМ ТАЙМЕР ВХОДА
                 
-                # Новая яма засчитывается ТОЛЬКО если до этого цена отскочила на нужный процент
                 if self.pullback_confirmed:
-                    self.pits_count += 1
-                    bounce_pct = (self.highest_since_low - self.current_pit_low) / self.current_pit_low * 100.0 if self.current_pit_low > 0 else 0.0
-                    self.trigger_dump_vol = float(c_vol) if is_red else 0.0
-                    self.last_event_type = "PIT" 
-                    self._dbg(f"📉 ЯМА №{self.pits_count}. Отскок {bounce_pct:.1f}%")
+                    # Считаем границу НАСТОЯЩЕГО пробоя (-2% от зафиксированного дна ямы)
+                    breakdown_target = self.locked_pit_low * (1 - self.CONFIG.get('MIN_BREAKDOWN_PCT', 2.0) / 100.0)
+                    
+                    if float(c_low) <= breakdown_target:
+                        # НАСТОЯЩИЙ ПРОБОЙ
+                        self.pits_count += 1
+                        bounce_pct = (self.highest_since_low - self.locked_pit_low) / self.locked_pit_low * 100.0 if self.locked_pit_low > 0 else 0.0
+                        self.trigger_dump_vol = float(c_vol) if is_red else 0.0
+                        self.last_event_type = "PIT" 
+                        self._dbg(f"📉 ЯМА №{self.pits_count} (Пробой > {self.CONFIG.get('MIN_BREAKDOWN_PCT')}%). Отскок был {bounce_pct:.1f}%")
+                        
+                        # Фиксируем новое структурное дно и сбрасываем отскок
+                        self.locked_pit_low = float(c_low)
+                        self.pullback_confirmed = False 
+                    else:
+                        # ЗАКОЛ: Дно пробили, но недостаточно глубоко. Счечик ям НЕ трогаем.
+                        if is_red:
+                            self.trigger_dump_vol = max(self.trigger_dump_vol, float(c_vol))
+                        self._dbg(f"⚠️ ЗАКОЛ: Лой {c_low:.4f}, ждем пробоя ниже {breakdown_target:.4f}")
                 else:
+                    # Мы всё еще падаем в рамках текущей ямы, отскока еще не было.
+                    # Тянем структурное дно за ценой вниз.
+                    self.locked_pit_low = float(c_low)
                     if is_red:
                         self.trigger_dump_vol = max(self.trigger_dump_vol, float(c_vol))
                 
-                # Обновляем дно и сбрасываем трекеры
+                # В ЛЮБОМ СЛУЧАЕ (и при пробое, и при заколе) сдвигаем локальное дно под новый уровень
+                # чтобы будущий 3% отскок считался от самой нижней точки
                 self.current_pit_low = float(c_low)
                 self.highest_since_low = float(c_high)
-                self.pullback_confirmed = False 
+            
             
             # 2. ЕСЛИ ЦЕНА НЕ ПРОБИВАЕТ ДНО (Флэт или рост)
             else:
@@ -182,26 +208,42 @@ class VGreenBottomWatcher:
 
                     min_req_size = safe_atr * self.CONFIG.get('MIN_ATR_MULT', 1.5)
                     is_atr_ok = high_low >= min_req_size
+                    
+                    # ПРОВЕРКА ПРЕДЫДУЩЕЙ СВЕЧИ: Должна быть красной И не слишком плотной
+                    max_red_body = self.CONFIG.get('MAX_PREV_RED_BODY_PCT', 40.0)
+                    is_prev_red_ok = self.prev_is_red and (self.prev_body_pct <= max_red_body)
 
-                    self._dbg(f"🔍 [ТЕСТ ВХОДА] Яма:{self.pits_count} | Vol:{self._fmt(c_vol)} (надо>{self._fmt(need_vol)}) | Плотн:{body_pct:.1f}%")
+                    self._dbg(f"🔍 [ТЕСТ ВХОДА] Яма:{self.pits_count} | Vol:{self._fmt(c_vol)} (надо>{self._fmt(need_vol)}) | Плотн:{body_pct:.1f}% | Пред.Красн(Тело): {self.prev_body_pct:.1f}% (надо<={max_red_body}%) -> {is_prev_red_ok}")
 
-                    if is_vol_ok and is_body_ok and is_atr_ok:
+                    # Вход только если сошлись ВСЕ 4 фильтра
+                    if is_vol_ok and is_body_ok and is_atr_ok and is_prev_red_ok:
                         self.last_event_type = "GOOD_GREEN" 
                         self.history_log += f" -> Вход(Яма {self.pits_count}):{self._fmt(c_vol)}"
                         return self._enter(c_low, c_close, all_opposite_levels)
                     else:
+                        # Логируем причину отмены
                         if not is_vol_ok:
                             self._dbg(f"❌ [ОТМЕНА ВХОДА] Не хватило объема ({self._fmt(c_vol)} < {self._fmt(need_vol)})")
                         elif not is_body_ok:
-                            self._dbg(f"❌ [ОТМЕНА ВХОДА] Рыхлое тело ({body_pct:.1f}% < {self.CONFIG['MIN_BODY_PCT']}%)")
+                            self._dbg(f"❌ [ОТМЕНА ВХОДА] Рыхлое тело зел. ({body_pct:.1f}% < {self.CONFIG['MIN_BODY_PCT']}%)")
                         elif not is_atr_ok:
-                            self._dbg(f"❌ [ОТМЕНА ВХОДА] Свеча слишком мелкая (< {self.CONFIG['MIN_ATR_MULT']} ATR)")
+                            self._dbg(f"❌ [ОТМЕНА ВХОДА] Зел. свеча слишком мелкая (< {self.CONFIG['MIN_ATR_MULT']} ATR)")
+                        elif not is_prev_red_ok:
+                            if not self.prev_is_red:
+                                self._dbg(f"❌ [ОТМЕНА ВХОДА] Перед зеленой была НЕ красная свеча")
+                            else:
+                                self._dbg(f"❌ [ОТМЕНА ВХОДА] Пред. красная слишком плотная (Тело {self.prev_body_pct:.1f}% > {max_red_body}%)")
                 else:
                     # Если прошло больше 10 свечей, просто молча скипаем и ждем новую панику или яму
                     self._dbg(f"⏳ [БЛОК ВХОДА] Прошло {self.bars_since_low} св. Окно входа для этой ямы закрыто.")
             
             self.prev_is_red = is_red
             self.prev_low = float(c_low)
+            # Вычисляем и запоминаем процент тела текущей свечи
+            hl = float(c_high - c_low)
+            bdy = abs(float(c_close - c_open))
+            self.prev_body_pct = (bdy / hl * 100.0) if hl > 0 else 0.0
+            
             return None
 
         return None
