@@ -52,12 +52,12 @@ GLOBAL_SKIPPED_COINS = []
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "AAVE"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "SOL"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
 
-TEST_START_DATE = "2026-02-01 00:00:00"
+TEST_START_DATE = "2026-05-01 00:00:00"
 WARMUP_DAYS = 18  
 MIN_LEVEL_SCORE = 1.0
 
@@ -176,7 +176,6 @@ class SmartSniperUniversal(Strategy):
                     self.manager.clear_dead_watchers(current_level_ids)
                     
             elif STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM"):
-                print(f"🗓️ [ПЕРИОД {period_key}] ОТСУТСТВУЕТ в GLOBAL_TIMELINE вообще (нет данных на этот период)")
                 self.current_period_key = period_key
 
         # Отрисовка уровней на графике (БЕЗ МУСОРНЫХ СТУПЕНЕК)

@@ -5,6 +5,7 @@ import os
 
 # Импорт базовых инструментов
 from modules.cryptano.utils.storage import load_json
+from modules.cryptano.utils.common import KNOWN_TICKER_ALIASES
 from modules.cryptano.critical_filter import scan_market, format_results
 from modules.cryptano.light_filter import _execute_scan_cycle
 from modules.cryptano.utils.coin_generators import update_momentum_watchlist
@@ -113,7 +114,7 @@ def crypto_orchestrator(bot, admin_chat_id):
                 
                 try:
                     from modules.cryptano.live_scan import _load_watchlist, _save_watchlist, watcher_cooldown_cache, _watcher_lock, AUTO_REMOVE_AFTER_SIGNAL, COOLDOWN_HOURS, v_bottom_mgr
-                    from modules.cryptano.watcher_plan import check_manual_extreme, check_v_bottom
+                    from modules.cryptano.watcher_plan import check_manual_extreme, check_v_bottom, check_v_green_bottom
                     
                     wl = _load_watchlist()
                     if wl:
@@ -129,6 +130,11 @@ def crypto_orchestrator(bot, admin_chat_id):
                                 sfp_signals = 0
                                 vbottom_signals = 0
                                 vbottom_levels_checked = 0
+                                vgb_signals = 0
+                                vgb_levels_checked = 0
+                                active_level_ids = set()  # для clear_dead_watchers в конце скана
+                                macro_path = os.path.join(os.path.dirname(__file__), "modules", "cryptano", "macro_levels.json")
+                                macro_db = load_json(macro_path, default={})
                                 
                                 for coin, data in list(wl.items()):
                                     total_scanned += 1
@@ -136,6 +142,19 @@ def crypto_orchestrator(bot, admin_chat_id):
                                     source = data.get("source", "Manual") 
                                     
                                     dirs = ["LONG", "SHORT"] if data["direction"] == "ANY" else [data["direction"]]
+
+                                    # Собираем актуальные level_id этой монеты (не зависит от кулдауна —
+                                    # даже если сейчас скипнем по кулдауну, уровень всё равно "живой")
+                                    coin_macro = macro_db.get(coin) or macro_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
+                                    if coin_macro:
+                                        if "LONG" in dirs:
+                                            for lvl in coin_macro.get("supports", []):
+                                                active_level_ids.add(f"VB_LONG_{lvl['min']}_{lvl['max']}")
+                                                active_level_ids.add(f"VGB_LONG_{lvl['min']}_{lvl['max']}")
+                                        if "SHORT" in dirs:
+                                            for lvl in coin_macro.get("resistances", []):
+                                                active_level_ids.add(f"VB_SHORT_{lvl['min']}_{lvl['max']}")
+
                                     for d in dirs:
                                         if f"{coin}_{d}" in watcher_cooldown_cache: continue
                                         
@@ -149,7 +168,7 @@ def crypto_orchestrator(bot, admin_chat_id):
                                             coin_signal_found = True
                                             bot.send_message(admin_chat_id, report, parse_mode="Markdown")
 
-                                        # --- 2. V-BOTTOM стратегия (новая, тестово) ---
+                                        # --- 2. V-BOTTOM стратегия ---
                                         # Проверяем НЕЗАВИСИМО от результата SFP — если сработали обе, шлём обе
                                         v_is_ready, v_report, v_levels = check_v_bottom(coin, d, v_bottom_mgr)
                                         vbottom_levels_checked += v_levels
@@ -158,6 +177,16 @@ def crypto_orchestrator(bot, admin_chat_id):
                                             vbottom_signals += 1
                                             coin_signal_found = True
                                             bot.send_message(admin_chat_id, v_report, parse_mode="Markdown")
+
+                                        # --- 3. V-GREEN-BOTTOM стратегия (в паре с V-BOTTOM, один менеджер на двоих) ---
+                                        # Только LONG — функция сама пропускает SHORT без обращения к бирже
+                                        vgb_is_ready, vgb_report, vgb_levels = check_v_green_bottom(coin, d, v_bottom_mgr)
+                                        vgb_levels_checked += vgb_levels
+                                        if vgb_report and not vgb_report.startswith("❌") and not vgb_report.startswith("⚠️") and vgb_is_ready:
+                                            signals_found += 1
+                                            vgb_signals += 1
+                                            coin_signal_found = True
+                                            bot.send_message(admin_chat_id, vgb_report, parse_mode="Markdown")
 
                                         if coin_signal_found:
                                             watcher_cooldown_cache[f"{coin}_{d}"] = now_dt
@@ -170,11 +199,19 @@ def crypto_orchestrator(bot, admin_chat_id):
                                     for c in set(coins_to_remove):
                                         if c in current_wl: del current_wl[c]
                                     _save_watchlist(current_wl)
+
+                                # Чистим вотчеров мёртвых/отработавших уровней, которых больше нет
+                                # в актуальном macro_levels.json — иначе память растёт бесконечно
+                                before_count = v_bottom_mgr.watcher_count()
+                                v_bottom_mgr.clear_dead_watchers(active_level_ids)
+                                cleared_count = before_count - v_bottom_mgr.watcher_count()
                                     
                                 # 🚀 ФИНАЛЬНЫЙ ПРИНТ СО СТАТИСТИКОЙ (общий + отдельно по каждой стратегии)
                                 print(f"✅ [DISPATCHER] Анализ прошел. Монет просканировано: {total_scanned} | Сигналов найдено: {signals_found}")
                                 print(f"   -> SFP: Сигналов найдено: {sfp_signals}")
                                 print(f"   -> V_BOTTOM: Уровней оценено: {vbottom_levels_checked} | Сделок найдено: {vbottom_signals}")
+                                print(f"   -> V_GREEN_BOTTOM: Уровней оценено: {vgb_levels_checked} | Сделок найдено: {vgb_signals}")
+                                print(f"   -> Очистка: удалено вотчеров {cleared_count}, осталось в памяти {v_bottom_mgr.watcher_count()}")
                                 
                             finally:
                                 _watcher_lock.release()

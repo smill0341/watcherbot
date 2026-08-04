@@ -1,26 +1,20 @@
 # -*- coding: utf-8 -*-
-from .watcher_methods import _calc_tp_and_rr
+from .risk_calc import calc_tp_and_rr
 
 class VGreenBottomWatcher:
     CONFIG = {
         'RED_TRIGGER_MULT': 2.0,      # Во сколько раз объем первой красной свечи должен превысить средний (avg_vol), чтобы капкан активировался и засчитал старт Ямы №1.
         'MIN_BODY_PCT': 60.0,         # Минимальная плотность тела зеленой свечи. Тело (от Open до Close) должно занимать не менее 60% от всей длины свечи (от Low до High). Отсекает доджи и свечи с огромными тенями сверху.
         'BREATH_BUFFER_PCT': 1.5,     # Буфер отмены (зона дыхания). Если цена до начала падения улетит вверх на 1.5% выше верхней границы твоего уровня — капкан сбрасывается (убивается).
-        'MIN_DUMP_VOL_PCT': 60.0,     # Требование к объему зеленой свечи. Она должна набрать минимум % от максимального объема падающей красной свечи в текущей яме (trigger_dump_vol).
+        'MIN_DUMP_VOL_PCT': 65.0,     # Требование к объему зеленой свечи. Она должна набрать минимум 85% от максимального объема падающей красной свечи в текущей яме (trigger_dump_vol).
         'MIN_ATR_MULT': 1.5, 
-        'MIN_PREV_RED_TOP_WICK_PCT': 4.0, # Верхняя тень красной свечи минимум 5% от ее длины 
-        'MIN_CLOSE_MARGIN_PCT': 0.3,      # Мин. зазор закрытия (0.2% выше открытия красной)
-        
-        # --- НАСТРОЙКИ PRICE ACTION (СКИДКА НА ОБЪЕМ) ---
-        'BASE_LOCAL_VOL_PCT': 90.0,           # Базовое требование: объем зеленой >= 90% от красной
-        'ENGULFING_BODY_EXCESS_PCT': 30.0,    # На сколько % тело зеленой должно быть больше тела красной
-        'ENGULFING_MAX_RED_BODY_PCT': 30.0,   # Макс. плотность красной свечи (условие истощения продавца)
-        'ENGULFING_MIN_GREEN_BODY_PCT': 70.0, # Мин. плотность зеленой свечи (монолитность покупателя)
+        'MIN_PREV_RED_TOP_WICK_PCT': 5.0, # Верхняя тень красной свечи минимум 5% от ее длины 
+        'MIN_CLOSE_MARGIN_PCT': 0.2,      # Мин. зазор закрытия (0.2% выше открытия красной)
         
         # --- НАСТРОЙКИ КУЛЬМИНАЦИИ (АНОМАЛЬНЫЙ ОБЪЕМ) ---
-        'CLIMAX_VOL_MULT': 40.0,      # Во сколько раз объем должен превысить базовый для старта Кульминации
-        'CLIMAX_MAX_BARS': 5,         # Сколько свечей даем на перекрытие тела
-        'MIN_CLIMAX_VOL_USD': 1000000.0, #  1 МЛН ДОЛЛАРОВ
+        'CLIMAX_VOL_MULT': 50.0,      # Во сколько раз объем должен превысить базовый для старта Кульминации
+        'CLIMAX_MAX_BARS': 5,         # Сколько свечей даем на перекрытие тела# Минимальный физический размер зеленой свечи (High - Low). Она должна быть больше среднего ATR минимум в 1.5 раза. Отсекает рыночный микро-шум.
+        'MIN_CLIMAX_VOL_USD': 1000000.0, # <-- МИНИМУМ 1 МЛН ДОЛЛАРОВ
         
         # --- НАСТРОЙКИ СТРУКТУРЫ ---
         'MIN_BREAKDOWN_PCT': 1.8,     # На сколько процентов цена должна пробить старое дно, чтобы начать новую яму
@@ -68,8 +62,6 @@ class VGreenBottomWatcher:
         self.prev_body_pct = 0.0
         self.prev_top_shadow_pct = 0.0
         self.prev_open = 0.0
-        self.prev_abs_body = 0.0
-        
 
         # --- Служебные переменные ---
         self.sl_price: float | None = None
@@ -113,7 +105,6 @@ class VGreenBottomWatcher:
         
         self.prev_body_pct = 0.0
         self.prev_top_shadow_pct = 0.0
-        self.prev_abs_body = 0.0
         
         self.locked_pit_low = 0.0  # 
         self.bars_since_low = 0    # 
@@ -225,6 +216,7 @@ class VGreenBottomWatcher:
                         # ЗАКОЛ: Дно пробили, но недостаточно глубоко. Счечик ям НЕ трогаем.
                         if is_red:
                             self.trigger_dump_vol = max(self.trigger_dump_vol, float(c_vol))
+                        self._dbg(f"⚠️ ЗАКОЛ: Лой {c_low:.4f}, ждем пробоя ниже {breakdown_target:.4f}")
                 else:
                     # Мы всё еще падаем в рамках текущей ямы, отскока еще не было.
                     # Тянем структурное дно за ценой вниз.
@@ -259,124 +251,72 @@ class VGreenBottomWatcher:
                 if self.bars_since_low <= self.CONFIG.get('MAX_BARS_IN_PIT', 10):
                     self.last_event_type = "SCAN" 
                     
-                    # ==========================================================
-                    # 0. БАЗОВЫЕ ФИЛЬТРЫ (ОБЩИЕ ДЛЯ ОБОИХ МЕТОДОВ)
-                    # ==========================================================
                     need_vol = self.trigger_dump_vol * (self.CONFIG.get('MIN_DUMP_VOL_PCT', 100.0) / 100.0)
-                    
+                    is_vol_ok = c_vol >= need_vol
+
                     high_low = float(c_high - c_low)
                     body = float(c_close - c_open)
                     body_pct = (body / high_low * 100.0) if high_low > 0 else 0.0
-                    
+                    is_body_ok = body_pct >= self.CONFIG['MIN_BODY_PCT']
+
                     min_req_size = safe_atr * self.CONFIG.get('MIN_ATR_MULT', 1.5)
                     is_atr_ok = high_low >= min_req_size
                     
+                    # ПРОВЕРКА ПРЕДЫДУЩЕЙ СВЕЧИ: Должна быть красной, не слишком плотной И иметь тень сверху
+                    max_red_body = self.CONFIG.get('MAX_PREV_RED_BODY_PCT', 50.0)
+                    min_top_wick = self.CONFIG.get('MIN_PREV_RED_TOP_WICK_PCT', 5.0)
+                    
+                    is_prev_red_ok = self.prev_is_red and (self.prev_body_pct <= max_red_body) and (self.prev_top_shadow_pct >= min_top_wick)
+
+                    # <-- УСЛОВИЕ ОБЪЕМА: Объем зеленой >= 90% от предыдущей красной
+                    is_local_vol_ok = c_vol >= (self.prev_red_vol * 0.9)
+
+                    # <-- НОВОЕ УСЛОВИЕ ЗАЗОРА: Закрытие строго на X% выше открытия красной
                     min_margin_pct = self.CONFIG.get('MIN_CLOSE_MARGIN_PCT', 0.2)
                     target_close = self.prev_open * (1 + (min_margin_pct / 100.0)) if self.prev_open > 0 else 0.0
                     is_margin_ok = float(c_close) >= target_close
 
-                    max_red_body = self.CONFIG.get('MAX_PREV_RED_BODY_PCT', 50.0)
-                    min_top_wick = self.CONFIG.get('MIN_PREV_RED_TOP_WICK_PCT', 5.0)
-                    is_prev_red_ok = self.prev_is_red and (self.prev_body_pct <= max_red_body) and (self.prev_top_shadow_pct >= min_top_wick)
+                    self._dbg(f"🔍 [ТЕСТ ВХОДА] Яма:{self.pits_count} | Vol:{self._fmt(c_vol)} | Зазор(>={min_margin_pct}%): {is_margin_ok} | Плотн:{body_pct:.1f}% | Пред.Красн(Тело {self.prev_body_pct:.1f}%) -> {is_prev_red_ok}")
 
-                    # ==========================================================
-                    # ВЕТКА А: СТАНДАРТНЫЙ МЕТОД (ЕСЛИ ЕСТЬ ОБЪЕМ)
-                    # ==========================================================
-                    is_vol_ok = c_vol >= need_vol
-                    base_local_vol_pct = self.CONFIG.get('BASE_LOCAL_VOL_PCT', 90.0)
-                    is_local_vol_ok = c_vol >= (self.prev_red_vol * (base_local_vol_pct / 100.0))
-                    is_body_ok_std = body_pct >= self.CONFIG['MIN_BODY_PCT']
-                    
-                    is_standard_pass = (is_vol_ok and is_local_vol_ok and is_body_ok_std and 
-                                        is_atr_ok and is_prev_red_ok and is_margin_ok)
-
-                    # ==========================================================
-                    # ВЕТКА Б: ЧИТ-КОД ПОГЛОЩЕНИЯ (ЕСЛИ ОБЪЕМА НЕТ)
-                    # ==========================================================
-                    green_body = body
-                    red_body = self.prev_abs_body
-                    
-                    is_engulfing_close = float(c_close) > self.prev_open 
-                    engulfing_excess = self.CONFIG.get('ENGULFING_BODY_EXCESS_PCT', 30.0) / 100.0
-                    is_body_larger = green_body >= (red_body * (1.0 + engulfing_excess)) 
-                    
-                    max_eng_red_body = self.CONFIG.get('ENGULFING_MAX_RED_BODY_PCT', 25.0)
-                    is_red_exhausted = self.prev_body_pct <= max_eng_red_body 
-                    
-                    min_eng_green_body = self.CONFIG.get('ENGULFING_MIN_GREEN_BODY_PCT', 80.0)
-                    is_green_solid = body_pct >= min_eng_green_body 
-                    
-                    # Чит-код сработает ТОЛЬКО если стандартная ветка провалена по объему
-                    is_cheat_pass = False
-                    if not is_standard_pass:
-                        is_cheat_pass = (is_engulfing_close and is_body_larger and 
-                                         is_red_exhausted and is_green_solid and 
-                                         is_atr_ok and is_margin_ok and self.prev_is_red)
-
-                    # ==========================================================
-                    # ИТОГОВЫЙ ШЛЮЗ И ЧИСТОЕ ЛОГИРОВАНИЕ
-                    # ==========================================================
-                    if is_standard_pass or is_cheat_pass:
+                    # Вход только если сошлись ВСЕ 6 фильтров (добавили is_margin_ok)
+                    if is_vol_ok and is_body_ok and is_atr_ok and is_prev_red_ok and is_local_vol_ok and is_margin_ok:
                         self.last_event_type = "GOOD_GREEN" 
-                        
-                        actual_atr = high_low / safe_atr
-                        
-                        if is_cheat_pass:
-                            # Сработал Прайс-Экшен (Метод Б)
-                            excess_pct = ((green_body / red_body) - 1.0) * 100 if red_body > 0 else 999.0
-                            req_excess = self.CONFIG.get('ENGULFING_BODY_EXCESS_PCT', 30.0)
-                            
-                            self.history_log += f" -> Вход(Яма {self.pits_count}): Метод Б"
-                            self._dbg(f"✅ ВХОД - Б: Поглощение ({excess_pct:.1f}% >= {req_excess}%), зел.тело ({body_pct:.1f}% >= {min_eng_green_body}%), кр.тело ({self.prev_body_pct:.1f}% <= {max_eng_red_body}%), ATR {actual_atr:.1f} >= {self.CONFIG.get('MIN_ATR_MULT', 1.5)}")
-                        else:
-                            # Сработал Объемный метод (Метод А)
-                            local_vol_pct = (c_vol / self.prev_red_vol * 100) if self.prev_red_vol > 0 else 999.0
-                            
-                            self.history_log += f" -> Вход(Яма {self.pits_count}): Метод А"
-                            self._dbg(f"✅ ВХОД - А: Объем ({self._fmt(c_vol)} >= {self._fmt(need_vol)}), тело ({body_pct:.1f}% >= {self.CONFIG['MIN_BODY_PCT']}%), тень ({self.prev_top_shadow_pct:.1f}% >= {min_top_wick}%), ATR {actual_atr:.1f} >= {self.CONFIG.get('MIN_ATR_MULT', 1.5)}, Local {local_vol_pct:.0f}% >= {base_local_vol_pct}%")
-                            
+                        self.history_log += f" -> Вход(Яма {self.pits_count}):{self._fmt(c_vol)}"
                         return self._enter(c_low, c_close, all_opposite_levels)
-                        
                     else:
-                        # Подробный логгер отмен для каждой желтой свечи
-                        fail_reasons = []
-                        
-                        # Проверяем объем
-                        if not is_vol_ok and not is_local_vol_ok:
-                            fail_reasons.append(f"объем мал (loc:{c_vol/self.prev_red_vol*100:.0f}% < {base_local_vol_pct}%)")
-                        
-                        # Проверяем плотность тела (Метод А)
-                        if not is_body_ok_std:
-                            fail_reasons.append(f"рыхлое тело ({body_pct:.1f}% < {self.CONFIG['MIN_BODY_PCT']}%)")
-                            
-                        # Проверяем ATR (размер свечи)
-                        if not is_atr_ok:
-                            fail_reasons.append(f"маленький ATR ({high_low:.4f} < {min_req_size:.4f})")
-                            
-                        # Проверяем тень предыдущей красной
-                        if not is_prev_red_ok:
-                            fail_reasons.append(f"у красной нет тени (тень {self.prev_top_shadow_pct:.1f}% < {min_top_wick}%)")
-                            
-                        # Проверяем Метод Б (почему не сработал чит-код, если объема не было)
-                        if not is_standard_pass and not is_cheat_pass:
-                            if not is_engulfing_close:
-                                fail_reasons.append("не перекрыла открытие красной")
+                        # Логируем причину отмены
+                        if not is_vol_ok:
+                            self._dbg(f"❌ [ОТМЕНА ВХОДА] Не хватило глобального объема ({self._fmt(c_vol)} < {self._fmt(need_vol)})")
+                        elif not is_local_vol_ok:
+                            self._dbg(f"❌ [ОТМЕНА ВХОДА] Зеленая слабее пред. красной ({self._fmt(c_vol)} < {self._fmt(self.prev_red_vol * 0.9)})")
+                        elif not is_margin_ok:
+                            self._dbg(f"❌ [ОТМЕНА ВХОДА] Нет зазора пробоя (Закрытие {float(c_close):.4f} < Цели {target_close:.4f})")
+                        elif not is_body_ok:
+                            self._dbg(f"❌ [ОТМЕНА ВХОДА] Рыхлое тело зел. ({body_pct:.1f}% < {self.CONFIG['MIN_BODY_PCT']}%)")
+                        elif not is_atr_ok:
+                            self._dbg(f"❌ [ОТМЕНА ВХОДА] Зел. свеча слишком мелкая (< {self.CONFIG['MIN_ATR_MULT']} ATR)")
+                        elif not is_prev_red_ok:
+                            if not self.prev_is_red:
+                                self._dbg(f"❌ [ОТМЕНА ВХОДА] Перед зеленой была НЕ красная свеча")
+                            elif self.prev_body_pct > max_red_body:
+                                self._dbg(f"❌ [ОТМЕНА ВХОДА] Пред. красная слишком плотная (Тело {self.prev_body_pct:.1f}% > {max_red_body}%)")
                             else:
-                                fail_reasons.append("Метод Б: не хватило избытка тела или плотности")
-
-                        reasons_str = ", ".join(fail_reasons) if fail_reasons else "неизвестная причина"
-                        self._dbg(f"🟡 ЖЕЛТАЯ СВЕЧА ОТМЕНЕНА: {reasons_str}")
+                                self._dbg(f"❌ [ОТМЕНА ВХОДА] У пред. красной нет верхней тени (Тень {self.prev_top_shadow_pct:.1f}% < {min_top_wick}%)")
+                else:
+                    # Если прошло больше 10 свечей, просто молча скипаем и ждем новую панику или яму
+                    self._dbg(f"⏳ [БЛОК ВХОДА] Прошло {self.bars_since_low} св. Окно входа для этой ямы закрыто.")
             
             self.prev_is_red = is_red
             self.prev_low = float(c_low)
-            self.prev_open = float(c_open) 
+            self.prev_open = float(c_open) #  Запоминаем цену открытия красной свечи
             self.prev_red_vol = float(c_vol) if is_red else 0.0
             
+            # Вычисляем и запоминаем процент тела и верхней тени текущей свечи
             hl = float(c_high - c_low)
             bdy = abs(float(c_close - c_open))
-            self.prev_abs_body = bdy  
             self.prev_body_pct = (bdy / hl * 100.0) if hl > 0 else 0.0
             
+            # Если свеча красная, верхняя тень это расстояние от High до Open
             if is_red and hl > 0:
                 self.prev_top_shadow_pct = (float(c_high - c_open) / hl * 100.0)
             else:
@@ -396,7 +336,7 @@ class VGreenBottomWatcher:
 
         self._dbg(f"🚪 Попытка входа! Entry: {actual_entry:.4f}, SL: {actual_sl:.4f}")
 
-        risk_data, err = _calc_tp_and_rr(actual_entry, actual_sl, self.trade_type, all_opposite_levels, self.CONFIG)
+        risk_data, err = calc_tp_and_rr(actual_entry, actual_sl, self.trade_type, all_opposite_levels, self.CONFIG)
         if err or not risk_data:
             self.state = "DEAD"
             self._dbg(f"❌ Калькулятор УБИЛ сделку: {err}")

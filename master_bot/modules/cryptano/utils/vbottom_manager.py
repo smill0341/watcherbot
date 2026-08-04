@@ -8,17 +8,21 @@ vbottom_manager.py
 """
 
 from .v_bottom_watcher import VBottomWatcher
+from .v_green_bottom_watcher import VGreenBottomWatcher
 
 
 class VBottomManager:
-    """Менеджер вотчеров для V-BOTTOM стратегии."""
+    """Менеджер вотчеров для V-BOTTOM и V-GREEN-BOTTOM стратегий (работают в паре)."""
     
     def __init__(self):
-        self._watchers = {}  # {level_id: VBottomWatcher}
+        self._watchers = {}  # {level_id: Watcher}
 
-    def _level_id(self, level, trade_type):
-        """Генерирует уникальный ID уровня для реестра вотчеров."""
-        return f"{trade_type}_{level['min']}_{level['max']}"
+    def _level_id(self, level, trade_type, strategy="VB"):
+        """Генерирует уникальный ID уровня для реестра вотчеров.
+        Префикс стратегии обязателен — иначе V_BOTTOM и V_GREEN_BOTTOM
+        на одном и том же уровне столкнутся в одном словаре и будут
+        портить друг другу состояние (разные классы, разные state-машины)."""
+        return f"{strategy}_{trade_type}_{level['min']}_{level['max']}"
 
     def _deny(self, reason):
         """Стандартный формат отказа."""
@@ -37,17 +41,21 @@ class VBottomManager:
         Вызывается в момент пробития уровня (новый заход).
         Если вотчер уже существует — сбрасываем его математику.
         """
-        level_id = self._level_id(level, trade_type)
+        level_id = self._level_id(level, trade_type, "VB")
         watcher = self._watchers.get(level_id)
         if watcher is not None and hasattr(watcher, 'on_breach_start'):
             watcher.on_breach_start()
 
     def force_reset_watcher(self, level, trade_type):
         """Жестко сбрасывает вотчер (цена ушла за буфер, выход из движения)."""
-        level_id = self._level_id(level, trade_type)
+        level_id = self._level_id(level, trade_type, "VB")
         watcher = self._watchers.get(level_id)
         if watcher is not None and hasattr(watcher, '_reset_chain'):
             watcher._reset_chain()
+
+    def watcher_count(self):
+        """Сколько вотчеров сейчас держим в памяти (для мониторинга/логов)."""
+        return len(self._watchers)
 
     def clear_dead_watchers(self, active_level_ids):
         """Удаляет вотчеры для уровней, которых больше нет на графике."""
@@ -77,7 +85,7 @@ class VBottomManager:
         Returns:
             dict: {'allow': True/False, 'entry_price': float, 'sl': float, 'tp': float, ...}
         """
-        level_id = self._level_id(level, trade_type)
+        level_id = self._level_id(level, trade_type, "VB")
 
         # Если это новый уровень — создаём вотчер
         if level_id not in self._watchers:
@@ -120,6 +128,66 @@ class VBottomManager:
         return {
             'allow': True,
             'reason': signal.get('reason', 'V-BOTTOM pattern detected'),
+            'entry_price': signal.get('entry_price', c_close),
+            'sl': signal.get('sl', 0.0),
+            'tp': signal.get('tp', 0.0),
+            'level_id': level_id,
+            'history_log': watcher.history_log,
+            'action': signal.get('action', 'BUY'),
+        }
+
+    def evaluate_v_green_bottom(self, level, df, trade_type, all_opposite_levels, trend='UNKNOWN', c_atr=None):
+        """
+        Проверяет V-GREEN-BOTTOM паттерн (лестница из нескольких ям + режим
+        кульминации на аномальном объёме). Работает только для LONG.
+
+        Args:
+            level: dict {'min': float, 'max': float} — уровень поддержки
+            df: DataFrame с колонками [open, high, low, close, volume] и индексом time
+            trade_type: 'LONG' или 'SHORT' (SHORT не поддерживается, отклоняется сразу)
+            all_opposite_levels: list[dict] — уровни сопротивления (для TP расчёта)
+            trend: str — тренд, пока не используется
+            c_atr: float — ATR (14, 15m) — используется для фильтра размера свечи входа
+
+        Returns:
+            dict: {'allow': True/False, 'entry_price': float, 'sl': float, 'tp': float, ...}
+        """
+        if trade_type != 'LONG':
+            return self._deny("V-GREEN-BOTTOM поддерживает только LONG")
+
+        level_id = self._level_id(level, trade_type, "VGB")
+
+        if level_id not in self._watchers:
+            self._watchers[level_id] = VGreenBottomWatcher(level['min'], level['max'], trade_type)
+
+        watcher = self._watchers[level_id]
+
+        if len(df) < 52:
+            return self._deny("Not enough data (< 52 candles)")
+
+        baseline_vol = float(df['volume'].iloc[-52:-2].mean())
+
+        c = df.iloc[-1]
+        c_open, c_high, c_low, c_close, c_vol = (
+            float(c['open']), float(c['high']), float(c['low']), float(c['close']), float(c['volume'])
+        )
+
+        candle_time = df.index[-1] if hasattr(df, 'index') else None
+
+        signal = watcher.update(
+            c_open, c_high, c_low, c_close, c_vol, baseline_vol, c_atr, all_opposite_levels,
+            trend=trend, candle_time=candle_time
+        )
+
+        if not signal:
+            return self._deny(f"No V-green-bottom signal (state: {watcher.state})")
+
+        if 'error' in signal:
+            return self._deny(signal['error'])
+
+        return {
+            'allow': True,
+            'reason': signal.get('reason', 'V-GREEN-BOTTOM pattern detected'),
             'entry_price': signal.get('entry_price', c_close),
             'sl': signal.get('sl', 0.0),
             'tp': signal.get('tp', 0.0),

@@ -9,7 +9,7 @@ from modules.cryptano.utils.crypto_utils import exchange
 # под другим базовым тикером, чем принято (например TON -> TONCOIN,
 # т.к. тикер TON изначально был занят другим проектом на бирже).
 KNOWN_TICKER_ALIASES = {
-    "TON": "TONCOIN",
+    "TON": "GRAM",  # Toncoin ребренднули в Gram 15 июня 2026, Bybit сменил пару TON/USDT -> GRAM/USDT
 }
 
 def resolve_symbol(coin, markets):

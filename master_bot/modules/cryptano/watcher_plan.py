@@ -8,7 +8,7 @@ import gc
 import traceback
 from modules.cryptano.utils.common import calculate_rsi, exchange, format_price as fmt_p, price_precision_from_market, resolve_symbol, KNOWN_TICKER_ALIASES
 from modules.cryptano.utils.market_cache import load_markets_cached
-from modules.cryptano.utils.indicators import pandas_get_local_structure
+from modules.cryptano.utils.indicators import pandas_get_local_structure, calculate_atr
 from modules.cryptano.utils.watcher_logic import analyze_extreme_pattern
 from modules.cryptano.utils.vbottom_manager import VBottomManager
 
@@ -272,3 +272,106 @@ def check_v_bottom(coin, direction, vbottom_mgr=None):
         print(f"\n[V_BOTTOM ERROR] ❌ ОШИБКА ПРИ ПРОВЕРКЕ V-BOTTOM ({coin}): {e}")
         traceback.print_exc()
         return False, f"❌ Ошибка V-BOTTOM анализа {coin}: {e}", 0
+
+def check_v_green_bottom(coin, direction, vbottom_mgr=None):
+    """
+    Проверяет V-GREEN-BOTTOM паттерн (лестница ям + режим кульминации)
+    на 15-минутных свечах. Работает только для LONG.
+    Возвращает (is_ready, report_text, levels_checked) — тот же формат,
+    что и check_v_bottom, чтобы использовать один менеджер на пару стратегий.
+    """
+    if direction != "LONG":
+        return False, None, 0
+
+    try:
+        time.sleep(0.3)
+
+        coin = coin.upper().replace("USDT", "").replace("/", "").strip()
+
+        # Резолвим символ на бирже (учитывает алиасы тикеров типа TON/TONCOIN)
+        markets = load_markets_cached(exchange)
+        symbol = resolve_symbol(coin, markets)
+        if not symbol:
+            return False, f"❌ Монета *{coin}* не найдена на Bybit.", 0
+
+        # Тянем 15m-свечи (120 свечей = 30 часов истории, достаточно для 52-свечи baseline)
+        ohlcv = None
+        for attempt in range(3):
+            try:
+                ohlcv = exchange.fetch_ohlcv(symbol, timeframe="15m", limit=120)
+                break
+            except Exception as e:
+                if "Rate Limit" in str(e) or "10006" in str(e):
+                    print(f"[V_GREEN_BOTTOM WARNING] Bybit rate limit на {coin}. Пауза 1.5 сек...")
+                    time.sleep(1.5)
+                else:
+                    raise e
+
+        if not ohlcv or len(ohlcv) < 52:
+            return False, f"⚠️ Недостаточно данных V-GREEN-BOTTOM для {coin} ({len(ohlcv) if ohlcv else 0} свечей).", 0
+
+        # Формируем DataFrame с индексом по времени
+        df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+        df.set_index("timestamp", inplace=True)
+        df = df[["open", "high", "low", "close", "volume"]].astype(float)
+
+        # V-GREEN-BOTTOM реально использует ATR (в отличие от V-BOTTOM) — считаем по-настоящему
+        atr_series = calculate_atr(df, 14)
+        c_atr = float(atr_series.iloc[-1]) if not atr_series.empty and atr_series.iloc[-1] == atr_series.iloc[-1] else None
+
+        # Загружаем макро-уровни
+        macro_path = os.path.join(os.path.dirname(__file__), "macro_levels.json")
+        macro_db = load_json(macro_path, default={})
+        coin_macro = macro_db.get(coin) or macro_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
+
+        if not coin_macro:
+            return False, f"⚠️ Нет уровней для {coin} в macro_levels.json.", 0
+
+        if vbottom_mgr is None:
+            vbottom_mgr = VBottomManager()
+
+        supports = coin_macro.get("supports", [])
+        resistances = coin_macro.get("resistances", [])
+
+        if not supports:
+            return False, f"⚠️ Нет поддержек для V-GREEN-BOTTOM на {coin}.", 0
+
+        signals = []
+        levels_checked = 0
+
+        for level in supports:
+            levels_checked += 1
+            result = vbottom_mgr.evaluate_v_green_bottom(
+                level, df, "LONG", resistances,
+                trend="UNKNOWN", c_atr=c_atr
+            )
+            if result.get('allow'):
+                signals.append(result)
+
+        if not signals:
+            return False, None, levels_checked
+
+        signal = signals[0]
+        entry_price = signal.get('entry_price', 0.0)
+        sl = signal.get('sl', 0.0)
+        tp = signal.get('tp', 0.0)
+        history_log = signal.get('history_log', '')
+        level_id = signal.get('level_id', 'unknown')
+
+        report = (
+            f"🟢 *V-GREEN-BOTTOM LONG* _{coin}_\n\n"
+            f"Entry: `{entry_price:.8f}`\n"
+            f"SL: `{sl:.8f}`\n"
+            f"TP: `{tp:.8f}`\n"
+            f"R/R: `{(tp-entry_price)/(entry_price-sl) if entry_price > sl else 0:.2f}`\n\n"
+            f"📊 {history_log}\n"
+            f"Level: `{level_id}`"
+        )
+
+        return True, report, levels_checked
+
+    except Exception as e:
+        print(f"\n[V_GREEN_BOTTOM ERROR] ❌ ОШИБКА ПРИ ПРОВЕРКЕ V-GREEN-BOTTOM ({coin}): {e}")
+        traceback.print_exc()
+        return False, f"❌ Ошибка V-GREEN-BOTTOM анализа {coin}: {e}", 0

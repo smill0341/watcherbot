@@ -4,7 +4,7 @@ import datetime
 import os
 import threading
 import re
-from modules.cryptano.watcher_plan import check_manual_extreme, check_v_bottom
+from modules.cryptano.watcher_plan import check_manual_extreme, check_v_bottom, check_v_green_bottom
 from modules.cryptano.utils.storage import load_json, save_json_atomic
 from modules.cryptano.utils.vbottom_manager import VBottomManager
 import json
@@ -265,6 +265,15 @@ def run_live_scanner(bot, admin_chat_id):
                                     bot.send_message(admin_chat_id, v_report, parse_mode="Markdown")
                                     signal_found = True
                                     report = v_report  # Для логирования
+
+                        # Если ничего не сработало — пытаемся V-GREEN-BOTTOM (работает в паре с V-BOTTOM)
+                        if not signal_found:
+                            vgb_is_ready, vgb_report, vgb_levels = check_v_green_bottom(coin, d, v_bottom_mgr)
+                            if vgb_report and not vgb_report.startswith("❌") and not vgb_report.startswith("⚠️"):
+                                if vgb_is_ready:
+                                    bot.send_message(admin_chat_id, vgb_report, parse_mode="Markdown")
+                                    signal_found = True
+                                    report = vgb_report  # Для логирования
                         
                         if signal_found:
                             # Замораживаем, чтобы не спамить
