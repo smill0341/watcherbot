@@ -1,15 +1,20 @@
 import os
 import sys
 
-# 1. СНАЧАЛА ЖЕСТКО УКАЗЫВАЕМ ПУТЬ К КОРНЮ ПРОЕКТА
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../../../.."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
+
+# 1. ПУТЬ К ОСНОВНОМУ БОТУ (D:\bot\master_bot) - чтобы работал импорт из modules
+MASTER_BOT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../../master_bot"))
+if MASTER_BOT_ROOT not in sys.path:
+    sys.path.insert(0, MASTER_BOT_ROOT)
+
+# 2. ПУТЬ К ПАПКЕ TEST (D:\bot\test) - чтобы работал импорт from testswing...
+TEST_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../"))
+if TEST_ROOT not in sys.path:
+    sys.path.insert(0, TEST_ROOT)
 
 import time
 import datetime
-import os
 import threading
 import pandas as pd
 import schedule  
@@ -125,7 +130,7 @@ def build_macro_levels(bot=None, admin_chat_id=None, target_time_str=None):
                 continue
                 
         save_json_atomic(MACRO_LEVELS_FILE, macro_base)
-        print(f"✅ [TEST HUNTER] Сбор завершен! Создан файл: {MACRO_LEVELS_FILE}")
+        #print(f"✅ [TEST HUNTER] Сбор завершен! Создан файл: {MACRO_LEVELS_FILE}")
         return macro_base
             
     except Exception as e:

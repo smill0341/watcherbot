@@ -6,17 +6,24 @@ class VGreenBottomWatcher:
         'RED_TRIGGER_MULT': 2.0,      # Во сколько раз объем первой красной свечи должен превысить средний (avg_vol), чтобы капкан активировался и засчитал старт Ямы №1.
         'MIN_BODY_PCT': 60.0,         # Минимальная плотность тела зеленой свечи. Тело (от Open до Close) должно занимать не менее 60% от всей длины свечи (от Low до High). Отсекает доджи и свечи с огромными тенями сверху.
         'BREATH_BUFFER_PCT': 1.5,     # Буфер отмены (зона дыхания). Если цена до начала падения улетит вверх на 1.5% выше верхней границы твоего уровня — капкан сбрасывается (убивается).
-        'MIN_DUMP_VOL_PCT': 50.0,     # Требование к объему зеленой свечи. Она должна набрать минимум 85% от максимального объема падающей красной свечи в текущей яме (trigger_dump_vol).
-        'MIN_ATR_MULT': 1.5,          # Минимальный физический размер зеленой свечи (High - Low). Она должна быть больше среднего ATR минимум в 1.5 раза. Отсекает рыночный микро-шум.
+        'MIN_DUMP_VOL_PCT': 65.0,     # Требование к объему зеленой свечи. Она должна набрать минимум 85% от максимального объема падающей красной свечи в текущей яме (trigger_dump_vol).
+        'MIN_ATR_MULT': 1.5, 
+        'MIN_PREV_RED_TOP_WICK_PCT': 5.0, # Верхняя тень красной свечи минимум 5% от ее длины 
+        'MIN_CLOSE_MARGIN_PCT': 0.2,      # Мин. зазор закрытия (0.2% выше открытия красной)
+        
+        # --- НАСТРОЙКИ КУЛЬМИНАЦИИ (АНОМАЛЬНЫЙ ОБЪЕМ) ---
+        'CLIMAX_VOL_MULT': 50.0,      # Во сколько раз объем должен превысить базовый для старта Кульминации
+        'CLIMAX_MAX_BARS': 5,         # Сколько свечей даем на перекрытие тела# Минимальный физический размер зеленой свечи (High - Low). Она должна быть больше среднего ATR минимум в 1.5 раза. Отсекает рыночный микро-шум.
+        'MIN_CLIMAX_VOL_USD': 1000000.0, # <-- МИНИМУМ 1 МЛН ДОЛЛАРОВ
         
         # --- НАСТРОЙКИ СТРУКТУРЫ ---
-        'MIN_BREAKDOWN_PCT': 2.0,     # На сколько процентов цена должна пробить старое дно, чтобы начать новую яму
+        'MIN_BREAKDOWN_PCT': 1.8,     # На сколько процентов цена должна пробить старое дно, чтобы начать новую яму
         'MIN_PITS_TO_ARM': 3,         # Начиная с какой по счету ямы бот включает радар и начинает сканировать каждую зеленую свечу на дне.
         'MIN_PULLBACK_PCT': 3.0,      # Фильтр структуры. На сколько процентов цена должна физически отскочить от локального дна вверх, чтобы бот признал отскок состоявшимся и позволил начать следующую яму при пробое.
-        'MAX_BARS_IN_PIT': 10, 
-        'MAX_PREV_RED_BODY_PCT': 40.0, #  Максимальный размер тела предыдущей красной свечи (в %)# Максимальное количество свечей в яме.   
+        'MAX_BARS_IN_PIT': 10,        # Максимальное количество свечей в яме.
+        'MAX_PREV_RED_BODY_PCT': 52.0, #  Максимальный размер тела предыдущей красной свечи (в %)   
         'TP_MODE': 'fixed_pct',
-        'FIXED_TP_PCT': 10.0,
+        'FIXED_TP_PCT': 7.0,
         'TAKE_PROFIT': 10.0,
         'TP_BUFFER_PCT': 0.0,
         'SL_BUFFER': 0.5,
@@ -41,12 +48,20 @@ class VGreenBottomWatcher:
         self.trigger_dump_vol = 0.0
         self.bars_since_low = 0         #  Таймер свечей на дне
         self.locked_pit_low = 0.0   
+        
+        # --- Память для Кульминации ---
+        self.in_climax_mode = False
+        self.climax_low = 0.0
+        self.climax_body_top = 0.0
+        self.climax_timer = 0
 
         # --- Память для предыдущей свечи ---
         self.prev_is_red = False
         self.prev_red_vol = 0.0
         self.prev_low = 0.0
         self.prev_body_pct = 0.0
+        self.prev_top_shadow_pct = 0.0
+        self.prev_open = 0.0
 
         # --- Служебные переменные ---
         self.sl_price: float | None = None
@@ -84,10 +99,12 @@ class VGreenBottomWatcher:
         self.prev_is_red = False
         self.prev_red_vol = 0.0
         self.prev_low = 0.0
+        self.prev_open = 0.0
         self.history_log = ""
         self.last_event_type = None
         
         self.prev_body_pct = 0.0
+        self.prev_top_shadow_pct = 0.0
         
         self.locked_pit_low = 0.0  # 
         self.bars_since_low = 0    # 
@@ -139,6 +156,42 @@ class VGreenBottomWatcher:
             # РИСУЕМ КРАСНЫМ: красим все красные свечи, пока летим на дно
             if is_red and not self.pullback_confirmed:
                 self.last_event_type = "PIT"
+
+            # --- НОВЫЙ БЛОК: РЕЖИМ КУЛЬМИНАЦИИ (CLIMAX MODE) ---
+            climax_mult = self.CONFIG.get('CLIMAX_VOL_MULT', 50.0)
+            min_usd_vol = self.CONFIG.get('MIN_CLIMAX_VOL_USD', 1000000.0)
+
+            if baseline_vol:
+                # c_vol - это УЖЕ доллары. Никаких умножений на цену!
+                is_climax_vol = (c_vol >= baseline_vol * climax_mult) and (c_vol >= min_usd_vol)
+            else:
+                is_climax_vol = False
+
+            # 1. Если видим аномальную красную свечу (и это минимум 2-я яма)
+            if is_red and is_climax_vol and self.pits_count >= 2:
+                self.in_climax_mode = True
+                self.climax_low = float(c_low)
+                self.climax_body_top = float(c_open) # У красной свечи Открытие (Open) всегда сверху тела
+                self.climax_timer = 0
+                self._dbg(f"🔥 КУЛЬМИНАЦИЯ! Яма:{self.pits_count} | Vol x{c_vol/baseline_vol:.1f} | Объем: ${self._fmt(c_vol)}. Пол:{self.climax_low:.4f}")
+            
+            # 2. Если мы УЖЕ в режиме ожидания перекрытия
+            elif self.in_climax_mode:
+                if float(c_low) < self.climax_low:
+                    self._dbg(f"❌ Кульминация сломана: пробили тень ({c_low:.4f} < {self.climax_low:.4f})")
+                    self.in_climax_mode = False
+                elif self.climax_timer >= self.CONFIG.get('CLIMAX_MAX_BARS', 5):
+                    self._dbg(f"⏳ Кульминация отменена: вышло время ({self.CONFIG['CLIMAX_MAX_BARS']} св.)")
+                    self.in_climax_mode = False
+                else:
+                    self.climax_timer += 1
+                    # Если зеленая закрылась ВЫШЕ открытия (тела) красной кульминационной
+                    if not is_red and float(c_close) > self.climax_body_top:
+                        self.last_event_type = "GOOD_GREEN"
+                        self.history_log += f" -> Вход(Climax x{climax_mult})"
+                        self._dbg(f"🚀 [CLIMAX ВХОД] Зеленая перекрыла тело красной ({c_close:.4f} > {self.climax_body_top:.4f})!")
+                        return self._enter(c_low, c_close, all_opposite_levels)
+            # --- КОНЕЦ БЛОКА КУЛЬМИНАЦИИ ---
 
             # 1. ЕСЛИ ЦЕНА ОБНОВЛЯЕТ ЛОКАЛЬНОЕ ДНО (Летим ниже)
             if float(c_low) < self.current_pit_low:
@@ -209,21 +262,35 @@ class VGreenBottomWatcher:
                     min_req_size = safe_atr * self.CONFIG.get('MIN_ATR_MULT', 1.5)
                     is_atr_ok = high_low >= min_req_size
                     
-                    # ПРОВЕРКА ПРЕДЫДУЩЕЙ СВЕЧИ: Должна быть красной И не слишком плотной
-                    max_red_body = self.CONFIG.get('MAX_PREV_RED_BODY_PCT', 40.0)
-                    is_prev_red_ok = self.prev_is_red and (self.prev_body_pct <= max_red_body)
+                    # ПРОВЕРКА ПРЕДЫДУЩЕЙ СВЕЧИ: Должна быть красной, не слишком плотной И иметь тень сверху
+                    max_red_body = self.CONFIG.get('MAX_PREV_RED_BODY_PCT', 50.0)
+                    min_top_wick = self.CONFIG.get('MIN_PREV_RED_TOP_WICK_PCT', 5.0)
+                    
+                    is_prev_red_ok = self.prev_is_red and (self.prev_body_pct <= max_red_body) and (self.prev_top_shadow_pct >= min_top_wick)
 
-                    self._dbg(f"🔍 [ТЕСТ ВХОДА] Яма:{self.pits_count} | Vol:{self._fmt(c_vol)} (надо>{self._fmt(need_vol)}) | Плотн:{body_pct:.1f}% | Пред.Красн(Тело): {self.prev_body_pct:.1f}% (надо<={max_red_body}%) -> {is_prev_red_ok}")
+                    # <-- УСЛОВИЕ ОБЪЕМА: Объем зеленой >= 90% от предыдущей красной
+                    is_local_vol_ok = c_vol >= (self.prev_red_vol * 0.9)
 
-                    # Вход только если сошлись ВСЕ 4 фильтра
-                    if is_vol_ok and is_body_ok and is_atr_ok and is_prev_red_ok:
+                    # <-- НОВОЕ УСЛОВИЕ ЗАЗОРА: Закрытие строго на X% выше открытия красной
+                    min_margin_pct = self.CONFIG.get('MIN_CLOSE_MARGIN_PCT', 0.2)
+                    target_close = self.prev_open * (1 + (min_margin_pct / 100.0)) if self.prev_open > 0 else 0.0
+                    is_margin_ok = float(c_close) >= target_close
+
+                    self._dbg(f"🔍 [ТЕСТ ВХОДА] Яма:{self.pits_count} | Vol:{self._fmt(c_vol)} | Зазор(>={min_margin_pct}%): {is_margin_ok} | Плотн:{body_pct:.1f}% | Пред.Красн(Тело {self.prev_body_pct:.1f}%) -> {is_prev_red_ok}")
+
+                    # Вход только если сошлись ВСЕ 6 фильтров (добавили is_margin_ok)
+                    if is_vol_ok and is_body_ok and is_atr_ok and is_prev_red_ok and is_local_vol_ok and is_margin_ok:
                         self.last_event_type = "GOOD_GREEN" 
                         self.history_log += f" -> Вход(Яма {self.pits_count}):{self._fmt(c_vol)}"
                         return self._enter(c_low, c_close, all_opposite_levels)
                     else:
                         # Логируем причину отмены
                         if not is_vol_ok:
-                            self._dbg(f"❌ [ОТМЕНА ВХОДА] Не хватило объема ({self._fmt(c_vol)} < {self._fmt(need_vol)})")
+                            self._dbg(f"❌ [ОТМЕНА ВХОДА] Не хватило глобального объема ({self._fmt(c_vol)} < {self._fmt(need_vol)})")
+                        elif not is_local_vol_ok:
+                            self._dbg(f"❌ [ОТМЕНА ВХОДА] Зеленая слабее пред. красной ({self._fmt(c_vol)} < {self._fmt(self.prev_red_vol * 0.9)})")
+                        elif not is_margin_ok:
+                            self._dbg(f"❌ [ОТМЕНА ВХОДА] Нет зазора пробоя (Закрытие {float(c_close):.4f} < Цели {target_close:.4f})")
                         elif not is_body_ok:
                             self._dbg(f"❌ [ОТМЕНА ВХОДА] Рыхлое тело зел. ({body_pct:.1f}% < {self.CONFIG['MIN_BODY_PCT']}%)")
                         elif not is_atr_ok:
@@ -231,18 +298,29 @@ class VGreenBottomWatcher:
                         elif not is_prev_red_ok:
                             if not self.prev_is_red:
                                 self._dbg(f"❌ [ОТМЕНА ВХОДА] Перед зеленой была НЕ красная свеча")
-                            else:
+                            elif self.prev_body_pct > max_red_body:
                                 self._dbg(f"❌ [ОТМЕНА ВХОДА] Пред. красная слишком плотная (Тело {self.prev_body_pct:.1f}% > {max_red_body}%)")
+                            else:
+                                self._dbg(f"❌ [ОТМЕНА ВХОДА] У пред. красной нет верхней тени (Тень {self.prev_top_shadow_pct:.1f}% < {min_top_wick}%)")
                 else:
                     # Если прошло больше 10 свечей, просто молча скипаем и ждем новую панику или яму
                     self._dbg(f"⏳ [БЛОК ВХОДА] Прошло {self.bars_since_low} св. Окно входа для этой ямы закрыто.")
             
             self.prev_is_red = is_red
             self.prev_low = float(c_low)
-            # Вычисляем и запоминаем процент тела текущей свечи
+            self.prev_open = float(c_open) #  Запоминаем цену открытия красной свечи
+            self.prev_red_vol = float(c_vol) if is_red else 0.0
+            
+            # Вычисляем и запоминаем процент тела и верхней тени текущей свечи
             hl = float(c_high - c_low)
             bdy = abs(float(c_close - c_open))
             self.prev_body_pct = (bdy / hl * 100.0) if hl > 0 else 0.0
+            
+            # Если свеча красная, верхняя тень это расстояние от High до Open
+            if is_red and hl > 0:
+                self.prev_top_shadow_pct = (float(c_high - c_open) / hl * 100.0)
+            else:
+                self.prev_top_shadow_pct = 0.0
             
             return None
 

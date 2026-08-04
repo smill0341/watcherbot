@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
+from typing import Optional
 
-class ExtremeSniperWatcher:
+class SFPWatcher:
     CONFIG = {
         # --- ФИЛЬТРЫ КАСАНИЯ ---
         'RSI_OVERSOLD': 35.0,      # RSI для лонга (перепроданность)
@@ -26,10 +27,11 @@ class ExtremeSniperWatcher:
         self.choch_level = 0.0
         
         # Память для "падающего ножа" и CHoCH
-        self.p_open = None
-        self.p_high = None
-        self.p_close = None
-        self.p_vol = None
+        self.p_open: Optional[float] = None
+        self.p_high: Optional[float] = None
+        self.p_low: Optional[float] = None
+        self.p_close: Optional[float] = None
+        self.p_vol: Optional[float] = None
         
         self.touch_rsi_value = 0.0
         self.touch_vol_ratio = 0.0
@@ -46,7 +48,7 @@ class ExtremeSniperWatcher:
         self.last_event_time = self._last_time
         self.last_event_msg = msg
         if self.CONFIG.get('DEBUG'):
-            with open("extreme_sniper_debug.log", "a", encoding="utf-8") as f:
+            with open("sfp_debug.log", "a", encoding="utf-8") as f:
                 f.write(f"{self._tp()}[{self.max:.4f}] {msg}\n")
 
     def _reset(self):
@@ -72,9 +74,19 @@ class ExtremeSniperWatcher:
             return None
             
         # Ждем хотя бы одну свечу для формирования памяти (чтобы проверять ножи и хаи)
-        if self.p_open is None:
-            self._save_prev(c_open, c_high, c_close, c_vol)
+        # Проверяем ВСЕ пять атрибутов в одном условии — так анализатор типов
+        # сужает тип каждого из них до float отдельно (а не только p_open).
+        if (self.p_open is None or self.p_high is None or self.p_low is None
+                or self.p_close is None or self.p_vol is None):
+            self._save_prev(c_open, c_high, c_low, c_close, c_vol)
             return None
+
+        # После проверки выше все пять гарантированно float, не None.
+        p_open = self.p_open
+        p_high = self.p_high
+        p_low = self.p_low
+        p_close = self.p_close
+        p_vol = self.p_vol
 
         safe_atr = float(c_atr) if (c_atr is not None and c_atr == c_atr) else 0.0001
         c_vol_ratio = float(c_vol) / float(baseline_vol)
@@ -83,12 +95,12 @@ class ExtremeSniperWatcher:
         is_falling_knife = False
         is_flying_rocket = False
 
-        if c_close < c_open and self.p_close < self.p_open:
-            if (c_open - c_close) > (safe_atr * self.CONFIG['KNIFE_ATR_MULT']) and c_vol >= self.p_vol:
+        if c_close < c_open and p_close < p_open:
+            if (c_open - c_close) > (safe_atr * self.CONFIG['KNIFE_ATR_MULT']) and c_vol >= p_vol:
                 is_falling_knife = True
 
-        if c_close > c_open and self.p_close > self.p_open:
-            if (c_close - c_open) > (safe_atr * self.CONFIG['KNIFE_ATR_MULT']) and c_vol >= self.p_vol:
+        if c_close > c_open and p_close > p_open:
+            if (c_close - c_open) > (safe_atr * self.CONFIG['KNIFE_ATR_MULT']) and c_vol >= p_vol:
                 is_flying_rocket = True
 
         # =================================================================
@@ -108,7 +120,7 @@ class ExtremeSniperWatcher:
                     else:
                         # ВСЕ ФИЛЬТРЫ ПРОЙДЕНЫ! Фиксируем CHoCH и ждем пробой.
                         self.state = "WAIT_CHOCH"
-                        self.choch_level = max(float(c_high), float(self.p_high))
+                        self.choch_level = max(float(c_high), p_high)
                         self.touch_rsi_value = c_rsi
                         self.touch_vol_ratio = c_vol_ratio
                         self.last_event_type = "TOUCH"
@@ -118,17 +130,18 @@ class ExtremeSniperWatcher:
             elif self.trade_type == "SHORT":
                 if c_high >= self.min and c_close < self.max:
                     if is_flying_rocket:
-                        pass # Логика для ракеты
+                        self._dbg("⚠️ Отмена: Летящая ракета в зоне.")
                     elif c_rsi < self.CONFIG['RSI_OVERBOUGHT']:
-                        pass # Логика RSI
+                        self._dbg(f"❌ Пропуск: RSI {c_rsi:.1f} < {self.CONFIG['RSI_OVERBOUGHT']}")
                     elif c_vol_ratio < self.CONFIG['VOL_CLIMAX_MULT']:
-                        pass # Логика объема
+                        self._dbg(f"❌ Пропуск: Объем {c_vol_ratio:.1f}x < {self.CONFIG['VOL_CLIMAX_MULT']}x")
                     else:
                         self.state = "WAIT_CHOCH"
-                        self.choch_level = min(float(c_low), float(self.p_low)) # Слом для шорта по лоям
+                        self.choch_level = min(float(c_low), p_low) # Слом для шорта по лоям
                         self.touch_rsi_value = c_rsi
                         self.touch_vol_ratio = c_vol_ratio
-                        self._dbg(f"🎯 КАСАНИЕ (Шорт)! Ждем CHoCH ниже {self.choch_level:.4f}")
+                        self.last_event_type = "TOUCH"
+                        self._dbg(f"🎯 КАСАНИЕ (Шорт)! RSI={c_rsi:.1f}, Vol={c_vol_ratio:.1f}x. Ждем CHoCH ниже {self.choch_level:.4f}")
 
         # =================================================================
         # СОСТОЯНИЕ 2: ЖДЕМ ПРОБОЯ СТРУКТУРЫ (CHoCH)
@@ -154,12 +167,13 @@ class ExtremeSniperWatcher:
                     return self._enter(c_close)
 
         # Обновляем память перед переходом к следующей свече
-        self._save_prev(c_open, c_high, c_close, c_vol)
+        self._save_prev(c_open, c_high, c_low, c_close, c_vol)
         return None
 
-    def _save_prev(self, c_open, c_high, c_close, c_vol):
+    def _save_prev(self, c_open, c_high, c_low, c_close, c_vol):
         self.p_open = float(c_open)
         self.p_high = float(c_high)
+        self.p_low = float(c_low)
         self.p_close = float(c_close)
         self.p_vol = float(c_vol)
 

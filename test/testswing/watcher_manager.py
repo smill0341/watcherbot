@@ -11,8 +11,9 @@ from .watcher_methods import (SweepReclaimWatcher, ChochRetestWatcher, check_cho
 from .v_bottom_watcher import VBottomWatcher
 from .panic_trap_watcher import PanicTrapWatcher
 from .v_green_bottom_watcher import VGreenBottomWatcher
+from .sfp_watcher import SFPWatcher
 
-STRATEGIES = ["SWEEP_RECLAIM", "VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM"]
+STRATEGIES = ["SWEEP_RECLAIM", "VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP"]
 
 class WatcherManager:
     def __init__(self, strategy, config=None):
@@ -57,7 +58,7 @@ class WatcherManager:
         for k, watcher in self._watchers.items():
             if k not in active_level_ids:
                 # СПАСАЕМ КАПКАНЫ И SMC: Если бот заряжен на ожидание ретеста, оставляем его в памяти!
-                if hasattr(watcher, 'state') and watcher.state in ["TRAP_SET", "WAIT_RETEST", "WAIT_GREEN", "WAIT_RED", "CANDIDATE_ARMED"]:
+                if hasattr(watcher, 'state') and watcher.state in ["TRAP_SET", "WAIT_RETEST", "WAIT_GREEN", "WAIT_RED", "CANDIDATE_ARMED", "WAIT_CHOCH"]:
                     continue
                 dead_keys.append(k)
                 
@@ -203,6 +204,50 @@ class WatcherManager:
         signal['allow'] = True
         signal['level_id'] = level_id
         signal['extreme_price'] = str(watcher.sl_price) if watcher.sl_price is not None else "0.0"
+        signal['is_real_sweep'] = True
+        signal['overshoot_pct'] = 0.0
+        signal['candles_in_sweep'] = 0
+
+        return signal
+
+    # -------------------------------------------------------------------------
+    # 7. SFP (Swing Failure Pattern: касание зоны + RSI + объёмный climax + CHoCH пробой)
+    # -------------------------------------------------------------------------
+    def evaluate_sfp(self, level, df, trade_type, all_opposite_levels, trend='UNKNOWN', c_atr=None):
+        level_id = self._level_id(level, trade_type)
+        if level_id in self.burned_levels:
+            return self._deny("Level already burned")
+
+        if level_id not in self._watchers:
+            self._watchers[level_id] = SFPWatcher(level['min'], level['max'], trade_type)
+
+        watcher = self._watchers[level_id]
+
+        if len(df) < 52:
+            return self._deny("Not enough data for baseline volume")
+
+        baseline_vol = float(df['volume'].iloc[-52:-2].mean())
+
+        c = df.iloc[-1]
+        c_open, c_high, c_low, c_close, c_vol = (
+            float(c['open']), float(c['high']), float(c['low']), float(c['close']), float(c['volume'])
+        )
+        c_rsi = float(c['rsi']) if 'rsi' in df.columns and c['rsi'] == c['rsi'] else 50.0
+
+        signal = watcher.update(c_open, c_high, c_low, c_close, c_vol, baseline_vol, c_atr, all_opposite_levels,
+                         c_rsi=c_rsi, candle_time=df.index[-1])
+
+        if not signal:
+            return self._deny("No SFP signal")
+
+        if 'error' in signal:
+            return self._deny(signal['error'])
+
+        self.burned_levels.add(level_id)
+
+        signal['allow'] = True
+        signal['level_id'] = level_id
+        signal['extreme_price'] = str(signal.get('sl', 0.0))
         signal['is_real_sweep'] = True
         signal['overshoot_pct'] = 0.0
         signal['candles_in_sweep'] = 0

@@ -18,12 +18,6 @@ import gc
 import sys
 from pathlib import Path
 
-import sys
-from pathlib import Path
-
-import sys
-from pathlib import Path
-
 # Жестко указываем путь к папке master_bot
 MASTER_BOT_PATH = Path(r"D:\bot\master_bot")
 
@@ -33,6 +27,7 @@ warnings.filterwarnings("ignore")
 from backtesting import Backtest, Strategy
 from modules.cryptano.utils.crypto_utils import exchange
 from modules.cryptano.utils.storage import load_json
+from modules.cryptano.utils.common import calculate_rsi
 from testswing.context_filter import analyze_context
 from testswing.watcher_manager import WatcherManager
 from testswing.exit_manager import ExitManager
@@ -57,23 +52,24 @@ GLOBAL_SKIPPED_COINS = []
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "AKE"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "AAVE"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
 
-TEST_START_DATE = "2026-06-01 00:00:00"
+TEST_START_DATE = "2026-02-01 00:00:00"
 WARMUP_DAYS = 18  
 MIN_LEVEL_SCORE = 1.0
 
-# STRATEGY "SWEEP_RECLAIM" или "VOLUME_REVERSAL" или "PIT_CLIMAX" или "PANIC_TRAP" или "V_BOTTOM" или "V_GREEN_BOTTOM"
+# STRATEGY "SFP" "V_BOTTOM" "V_GREEN_BOTTOM"
+# "SWEEP_RECLAIM" или "VOLUME_REVERSAL" или "PIT_CLIMAX" или "PANIC_TRAP" 
 STRATEGY = "V_GREEN_BOTTOM"
 VBOTTOM_BREATH_BUFFER_PCT = 3.0  # должно совпадать с CONFIG['BREATH_BUFFER_PCT'] в v_bottom_watcher.py
 
 # --- DIAGNOSTIC: проверка качества точки входа без SL ---
 # Если True: SL игнорируется, позиция держится до TP или до конца дедлайна.
 DISABLE_SL_DIAGNOSTIC = True
-DIAGNOSTIC_DEADLINE_DAYS = 5  
+DIAGNOSTIC_DEADLINE_DAYS = 12  
 
 ALLOW_LONG_TRADES = True
 ALLOW_SHORT_TRADES = False
@@ -120,6 +116,8 @@ class SmartSniperUniversal(Strategy):
         self.draw_vbottom_pit = self.I(lambda: self.data.df['vbottom_pit'], name="Яма (PIT)", overlay=True, scatter=True, color='red')
         self.draw_vbottom_scan = self.I(lambda: self.data.df['vbottom_scan'], name="Поиск (SCAN)", overlay=True, scatter=True, color='yellow')
         self.draw_vbottom_good = self.I(lambda: self.data.df['vbottom_good'], name="Кандидат (GOOD)", overlay=True, scatter=True, color='blue')
+        self.draw_sfp_touch = self.I(lambda: self.data.df['sfp_touch'], name="SFP Касание", overlay=True, scatter=True, color='orange')
+        self.draw_sfp_trigger = self.I(lambda: self.data.df['sfp_trigger'], name="SFP Вход", overlay=True, scatter=True, color='lime')
         
         if self.original_df is not None:
             self.original_df['atr'] = self.atr
@@ -186,7 +184,7 @@ class SmartSniperUniversal(Strategy):
             active_sup, active_res = np.nan, np.nan
             
             # 1. Приоритет: Активный пробитый уровень, за которым мы СЕЙЧАС следим
-            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM"):
+            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP"):
                 if self.origin_level_long is not None:
                     active_sup = self.origin_level_long['max']
                 if self.origin_level_short is not None:
@@ -227,7 +225,7 @@ class SmartSniperUniversal(Strategy):
         can_short = (len(CURRENT_RESISTANCES) > 0 or self.origin_level_short is not None) and ALLOW_SHORT_TRADES
 
         df_slice = None
-        if STRATEGY in ["VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM"]:
+        if STRATEGY in ["VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP"]:
             lookback_size = 260 if STRATEGY == "VOLUME_REVERSAL" else 100
             current_len = len(self.data)
             start_idx = max(0, current_len - lookback_size)
@@ -254,7 +252,7 @@ class SmartSniperUniversal(Strategy):
 
         # ---  ФИЛЬТР ПО БАЛЛАМ И EMA ---
         # Изначально скрываем от бота все лонг-уровни, которые выше EMA
-        CURRENT_SUPPORTS = [s for s in CURRENT_SUPPORTS if s.get('score', 0) >= MIN_LEVEL_SCORE and s['max'] < current_ema]
+        CURRENT_SUPPORTS = [s for s in CURRENT_SUPPORTS if s.get('score', 0) >= MIN_LEVEL_SCORE]
         CURRENT_RESISTANCES = [r for r in CURRENT_RESISTANCES if r.get('score', 0) >= MIN_LEVEL_SCORE]
 
         # --- Отслеживание уровня "исхода" ---
@@ -281,7 +279,7 @@ class SmartSniperUniversal(Strategy):
                     self.origin_level_long = dict(found)
                     GLOBAL_DEBUG_STATS["Origins_Long_Total"] += 1
                     self.origin_level_long['_pit_start_time'] = current_time
-                    if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM"):
+                    if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM", "SFP"):
                         # новое пробитие уровня: математика вотчера с нуля + лимит повторов
                         self.manager.notify_breach(self.origin_level_long, 'LONG')
             else:
@@ -320,13 +318,13 @@ class SmartSniperUniversal(Strategy):
 
         if can_long:
             # ТЕПЕРЬ КАПКАН ЗДЕСЬ. Работает строго с одним пробитым уровнем.
-            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM"):
+            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP"):
                 if self.origin_level_long is not None:
                     ctx_eval_long = self._get_context(self.origin_level_long, 'LONG', c_atr)
                     decision = self._evaluate(self.origin_level_long, 'LONG', c_open, c_high, c_low, c_close,
                                                CURRENT_RESISTANCES, df_slice, trend=ctx_eval_long.get('trend', 'UNKNOWN'),
                                                c_atr=c_atr, c_ema=current_ema)
-                    if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM", "PANIC_TRAP") and self.original_df is not None:
+                    if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM", "PANIC_TRAP", "SFP") and self.original_df is not None:
                         # Авто-маркер
                         level_id = self.manager._level_id(self.origin_level_long, 'LONG')
                         watcher = self.manager._watchers.get(level_id)
@@ -338,6 +336,10 @@ class SmartSniperUniversal(Strategy):
                                 self.original_df.at[current_time, 'vbottom_scan'] = c_close
                             elif event_type == "GOOD_GREEN":
                                 self.original_df.at[current_time, 'vbottom_good'] = c_close
+                            elif event_type == "TOUCH":
+                                self.original_df.at[current_time, 'sfp_touch'] = c_close
+                            elif event_type == "TRIGGER":
+                                self.original_df.at[current_time, 'sfp_trigger'] = c_close
                     if decision.get('allow'):
                         self._try_enter(self.origin_level_long, 'LONG', c_close, c_atr, decision, ctx_eval=ctx_eval_long)
                         self.origin_level_long = None
@@ -351,7 +353,7 @@ class SmartSniperUniversal(Strategy):
                         break
 
         if can_short:
-            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM"):
+            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP"):
                 if self.origin_level_short is not None:
                     ctx_eval_short = self._get_context(self.origin_level_short, 'SHORT', c_atr)
                     decision = self._evaluate(self.origin_level_short, 'SHORT', c_open, c_high, c_low, c_close,
@@ -394,6 +396,10 @@ class SmartSniperUniversal(Strategy):
             decision = self.manager.evaluate_v_green_bottom(
                 level, df_slice, trade_type, opposite_levels, trend=trend, c_atr=c_atr, c_ema=c_ema
             )
+        elif STRATEGY == "SFP":
+            decision = self.manager.evaluate_sfp(
+                level, df_slice, trade_type, opposite_levels, trend=trend, c_atr=c_atr
+            )
         else: 
             decision = {'allow': False, 'reason': 'Unknown strategy'}
 
@@ -401,7 +407,8 @@ class SmartSniperUniversal(Strategy):
             reason_str = decision.get('reason', '')
             if ('No signal' in reason_str or 'No CHoCH' in reason_str
                     or 'No volume reversal' in reason_str or 'No pit climax' in reason_str
-                    or 'No V bottom' in reason_str or 'No V-Green bottom' in reason_str):
+                    or 'No V bottom' in reason_str or 'No V-Green bottom' in reason_str
+                    or 'No SFP signal' in reason_str):
                 GLOBAL_DEBUG_STATS["No_Signal"] += 1
             else:
                 GLOBAL_DEBUG_STATS["Killed_by_QUALITY"] += 1
@@ -414,7 +421,7 @@ class SmartSniperUniversal(Strategy):
         watcher = self.manager._watchers.get(level_id)
         if watcher is not None and hasattr(watcher, 'state'):
             return watcher.state in ("WAIT_GREEN", "WAIT_RED", "TRAP_SET", "CANDIDATE_ARMED", "TRACKING_CASCADE",
-                                      "WAIT_START", "WAIT_PEAK", "WAIT_NEW_PEAK")
+                                      "WAIT_START", "WAIT_PEAK", "WAIT_NEW_PEAK", "WAIT_CHOCH")
         return False
 
     def _get_context(self, level, trade_type, c_atr):
@@ -590,11 +597,22 @@ def build_4h_context_df(df_15m):
     return df_4h
 
 
+# --- ДИНАМИЧЕСКАЯ ЗАГРУЗКА БАЗЫ УРОВНЕЙ ---
 try:
-    with open(r'D:\bot\test\levels_timeline.json', 'r') as f:
+    # 1. Вытягиваем Год и Месяц из TEST_START_DATE (из "2026-02-01 00:00:00" получим "2026_02")
+    month_label = pd.to_datetime(TEST_START_DATE).strftime("%Y_%m")
+    
+    # 2. Формируем имя файла
+    timeline_filename = f'levels_timeline_{month_label}.json'
+    timeline_path = os.path.join(r'D:\bot\test', timeline_filename)
+    
+    with open(timeline_path, 'r') as f:
         GLOBAL_TIMELINE = json.load(f)
-except Exception:
-    print("❌ Файл levels_timeline.json не найден. Сначала запусти precalc.py!")
+    print(f"✅ Подгружена база макро-уровней: {timeline_filename}")
+    
+except Exception as e:
+    print(f"❌ Файл {timeline_filename} не найден в D:\\bot\\test\\!")
+    print(f"   Сначала пропиши этот месяц в precalc.py и запусти его сбор.")
     GLOBAL_TIMELINE = {}
 
 first_time_key = list(GLOBAL_TIMELINE.keys())[0] if GLOBAL_TIMELINE else None
@@ -735,6 +753,8 @@ if TARGET_COIN.upper() == "ALL":
         df['vbottom_pit'] = np.nan
         df['vbottom_scan'] = np.nan
         df['vbottom_good'] = np.nan
+        df['sfp_touch'] = np.nan
+        df['sfp_trigger'] = np.nan
         df['ema'] = df['Close'].ewm(span=50, adjust=False).mean()
         df['avg_vol'] = df['Volume'].rolling(window=20).mean()
         df['open'] = df['Open']
@@ -742,6 +762,7 @@ if TARGET_COIN.upper() == "ALL":
         df['low'] = df['Low']
         df['close'] = df['Close']
         df['volume'] = df['Volume']
+        df['rsi'] = calculate_rsi(df)  # нужен для SFP-стратегии (RSI-фильтр на свече касания)
 
         SmartSniperUniversal.context_df_4h = build_4h_context_df(df)
         SmartSniperUniversal.original_df = df
@@ -915,6 +936,8 @@ else:
             df['vbottom_pit'] = np.nan
             df['vbottom_scan'] = np.nan
             df['vbottom_good'] = np.nan
+            df['sfp_touch'] = np.nan
+            df['sfp_trigger'] = np.nan
             df['ema'] = df['Close'].ewm(span=13, adjust=False).mean()
             df['avg_vol'] = df['Volume'].rolling(window=20).mean()
             df['open'] = df['Open']
@@ -922,6 +945,7 @@ else:
             df['low'] = df['Low']
             df['close'] = df['Close']
             df['volume'] = df['Volume']
+            df['rsi'] = calculate_rsi(df)  # нужен для SFP-стратегии (RSI-фильтр на свече касания)
 
             SmartSniperUniversal.context_df_4h = build_4h_context_df(df)
             SmartSniperUniversal.original_df = df 

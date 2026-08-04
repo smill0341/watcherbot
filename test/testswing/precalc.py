@@ -1,42 +1,64 @@
 import os
 import sys
-
-# 1. ЖЕСТКО УКАЗЫВАЕМ ПУТЬ К КОРНЮ ПРОЕКТА (Чтобы Python видел папку modules)
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../../../.."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
 import pandas as pd
 import json
-# Теперь импорт сработает без ошибок из любой папки
-from modules.cryptano.utils.testswing.swing_hunter import build_macro_levels
 
-START_DATE = "2026-06-01"
-END_DATE = "2026-06-30"
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-def build_timeline():
-    # freq='12h' нарежет месяц на даты: 01.04 00:00, 01.04 12:00, 02.04 00:00 и т.д.
-    dates = pd.date_range(start=START_DATE, end=END_DATE, freq='12h')
+# 1. ПУТЬ К ОСНОВНОМУ БОТУ (D:\bot\master_bot)
+MASTER_BOT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../../master_bot"))
+if MASTER_BOT_ROOT not in sys.path:
+    sys.path.insert(0, MASTER_BOT_ROOT)
+
+# 2. ПУТЬ К ПАПКЕ TEST (D:\bot\test) - куда будем сохранять JSON файлы
+TEST_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../"))
+if TEST_ROOT not in sys.path:
+    sys.path.insert(0, TEST_ROOT)
+
+from swing_hunter import build_macro_levels
+
+# --- СПИСОК МЕСЯЦЕВ ДЛЯ ПРЕДРАСЧЕТА ---
+# Можешь добавлять сюда или удалять любые нужные периоды
+MONTHS_TO_CALC = [
+    {"start": "2026-01-01", "end": "2026-01-31"},
+    {"start": "2026-02-01", "end": "2026-02-28"},
+    {"start": "2026-03-01", "end": "2026-03-31"},
+    {"start": "2026-04-01", "end": "2026-04-30"},
+    {"start": "2026-05-01", "end": "2026-05-31"},
+    {"start": "2026-06-01", "end": "2026-06-30"},
+    {"start": "2026-07-01", "end": "2026-07-31"}    
+]
+
+def build_timeline_for_month(start_date, end_date):
+    # Превращаем стартовую дату в метку для имени файла (например, "2026_02")
+    month_label = pd.to_datetime(start_date).strftime("%Y_%m")
+    
+    dates = pd.date_range(start=start_date, end=end_date, freq='12h')
     timeline = {}
 
     for dt in dates:
-        # Превращаем в формат "YYYY-MM-DD HH:MM:SS" как любит твой скрипт
         time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
-        print(f"\n==============================================")
         print(f"⏳ Сбор уровней на момент: {time_str}")
-        print(f"==============================================\n")
         
-        # Вызываем твоего Хантера, передавая ему время среза
         levels_dict = build_macro_levels(target_time_str=time_str)
         timeline[time_str] = levels_dict
 
-    # Сохраняем файл прямо в корень проекта, чтобы тестер его сразу увидел
-    output_path = os.path.join(PROJECT_ROOT, 'levels_timeline.json')
+    # Динамическое имя файла: levels_timeline_2026_02.json
+    filename = f'levels_timeline_{month_label}.json'
+    
+    # Сохраняем прямо в папку test
+    output_path = os.path.join(TEST_ROOT, filename)
     with open(output_path, 'w') as f:
         json.dump(timeline, f, indent=4)
         
-    print(f"\n✅ ГОТОВО! Файл сохранен в: {output_path}")
+    print(f"\n✅ МЕСЯЦ {month_label} СОХРАНЕН В: {output_path}\n")
 
 if __name__ == "__main__":
-    build_timeline()
+    print("🚀 СТАРТ МАССОВОЙ ЗАГРУЗКИ УРОВНЕЙ...")
+    for period in MONTHS_TO_CALC:
+        print(f"==============================================")
+        print(f"📅 ОБРАБОТКА ПЕРИОДА: {period['start']} -> {period['end']}")
+        print(f"==============================================")
+        build_timeline_for_month(period['start'], period['end'])
+    
+    print("🎉 ВСЕ МЕСЯЦЫ УСПЕШНО ЗАГРУЖЕНЫ!")
