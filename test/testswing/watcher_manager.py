@@ -12,8 +12,10 @@ from .v_bottom_watcher import VBottomWatcher
 from .panic_trap_watcher import PanicTrapWatcher
 from .v_green_bottom_watcher import VGreenBottomWatcher
 from .sfp_watcher import SFPWatcher
+from .v_red_top_watcher import VRedTopWatcher
+from .breakout_retest_watcher import BreakoutRetestWatcher
 
-STRATEGIES = ["SWEEP_RECLAIM", "VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP"]
+STRATEGIES = ["SWEEP_RECLAIM", "VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP", "V_RED_TOP", "BREAKOUT_RETEST"]
 
 class WatcherManager:
     def __init__(self, strategy, config=None):
@@ -58,8 +60,8 @@ class WatcherManager:
         for k, watcher in self._watchers.items():
             if k not in active_level_ids:
                 # СПАСАЕМ КАПКАНЫ И SMC: Если бот заряжен на ожидание ретеста, оставляем его в памяти!
-                if hasattr(watcher, 'state') and watcher.state in ["TRAP_SET", "WAIT_RETEST", "WAIT_GREEN", "WAIT_RED", "CANDIDATE_ARMED", "WAIT_CHOCH"]:
-                    continue
+                if hasattr(watcher, 'state') and watcher.state in ["TRAP_SET", "WAIT_RETEST", "WAIT_GREEN", "WAIT_RED", "CANDIDATE_ARMED", "WAIT_CHOCH", "WAIT_BREAKOUT", "WAIT_PULLBACK", "WAIT_TRIGGER"]:
+                    continue  # <-- ВОТ ЭТО СЛОВО ТЫ УДАЛИЛ, ВЕРНИ ЕГО
                 dead_keys.append(k)
                 
         for k in dead_keys:
@@ -325,6 +327,89 @@ class WatcherManager:
 
         if not signal:
             return self._deny("No V-Green bottom signal")
+        if 'error' in signal:
+            return self._deny(signal['error'])
+
+        self.burned_levels.add(level_id)
+        signal['allow'] = True
+        signal['level_id'] = level_id
+        signal['extreme_price'] = str(watcher.sl_price) if getattr(watcher, 'sl_price', None) is not None else "0.0"
+        signal['is_real_sweep'] = True
+        signal['overshoot_pct'] = 0.0
+        signal['candles_in_sweep'] = 0
+
+        return signal
+    
+# -------------------------------------------------------------------------
+    # 6. V_RED_TOP (Шортовая стратегия от хая)
+    # -------------------------------------------------------------------------
+    def evaluate_v_red_top(self, level, df, trade_type, all_opposite_levels, trend='UNKNOWN', c_atr=None, c_ema=None, c_atr_slow=None):
+        level_id = self._level_id(level, trade_type)
+        if level_id in self.burned_levels:
+            return self._deny("Level already burned")
+
+        if level_id not in self._watchers:
+            self._watchers[level_id] = VRedTopWatcher(level['min'], level['max'], trade_type)
+        watcher = self._watchers[level_id]
+
+        if len(df) < 52:
+            return self._deny("Not enough data for baseline volume")
+
+        baseline_vol = float(df['volume'].iloc[-52:-2].mean())
+        c = df.iloc[-1]
+        c_open, c_high, c_low, c_close, c_vol = (
+            float(c['open']), float(c['high']), float(c['low']), float(c['close']), float(c['volume'])
+        )
+
+        c_rsi = float(c['rsi']) if 'rsi' in df.columns and c['rsi'] == c['rsi'] else 50.0
+
+        signal = watcher.update(
+            c_open, c_high, c_low, c_close, c_vol, baseline_vol, c_atr, all_opposite_levels, candle_time=df.index[-1], c_ema=c_ema, c_atr_slow=c_atr_slow, c_rsi=c_rsi
+        )
+
+        if not signal:
+            return self._deny("No V-Red top signal")
+        if 'error' in signal:
+            return self._deny(signal['error'])
+
+        # self.burned_levels.add(level_id)  <--- Закомментировано! Менеджер больше не блочит уровень.
+        
+        signal['allow'] = True
+        signal['level_id'] = level_id
+        signal['extreme_price'] = str(watcher.sl_price) if getattr(watcher, 'sl_price', None) is not None else "0.0"
+        signal['is_real_sweep'] = True
+        signal['overshoot_pct'] = 0.0
+        signal['candles_in_sweep'] = 0
+
+        return signal 
+# -------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # BREAKOUT & RETEST (Пробой сопротивления и лонг на откате)
+    # -------------------------------------------------------------------------
+    def evaluate_breakout_retest(self, level, df, trade_type, all_opposite_levels, trend='UNKNOWN', c_atr=None, c_ema=None):
+        level_id = self._level_id(level, trade_type)
+        if level_id in self.burned_levels:
+            return self._deny("Level already burned")
+
+        if level_id not in self._watchers:
+            self._watchers[level_id] = BreakoutRetestWatcher(level['min'], level['max'], trade_type)
+        watcher = self._watchers[level_id]
+
+        if len(df) < 52:
+            return self._deny("Not enough data for baseline volume")
+
+        baseline_vol = float(df['volume'].iloc[-52:-2].mean())
+        c = df.iloc[-1]
+        c_open, c_high, c_low, c_close, c_vol = (
+            float(c['open']), float(c['high']), float(c['low']), float(c['close']), float(c['volume'])
+        )
+
+        signal = watcher.update(
+            c_open, c_high, c_low, c_close, c_vol, baseline_vol, c_atr, all_opposite_levels, candle_time=df.index[-1]
+        )
+
+        if not signal:
+            return self._deny("No Breakout-Retest signal")
         if 'error' in signal:
             return self._deny(signal['error'])
 

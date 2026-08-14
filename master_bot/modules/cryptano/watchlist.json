@@ -1,287 +1,152 @@
 {
-    "ADA": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:01:46.028006",
-        "source": "Swing Hunter"
-    },
-    "AVAX": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:01:46.028006",
-        "source": "Swing Hunter"
-    },
-    "BNB": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:01:46.028006",
-        "source": "Swing Hunter"
-    },
-    "BTC": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:01:46.028006",
-        "source": "Swing Hunter"
-    },
-    "BZ": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:01:46.028006",
-        "source": "Swing Hunter"
-    },
-    "DRAM": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:01:46.028006",
-        "source": "Swing Hunter"
-    },
-    "INJ": {
+    "AAVE": {
         "direction": "LONG",
-        "added_at": "2026-08-04T14:01:46.028006",
-        "source": "Swing Hunter"
-    },
-    "MU": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:01:46.028006",
-        "source": "Swing Hunter"
-    },
-    "PUMPFUN": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:01:46.028006",
-        "source": "Swing Hunter"
-    },
-    "SHIB1000": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:01:46.028006",
-        "source": "Swing Hunter"
-    },
-    "SKYAI1": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:01:46.028006",
-        "source": "Swing Hunter"
-    },
-    "SPCX": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:01:46.028006",
-        "source": "Swing Hunter"
-    },
-    "TSLA": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:01:46.028006",
-        "source": "Swing Hunter"
-    },
-    "XAG": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:01:46.028006",
-        "source": "Swing Hunter"
-    },
-    "XAUT": {
-        "direction": "LONG",
-        "added_at": "2026-08-04T14:01:46.028006",
-        "source": "Swing Hunter"
-    },
-    "XAU": {
-        "direction": "LONG",
-        "added_at": "2026-08-04T14:01:46.028006",
-        "source": "Swing Hunter"
-    },
-    "SOXL": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:03:09.332153",
-        "source": "Light"
-    },
-    "HYPE": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:03:09.406364",
-        "source": "Light"
-    },
-    "SNDK": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:03:09.485770",
-        "source": "Light"
-    },
-    "KORU": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:03:10.116863",
-        "source": "Light"
-    },
-    "SNXX": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:03:10.603665",
-        "source": "Light"
-    },
-    "UNI": {
-        "direction": "LONG",
-        "added_at": "2026-08-04T14:03:10.676291",
-        "source": "Light"
-    },
-    "WLD": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:03:10.767890",
-        "source": "Light"
-    },
-    "ONDO": {
-        "direction": "LONG",
-        "added_at": "2026-08-04T14:03:10.858765",
-        "source": "Light"
-    },
-    "NEAR": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:03:10.948879",
-        "source": "Light"
-    },
-    "KAITO": {
-        "direction": "LONG",
-        "added_at": "2026-08-04T14:03:11.041902",
-        "source": "Light"
-    },
-    "EWY": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:03:11.651266",
-        "source": "Light"
-    },
-    "ATOM": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:03:11.739045",
-        "source": "Light"
-    },
-    "MRVL": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:03:12.378102",
-        "source": "Light"
-    },
-    "HOME": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:04:49.054406",
-        "source": "Swing Hunter"
-    },
-    "ETH": {
-        "direction": "LONG",
-        "added_at": "2026-08-04T14:06:51.399747",
-        "source": "Swing Hunter"
-    },
-    "CL": {
-        "direction": "LONG",
-        "added_at": "2026-08-04T14:08:53.714675",
-        "source": "Swing Hunter"
-    },
-    "TAO": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:09:54.046203",
-        "source": "Swing Hunter"
-    },
-    "1000RATS": {
-        "direction": "LONG",
-        "added_at": "2026-08-04T14:18:01.211029",
-        "source": "Swing Hunter"
-    },
-    "BICO": {
-        "direction": "LONG",
-        "added_at": "2026-08-04T14:25:06.506885",
-        "source": "Swing Hunter"
-    },
-    "SKHYNIX": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T14:33:06.122097",
-        "source": "Light"
-    },
-    "AAOI": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T15:03:08.069633",
-        "source": "Light"
-    },
-    "AAPL": {
-        "direction": "LONG",
-        "added_at": "2026-08-04T15:06:36.894152",
-        "source": "Swing Hunter"
-    },
-    "ALGO": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T15:06:36.894152",
-        "source": "Swing Hunter"
-    },
-    "CYS": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T15:06:36.894152",
-        "source": "Swing Hunter"
-    },
-    "FARTCOIN": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T15:06:36.894152",
-        "source": "Swing Hunter"
-    },
-    "LTC": {
-        "direction": "LONG",
-        "added_at": "2026-08-04T15:06:36.894152",
-        "source": "Swing Hunter"
-    },
-    "UAI": {
-        "direction": "LONG",
-        "added_at": "2026-08-04T15:06:36.894152",
-        "source": "Swing Hunter"
-    },
-    "MSFT": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T15:08:37.921258",
-        "source": "Swing Hunter"
-    },
-    "WIF": {
-        "direction": "LONG",
-        "added_at": "2026-08-04T15:21:44.487225",
-        "source": "Swing Hunter"
-    },
-    "XRP": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T15:38:52.513950",
-        "source": "Swing Hunter"
-    },
-    "SKHY": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T16:03:06.984429",
-        "source": "Light"
-    },
-    "BTW": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T16:17:11.388852",
-        "source": "Swing Hunter"
-    },
-    "NBIS": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T16:38:20.044061",
+        "added_at": "2026-08-06T11:07:21.207767",
         "source": "Swing Hunter"
     },
     "DOGE": {
         "direction": "LONG",
-        "added_at": "2026-08-04T17:00:28.573763",
+        "added_at": "2026-08-06T11:07:21.207767",
         "source": "Swing Hunter"
     },
-    "ZEC": {
+    "FARTCOIN": {
         "direction": "SHORT",
-        "added_at": "2026-08-04T17:46:49.513322",
+        "added_at": "2026-08-06T11:07:21.207767",
         "source": "Swing Hunter"
     },
-    "LDO": {
+    "KAITO": {
         "direction": "LONG",
-        "added_at": "2026-08-04T18:33:14.454783",
-        "source": "Light"
+        "added_at": "2026-08-06T11:07:21.207767",
+        "source": "Swing Hunter"
     },
-    "GIGGLE": {
+    "LTC": {
         "direction": "LONG",
-        "added_at": "2026-08-04T19:03:15.565485",
-        "source": "Light"
+        "added_at": "2026-08-06T11:07:21.207767",
+        "source": "Swing Hunter"
     },
-    "DOT": {
+    "META": {
+        "direction": "LONG",
+        "added_at": "2026-08-06T11:07:21.207767",
+        "source": "Swing Hunter"
+    },
+    "MU": {
+        "direction": "LONG",
+        "added_at": "2026-08-06T11:07:21.207767",
+        "source": "Swing Hunter"
+    },
+    "SPCX": {
+        "direction": "LONG",
+        "added_at": "2026-08-06T11:07:21.207767",
+        "source": "Swing Hunter"
+    },
+    "TAO": {
         "direction": "SHORT",
-        "added_at": "2026-08-04T19:24:52.195009",
+        "added_at": "2026-08-06T11:07:21.207767",
         "source": "Swing Hunter"
     },
     "UB": {
-        "direction": "LONG",
-        "added_at": "2026-08-04T19:34:58.076815",
+        "direction": "SHORT",
+        "added_at": "2026-08-06T11:07:21.207767",
         "source": "Swing Hunter"
     },
-    "HFT": {
+    "XAG": {
         "direction": "SHORT",
-        "added_at": "2026-08-04T19:36:58.663737",
+        "added_at": "2026-08-06T11:07:21.207767",
+        "source": "Swing Hunter"
+    },
+    "XRP": {
+        "direction": "LONG",
+        "added_at": "2026-08-06T11:07:21.207767",
+        "source": "Swing Hunter"
+    },
+    "ZEC": {
+        "direction": "LONG",
+        "added_at": "2026-08-06T11:07:21.207767",
+        "source": "Swing Hunter"
+    },
+    "AMDSTOCK": {
+        "direction": "SHORT",
+        "added_at": "2026-08-06T11:08:22.371294",
+        "source": "Swing Hunter"
+    },
+    "XAUT": {
+        "direction": "SHORT",
+        "added_at": "2026-08-06T11:09:06.902910",
+        "source": "Light"
+    },
+    "AKE": {
+        "direction": "LONG",
+        "added_at": "2026-08-06T11:09:07.026588",
+        "source": "Light"
+    },
+    "BEAT": {
+        "direction": "LONG",
+        "added_at": "2026-08-06T11:09:07.169192",
+        "source": "Light"
+    },
+    "GOOGL": {
+        "direction": "LONG",
+        "added_at": "2026-08-06T11:26:34.024471",
+        "source": "Swing Hunter"
+    },
+    "CL": {
+        "direction": "LONG",
+        "added_at": "2026-08-06T11:30:37.237384",
+        "source": "Swing Hunter"
+    },
+    "HYPE": {
+        "direction": "SHORT",
+        "added_at": "2026-08-06T11:39:06.179994",
+        "source": "Light"
+    },
+    "1000PEPE": {
+        "direction": "LONG",
+        "added_at": "2026-08-06T11:39:06.264153",
+        "source": "Light"
+    },
+    "RDW": {
+        "direction": "SHORT",
+        "added_at": "2026-08-06T11:39:06.764803",
+        "source": "Light"
+    },
+    "CYS": {
+        "direction": "SHORT",
+        "added_at": "2026-08-06T11:41:43.492599",
         "source": "Swing Hunter"
     },
     "SUI": {
-        "direction": "SHORT",
-        "added_at": "2026-08-04T20:33:17.536716",
+        "direction": "LONG",
+        "added_at": "2026-08-06T12:08:08.317651",
+        "source": "Swing Hunter"
+    },
+    "AVAX": {
+        "direction": "LONG",
+        "added_at": "2026-08-06T12:30:20.903452",
+        "source": "Swing Hunter"
+    },
+    "XLM": {
+        "direction": "LONG",
+        "added_at": "2026-08-06T12:39:07.069487",
         "source": "Light"
+    },
+    "SHIB1000": {
+        "direction": "LONG",
+        "added_at": "2026-08-06T12:39:07.961729",
+        "source": "Light"
+    },
+    "APT": {
+        "direction": "SHORT",
+        "added_at": "2026-08-06T12:39:08.707343",
+        "source": "Light"
+    },
+    "WLD": {
+        "direction": "LONG",
+        "added_at": "2026-08-06T12:46:32.213335",
+        "source": "Swing Hunter"
+    },
+    "HOME": {
+        "direction": "SHORT",
+        "added_at": "2026-08-06T13:18:55.897609",
+        "source": "Swing Hunter"
     }
 }

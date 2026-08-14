@@ -52,7 +52,7 @@ GLOBAL_SKIPPED_COINS = []
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "SOL"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ALGO"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
@@ -61,9 +61,9 @@ TEST_START_DATE = "2026-05-01 00:00:00"
 WARMUP_DAYS = 18  
 MIN_LEVEL_SCORE = 1.0
 
-# STRATEGY "SFP" "V_BOTTOM" "V_GREEN_BOTTOM"
-# "SWEEP_RECLAIM" или "VOLUME_REVERSAL" или "PIT_CLIMAX" или "PANIC_TRAP" 
-STRATEGY = "V_GREEN_BOTTOM"
+# STRATEGY "SFP" "V_BOTTOM" "V_GREEN_BOTTOM" "V_RED_TOP"
+# "SWEEP_RECLAIM" или "VOLUME_REVERSAL" или "PIT_CLIMAX" или "PANIC_TRAP"  "BREAKOUT_RETEST"
+STRATEGY = "V_RED_TOP"
 VBOTTOM_BREATH_BUFFER_PCT = 3.0  # должно совпадать с CONFIG['BREATH_BUFFER_PCT'] в v_bottom_watcher.py
 
 # --- DIAGNOSTIC: проверка качества точки входа без SL ---
@@ -72,10 +72,11 @@ DISABLE_SL_DIAGNOSTIC = True
 DIAGNOSTIC_DEADLINE_DAYS = 12  
 
 ALLOW_LONG_TRADES = True
-ALLOW_SHORT_TRADES = False
+ALLOW_SHORT_TRADES = True
 
 USE_CONTEXT_FILTER = False  
-USE_LEVEL_BURN = True # Сжигать ли уровень после успешной сделки
+USE_LEVEL_BURN = False # Сжигать ли уровень после успешной сделки
+ALLOW_PYRAMIDING = True  # False = входы строго по очереди (после закрытия), True = добор позиции в рынке
 
 # ВАЖНО: Настройки самих стратегий (TP_MODE, FIXED_TP_PCT, SL_BUFFER, MIN_RR, SWING_LENGTH и т.д.)
 # теперь находятся строго внутри файла watcher_methods.py в личных словарях CONFIG!
@@ -100,11 +101,13 @@ class SmartSniperUniversal(Strategy):
         self.last_closed_trades = 0
         self.current_trade_level_id = None
 
-        self.origin_level_long = None
-        self.origin_level_short = None
+        self.tracked_support = None
+        self.tracked_resistance = None
 
         high_low = pd.Series(self.data.High) - pd.Series(self.data.Low)
-        self.atr = self.I(SMA, high_low, 14)
+        self.atr = self.I(SMA, high_low, 14) 
+        self.atr_slow = self.I(SMA, self.atr, 100, name="ATR_Slow_100")
+        
 
         def EMA(values, n):
             return pd.Series(values).ewm(span=n, adjust=False).mean()
@@ -113,11 +116,29 @@ class SmartSniperUniversal(Strategy):
 
         self.draw_sup_max = self.I(lambda: self.data.df['sup_max'], name="Support Top", overlay=True)
         self.draw_res_min = self.I(lambda: self.data.df['res_min'], name="Resist Bottom", overlay=True)
-        self.draw_vbottom_pit = self.I(lambda: self.data.df['vbottom_pit'], name="Яма (PIT)", overlay=True, scatter=True, color='red')
-        self.draw_vbottom_scan = self.I(lambda: self.data.df['vbottom_scan'], name="Поиск (SCAN)", overlay=True, scatter=True, color='yellow')
-        self.draw_vbottom_good = self.I(lambda: self.data.df['vbottom_good'], name="Кандидат (GOOD)", overlay=True, scatter=True, color='blue')
-        self.draw_sfp_touch = self.I(lambda: self.data.df['sfp_touch'], name="SFP Касание", overlay=True, scatter=True, color='orange')
-        self.draw_sfp_trigger = self.I(lambda: self.data.df['sfp_trigger'], name="SFP Вход", overlay=True, scatter=True, color='lime')
+        
+        # Маркеры только для стратегий ям
+        if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM", "PANIC_TRAP", "SFP"):
+            self.draw_vbottom_pit = self.I(lambda: self.data.df['vbottom_pit'], name="Яма (PIT)", overlay=True, scatter=True, color='red')
+            self.draw_vbottom_scan = self.I(lambda: self.data.df['vbottom_scan'], name="Поиск (SCAN)", overlay=True, scatter=True, color='yellow')
+            self.draw_vbottom_good = self.I(lambda: self.data.df['vbottom_good'], name="Кандидат (GOOD)", overlay=True, scatter=True, color='blue')
+            
+        # Дополнительные маркеры только для SFP
+        if STRATEGY == "SFP":
+            self.draw_sfp_touch = self.I(lambda: self.data.df['sfp_touch'], name="SFP Касание", overlay=True, scatter=True, color='orange')
+            self.draw_sfp_trigger = self.I(lambda: self.data.df['sfp_trigger'], name="SFP Вход", overlay=True, scatter=True, color='lime')
+            
+        # Маркеры только для новой стратегии Breakout
+        if STRATEGY == "BREAKOUT_RETEST":
+            self.draw_br_scan = self.I(lambda: self.data.df['br_scan'], name="BR Поиск", overlay=True, scatter=True, color='yellow')
+            self.draw_br_breakout = self.I(lambda: self.data.df['br_breakout'], name="BR Пробой", overlay=True, scatter=True, color='lime')
+            self.draw_br_pullback = self.I(lambda: self.data.df['br_pullback'], name="BR Откат", overlay=True, scatter=True, color='fuchsia')
+            self.draw_br_good = self.I(lambda: self.data.df['br_good'], name="BR Вход", overlay=True, scatter=True, color='blue')
+        
+        if STRATEGY == "V_RED_TOP":
+            self.draw_red_scan = self.I(lambda: self.data.df['red_scan'], name="SCAN", overlay=True, scatter=True, color='yellow')
+            self.draw_red_peak = self.I(lambda: self.data.df['red_peak'], name="PEAK", overlay=True, scatter=True, color='fuchsia')
+            self.draw_red_good = self.I(lambda: self.data.df['red_good'], name="ВХОД", overlay=True, scatter=True, color='red')
         
         if self.original_df is not None:
             self.original_df['atr'] = self.atr
@@ -183,18 +204,23 @@ class SmartSniperUniversal(Strategy):
             active_sup, active_res = np.nan, np.nan
             
             # 1. Приоритет: Активный пробитый уровень, за которым мы СЕЙЧАС следим
-            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP"):
-                if self.origin_level_long is not None:
-                    active_sup = self.origin_level_long['max']
-                if self.origin_level_short is not None:
-                    active_res = self.origin_level_short['min']
+            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP", "V_RED_TOP", "BREAKOUT_RETEST"):
+                if self.tracked_support is not None:
+                    if STRATEGY == "BREAKOUT_RETEST":
+                        active_res = self.tracked_support['min']
+                    else:
+                        active_sup = self.tracked_support['max']
+                if self.tracked_resistance is not None:
+                    active_res = self.tracked_resistance['min']
                     
             # 2. Если активного поиска нет (ждем пробоя или сидим в сделке), тянем линию последнего уровня
             if np.isnan(active_sup) and getattr(self, 'last_entered_level', None) is not None:
-                if self.last_entered_level[2] == 'LONG':
+                # Если это лонг, но НЕ наша новая шортовая стратегия-перевертыш - рисуем как поддержку
+                if self.last_entered_level[2] == 'LONG' and STRATEGY != "BREAKOUT_RETEST":
                     active_sup = self.last_entered_level[1]
             if np.isnan(active_res) and getattr(self, 'last_entered_level', None) is not None:
-                if self.last_entered_level[2] == 'SHORT':
+                # Рисуем как сопротивление, если это шорт ИЛИ если это наша новая стратегия
+                if self.last_entered_level[2] == 'SHORT' or (self.last_entered_level[2] == 'LONG' and STRATEGY == "BREAKOUT_RETEST"):
                     active_res = self.last_entered_level[0]
             
             if self.original_df is not None:
@@ -203,8 +229,8 @@ class SmartSniperUniversal(Strategy):
 
         # --- Сжигание уровня ---
         if len(self.closed_trades) > self.last_closed_trades:
-            # Сжигаем отработанный уровень (и плюсовой, и минусовой), чтобы не входить в него дважды
-            if self.current_trade_level_id is not None:
+            # Сжигаем только если флаг явно разрешает это делать
+            if self.current_trade_level_id is not None and USE_LEVEL_BURN:
                 self.manager.burned_levels.add(self.current_trade_level_id)
             self.current_trade_level_id = None
             self.last_closed_trades = len(self.closed_trades)
@@ -212,25 +238,27 @@ class SmartSniperUniversal(Strategy):
         if len(self.data) < 20: # Жесткий минимум свечей для старта
             return
 
-        has_active_origin = self.origin_level_long is not None or self.origin_level_short is not None
-        if self.position or (not CURRENT_SUPPORTS and not CURRENT_RESISTANCES and not has_active_origin):
+        has_active_origin = self.tracked_support is not None or self.tracked_resistance is not None
+        if (not ALLOW_PYRAMIDING and self.position) or (not CURRENT_SUPPORTS and not CURRENT_RESISTANCES and not has_active_origin):
             return
 
         c_open, c_close = self.data.Open[-1], self.data.Close[-1]
         c_high, c_low = self.data.High[-1], self.data.Low[-1]
         c_atr = self.atr[-1] if not np.isnan(self.atr[-1]) else (c_high - c_low)
 
-        can_long = (len(CURRENT_SUPPORTS) > 0 or self.origin_level_long is not None) and ALLOW_LONG_TRADES
-        can_short = (len(CURRENT_RESISTANCES) > 0 or self.origin_level_short is not None) and ALLOW_SHORT_TRADES
+        # Базовая проверка наличия уровней с учетом стратегии
+        can_long_base = len(CURRENT_RESISTANCES) > 0 if STRATEGY == "BREAKOUT_RETEST" else len(CURRENT_SUPPORTS) > 0
+        can_long = (can_long_base or self.tracked_support is not None) and ALLOW_LONG_TRADES
+        can_short = (len(CURRENT_RESISTANCES) > 0 or self.tracked_resistance is not None) and ALLOW_SHORT_TRADES
 
         df_slice = None
-        if STRATEGY in ["VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP"]:
+        if STRATEGY in ["VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP", "BREAKOUT_RETEST", "V_RED_TOP"]:
             lookback_size = 260 if STRATEGY == "VOLUME_REVERSAL" else 100
             current_len = len(self.data)
             start_idx = max(0, current_len - lookback_size)
 
             if self.original_df is not None:
-                for origin in (self.origin_level_long, self.origin_level_short):
+                for origin in (self.tracked_support, self.tracked_resistance):
                     if origin is not None and '_pit_start_time' in origin:
                         try:
                             origin_idx = self.original_df.index.get_loc(origin['_pit_start_time'])
@@ -255,47 +283,61 @@ class SmartSniperUniversal(Strategy):
         CURRENT_RESISTANCES = [r for r in CURRENT_RESISTANCES if r.get('score', 0) >= MIN_LEVEL_SCORE]
 
         # --- Отслеживание уровня "исхода" ---
-        if CURRENT_SUPPORTS:
-            if self.origin_level_long is None:
+        target_long_levels = CURRENT_RESISTANCES if STRATEGY == "BREAKOUT_RETEST" else CURRENT_SUPPORTS
+
+        if target_long_levels:
+            if self.tracked_support is None:
                 prev_close = float(self.data.Close[-2]) if len(self.data.Close) > 1 else c_close
                 found = None
-                for sup in CURRENT_SUPPORTS:
-                    # Ловим пробой, даже если тело осталось выше, но тень (c_low) прошила уровень
-                    if (c_close < sup['min'] or c_low < sup['min']) and prev_close >= sup['min']:
-                        found = sup
-                        break
-                if found is None:
-                    for sup in CURRENT_SUPPORTS:
-                        if c_close < sup['min'] or c_low < sup['min']:
-                            found = sup
-                            break
-                if found is None:
-                    for sup in CURRENT_SUPPORTS:
-                        if c_close < sup['min'] or c_low < sup['min']:
-                            found = sup
-                            break
-                if found is not None:
-                    self.origin_level_long = dict(found)
-                    GLOBAL_DEBUG_STATS["Origins_Long_Total"] += 1
-                    self.origin_level_long['_pit_start_time'] = current_time
-                    if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM", "SFP"):
-                        # новое пробитие уровня: математика вотчера с нуля + лимит повторов
-                        self.manager.notify_breach(self.origin_level_long, 'LONG')
-            else:
-                origin_max = self.origin_level_long['max']
-                if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM"):
-                    # буфер должен совпадать с BREATH_BUFFER_PCT в v_bottom_watcher.py
-                    origin_max = origin_max * (1 + VBOTTOM_BREATH_BUFFER_PCT / 100.0)
                 
-                if c_close > origin_max:
-                    # Жестко сбрасываем при пробое буфера
-                    if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM") or not self._origin_still_needed(self.origin_level_long, 'LONG'):
-                        if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM"):
-                            self.manager.force_reset_watcher(self.origin_level_long, 'LONG')
-                        self.origin_level_long = None
+                if STRATEGY == "BREAKOUT_RETEST":
+                    # Ловим пробой ВВЕРХ (сопротивления)
+                    for res in target_long_levels:
+                        if c_close > res['max'] and prev_close <= res['max']:
+                            found = res
+                            break
+                    if found is None:
+                        for res in target_long_levels:
+                            if c_close > res['max']:
+                                found = res
+                                break
+                else:
+                    # Обычная логика: пробой ВНИЗ (поддержки)
+                    for sup in target_long_levels:
+                        if (c_close < sup['min'] or c_low < sup['min']) and prev_close >= sup['min']:
+                            found = sup
+                            break
+                    if found is None:
+                        for sup in target_long_levels:
+                            if c_close < sup['min'] or c_low < sup['min']:
+                                found = sup
+                                break
+
+                if found is not None:
+                    self.tracked_support = dict(found)
+                    GLOBAL_DEBUG_STATS["Origins_Long_Total"] += 1
+                    self.tracked_support['_pit_start_time'] = current_time
+                    if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM", "SFP", "BREAKOUT_RETEST"):
+                        self.manager.notify_breach(self.tracked_support, 'LONG')
+            else:
+                # Блок сброса уровня
+                if STRATEGY == "BREAKOUT_RETEST":
+                    # Для пробоя сбрасываем только если вотчер сам умер (отмена)
+                    if not self._origin_still_needed(self.tracked_support, 'LONG'):
+                        self.tracked_support = None
+                else:
+                    origin_max = self.tracked_support['max']
+                    if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM"):
+                        origin_max = origin_max * (1 + VBOTTOM_BREATH_BUFFER_PCT / 100.0)
+                    
+                    if c_close > origin_max:
+                        if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM") or not self._origin_still_needed(self.tracked_support, 'LONG'):
+                            if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM"):
+                                self.manager.force_reset_watcher(self.tracked_support, 'LONG')
+                            self.tracked_support = None
 
         if CURRENT_RESISTANCES:
-            if self.origin_level_short is None:
+            if self.tracked_resistance is None:
                 prev_close = float(self.data.Close[-2]) if len(self.data.Close) > 1 else c_close
                 found = None
                 for res in CURRENT_RESISTANCES:
@@ -308,24 +350,26 @@ class SmartSniperUniversal(Strategy):
                             found = res
                             break
                 if found is not None:
-                    self.origin_level_short = dict(found)
+                    self.tracked_resistance = dict(found)
                     GLOBAL_DEBUG_STATS["Origins_Short_Total"] += 1
-                    self.origin_level_short['_pit_start_time'] = current_time
+                    self.tracked_resistance['_pit_start_time'] = current_time
+                    if STRATEGY in ("V_RED_TOP", "SFP", "PANIC_TRAP"):
+                        self.manager.notify_breach(self.tracked_resistance, 'SHORT')
             else:
-                if c_close < self.origin_level_short['min'] and not self._origin_still_needed(self.origin_level_short, 'SHORT'):
-                    self.origin_level_short = None
+                if c_close < self.tracked_resistance['min'] and not self._origin_still_needed(self.tracked_resistance, 'SHORT'):
+                    self.tracked_resistance = None
 
         if can_long:
             # ТЕПЕРЬ КАПКАН ЗДЕСЬ. Работает строго с одним пробитым уровнем.
-            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP"):
-                if self.origin_level_long is not None:
-                    ctx_eval_long = self._get_context(self.origin_level_long, 'LONG', c_atr)
-                    decision = self._evaluate(self.origin_level_long, 'LONG', c_open, c_high, c_low, c_close,
+            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP", "BREAKOUT_RETEST"):
+                if self.tracked_support is not None:
+                    ctx_eval_long = self._get_context(self.tracked_support, 'LONG', c_atr)
+                    decision = self._evaluate(self.tracked_support, 'LONG', c_open, c_high, c_low, c_close,
                                                CURRENT_RESISTANCES, df_slice, trend=ctx_eval_long.get('trend', 'UNKNOWN'),
                                                c_atr=c_atr, c_ema=current_ema)
-                    if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM", "PANIC_TRAP", "SFP") and self.original_df is not None:
+                    if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM", "PANIC_TRAP", "SFP", "BREAKOUT_RETEST") and self.original_df is not None:
                         # Авто-маркер
-                        level_id = self.manager._level_id(self.origin_level_long, 'LONG')
+                        level_id = self.manager._level_id(self.tracked_support, 'LONG')
                         watcher = self.manager._watchers.get(level_id)
                         if watcher is not None and getattr(watcher, 'last_event_time', None) == current_time:
                             event_type = getattr(watcher, 'last_event_type', None)
@@ -339,9 +383,21 @@ class SmartSniperUniversal(Strategy):
                                 self.original_df.at[current_time, 'sfp_touch'] = c_close
                             elif event_type == "TRIGGER":
                                 self.original_df.at[current_time, 'sfp_trigger'] = c_close
+                            # НОВЫЙ БЛОК ДЛЯ BREAKOUT:
+                            if STRATEGY == "BREAKOUT_RETEST":
+                                if event_type == "SCAN":
+                                    self.original_df.at[current_time, 'br_scan'] = c_close
+                                elif event_type == "BREAKOUT":
+                                    self.original_df.at[current_time, 'br_breakout'] = c_close
+                                elif event_type == "PULLBACK":
+                                    self.original_df.at[current_time, 'br_pullback'] = c_close
+                                elif event_type == "GOOD_GREEN":
+                                    self.original_df.at[current_time, 'br_good'] = c_close
+                                    
+                                    
                     if decision.get('allow'):
-                        self._try_enter(self.origin_level_long, 'LONG', c_close, c_atr, decision, ctx_eval=ctx_eval_long)
-                        self.origin_level_long = None
+                        self._try_enter(self.tracked_support, 'LONG', c_close, c_atr, decision, ctx_eval=ctx_eval_long)
+                        self.tracked_support = None
             else:
                 for sup in CURRENT_SUPPORTS:
                     if recent_low > sup['max']:
@@ -352,15 +408,33 @@ class SmartSniperUniversal(Strategy):
                         break
 
         if can_short:
-            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP"):
-                if self.origin_level_short is not None:
-                    ctx_eval_short = self._get_context(self.origin_level_short, 'SHORT', c_atr)
-                    decision = self._evaluate(self.origin_level_short, 'SHORT', c_open, c_high, c_low, c_close,
-                                               CURRENT_SUPPORTS, df_slice, trend=ctx_eval_short.get('trend', 'UNKNOWN'),
-                                               c_atr=c_atr)
+            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP", "V_RED_TOP", "BREAKOUT_RETEST"):
+                if self.tracked_resistance is not None:
+                    ctx_eval_short = self._get_context(self.tracked_resistance, 'SHORT', c_atr)
+                    decision = self._evaluate(self.tracked_resistance, 'SHORT', c_open, c_high, c_low, c_close, 
+                                      CURRENT_SUPPORTS, df_slice, trend=ctx_eval_short.get('trend', 'UNKNOWN'), 
+                                      c_atr=c_atr, c_ema=current_ema)
+                    
+                    # --- ДОБАВИТЬ ЭТОТ БЛОК ДЛЯ МАРКЕРОВ ШОРТА ---
+                    if STRATEGY == "V_RED_TOP" and self.original_df is not None:
+                        level_id = self.manager._level_id(self.tracked_resistance, 'SHORT')
+                        watcher = self.manager._watchers.get(level_id)
+                        if watcher is not None and getattr(watcher, 'last_event_time', None) == current_time:
+                            event_type = getattr(watcher, 'last_event_type', None)
+                            if event_type == "SCAN":
+                                self.original_df.at[current_time, 'red_scan'] = c_close
+                            elif event_type == "PEAK":
+                                self.original_df.at[current_time, 'red_peak'] = c_close
+                            elif event_type == "GOOD_RED":
+                                self.original_df.at[current_time, 'red_good'] = c_close
+                    # ---------------------------------------------
                     if decision.get('allow'):
-                        self._try_enter(self.origin_level_short, 'SHORT', c_close, c_atr, decision, ctx_eval=ctx_eval_short)
-                        self.origin_level_short = None
+                        self._try_enter(self.tracked_resistance, 'SHORT', c_close, c_atr, decision, ctx_eval=ctx_eval_short)
+                        # ❌ Вызов notify_breach удален. 
+                        # Вотчер V_RED_TOP самостоятельно откатывается на WAIT_C1 внутри своего метода _enter()
+                        # сохраняя счетчик сделок и базу пампа для серийных входов.
+                            
+            #тестово    self.tracked_resistance = None             
             else:
                 for res in CURRENT_RESISTANCES:
                     if recent_high < res['min']:
@@ -399,6 +473,18 @@ class SmartSniperUniversal(Strategy):
             decision = self.manager.evaluate_sfp(
                 level, df_slice, trade_type, opposite_levels, trend=trend, c_atr=c_atr
             )
+        
+        elif STRATEGY == "BREAKOUT_RETEST":
+            decision = self.manager.evaluate_breakout_retest(
+                level, df_slice, trade_type, opposite_levels, trend=trend, c_atr=c_atr, c_ema=c_ema
+            )
+        
+        elif STRATEGY == "V_RED_TOP":
+            c_atr_slow = self.atr_slow[-1] if not np.isnan(self.atr_slow[-1]) else (c_atr if c_atr else 0.0)
+            decision = self.manager.evaluate_v_red_top(
+                level, df_slice, trade_type, opposite_levels, trend=trend, c_atr=c_atr, c_atr_slow=c_atr_slow
+            )
+            
         else: 
             decision = {'allow': False, 'reason': 'Unknown strategy'}
 
@@ -407,20 +493,25 @@ class SmartSniperUniversal(Strategy):
             if ('No signal' in reason_str or 'No CHoCH' in reason_str
                     or 'No volume reversal' in reason_str or 'No pit climax' in reason_str
                     or 'No V bottom' in reason_str or 'No V-Green bottom' in reason_str
-                    or 'No SFP signal' in reason_str):
+                    or 'No SFP signal' in reason_str 
+                    or 'No Breakout-Retest signal' in reason_str):
                 GLOBAL_DEBUG_STATS["No_Signal"] += 1
             else:
                 GLOBAL_DEBUG_STATS["Killed_by_QUALITY"] += 1
         return decision
 
     def _origin_still_needed(self, level, trade_type):
-        """Не сбрасываем origin_level, пока watcher для этого уровня ещё ждёт
-        подтверждения входа."""
         level_id = self.manager._level_id(level, trade_type)
         watcher = self.manager._watchers.get(level_id)
         if watcher is not None and hasattr(watcher, 'state'):
-            return watcher.state in ("WAIT_GREEN", "WAIT_RED", "TRAP_SET", "CANDIDATE_ARMED", "TRACKING_CASCADE",
-                                      "WAIT_START", "WAIT_PEAK", "WAIT_NEW_PEAK", "WAIT_CHOCH")
+            return watcher.state in (
+                # Старые стратегии
+                "WAIT_GREEN", "WAIT_RED", "TRAP_SET", "CANDIDATE_ARMED", "TRACKING_CASCADE",
+                "WAIT_START", "WAIT_PEAK", "WAIT_NEW_PEAK", "WAIT_CHOCH",
+                "WAIT_PULLBACK", "WAIT_TRIGGER",
+                # Добавлены статусы V_RED_TOP
+                "WAIT_PUMP", "WAIT_C1", "WAIT_C2", "WAIT_C3", "WAIT_C3_EXTREME"
+            )
         return False
 
     def _get_context(self, level, trade_type, c_atr):
@@ -456,21 +547,33 @@ class SmartSniperUniversal(Strategy):
 
         zone_range = level['max'] - level['min']
         if trade_type == 'LONG':
-            entry_depth = ((level['max'] - current_price) / zone_range) * 100 if zone_range > 0 else 0.0
-            closest = min([r['min'] for r in CURRENT_RESISTANCES if r['min'] > level['max']], default=None)
-            gap_pct = ((closest - level['max']) / level['max']) * 100 if closest else 999.0
-            dist_from_level_pct = ((level['max'] - current_price) / current_price) * 100
+            if STRATEGY == "BREAKOUT_RETEST":
+                # Для ретеста пробоя: цена над уровнем, считаем откат сверху вниз к level['max']
+                entry_depth = ((current_price - level['max']) / zone_range) * 100 if zone_range > 0 else 0.0
+                closest = min([r['min'] for r in CURRENT_RESISTANCES if r['min'] > current_price], default=None)
+                gap_pct = ((closest - current_price) / current_price) * 100 if closest else 999.0
+                dist_from_level_pct = ((current_price - level['max']) / level['max']) * 100
+            else:
+                # Стандартный лонг (отскок от дна)
+                entry_depth = ((level['max'] - current_price) / zone_range) * 100 if zone_range > 0 else 0.0
+                closest = min([r['min'] for r in CURRENT_RESISTANCES if r['min'] > level['max']], default=None)
+                gap_pct = ((closest - level['max']) / level['max']) * 100 if closest else 999.0
+                dist_from_level_pct = ((level['max'] - current_price) / current_price) * 100
         else:
+            # Стандартный шорт (от сопротивления)
             entry_depth = ((current_price - level['min']) / zone_range) * 100 if zone_range > 0 else 0.0
             closest = max([s['max'] for s in CURRENT_SUPPORTS if s['max'] < level['min']], default=None)
             gap_pct = ((level['min'] - closest) / closest) * 100 if closest else 999.0
-            dist_from_level_pct = ((current_price - level['min']) / current_price) * 100
+            dist_from_level_pct = ((current_price - level['min']) / level['min']) * 100
 
         ema_val = self.ema_4h_200[-1]
         ema_dist_pct = ((current_price - ema_val) / ema_val) * 100 if ema_val and ema_val > 0 else 0.0
 
+        current_rsi = float(self.data.rsi[-1]) if hasattr(self.data, 'rsi') and not np.isnan(self.data.rsi[-1]) else 0.0
+
         signal_time = str(self.data.index[-1])
         GLOBAL_TRADE_CONTEXTS[signal_time] = {
+            "rsi": round(current_rsi, 1),
             "state": lvl_state,
             "score": level.get('score', 0),
             "type": level.get('type', 'unknown'),
@@ -514,10 +617,11 @@ class SmartSniperUniversal(Strategy):
             self.exit_mgr.open_position('LONG', current_price, decision['tp'], decision['sl'],
                                          opened_at=entry_time, deadline=deadline)
         else:
+            trade_size = 0.30 if ALLOW_PYRAMIDING else 0.98
             if DISABLE_SL_DIAGNOSTIC:
-                self.sell(size=0.98)
+                self.sell(size=trade_size)
             else:
-                self.sell(size=0.98, sl=decision['sl'], tp=decision['tp'])
+                self.sell(size=trade_size, sl=decision['sl'], tp=decision['tp'])
             self.exit_mgr.open_position('SHORT', current_price, decision['tp'], decision['sl'],
                                          opened_at=entry_time, deadline=deadline)
 
@@ -712,8 +816,8 @@ def print_trade_log(coin, tr, trade_type_filter=None):
         log_str = (f"{coin.upper()} | {trade_type} | Рез: {row['ReturnPct']*100:.2f}%{mae_str} | "
                    f"Entry:{ctx.get('entry_price','?')} SL:{ctx.get('sl','?')} TP:{ctx.get('tp','?')} | "
                    f"УРОВЕНЬ: {ctx.get('type','?')} | "
-                   f"Score:{ctx.get('score','?')} EMA:{ctx.get('ema_dist','?')}% "
-                   f"УрВыше:{ctx.get('dist_from_level','?')}% Глубина:{ctx.get('depth','?')}% | "
+                   f"Score:{ctx.get('score','?')} RSI:{ctx.get('rsi','?')} EMA:{ctx.get('ema_dist','?')}% "
+                   #1f"УрВыше:{ctx.get('dist_from_level','?')}% Глубина:{ctx.get('depth','?')}% | "
                    f"{ctx.get('reason', '')}")
 
         if row['PnL'] <= 0:
@@ -762,10 +866,19 @@ if TARGET_COIN.upper() == "ALL":
         df['close'] = df['Close']
         df['volume'] = df['Volume']
         df['rsi'] = calculate_rsi(df)  # нужен для SFP-стратегии (RSI-фильтр на свече касания)
+        
+        df['br_scan'] = np.nan
+        df['br_breakout'] = np.nan
+        df['br_pullback'] = np.nan
+        df['br_good'] = np.nan
+        
+        df['red_scan'] = np.nan
+        df['red_peak'] = np.nan
+        df['red_good'] = np.nan
 
         SmartSniperUniversal.context_df_4h = build_4h_context_df(df)
         SmartSniperUniversal.original_df = df
-        bt = Backtest(df, SmartSniperUniversal, cash=1_000_000_000, commission=.0006, hedging=False)
+        bt = Backtest(df, SmartSniperUniversal, cash=1_000_000_000, commission=.0006, hedging=True)
         stats = bt.run()
 
         if int(stats['# Trades']) > 0:
@@ -945,11 +1058,20 @@ else:
             df['close'] = df['Close']
             df['volume'] = df['Volume']
             df['rsi'] = calculate_rsi(df)  # нужен для SFP-стратегии (RSI-фильтр на свече касания)
+            
+            df['br_scan'] = np.nan
+            df['br_breakout'] = np.nan
+            df['br_pullback'] = np.nan
+            df['br_good'] = np.nan
+            
+            df['red_scan'] = np.nan
+            df['red_peak'] = np.nan
+            df['red_good'] = np.nan
 
             SmartSniperUniversal.context_df_4h = build_4h_context_df(df)
             SmartSniperUniversal.original_df = df 
             
-            bt = Backtest(df, SmartSniperUniversal, cash=1_000_000_000, commission=.0006, hedging=False)
+            bt = Backtest(df, SmartSniperUniversal, cash=1_000_000_000, commission=.0006, hedging=True)
             stats = bt.run()
 
             print("\n" + "=" * 85)

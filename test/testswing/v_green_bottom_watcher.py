@@ -3,13 +3,15 @@ from .watcher_methods import _calc_tp_and_rr
 
 class VGreenBottomWatcher:
     CONFIG = {
-        'RED_TRIGGER_MULT': 2.0,      # Во сколько раз объем первой красной свечи должен превысить средний (avg_vol), чтобы капкан активировался и засчитал старт Ямы №1.
-        'MIN_BODY_PCT': 60.0,         # Минимальная плотность тела зеленой свечи. Тело (от Open до Close) должно занимать не менее 60% от всей длины свечи (от Low до High). Отсекает доджи и свечи с огромными тенями сверху.
-        'BREATH_BUFFER_PCT': 1.5,     # Буфер отмены (зона дыхания). Если цена до начала падения улетит вверх на 1.5% выше верхней границы твоего уровня — капкан сбрасывается (убивается).
-        'MIN_DUMP_VOL_PCT': 60.0,     # Требование к объему зеленой свечи. Она должна набрать минимум % от максимального объема падающей красной свечи в текущей яме (trigger_dump_vol).
+        'RED_TRIGGER_MULT': 2.0,        # Во сколько раз объем первой красной свечи должен превысить средний (avg_vol), чтобы капкан активировался и засчитал старт Ямы №1.
+        'MIN_BODY_PCT': 60.0,           # Минимальная плотность тела зеленой свечи. Тело (от Open до Close) должно занимать не менее 60% от всей длины свечи (от Low до High). Отсекает дodжи и свечи с огромными тенями сверху.
+        'BREATH_BUFFER_PCT': 1.5,       # Буфер отмены (зона дыхания). Если цена до начала падения улетит вверх на 1.5% выше верхней границы твоего уровня — капкан сбрасывается (убивается).
+        'MIN_DUMP_VOL_PCT': 60.0,       # Требование к объему зеленой свечи. Она должна набрать минимум % от максимального объема падающей красной свечи в текущей яме (trigger_dump_vol).
         'MIN_ATR_MULT': 1.5, 
-        'MIN_PREV_RED_TOP_WICK_PCT': 4.0, # Верхняя тень красной свечи минимум 5% от ее длины 
-        'MIN_CLOSE_MARGIN_PCT': 0.3,      # Мин. зазор закрытия (0.2% выше открытия красной)
+        'MIN_PREV_RED_TOP_WICK_PCT': 4.0,   # Верхняя тень красной свечи минимум 5% от ее длины 
+        'MIN_CLOSE_MARGIN_PCT': 0.3,        # Мин. зазор закрытия (0.2% выше открытия красной)
+        'MAX_PREV_RED_BODY_PCT': 52.0,      #  Максимальный размер тела предыдущей красной свечи (в %) 
+        'MAX_BARS_IN_PIT': 10,              # Макс. количество свечей от локального дна для поиска точки вход
         
         # --- НАСТРОЙКИ PRICE ACTION (СКИДКА НА ОБЪЕМ) ---
         'BASE_LOCAL_VOL_PCT': 90.0,           # Базовое требование: объем зеленой >= 90% от красной
@@ -18,16 +20,20 @@ class VGreenBottomWatcher:
         'ENGULFING_MIN_GREEN_BODY_PCT': 70.0, # Мин. плотность зеленой свечи (монолитность покупателя)
         
         # --- НАСТРОЙКИ КУЛЬМИНАЦИИ (АНОМАЛЬНЫЙ ОБЪЕМ) ---
-        'CLIMAX_VOL_MULT': 40.0,      # Во сколько раз объем должен превысить базовый для старта Кульминации
-        'CLIMAX_MAX_BARS': 5,         # Сколько свечей даем на перекрытие тела
-        'MIN_CLIMAX_VOL_USD': 1000000.0, #  1 МЛН ДОЛЛАРОВ
+        'CLIMAX_VOL_MULT': 40.0,              # Во сколько раз объем должен превысить базовый для старта Кульминации
+        'CLIMAX_MAX_BARS': 5,                 # Сколько свечей даем на перекрытие тела
+        'MIN_CLIMAX_VOL_USD': 1000000.0,        #  1 МЛН ДОЛЛАРОВ
         
         # --- НАСТРОЙКИ СТРУКТУРЫ ---
-        'MIN_BREAKDOWN_PCT': 1.8,     # На сколько процентов цена должна пробить старое дно, чтобы начать новую яму
-        'MIN_PITS_TO_ARM': 3,         # Начиная с какой по счету ямы бот включает радар и начинает сканировать каждую зеленую свечу на дне.
-        'MIN_PULLBACK_PCT': 3.0,      # Фильтр структуры. На сколько процентов цена должна физически отскочить от локального дна вверх, чтобы бот признал отскок состоявшимся и позволил начать следующую яму при пробое.
-        'MAX_BARS_IN_PIT': 10,        # Максимальное количество свечей в яме.
-        'MAX_PREV_RED_BODY_PCT': 52.0, #  Максимальный размер тела предыдущей красной свечи (в %)   
+        'MIN_BREAKDOWN_ATR': 1.0,           # Гибкий порог пробоя (в ATR)
+        'MIN_BREAKDOWN_PCT_FLOOR': 1.5,     # ЖЕСТКИЙ ПОЛ: минимум % для пробоя
+        'MIN_PITS_TO_ARM': 3,               # Начиная с какой по счету ямы бот включает радар               
+        'MIN_PULLBACK_ATR': 2.0,            # Гибкий порог отскока (в ATR)
+        'MIN_PULLBACK_PCT_FLOOR': 2.0,      # ЖЕСТКИЙ ПОЛ: минимум % для отскока    # На сколько ATR цена должна отскочить от локального дна вверх, чтобы засчитать отскок
+        'MAX_BARS_IN_PIT': 10,
+        
+        
+        
         'TP_MODE': 'fixed_pct',
         'FIXED_TP_PCT': 7.0,
         'TAKE_PROFIT': 10.0,
@@ -207,22 +213,26 @@ class VGreenBottomWatcher:
                 self.bars_since_low = 0  # <-- НОВОЕ ДНО: СБРАСЫВАЕМ ТАЙМЕР ВХОДА
                 
                 if self.pullback_confirmed:
-                    # Считаем границу НАСТОЯЩЕГО пробоя (-2% от зафиксированного дна ямы)
-                    breakdown_target = self.locked_pit_low * (1 - self.CONFIG.get('MIN_BREAKDOWN_PCT', 2.0) / 100.0)
+                    # Считаем границу НАСТОЯЩЕГО пробоя: выбираем максимум между ATR и жестким %
+                    atr_breakdown_dist = safe_atr * self.CONFIG.get('MIN_BREAKDOWN_ATR', 1.0)
+                    pct_breakdown_dist = self.locked_pit_low * (self.CONFIG.get('MIN_BREAKDOWN_PCT_FLOOR', 1.5) / 100.0)
+                    req_breakdown = max(atr_breakdown_dist, pct_breakdown_dist)
+                    
+                    breakdown_target = self.locked_pit_low - req_breakdown
                     
                     if float(c_low) <= breakdown_target:
                         # НАСТОЯЩИЙ ПРОБОЙ
                         self.pits_count += 1
-                        bounce_pct = (self.highest_since_low - self.locked_pit_low) / self.locked_pit_low * 100.0 if self.locked_pit_low > 0 else 0.0
+                        bounce_abs = self.highest_since_low - self.locked_pit_low
                         self.trigger_dump_vol = float(c_vol) if is_red else 0.0
                         self.last_event_type = "PIT" 
-                        self._dbg(f"📉 ЯМА №{self.pits_count} (Пробой > {self.CONFIG.get('MIN_BREAKDOWN_PCT')}%). Отскок был {bounce_pct:.1f}%")
+                        self._dbg(f"📉 ЯМА №{self.pits_count} (Пробой: {req_breakdown:.4f} $). Отскок был: {bounce_abs:.4f} $")
                         
                         # Фиксируем новое структурное дно и сбрасываем отскок
                         self.locked_pit_low = float(c_low)
                         self.pullback_confirmed = False 
                     else:
-                        # ЗАКОЛ: Дно пробили, но недостаточно глубоко. Счечик ям НЕ трогаем.
+                        # ЗАКОЛ: Дно пробили, но недостаточно глубоко. Счетчик ям НЕ трогаем.
                         if is_red:
                             self.trigger_dump_vol = max(self.trigger_dump_vol, float(c_vol))
                 else:
@@ -233,7 +243,6 @@ class VGreenBottomWatcher:
                         self.trigger_dump_vol = max(self.trigger_dump_vol, float(c_vol))
                 
                 # В ЛЮБОМ СЛУЧАЕ (и при пробое, и при заколе) сдвигаем локальное дно под новый уровень
-                # чтобы будущий 3% отскок считался от самой нижней точки
                 self.current_pit_low = float(c_low)
                 self.highest_since_low = float(c_high)
             
@@ -247,9 +256,14 @@ class VGreenBottomWatcher:
                 if is_red:
                     self.trigger_dump_vol = max(self.trigger_dump_vol, float(c_vol))
                 else:
-                    # ЗЕЛЕНАЯ СВЕЧА. Замеряем процент отскока
-                    current_bounce_pct = (self.highest_since_low - self.current_pit_low) / self.current_pit_low * 100.0 if self.current_pit_low > 0 else 0.0
-                    if current_bounce_pct >= self.CONFIG.get('MIN_PULLBACK_PCT', 3.0):
+                    # ЗЕЛЕНАЯ СВЕЧА. Замеряем отскок: выбираем максимум между ATR и жестким %
+                    current_bounce_abs = self.highest_since_low - self.current_pit_low
+                    
+                    atr_pullback_dist = safe_atr * self.CONFIG.get('MIN_PULLBACK_ATR', 2.0)
+                    pct_pullback_dist = self.current_pit_low * (self.CONFIG.get('MIN_PULLBACK_PCT_FLOOR', 2.0) / 100.0)
+                    req_pullback = max(atr_pullback_dist, pct_pullback_dist)
+                    
+                    if current_bounce_abs >= req_pullback:
                         self.pullback_confirmed = True
 
             # 3. ПОИСК ЗЕЛЕНОЙ СВЕЧИ (ВНУТРИ ЯМЫ)
