@@ -20,3 +20,7 @@ config.json
 # Локальные файлы данных и логи (чтобы пустой сбросить на сервер)
 *.log
 healthyplayers.csv
+
+# Базы макро-уровней по месяцам
+*levels_timeline*.json
+levels_timeline_*.json
