@@ -33,6 +33,8 @@ from testswing.watcher_manager import WatcherManager
 from testswing.exit_manager import ExitManager
 from typing import Optional
 
+from smartmoneyconcepts import smc
+
 
 GLOBAL_DEBUG_STATS = {
     "Killed_by_CONTEXT": 0,
@@ -52,7 +54,7 @@ GLOBAL_SKIPPED_COINS = []
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "ALGO"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ALL"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
@@ -135,10 +137,12 @@ class SmartSniperUniversal(Strategy):
             self.draw_br_pullback = self.I(lambda: self.data.df['br_pullback'], name="BR Откат", overlay=True, scatter=True, color='fuchsia')
             self.draw_br_good = self.I(lambda: self.data.df['br_good'], name="BR Вход", overlay=True, scatter=True, color='blue')
         
-        if STRATEGY == "V_RED_TOP":
+        if STRATEGY in ("V_RED_TOP", "SFP"):
             self.draw_red_scan = self.I(lambda: self.data.df['red_scan'], name="SCAN", overlay=True, scatter=True, color='yellow')
-            self.draw_red_peak = self.I(lambda: self.data.df['red_peak'], name="PEAK", overlay=True, scatter=True, color='fuchsia')
             self.draw_red_good = self.I(lambda: self.data.df['red_good'], name="ВХОД", overlay=True, scatter=True, color='red')
+            # НОВЫЕ МАРКЕРЫ СТРУКТУРЫ
+            self.draw_track_start = self.I(lambda: self.data.df['track_start'], name="START_PEAK_1", overlay=True, scatter=True, color='blue')
+            self.draw_new_peak = self.I(lambda: self.data.df['new_peak'], name="NEW_PEAK", overlay=True, scatter=True, color='fuchsia')
         
         if self.original_df is not None:
             self.original_df['atr'] = self.atr
@@ -416,17 +420,19 @@ class SmartSniperUniversal(Strategy):
                                       c_atr=c_atr, c_ema=current_ema)
                     
                     # --- ДОБАВИТЬ ЭТОТ БЛОК ДЛЯ МАРКЕРОВ ШОРТА ---
-                    if STRATEGY == "V_RED_TOP" and self.original_df is not None:
+                    if STRATEGY in ("V_RED_TOP", "SFP") and self.original_df is not None:
                         level_id = self.manager._level_id(self.tracked_resistance, 'SHORT')
                         watcher = self.manager._watchers.get(level_id)
                         if watcher is not None and getattr(watcher, 'last_event_time', None) == current_time:
                             event_type = getattr(watcher, 'last_event_type', None)
                             if event_type == "SCAN":
                                 self.original_df.at[current_time, 'red_scan'] = c_close
-                            elif event_type == "PEAK":
-                                self.original_df.at[current_time, 'red_peak'] = c_close
                             elif event_type == "GOOD_RED":
                                 self.original_df.at[current_time, 'red_good'] = c_close
+                            elif event_type == "TRACK_START":
+                                self.original_df.at[current_time, 'track_start'] = float(c_high)
+                            elif event_type == "NEW_PEAK":
+                                self.original_df.at[current_time, 'new_peak'] = float(c_high)
                     # ---------------------------------------------
                     if decision.get('allow'):
                         self._try_enter(self.tracked_resistance, 'SHORT', c_close, c_atr, decision, ctx_eval=ctx_eval_short)
@@ -482,7 +488,7 @@ class SmartSniperUniversal(Strategy):
         elif STRATEGY == "V_RED_TOP":
             c_atr_slow = self.atr_slow[-1] if not np.isnan(self.atr_slow[-1]) else (c_atr if c_atr else 0.0)
             decision = self.manager.evaluate_v_red_top(
-                level, df_slice, trade_type, opposite_levels, trend=trend, c_atr=c_atr, c_atr_slow=c_atr_slow
+                level, df_slice, trade_type, opposite_levels, trend=trend, c_atr=c_atr, c_atr_slow=c_atr_slow, c_ema=c_ema
             )
             
         else: 
@@ -593,9 +599,9 @@ class SmartSniperUniversal(Strategy):
             "overshoot_pct": round(decision.get('overshoot_pct', 0.0), 3),
             "candles_in_sweep": decision.get('candles_in_sweep', 0),
             "legs_count": decision.get('legs_count', '?'),
-            "entry_price": round(current_price, 8),
-            "sl": round(decision.get('sl', 0.0), 8),
-            "tp": round(decision.get('tp', 0.0), 8),
+            "entry_price": round(current_price, 4),
+            "sl": round(decision.get('sl', 0.0), 4),
+            "tp": round(decision.get('tp', 0.0), 4),
         }
 
         self.current_trade_level_id = decision['level_id']
@@ -617,7 +623,7 @@ class SmartSniperUniversal(Strategy):
             self.exit_mgr.open_position('LONG', current_price, decision['tp'], decision['sl'],
                                          opened_at=entry_time, deadline=deadline)
         else:
-            trade_size = 0.30 if ALLOW_PYRAMIDING else 0.98
+            trade_size = 0.05 if ALLOW_PYRAMIDING else 0.98
             if DISABLE_SL_DIAGNOSTIC:
                 self.sell(size=trade_size)
             else:
@@ -787,9 +793,10 @@ def print_trade_log(coin, tr, trade_type_filter=None):
             GLOBAL_TREND_STATS[trend]["win"] += 1
         GLOBAL_TREND_STATS[trend]["pnl"] += row['ReturnPct'] * 100
 
-        GLOBAL_COIN_TRENDS.setdefault(coin, []).append(
-            f"{trend}(ног:{ctx.get('legs_count', '?')},{'W' if row['PnL'] > 0 else 'L'})"
-        )
+        res_key = "W" if row['PnL'] > 0 else "L"
+        coin_t_dict = GLOBAL_COIN_TRENDS.setdefault(coin, {})
+        t_stats = coin_t_dict.setdefault(trend, {"W": 0, "L": 0})
+        t_stats[res_key] += 1
 
         ema_dist = ctx.get('ema_dist', 0)
         if ema_dist is not None and isinstance(ema_dist, (int, float)):
@@ -816,8 +823,7 @@ def print_trade_log(coin, tr, trade_type_filter=None):
         log_str = (f"{coin.upper()} | {trade_type} | Рез: {row['ReturnPct']*100:.2f}%{mae_str} | "
                    f"Entry:{ctx.get('entry_price','?')} SL:{ctx.get('sl','?')} TP:{ctx.get('tp','?')} | "
                    f"УРОВЕНЬ: {ctx.get('type','?')} | "
-                   f"Score:{ctx.get('score','?')} RSI:{ctx.get('rsi','?')} EMA:{ctx.get('ema_dist','?')}% "
-                   #1f"УрВыше:{ctx.get('dist_from_level','?')}% Глубина:{ctx.get('depth','?')}% | "
+                   f"Score:{ctx.get('score','?')} | EMA:{ctx.get('ema_dist','?')}% | "
                    f"{ctx.get('reason', '')}")
 
         if row['PnL'] <= 0:
@@ -867,6 +873,17 @@ if TARGET_COIN.upper() == "ALL":
         df['volume'] = df['Volume']
         df['rsi'] = calculate_rsi(df)  # нужен для SFP-стратегии (RSI-фильтр на свече касания)
         
+        # ======================= НОВЫЙ БЛОК SMC =======================
+        # 1. Отдаем библиотеке только чистые колонки в нижнем регистре
+        smc_df = df[['open', 'high', 'low', 'close', 'volume']].copy()
+        
+        # 2. Считаем структуру
+        smc_res = smc.swing_highs_lows(smc_df, swing_length=5)
+        
+        # 3. Достаем колонку Level, оставляем только те строки, где HighLow == -1 (это Swing Low), и тянем их вперед
+        df['swing_low'] = smc_res['Level'].where(smc_res['HighLow'] == -1).ffill()
+        # ==============================================================
+        
         df['br_scan'] = np.nan
         df['br_breakout'] = np.nan
         df['br_pullback'] = np.nan
@@ -875,6 +892,11 @@ if TARGET_COIN.upper() == "ALL":
         df['red_scan'] = np.nan
         df['red_peak'] = np.nan
         df['red_good'] = np.nan
+        
+        # --- ДОБАВЬ ВОТ ЭТИ ДВЕ СТРОКИ ---
+        df['track_start'] = np.nan
+        df['new_peak'] = np.nan
+            # ---------------------------------
 
         SmartSniperUniversal.context_df_4h = build_4h_context_df(df)
         SmartSniperUniversal.original_df = df
@@ -897,13 +919,18 @@ if TARGET_COIN.upper() == "ALL":
 
             print_trade_log(coin, tr)
 
+            trend_summary_list = []
+            for t_name, t_counts in GLOBAL_COIN_TRENDS.get(coin, {}).items():
+                trend_summary_list.append(f"{t_name}:{t_counts['W']}W/{t_counts['L']}L")
+            trend_str = " | ".join(trend_summary_list) if trend_summary_list else "-"
+
             GLOBAL_REPORT.append({
                 "Монета": coin.upper(),
                 "Лонг (+/-)": f"{longs_win}/{longs_loss}",
                 "Шорт (+/-)": f"{shorts_win}/{shorts_loss}",
                 "Win Rate %": round(stats['Win Rate [%]'], 2),
                 "Профит %": round(stats['Return [%]'], 2),
-                "Trend": ", ".join(GLOBAL_COIN_TRENDS.get(coin, []))
+                "Trend": trend_str
             })
             
         else:
@@ -921,8 +948,13 @@ if TARGET_COIN.upper() == "ALL":
     print("=" * 85)
     if GLOBAL_REPORT:
         report_df = pd.DataFrame(GLOBAL_REPORT).sort_values(by="Профит %", ascending=False)
-        print(report_df.to_string(index=False))
-        print("-" * 85)
+        header = f"{'Монета':<8} | {'Лонг':<9} | {'Шорт':<9} | {'WinRate %':<10} | {'Профит %':<10} | {'Контекст / Тренд'}"
+        print(header)
+        print("-" * 90)
+        for _, r in report_df.iterrows():
+            row_str = f"{r['Монета']:<8} | {r['Лонг (+/-)']:<9} | {r['Шорт (+/-)']:<9} | {r['Win Rate %']:<10.2f} | {r['Профит %']:<10.2f} | {r['Trend']}"
+            print(row_str)
+        print("-" * 90)
         print(f"📈 Суммарный профит портфеля: {report_df['Профит %'].sum():.2f}%")
         print(f"🏆 Средний Win Rate:         {report_df['Win Rate %'].mean():.2f}%")
     else:
@@ -1067,9 +1099,14 @@ else:
             df['red_scan'] = np.nan
             df['red_peak'] = np.nan
             df['red_good'] = np.nan
+            
+            # --- ДОБАВЬ ВОТ ЭТИ ДВЕ СТРОКИ ---
+            df['track_start'] = np.nan
+            df['new_peak'] = np.nan
+            # ---------------------------------
 
             SmartSniperUniversal.context_df_4h = build_4h_context_df(df)
-            SmartSniperUniversal.original_df = df 
+            SmartSniperUniversal.original_df = df
             
             bt = Backtest(df, SmartSniperUniversal, cash=1_000_000_000, commission=.0006, hedging=True)
             stats = bt.run()

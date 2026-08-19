@@ -6,6 +6,8 @@ watcher_manager.py
 из watcher_methods.py, вызывает её и возвращает симулятору готовый ответ.
 """
 
+import pandas as pd
+
 from .watcher_methods import (SweepReclaimWatcher, ChochRetestWatcher, check_choch_zone,
                                check_pit_climax, _calc_tp_and_rr)
 from .v_bottom_watcher import VBottomWatcher
@@ -236,8 +238,13 @@ class WatcherManager:
         )
         c_rsi = float(c['rsi']) if 'rsi' in df.columns and c['rsi'] == c['rsi'] else 50.0
 
-        signal = watcher.update(c_open, c_high, c_low, c_close, c_vol, baseline_vol, c_atr, all_opposite_levels,
-                         c_rsi=c_rsi, candle_time=df.index[-1])
+        # === НОВОЕ: Извлекаем Swing Low из датафрейма ===
+        current_swing_low = float(df['swing_low'].iloc[-1]) if 'swing_low' in df.columns and not pd.isna(df['swing_low'].iloc[-1]) else None
+
+        signal = watcher.update(
+            c_open, c_high, c_low, c_close, c_vol, baseline_vol, c_atr, all_opposite_levels,
+            c_rsi=c_rsi, candle_time=df.index[-1], swing_low=current_swing_low
+        )
 
         if not signal:
             return self._deny("No SFP signal")
@@ -362,9 +369,14 @@ class WatcherManager:
         )
 
         c_rsi = float(c['rsi']) if 'rsi' in df.columns and c['rsi'] == c['rsi'] else 50.0
+        
+        # Достаем опорный свинг из датафрейма
+        current_swing_low = float(df['swing_low'].iloc[-1]) if 'swing_low' in df.columns and not pd.isna(df['swing_low'].iloc[-1]) else None
 
         signal = watcher.update(
-            c_open, c_high, c_low, c_close, c_vol, baseline_vol, c_atr, all_opposite_levels, candle_time=df.index[-1], c_ema=c_ema, c_atr_slow=c_atr_slow, c_rsi=c_rsi
+            c_open, c_high, c_low, c_close, c_vol, baseline_vol, c_atr, all_opposite_levels, 
+            candle_time=df.index[-1], c_ema=c_ema, c_atr_slow=c_atr_slow, c_rsi=c_rsi,
+            swing_low=current_swing_low
         )
 
         if not signal:

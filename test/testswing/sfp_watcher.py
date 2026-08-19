@@ -1,20 +1,29 @@
 # -*- coding: utf-8 -*-
-from typing import Optional
+from .watcher_methods import _calc_tp_and_rr
 
 class SFPWatcher:
     CONFIG = {
-        # --- ФИЛЬТРЫ КАСАНИЯ ---
-        'RSI_OVERSOLD': 35.0,      # RSI для лонга (перепроданность)
-        'RSI_OVERBOUGHT': 65.0,    # RSI для шорта (перекупленность)
-        'VOL_CLIMAX_MULT': 1.8,    # Во сколько раз объем свечи касания должен превысить фон
-        'KNIFE_ATR_MULT': 0.8,     # Фильтр "падающего ножа" (отсекаем пробои на полном ходу)
+        # ==========================================
+        # МАКРО-ФИЛЬТР (Старт)
+        # ==========================================
+        'MIN_PUMP_HEIGHT_PCT': 1.5,      # Снижено! Ждем прокола на 1.5% над уровнем
+        'MAX_DROP_BEFORE_PUMP_PCT': 2.0, # Защита от зависания: если упали на 2% ниже уровня - отмена
         
-        # --- НАСТРОЙКИ СДЕЛКИ ---
-        'TAKE_PROFIT': 10.0,       # Фиксированный Тейк-Профит в %
-        'SL_BUFFER': 0.5,          # Отступ стоп-лосса за границу зоны в %
-        'RR_RATIO': 3.0,           # Минимальный Risk/Reward (если меньше - отмена)
-        'CANCEL_BUFFER_PCT': 1.0,  # Запас отмены (если цена пробила зону на 1% - сетап мертв)
-        
+        # ==========================================
+        # CHoCH (СЛОМ СТРУКТУРЫ)
+        # ==========================================
+        'CHOCH_MIN_VOL_MULT': 1.0,       # Объем пробойной свечи должен быть просто выше медианы
+
+        # ==========================================
+        # НАСТРОЙКИ РИСКА И ВЫХОДА
+        # ==========================================
+        'TP_MODE': 'fixed_pct',
+        'FIXED_TP_PCT': 7.0,
+        'TAKE_PROFIT': 10.0,
+        'TP_BUFFER_PCT': 0.0,
+        'SL_BUFFER': 0.5,
+        'MIN_RR': 1.0,
+        'USE_RR_FILTER': False,
         'DEBUG': True,
     }
 
@@ -23,190 +32,128 @@ class SFPWatcher:
         self.max = level_max
         self.trade_type = trade_type
         
-        self.state = "WAIT_TOUCH"
-        self.choch_level = 0.0
+        self.state = "WAIT_PUMP"
+        self.peak_high = 0.0
+        self.active_swing_low = None # Опорный структурный минимум
         
-        # Память для "падающего ножа" и CHoCH
-        self.p_open: Optional[float] = None
-        self.p_high: Optional[float] = None
-        self.p_low: Optional[float] = None
-        self.p_close: Optional[float] = None
-        self.p_vol: Optional[float] = None
+        self.vol_history = []
         
-        self.touch_rsi_value = 0.0
-        self.touch_vol_ratio = 0.0
-
+        self.sl_price = None
+        self.entry_price = None
+        self.history_log = ""
+        
         self._last_time = None
         self.last_event_time = None
         self.last_event_msg = None
         self.last_event_type = None
 
-    def _tp(self):
-        return f"{self._last_time} " if self._last_time is not None else ""
+    def _tp(self): return f"{self._last_time} " if self._last_time else ""
+
+    def _fmt(self, v):
+        if v >= 1_000_000: return f"{v/1_000_000:.1f}M"
+        if v >= 1_000: return f"{v/1_000:.1f}k"
+        return str(int(v))
 
     def _dbg(self, msg):
         self.last_event_time = self._last_time
         self.last_event_msg = msg
         if self.CONFIG.get('DEBUG'):
-            with open("sfp_debug.log", "a", encoding="utf-8") as f:
-                f.write(f"{self._tp()}[{self.max:.4f}] {msg}\n")
-
-    def _reset(self):
-        self.state = "WAIT_TOUCH"
-        self.choch_level = 0.0
+            with open("v_red_debug.log", "a", encoding="utf-8") as f:
+                f.write(f"{self._tp()}[{self.min:.4f}] {msg}\n")
 
     def on_breach_start(self):
-        if self.state in ("DEAD", "TRIGGERED"):
-            return
-        self._reset()
+        if self.state not in ("DEAD", "TRIGGERED"):
+            self.state = "WAIT_PUMP"
+            self.active_swing_low = None
 
     def update(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, c_atr, all_opposite_levels, **kwargs):
         self._last_time = kwargs.get('candle_time')
+        self.last_event_time = self._last_time  
         self.last_event_type = None
         
-        # Извлекаем RSI (симулятор должен передавать его в kwargs!)
-        c_rsi = kwargs.get('c_rsi', 50.0) 
+        if self.state in ("DEAD", "TRIGGERED"): return None
+        if self.trade_type != 'SHORT': return None
 
-        if self.state in ("DEAD", "TRIGGERED"): 
+        high_val = float(c_high)
+        close_val = float(c_close)
+        
+        # Забираем актуальный Swing Low, рассчитанный глобально
+        current_swing_low = kwargs.get('swing_low')
+        
+        # --- ИЗОЛИРОВАННЫЙ УМНЫЙ ОБЪЕМ (МЕДИАНА) ---
+        self.vol_history.append(float(c_vol))
+        if len(self.vol_history) > 20:
+            self.vol_history.pop(0)
+            
+        if len(self.vol_history) == 20:
+            sorted_vols = sorted(self.vol_history)
+            safe_baseline = (sorted_vols[9] + sorted_vols[10]) / 2.0
+        else:
+            safe_baseline = float(baseline_vol) if baseline_vol else 0.0001
+
+        # Постоянный трекинг максимума пампа
+        if self.state != "WAIT_PUMP":
+            if high_val > self.peak_high:
+                self.peak_high = high_val
+                # Если сделали перехай, обновляем и опорный откат (Swing Low)
+                if current_swing_low and current_swing_low > 0:
+                    self.active_swing_low = float(current_swing_low)
+                    self.last_event_type = "PEAK"
+
+        # === ЗАЩИТА ОТ ЗАВИСАНИЯ ===
+        # Если бот коснулся уровня, не смог запампить на нужную высоту и просто упал вниз
+        if self.state == "WAIT_PUMP" and close_val < self.min * (1 - self.CONFIG['MAX_DROP_BEFORE_PUMP_PCT'] / 100.0):
+            self.state = "DEAD"
+            self._dbg(f"💀 Отмена пампа: цена упала ниже {self.CONFIG['MAX_DROP_BEFORE_PUMP_PCT']}% от уровня.")
             return None
-            
-        if not baseline_vol or baseline_vol <= 0: 
-            return None
-            
-        # Ждем хотя бы одну свечу для формирования памяти (чтобы проверять ножи и хаи)
-        # Проверяем ВСЕ пять атрибутов в одном условии — так анализатор типов
-        # сужает тип каждого из них до float отдельно (а не только p_open).
-        if (self.p_open is None or self.p_high is None or self.p_low is None
-                or self.p_close is None or self.p_vol is None):
-            self._save_prev(c_open, c_high, c_low, c_close, c_vol)
-            return None
 
-        # После проверки выше все пять гарантированно float, не None.
-        p_open = self.p_open
-        p_high = self.p_high
-        p_low = self.p_low
-        p_close = self.p_close
-        p_vol = self.p_vol
-
-        safe_atr = float(c_atr) if (c_atr is not None and c_atr == c_atr) else 0.0001
-        c_vol_ratio = float(c_vol) / float(baseline_vol)
-
-        # 1. ПРОВЕРКА НА ЛЕТЯЩИЙ НОЖ / РАКЕТУ
-        is_falling_knife = False
-        is_flying_rocket = False
-
-        if c_close < c_open and p_close < p_open:
-            if (c_open - c_close) > (safe_atr * self.CONFIG['KNIFE_ATR_MULT']) and c_vol >= p_vol:
-                is_falling_knife = True
-
-        if c_close > c_open and p_close > p_open:
-            if (c_close - c_open) > (safe_atr * self.CONFIG['KNIFE_ATR_MULT']) and c_vol >= p_vol:
-                is_flying_rocket = True
-
-        # =================================================================
-        # СОСТОЯНИЕ 1: ЖДЕМ КАСАНИЯ ЗОНЫ
-        # =================================================================
-        if self.state == "WAIT_TOUCH":
-            
-            if self.trade_type == "LONG":
-                # Касание зоны: лой зашел в зону, закрытие всё еще выше дна зоны
-                if c_low <= self.max and c_close > self.min:
-                    if is_falling_knife:
-                        self._dbg("⚠️ Отмена: Падающий нож в зоне.")
-                    elif c_rsi > self.CONFIG['RSI_OVERSOLD']:
-                        self._dbg(f"❌ Пропуск: RSI {c_rsi:.1f} > {self.CONFIG['RSI_OVERSOLD']}")
-                    elif c_vol_ratio < self.CONFIG['VOL_CLIMAX_MULT']:
-                        self._dbg(f"❌ Пропуск: Объем {c_vol_ratio:.1f}x < {self.CONFIG['VOL_CLIMAX_MULT']}x")
-                    else:
-                        # ВСЕ ФИЛЬТРЫ ПРОЙДЕНЫ! Фиксируем CHoCH и ждем пробой.
-                        self.state = "WAIT_CHOCH"
-                        self.choch_level = max(float(c_high), p_high)
-                        self.touch_rsi_value = c_rsi
-                        self.touch_vol_ratio = c_vol_ratio
-                        self.last_event_type = "TOUCH"
-                        self._dbg(f"🎯 КАСАНИЕ (Лонг)! RSI={c_rsi:.1f}, Vol={c_vol_ratio:.1f}x. Ждем CHoCH пробой выше {self.choch_level:.4f}")
-            
-            # (Для шорта логика зеркальная, если понадобится)
-            elif self.trade_type == "SHORT":
-                if c_high >= self.min and c_close < self.max:
-                    if is_flying_rocket:
-                        self._dbg("⚠️ Отмена: Летящая ракета в зоне.")
-                    elif c_rsi < self.CONFIG['RSI_OVERBOUGHT']:
-                        self._dbg(f"❌ Пропуск: RSI {c_rsi:.1f} < {self.CONFIG['RSI_OVERBOUGHT']}")
-                    elif c_vol_ratio < self.CONFIG['VOL_CLIMAX_MULT']:
-                        self._dbg(f"❌ Пропуск: Объем {c_vol_ratio:.1f}x < {self.CONFIG['VOL_CLIMAX_MULT']}x")
-                    else:
-                        self.state = "WAIT_CHOCH"
-                        self.choch_level = min(float(c_low), p_low) # Слом для шорта по лоям
-                        self.touch_rsi_value = c_rsi
-                        self.touch_vol_ratio = c_vol_ratio
-                        self.last_event_type = "TOUCH"
-                        self._dbg(f"🎯 КАСАНИЕ (Шорт)! RSI={c_rsi:.1f}, Vol={c_vol_ratio:.1f}x. Ждем CHoCH ниже {self.choch_level:.4f}")
-
-        # =================================================================
-        # СОСТОЯНИЕ 2: ЖДЕМ ПРОБОЯ СТРУКТУРЫ (CHoCH)
-        # =================================================================
-        elif self.state == "WAIT_CHOCH":
-            
-            if self.trade_type == "LONG":
-                # Отмена 1: Цена провалилась ниже зоны с буфером
-                if c_low < self.min * (1 - self.CONFIG['CANCEL_BUFFER_PCT'] / 100):
-                    self.state = "DEAD"
-                    self._dbg(f"💀 Сетап убит: цена провалилась ниже зоны.")
-                    return None
+        # --- ШАГ 0: ЖДЕМ ПАМПА ---
+        if self.state == "WAIT_PUMP":
+            target_pump = self.min * (1 + self.CONFIG['MIN_PUMP_HEIGHT_PCT'] / 100.0)
+            if high_val >= target_pump:
+                self.state = "WAIT_CHOCH"
+                self.peak_high = high_val
+                if current_swing_low and current_swing_low > 0:
+                    self.active_swing_low = float(current_swing_low)
                 
-                # ТРИГГЕР: Цена закрылась выше уровня CHoCH
-                if float(c_close) > self.choch_level:
-                    return self._enter(c_close)
-            
-            elif self.trade_type == "SHORT":
-                if c_high > self.max * (1 + self.CONFIG['CANCEL_BUFFER_PCT'] / 100):
-                    self.state = "DEAD"
-                    return None
-                if float(c_close) < self.choch_level:
-                    return self._enter(c_close)
+                self.last_event_type = "SCAN"
+                self._dbg(f"🚀 ПРОБОЙ ПАМПА ({high_val:.4f}). Цель Swing Low: {self.active_swing_low}. Переход в ожидание CHoCH.")
+            return None
 
-        # Обновляем память перед переходом к следующей свече
-        self._save_prev(c_open, c_high, c_low, c_close, c_vol)
+        # --- ШАГ 1: ЖДЕМ СЛОМА СТРУКТУРЫ (CHoCH) ---
+        if self.state == "WAIT_CHOCH":
+            if not self.active_swing_low:
+                return None 
+
+            # Триггер: цена закрылась ниже опорного Swing Low
+            if close_val < self.active_swing_low:
+                is_vol_ok = float(c_vol) >= (safe_baseline * self.CONFIG['CHOCH_MIN_VOL_MULT'])
+
+                if is_vol_ok:
+                    self.last_event_type = "GOOD_RED"
+                    self.history_log = f"Vol VS Baseline: {(float(c_vol)/safe_baseline):.1f}x"
+                    self._dbg(f"✅ ВХОД (ШОРТ CHoCH): Пробой Swing Low ({self.active_swing_low:.4f}). {self.history_log}")
+                    return self._enter(c_high, c_close, all_opposite_levels)
+                else:
+                    self._dbg(f"🔕 Пробой CHoCH без объема. Объем={self._fmt(c_vol)}, нужно >={self._fmt(safe_baseline * self.CONFIG['CHOCH_MIN_VOL_MULT'])}")
+                    
         return None
 
-    def _save_prev(self, c_open, c_high, c_low, c_close, c_vol):
-        self.p_open = float(c_open)
-        self.p_high = float(c_high)
-        self.p_low = float(c_low)
-        self.p_close = float(c_close)
-        self.p_vol = float(c_vol)
-
-    def _enter(self, current_close):
+    def _enter(self, c_high, c_close, all_opposite_levels):
         self.state = "TRIGGERED"
-        
-        # СТАРАЯ ЖЕСТКАЯ МАТЕМАТИКА (ФИКС 10%) ИЗ WATCHER_LOGIC.PY
-        if self.trade_type == "LONG":
-            actual_sl = self.min * (1 - self.CONFIG['SL_BUFFER'] / 100)
-            actual_tp = current_close * (1 + self.CONFIG['TAKE_PROFIT'] / 100)
-            risk = current_close - actual_sl
-            reward = actual_tp - current_close
-        else:
-            actual_sl = self.max * (1 + self.CONFIG['SL_BUFFER'] / 100)
-            actual_tp = current_close * (1 - self.CONFIG['TAKE_PROFIT'] / 100)
-            risk = actual_sl - current_close
-            reward = current_close - actual_tp
+        actual_entry = float(c_close)
+        actual_sl = self.peak_high * (1 + (self.CONFIG['SL_BUFFER'] / 100.0)) 
 
-        # ФИЛЬТР R/R
-        if risk <= 0 or (reward / risk) < self.CONFIG['RR_RATIO']:
-            rr_val = (reward / risk) if risk > 0 else 0
+        self._dbg(f"🚪 ОРДЕР УШЕЛ! Entry: {actual_entry:.4f}, SL: {actual_sl:.4f}")
+
+        risk_data, err = _calc_tp_and_rr(actual_entry, actual_sl, self.trade_type, all_opposite_levels, self.CONFIG)
+        if err or not risk_data:
             self.state = "DEAD"
-            self._dbg(f"❌ ОТМЕНА ВХОДА: Плохой R/R. {rr_val:.2f} < {self.CONFIG['RR_RATIO']}")
-            return {'error': "Плохой R/R"}
+            self._dbg(f"❌ Калькулятор УБИЛ сделку: {err}")
+            return {'error': err}
 
-        self.last_event_type = "TRIGGER"
-        reason_str = f"CHoCH Breakout | RSI={self.touch_rsi_value:.1f} | Vol={self.touch_vol_ratio:.1f}x"
-        self._dbg(f"🚀 ВХОД! {reason_str}. Вход: {current_close:.4f}, SL: {actual_sl:.4f}")
-        
-        return {
-            "action": "BUY" if self.trade_type == "LONG" else "SELL", 
-            "entry_price": current_close, 
-            "sl": actual_sl, 
-            "tp": actual_tp, 
-            "reason": reason_str
-        }
+        self.entry_price = actual_entry
+        self.sl_price = risk_data['sl']
+        reason_str = f"CHoCH Short [{self.history_log}]"
+
+        return {"action": "SELL", "entry_price": actual_entry, "sl": risk_data['sl'], "tp": risk_data['tp'], "reason": reason_str}

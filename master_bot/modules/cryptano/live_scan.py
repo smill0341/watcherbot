@@ -18,7 +18,13 @@ AUTO_ADD_FROM_CRITICAL = True   # Разрешить Critical фильтру с�
 AUTO_REMOVE_AFTER_SIGNAL = True # Удалять монету из Watchlist после успешного сигнала
 
 watcher_cooldown_cache = {}
-v_bottom_mgr = VBottomManager()  # Менеджер V-BOTTOM стратегии
+v_bottom_mgr = VBottomManager()  # Менеджер V-BOTTOM/V-GREEN-BOTTOM стратегий
+# Персистентное состояние origin-tracking (какой уровень сейчас "пробит"
+# и отслеживается на монету) — та же модель, что в test_simulator.py.
+# Разные ключи для V_BOTTOM/V_GREEN_BOTTOM зашиты в самих track_key
+# внутри watcher_plan.py (coin_LONG / coin_VGB_LONG), поэтому это один
+# общий словарь на обе стратегии, без коллизий.
+tracked_origin_levels = {}
 _watcher_lock = threading.Lock()
 
 def is_in_watchlist(coin):

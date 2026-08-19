@@ -14,6 +14,28 @@ from modules.cryptano.utils.vbottom_manager import VBottomManager
 
 SCAN_COINS_LIMIT = 150
 
+# --- Настройки origin-tracking для V_BOTTOM/V_GREEN_BOTTOM ---
+# Должны совпадать с тем, что реально тестируется в test_simulator.py,
+# иначе бой и симулятор снова разъедутся.
+VBOTTOM_BREATH_BUFFER_PCT = 3.0  # см. test_simulator.py:VBOTTOM_BREATH_BUFFER_PCT
+MIN_LEVEL_SCORE = 1.0            # см. test_simulator.py:MIN_LEVEL_SCORE
+
+
+def _find_fresh_breach(levels, c_close, c_low, prev_close):
+    """
+    Ищет уровень, который цена только что пробила вниз — та же логика,
+    что в test_simulator.py: сначала ищем "свежий" пробой (только что
+    пересекли границу), если такого нет — берём любой уровень, под
+    которым цена уже находится (fallback на случай гэпа/пропуска свечи).
+    """
+    for lvl in levels:
+        if (c_close < lvl['min'] or c_low < lvl['min']) and prev_close >= lvl['min']:
+            return lvl
+    for lvl in levels:
+        if c_close < lvl['min'] or c_low < lvl['min']:
+            return lvl
+    return None
+
 def check_manual_extreme(coin, direction, source="Manual"):
     """
     Делает умный срез графика M15. Ищет пик/дно в последних свечах 
@@ -160,18 +182,33 @@ def check_manual_extreme(coin, direction, source="Manual"):
     
 
 
-def check_v_bottom(coin, direction, vbottom_mgr=None):
+def check_v_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None):
     """
-    Проверяет V-BOTTOM паттерн на уровнях по 15-минутным свечам.
-    Возвращает (is_ready, report_text, levels_checked) — третье значение
-    нужно для статистики скана (сколько уровней вообще оценили).
+    Проверяет V-BOTTOM паттерн — теперь по той же модели, что в симуляторе:
+    отслеживаем ОДИН активный (пробитый) уровень за раз на монету, а не
+    прогоняем все supports разом каждый скан. Как только уровень пробит —
+    notify_breach(), дальше кормим свечами именно его, пока либо не
+    сработает сигнал, либо цена не уйдёт выше буфера (force_reset_watcher).
+
+    tracked_levels — персистентный словарь {f"{coin}_LONG": level_dict},
+    должен жить между вызовами (передаётся из live_scan.py).
+
+    Возвращает (is_ready, report_text, levels_checked).
     """
+    # SHORT для V_BOTTOM не реализован в самом вотчере (всегда return None
+    # внутри update()) — не тратим лишний поход на биржу впустую.
+    if direction != "LONG":
+        return False, None, 0
+
+    if tracked_levels is None:
+        tracked_levels = {}
+
     try:
         time.sleep(0.3)
 
         coin = coin.upper().replace("USDT", "").replace("/", "").strip()
-        
-        # Резолвим символ на бирже (учитывает алиасы тикеров типа TON/TONCOIN)
+
+        # Резолвим символ на бирже (учитывает алиасы тикеров типа TON/GRAM)
         markets = load_markets_cached(exchange)
         symbol = resolve_symbol(coin, markets)
         if not symbol:
@@ -207,57 +244,57 @@ def check_v_bottom(coin, direction, vbottom_mgr=None):
         if not coin_macro:
             return False, f"⚠️ Нет уровней для {coin} в macro_levels.json.", 0
 
-        # Инициализируем менеджер если не передан
         if vbottom_mgr is None:
             vbottom_mgr = VBottomManager()
 
-        # Берём уровни поддержки для LONG, сопротивления для расчёта TP
-        supports = coin_macro.get("supports", [])
+        # Фильтр по score — как в симуляторе, слабые уровни вообще не рассматриваем
+        supports = [s for s in coin_macro.get("supports", []) if s.get('score', 0) >= MIN_LEVEL_SCORE]
         resistances = coin_macro.get("resistances", [])
 
-        if not supports and direction == "LONG":
-            return False, f"⚠️ Нет поддержек для V-BOTTOM на {coin}.", 0
+        if not supports:
+            return False, f"⚠️ Нет поддержек для V-BOTTOM на {coin} (после фильтра score).", 0
 
-        signals = []
-        levels_checked = 0
+        track_key = f"{coin}_LONG"
+        c_close = float(df['close'].iloc[-1])
+        c_low = float(df['low'].iloc[-1])
+        prev_close = float(df['close'].iloc[-2]) if len(df) > 1 else c_close
 
-        # Проверяем каждый уровень поддержки для LONG
-        if direction == "LONG":
-            for level in supports:
-                levels_checked += 1
-                result = vbottom_mgr.evaluate_v_bottom(
-                    level, df, "LONG", resistances,
-                    trend="UNKNOWN", c_atr=None
-                )
-                if result.get('allow'):
-                    signals.append(result)
+        tracked = tracked_levels.get(track_key)
 
-        # Для SHORT аналогично, но на сопротивлениях
-        elif direction == "SHORT":
-            for level in resistances:
-                levels_checked += 1
-                result = vbottom_mgr.evaluate_v_bottom(
-                    level, df, "SHORT", supports,
-                    trend="UNKNOWN", c_atr=None
-                )
-                if result.get('allow'):
-                    signals.append(result)
+        if tracked is None:
+            # Уровень пока не отслеживается — ищем свежий пробой вниз
+            found = _find_fresh_breach(supports, c_close, c_low, prev_close)
+            if found is None:
+                return False, None, 0
+            tracked = dict(found)
+            tracked_levels[track_key] = tracked
+            vbottom_mgr.notify_breach(tracked, 'LONG')
+        else:
+            # Уже отслеживаем — проверяем не ушла ли цена выше буфера отмены
+            origin_max = tracked['max'] * (1 + VBOTTOM_BREATH_BUFFER_PCT / 100.0)
+            if c_close > origin_max:
+                vbottom_mgr.force_reset_watcher(tracked, 'LONG')
+                del tracked_levels[track_key]
+                return False, None, 0
 
-        if not signals:
+        # Кормим свечой именно отслеживаемый уровень — не весь список
+        result = vbottom_mgr.evaluate_v_bottom(tracked, df, "LONG", resistances, trend="UNKNOWN", c_atr=None)
+        levels_checked = 1
+
+        if not result.get('allow'):
             return False, None, levels_checked
 
-        # Если есть сигналы — берём первый (обычно один)
-        signal = signals[0]
-        entry_price = signal.get('entry_price', 0.0)
-        sl = signal.get('sl', 0.0)
-        tp = signal.get('tp', 0.0)
-        history_log = signal.get('history_log', '')
-        level_id = signal.get('level_id', 'unknown')
+        # Сигнал сработал — уровень отработал, снимаем со слежения
+        del tracked_levels[track_key]
 
-        # Форматируем отчёт для телеграма
-        icon = "🔴" if direction == "SHORT" else "🟢"
+        entry_price = result.get('entry_price', 0.0)
+        sl = result.get('sl', 0.0)
+        tp = result.get('tp', 0.0)
+        history_log = result.get('history_log', '')
+        level_id = result.get('level_id', 'unknown')
+
         report = (
-            f"{icon} *V-BOTTOM {direction}* _{coin}_\n\n"
+            f"🟢 *V-BOTTOM LONG* _{coin}_\n\n"
             f"Entry: `{entry_price:.8f}`\n"
             f"SL: `{sl:.8f}`\n"
             f"TP: `{tp:.8f}`\n"
@@ -273,22 +310,24 @@ def check_v_bottom(coin, direction, vbottom_mgr=None):
         traceback.print_exc()
         return False, f"❌ Ошибка V-BOTTOM анализа {coin}: {e}", 0
 
-def check_v_green_bottom(coin, direction, vbottom_mgr=None):
+def check_v_green_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None):
     """
     Проверяет V-GREEN-BOTTOM паттерн (лестница ям + режим кульминации)
-    на 15-минутных свечах. Работает только для LONG.
-    Возвращает (is_ready, report_text, levels_checked) — тот же формат,
-    что и check_v_bottom, чтобы использовать один менеджер на пару стратегий.
+    на 15-минутных свечах. Работает только для LONG. Та же модель
+    origin-tracking, что и check_v_bottom — см. комментарий там.
     """
     if direction != "LONG":
         return False, None, 0
+
+    if tracked_levels is None:
+        tracked_levels = {}
 
     try:
         time.sleep(0.3)
 
         coin = coin.upper().replace("USDT", "").replace("/", "").strip()
 
-        # Резолвим символ на бирже (учитывает алиасы тикеров типа TON/TONCOIN)
+        # Резолвим символ на бирже (учитывает алиасы тикеров типа TON/GRAM)
         markets = load_markets_cached(exchange)
         symbol = resolve_symbol(coin, markets)
         if not symbol:
@@ -331,33 +370,47 @@ def check_v_green_bottom(coin, direction, vbottom_mgr=None):
         if vbottom_mgr is None:
             vbottom_mgr = VBottomManager()
 
-        supports = coin_macro.get("supports", [])
+        # Фильтр по score — как в симуляторе
+        supports = [s for s in coin_macro.get("supports", []) if s.get('score', 0) >= MIN_LEVEL_SCORE]
         resistances = coin_macro.get("resistances", [])
 
         if not supports:
-            return False, f"⚠️ Нет поддержек для V-GREEN-BOTTOM на {coin}.", 0
+            return False, f"⚠️ Нет поддержек для V-GREEN-BOTTOM на {coin} (после фильтра score).", 0
 
-        signals = []
-        levels_checked = 0
+        track_key = f"{coin}_VGB_LONG"
+        c_close = float(df['close'].iloc[-1])
+        c_low = float(df['low'].iloc[-1])
+        prev_close = float(df['close'].iloc[-2]) if len(df) > 1 else c_close
 
-        for level in supports:
-            levels_checked += 1
-            result = vbottom_mgr.evaluate_v_green_bottom(
-                level, df, "LONG", resistances,
-                trend="UNKNOWN", c_atr=c_atr
-            )
-            if result.get('allow'):
-                signals.append(result)
+        tracked = tracked_levels.get(track_key)
 
-        if not signals:
+        if tracked is None:
+            found = _find_fresh_breach(supports, c_close, c_low, prev_close)
+            if found is None:
+                return False, None, 0
+            tracked = dict(found)
+            tracked_levels[track_key] = tracked
+            vbottom_mgr.notify_breach(tracked, 'LONG')
+        else:
+            origin_max = tracked['max'] * (1 + VBOTTOM_BREATH_BUFFER_PCT / 100.0)
+            if c_close > origin_max:
+                vbottom_mgr.force_reset_watcher(tracked, 'LONG')
+                del tracked_levels[track_key]
+                return False, None, 0
+
+        result = vbottom_mgr.evaluate_v_green_bottom(tracked, df, "LONG", resistances, trend="UNKNOWN", c_atr=c_atr)
+        levels_checked = 1
+
+        if not result.get('allow'):
             return False, None, levels_checked
 
-        signal = signals[0]
-        entry_price = signal.get('entry_price', 0.0)
-        sl = signal.get('sl', 0.0)
-        tp = signal.get('tp', 0.0)
-        history_log = signal.get('history_log', '')
-        level_id = signal.get('level_id', 'unknown')
+        del tracked_levels[track_key]
+
+        entry_price = result.get('entry_price', 0.0)
+        sl = result.get('sl', 0.0)
+        tp = result.get('tp', 0.0)
+        history_log = result.get('history_log', '')
+        level_id = result.get('level_id', 'unknown')
 
         report = (
             f"🟢 *V-GREEN-BOTTOM LONG* _{coin}_\n\n"

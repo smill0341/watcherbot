@@ -4,7 +4,7 @@ import datetime
 import os
 
 # Импорт базовых инструментов
-from modules.cryptano.utils.storage import load_json
+from modules.cryptano.utils.storage import load_json, save_json_atomic
 from modules.cryptano.utils.common import KNOWN_TICKER_ALIASES
 from modules.cryptano.critical_filter import scan_market, format_results
 from modules.cryptano.light_filter import _execute_scan_cycle
@@ -133,6 +133,7 @@ def crypto_orchestrator(bot, admin_chat_id):
                                 vgb_signals = 0
                                 vgb_levels_checked = 0
                                 active_level_ids = set()  # для clear_dead_watchers в конце скана
+                                level_id_meta = {}  # level_id -> {"coin":..., "direction":...} для экспорта дашборду
                                 macro_path = os.path.join(os.path.dirname(__file__), "modules", "cryptano", "macro_levels.json")
                                 macro_db = load_json(macro_path, default={})
                                 
@@ -149,11 +150,17 @@ def crypto_orchestrator(bot, admin_chat_id):
                                     if coin_macro:
                                         if "LONG" in dirs:
                                             for lvl in coin_macro.get("supports", []):
-                                                active_level_ids.add(f"VB_LONG_{lvl['min']}_{lvl['max']}")
-                                                active_level_ids.add(f"VGB_LONG_{lvl['min']}_{lvl['max']}")
+                                                vb_id = f"VB_LONG_{lvl['min']}_{lvl['max']}"
+                                                vgb_id = f"VGB_LONG_{lvl['min']}_{lvl['max']}"
+                                                active_level_ids.add(vb_id)
+                                                active_level_ids.add(vgb_id)
+                                                level_id_meta[vb_id] = {"coin": coin, "direction": "LONG", "strategy": "V_BOTTOM"}
+                                                level_id_meta[vgb_id] = {"coin": coin, "direction": "LONG", "strategy": "V_GREEN_BOTTOM"}
                                         if "SHORT" in dirs:
                                             for lvl in coin_macro.get("resistances", []):
-                                                active_level_ids.add(f"VB_SHORT_{lvl['min']}_{lvl['max']}")
+                                                vb_id = f"VB_SHORT_{lvl['min']}_{lvl['max']}"
+                                                active_level_ids.add(vb_id)
+                                                level_id_meta[vb_id] = {"coin": coin, "direction": "SHORT", "strategy": "V_BOTTOM"}
 
                                     for d in dirs:
                                         if f"{coin}_{d}" in watcher_cooldown_cache: continue
@@ -205,6 +212,30 @@ def crypto_orchestrator(bot, admin_chat_id):
                                 before_count = v_bottom_mgr.watcher_count()
                                 v_bottom_mgr.clear_dead_watchers(active_level_ids)
                                 cleared_count = before_count - v_bottom_mgr.watcher_count()
+
+                                # 📤 Экспорт активных вотчеров для веб-дашборда (только чтение снаружи,
+                                # сама торговая логика/состояние это никак не меняет — просто снимок).
+                                try:
+                                    export = {}
+                                    for level_id, watcher in v_bottom_mgr._watchers.items():
+                                        meta = level_id_meta.get(level_id, {})
+                                        export[level_id] = {
+                                            "coin": meta.get("coin"),
+                                            "direction": meta.get("direction", getattr(watcher, "trade_type", None)),
+                                            "strategy": meta.get("strategy"),
+                                            "state": getattr(watcher, "state", None),
+                                            "breach_count": getattr(watcher, "breach_count", 0),
+                                            "history_log": getattr(watcher, "history_log", ""),
+                                            "level_min": getattr(watcher, "min", None),
+                                            "level_max": getattr(watcher, "max", None),
+                                            "updated_at": now_dt.isoformat(),
+                                        }
+                                    active_watchers_path = os.path.join(
+                                        os.path.dirname(__file__), "modules", "cryptano", "active_watchers.json"
+                                    )
+                                    save_json_atomic(active_watchers_path, export)
+                                except Exception as e:
+                                    print(f"⚠️ [DASHBOARD EXPORT] Не удалось сохранить active_watchers.json: {e}")
                                     
                                 # 🚀 ФИНАЛЬНЫЙ ПРИНТ СО СТАТИСТИКОЙ (общий + отдельно по каждой стратегии)
                                 print(f"✅ [DISPATCHER] Анализ прошел. Монет просканировано: {total_scanned} | Сигналов найдено: {signals_found}")
