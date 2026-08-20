@@ -58,7 +58,11 @@ class VBottomManager:
         return len(self._watchers)
 
     def clear_dead_watchers(self, active_level_ids):
-        """Удаляет вотчеры для уровней, которых больше нет на графике."""
+        """Удаляет вотчеры для уровней, которых больше нет на графике.
+
+        Возвращает {level_id: watcher} для удалённых — чтобы вызывающий код
+        (background_tasks.py) успел архивировать их путь (event_log) в
+        watcher_history.json ДО того, как объект будет потерян навсегда."""
         dead_keys = []
         for k, watcher in self._watchers.items():
             if k not in active_level_ids:
@@ -66,9 +70,11 @@ class VBottomManager:
                 if hasattr(watcher, 'state') and watcher.state not in ["TRIGGERED", "DEAD"]:
                     continue
                 dead_keys.append(k)
-        
+
+        removed = {}
         for k in dead_keys:
-            del self._watchers[k]
+            removed[k] = self._watchers.pop(k)
+        return removed
 
     def evaluate_v_bottom(self, level, df, trade_type, all_opposite_levels, trend='UNKNOWN', c_atr=None):
         """

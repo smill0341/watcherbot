@@ -139,6 +139,57 @@ body {
 .dot-ema20 { background: #f2c14e; }
 .dot-ema50 { background: #5aa9e6; }
 
+.ohlcv-legend-item {
+  font-variant-numeric: tabular-nums;
+}
+
+.history-panel-body {
+  font-size: 12px;
+  color: #cfd3da;
+}
+
+.history-card {
+  background: #1b1d24;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.history-card:last-child { margin-bottom: 0; }
+
+.history-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.history-state {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.history-state-TRIGGERED { background: #1f3a26; color: #6fd699; }
+.history-state-DEAD { background: #3a2020; color: #e5928a; }
+
+.history-log-text {
+  color: #9aa0ac;
+  font-size: 11px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.history-empty { color: #6c7280; font-size: 12px; }
+
+.list-section-header {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #6c7280;
+  padding: 8px 4px 4px;
+}
+
 .signals-panel {
   padding: 16px;
   border-top: 1px solid #262832;

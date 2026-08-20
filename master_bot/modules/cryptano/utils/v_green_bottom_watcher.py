@@ -72,6 +72,7 @@ class VGreenBottomWatcher:
         self.last_event_time = None
         self.last_event_msg = None
         self.last_event_type = None  # Для раскраски свечей на графике (red, yellow, blue)
+        self.event_log = []  # [{time, type, price}, ...] — путь вотчера для дашборда
 
     def _tp(self):
         return f"{self._last_time} " if self._last_time is not None else ""
@@ -88,6 +89,20 @@ class VGreenBottomWatcher:
         if v >= 1_000_000: return f"{v/1_000_000:.1f}M"
         if v >= 1_000: return f"{v/1_000:.1f}k"
         return str(int(v))
+
+    def _record_event(self, event_type, price):
+        """Копит точки пути вотчера (для отрисовки на графике дашборда).
+        Не чистится при _reset() — так в архив попадает вся история
+        попыток по уровню, а не только последняя. Ограничено 100 точками.
+        Время конвертируем в unix-секунды сразу тут: candle_time приходит
+        как pandas.Timestamp, который json.dump не умеет сериализовать —
+        если оставить как есть, экспорт в JSON будет тихо падать."""
+        t = self._last_time
+        if t is not None and hasattr(t, "timestamp"):
+            t = int(t.timestamp())
+        self.event_log.append({"time": t, "type": event_type, "price": price})
+        if len(self.event_log) > 100:
+            self.event_log = self.event_log[-100:]
 
     def _reset(self):
         self.state = "WAIT_FIRST_DUMP"
@@ -144,6 +159,7 @@ class VGreenBottomWatcher:
                 self.pullback_confirmed = False
                 self.trigger_dump_vol = float(c_vol)
                 self.last_event_type = "PIT"
+                self._record_event("PIT", float(c_close))
                 self._dbg(f"🔴 ЯМА №1 СТАРТ. Лой: {self.current_pit_low:.4f}")
             
             self.prev_is_red = is_red
@@ -207,6 +223,7 @@ class VGreenBottomWatcher:
                         bounce_pct = (self.highest_since_low - self.locked_pit_low) / self.locked_pit_low * 100.0 if self.locked_pit_low > 0 else 0.0
                         self.trigger_dump_vol = float(c_vol) if is_red else 0.0
                         self.last_event_type = "PIT" 
+                        self._record_event("PIT", float(c_close))
                         self._dbg(f"📉 ЯМА №{self.pits_count} (Пробой > {self.CONFIG.get('MIN_BREAKDOWN_PCT')}%). Отскок был {bounce_pct:.1f}%")
                         
                         # Фиксируем новое структурное дно и сбрасываем отскок
@@ -250,6 +267,7 @@ class VGreenBottomWatcher:
                 # ПРОВЕРКА НА ТАЙМАУТ СВЕЧЕЙ: Ищем вход, только если мы свежие на дне
                 if self.bars_since_low <= self.CONFIG.get('MAX_BARS_IN_PIT', 10):
                     self.last_event_type = "SCAN" 
+                    self._record_event("SCAN", float(c_close))
                     
                     need_vol = self.trigger_dump_vol * (self.CONFIG.get('MIN_DUMP_VOL_PCT', 100.0) / 100.0)
                     is_vol_ok = c_vol >= need_vol
@@ -281,6 +299,7 @@ class VGreenBottomWatcher:
                     # Вход только если сошлись ВСЕ 6 фильтров (добавили is_margin_ok)
                     if is_vol_ok and is_body_ok and is_atr_ok and is_prev_red_ok and is_local_vol_ok and is_margin_ok:
                         self.last_event_type = "GOOD_GREEN" 
+                        self._record_event("GOOD_GREEN", float(c_close))
                         self.history_log += f" -> Вход(Яма {self.pits_count}):{self._fmt(c_vol)}"
                         return self._enter(c_low, c_close, all_opposite_levels)
                     else:
@@ -339,11 +358,13 @@ class VGreenBottomWatcher:
         risk_data, err = calc_tp_and_rr(actual_entry, actual_sl, self.trade_type, all_opposite_levels, self.CONFIG)
         if err or not risk_data:
             self.state = "DEAD"
+            self._record_event("DEAD", actual_entry)
             self._dbg(f"❌ Калькулятор УБИЛ сделку: {err}")
             return {'error': err or "Risk data is None"}
 
         self.entry_price = actual_entry
         self.sl_price = risk_data['sl']
+        self._record_event("ENTRY", actual_entry)
         reason_str = f"Green-Bottom [{self.history_log}]"
 
         self._dbg(f"🚀 СДЕЛКА СФОРМИРОВАНА: {reason_str}")

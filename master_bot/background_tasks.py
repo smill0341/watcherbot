@@ -7,7 +7,7 @@ import os
 from modules.cryptano.utils.storage import load_json, save_json_atomic
 from modules.cryptano.utils.common import KNOWN_TICKER_ALIASES
 from modules.cryptano.critical_filter import scan_market, format_results
-from modules.cryptano.light_filter import _execute_scan_cycle
+# from modules.cryptano.light_filter import _execute_scan_cycle  # ОТКЛЮЧЕНО: light-фильтр выключен из пайплайна
 from modules.cryptano.utils.coin_generators import update_momentum_watchlist
 from modules.cryptano.swing_hunter import start_swing_hunter
 
@@ -97,13 +97,15 @@ def crypto_orchestrator(bot, admin_chat_id):
             # =========================================================
             # 2. ОЧЕРЕДЬ: 💎 LIGHT (Старт на 2-й минуте, далее каждые 30 минут)
             # =========================================================
-            if elapsed >= 120 and (time.time() - last_light >= 1800 or last_light == 0):
-                print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [DISPATCHER] ⏱ Каскад: Запуск Light фильтра...")
-                last_light = time.time()
-                try:
-                    _execute_scan_cycle(bot, admin_chat_id, is_auto=True)
-                except Exception as e:
-                    print(f"[DISPATCHER ERROR] Ошибка внутри Light цикла: {e}")
+            # ОТКЛЮЧЕНО: light-фильтр выключен из пайплайна (light_filter.py не удалён,
+            # просто больше не вызывается в цикле скана).
+            # if elapsed >= 120 and (time.time() - last_light >= 1800 or last_light == 0):
+            #     print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [DISPATCHER] ⏱ Каскад: Запуск Light фильтра...")
+            #     last_light = time.time()
+            #     try:
+            #         _execute_scan_cycle(bot, admin_chat_id, is_auto=True)
+            #     except Exception as e:
+            #         print(f"[DISPATCHER ERROR] Ошибка внутри Light цикла: {e}")
 
             # =========================================================
             # 3. ОЧЕРЕДЬ: 👀 WATCHER SCAN (Старт на 5-й минуте, далее каждые 15 минут)
@@ -208,10 +210,43 @@ def crypto_orchestrator(bot, admin_chat_id):
                                     _save_watchlist(current_wl)
 
                                 # Чистим вотчеров мёртвых/отработавших уровней, которых больше нет
-                                # в актуальном macro_levels.json — иначе память растёт бесконечно
+                                # в актуальном macro_levels.json — иначе память растёт бесконечно.
+                                # clear_dead_watchers теперь ВОЗВРАЩАЕТ удалённых — успеваем забрать
+                                # их путь (event_log) в архив, прежде чем объект будет потерян навсегда.
                                 before_count = v_bottom_mgr.watcher_count()
-                                v_bottom_mgr.clear_dead_watchers(active_level_ids)
+                                removed_watchers = v_bottom_mgr.clear_dead_watchers(active_level_ids)
                                 cleared_count = before_count - v_bottom_mgr.watcher_count()
+
+                                # 📚 Архив последнего умершего/сработавшего вотчера по каждой паре
+                                # монета+стратегия (не журнал на века — только последний слепок,
+                                # перезаписывается при следующей смерти по этому же ключу).
+                                if removed_watchers:
+                                    try:
+                                        history_path = os.path.join(
+                                            os.path.dirname(__file__), "modules", "cryptano", "watcher_history.json"
+                                        )
+                                        history_db = load_json(history_path, default={})
+                                        for level_id, watcher in removed_watchers.items():
+                                            meta = level_id_meta.get(level_id, {})
+                                            coin = meta.get("coin")
+                                            strategy = meta.get("strategy")
+                                            if not coin or not strategy:
+                                                continue  # уровень уже не в macro_levels.json — метаданных нет, архивировать нечего
+                                            hist_key = f"{coin}_{strategy}"
+                                            history_db[hist_key] = {
+                                                "coin": coin,
+                                                "direction": meta.get("direction", getattr(watcher, "trade_type", None)),
+                                                "strategy": strategy,
+                                                "final_state": getattr(watcher, "state", None),
+                                                "history_log": getattr(watcher, "history_log", ""),
+                                                "level_min": getattr(watcher, "min", None),
+                                                "level_max": getattr(watcher, "max", None),
+                                                "events": getattr(watcher, "event_log", []),
+                                                "died_at": now_dt.isoformat(),
+                                            }
+                                        save_json_atomic(history_path, history_db)
+                                    except Exception as e:
+                                        print(f"⚠️ [DASHBOARD EXPORT] Не удалось сохранить watcher_history.json: {e}")
 
                                 # 📤 Экспорт активных вотчеров для веб-дашборда (только чтение снаружи,
                                 # сама торговая логика/состояние это никак не меняет — просто снимок).
@@ -228,6 +263,7 @@ def crypto_orchestrator(bot, admin_chat_id):
                                             "history_log": getattr(watcher, "history_log", ""),
                                             "level_min": getattr(watcher, "min", None),
                                             "level_max": getattr(watcher, "max", None),
+                                            "events": getattr(watcher, "event_log", []),
                                             "updated_at": now_dt.isoformat(),
                                         }
                                     active_watchers_path = os.path.join(

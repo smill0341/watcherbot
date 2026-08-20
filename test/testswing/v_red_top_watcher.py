@@ -74,21 +74,6 @@ class VRedTopWatcher:
         'RED1_C3_VOL_VS_C1_PCT': 75.0,         # С3 Объем: объем не меньше 90% от зеленой C1
 
         # ==========================================
-        # [5] МАРШРУТ RED 4 (КАСКАД С ОТКАТОМ)
-        # ==========================================
-        'RED4_C1_MIN_VOL_MULT': 1.0,           # Якорь RED 4: объем C1 минимум 1x от фона
-        'RED4_C1_MIN_BODY_PCT': 40.0,          # Якорь RED 4: тело C1 от 40%
-        'RED4_C1_MAX_TOP_SHADOW_PCT': 40.0,    # Якорь RED 4: верхняя тень макс 40%
-        
-        'RED4_MIN_REDS': 4,                    # Минимум красных свечей подряд в лесенке
-        'RED4_PULLBACK_MAX_PCT': 55.0,         # Максимальная высота отката (в % от высоты всего каскада)
-        'RED4_PULLBACK_MIN_BODY_RATIO': 60.0,  # Тело зеленой свечи отката минимум 40% от всей ее высоты
-        'RED4_PULLBACK_MIN_RANGE_PCT': 0.4,    # Сам откат не меньше 0.4% по высоте (отсекаем микро-дodжи)
-        
-        'RED4_PULLBACK_MIN_PCT': 30.0,         # МИНИМАЛЬНЫЙ отскок (отсекаем доджи и шум на дне)
-        'RED4_PULLBACK_MAX_PCT': 75.0,         # МАКСИМАЛЬНЫЙ отскок (чтобы не сломать тренд)
-
-        # ==========================================
         # [6] НАСТРОЙКИ РИСКА И ВЫХОДА
         # ==========================================
         'TP_MODE': 'fixed_pct',
@@ -100,7 +85,6 @@ class VRedTopWatcher:
         'USE_RR_FILTER': False,
         'DEBUG': True,
     }
-
     def __init__(self, level_min: float, level_max: float, trade_type: str):
         self.min = level_min
         self.max = level_max
@@ -139,16 +123,7 @@ class VRedTopWatcher:
         self.last_event_type = None
         
         self.trades_count = 0
-        
-        
-        # --- Переменные для RED 4 (Каскад) ---
-        self.casc_state = "IDLE"
-        self.casc_count = 0
-        self.casc_last_close = 0.0
-        self.casc_low = 0.0
-        self.casc_start_high = 0.0
-        self.casc_pullback_high = 0.0        
-
+          
     def _tp(self): return f"{self._last_time} " if self._last_time else ""
 
     def _fmt(self, v):
@@ -169,8 +144,7 @@ class VRedTopWatcher:
             self.c1 = None
             self.c2 = None
             self.trades_count = 0
-            self.casc_state = "IDLE"
-            
+                       
             self.peaks_count = 0             
             self.current_peak_high = 0.0      
             self.locked_peak_high = 0.0          
@@ -293,7 +267,7 @@ class VRedTopWatcher:
                 # 1. Полная отмена (цена ушла под уровень <= 0%)
                 if float(c_close) <= self.min:
                     self._dbg(f"🛑 [МАКРО-СБРОС] Цена ушла под уровень. Уровень отвязан (IDLE). {m_log}")
-                    self.state = "IDLE"       # <--- Мягкий сброс. Симулятор отпустит уровень, а бот сможет ожить.
+                    self.state = "IDLE"       
                     self.trades_count = 0
                     self.c1, self.c2, self.route = None, None, "NONE"
                     self.active_routes = []
@@ -303,7 +277,6 @@ class VRedTopWatcher:
                     self.locked_peak_high = 0.0          
                     self.lowest_since_high = float('inf')    
                     self.pullback_confirmed = False
-                    self.casc_state = "IDLE"
                     return None
                 # 2. Зона паузы (от 0% до PAUSE_PUMP_PCT)
                 else:
@@ -312,81 +285,8 @@ class VRedTopWatcher:
                         self.state = "WAIT_C1"
                         self.c1, self.c2, self.route = None, None, "NONE"
                         self.active_routes = []
-                        self.casc_state = "IDLE"
                     return None
             
-        # =======================================================
-        # --- ПАРАЛЛЕЛЬНЫЙ МАРШРУТ: RED 4 (КАСКАД С ОТКАТОМ) ---
-        # =======================================================
-        is_red = c_close < c_open
-        is_green = c_close > c_open
-
-        if self.state != "WAIT_PUMP":
-            # 1. Если цена делает перехай выше нашего якоря С1 — каскад ломается
-            if high_val > self.casc_start_high and self.casc_state != "IDLE":
-                self.casc_state = "BROKEN"
-
-            if self.casc_state == "COUNTING":
-                # Считаем свечу "нормальной", если у нее есть тело (отсекаем крестики-доджи)
-                hl = float(c_high - c_low)
-                body = float(c_open - c_close)
-                body_pct = (body / hl * 100.0) if hl > 0 else 0.0
-                
-                # СТРОГОЕ УСЛОВИЕ: Красная, нормальное тело (>= 20%), закрылась НИЖЕ прошлого закрытия
-                if is_red and body_pct >= 20.0 and float(c_close) < self.casc_last_close:
-                    self.casc_count += 1
-                    self.casc_last_close = float(c_close)
-                    # Фиксируем истинное дно волны
-                    self.casc_low = min(self.casc_low, float(c_low))
-                else:
-                    # Как только пошел боковик (доджи) или зеленая свеча - спуск окончен
-                    cascade_height_pct = ((self.casc_start_high - self.casc_low) / self.min) * 100.0
-                    
-                    # Проверяем: набрали ли мы 4 свечи И общая высота падения хотя бы > 0.5% (отсекаем шум)
-                    if self.casc_count >= self.CONFIG.get('RED4_MIN_REDS', 4) and cascade_height_pct >= 0.5:
-                        self.casc_state = "WAIT_PULLBACK"
-                        self.casc_pullback_high = float(c_high)
-                        self.last_event_type = "SCAN"
-                    else:
-                        self.casc_state = "BROKEN"
-                        
-            elif self.casc_state == "WAIT_PULLBACK":
-                # Тянем макушку отката за любой свечой
-                if float(c_high) > self.casc_pullback_high:
-                    self.casc_pullback_high = float(c_high)
-
-                # Триггер: первая же красная свеча завершает откат, измеряем волну
-                if is_red:
-                    cascade_height = self.casc_start_high - self.casc_low
-                    pullback_height = self.casc_pullback_high - self.casc_low
-                    
-                    pullback_pct = (pullback_height / cascade_height * 100.0) if cascade_height > 0 else 100.0
-                    
-                    min_pb = self.CONFIG.get('RED4_PULLBACK_MIN_PCT', 40.0)
-                    max_pb = self.CONFIG.get('RED4_PULLBACK_MAX_PCT', 75.0)
-                    
-                    # Жесткий фильтр: отскок обязан быть в рамках 40% - 75%
-                    if min_pb <= pullback_pct <= max_pb:
-                        
-                        red4_ema_min = self.CONFIG.get('RED4_MIN_EMA_DIST_PCT', 0.0)
-                        if ema_dist_pct < red4_ema_min:
-                            self._dbg(f"❌ Отмена [RED 4]: Отрыв от EMA всего {ema_dist_pct:.1f}% (нужно >= {red4_ema_min}%). {m_log}")
-                            self.casc_state = "BROKEN"
-                            return None
-                        
-                        self.route = "RED 4 CASCADE"
-                        self.last_event_type = "GOOD_RED"
-                        
-                        c1_range_equiv = (cascade_height / self.min * 100.0)
-                        self.c1 = {'range_pct': c1_range_equiv} 
-                        
-                        self.history_log = f"Спуск: {self.casc_count} свечей ({c1_range_equiv:.2f}%), Откат: {pullback_pct:.0f}% (мин {min_pb}%)"
-                        self._dbg(f"✅ ВХОД [RED 4 CASCADE]: {self.history_log}. {m_log}")
-                        
-                        return self._enter(c_high, c_close, all_opposite_levels, c_rsi=rsi_val)
-                    else:
-                        self._dbg(f"❌ Отмена [RED 4]: Откат {pullback_pct:.0f}% не вошел в рамки {min_pb}% - {max_pb}%. {m_log}")
-                        self.casc_state = "BROKEN"
                         
         # --- ШАГ 3: ОБЩЕЕ ПОДТВЕРЖДЕНИЕ ДЛЯ ВСЕХ МЕТОДОВ (С3) ---
         if self.state == "WAIT_C3":
@@ -554,15 +454,6 @@ class VRedTopWatcher:
                 if vol_mult >= self.CONFIG['RED3_C1_MIN_VOL_MULT'] and body_pct >= self.CONFIG['RED3_C1_MIN_BODY_PCT'] and top_shadow_pct <= self.CONFIG['RED3_C1_MAX_TOP_SHADOW_PCT']:
                     self.active_routes.append("RED 3")
                     
-                # Примеряем RED 4 (Запуск каскада строго от якоря С1)
-                if vol_mult >= self.CONFIG.get('RED4_C1_MIN_VOL_MULT', 1.0) and body_pct >= self.CONFIG.get('RED4_C1_MIN_BODY_PCT', 40.0) and top_shadow_pct <= self.CONFIG.get('RED4_C1_MAX_TOP_SHADOW_PCT', 40.0):
-                    self.active_routes.append("RED 4")
-                    self.casc_state = "COUNTING"
-                    self.casc_count = 0
-                    self.casc_last_close = float('inf')
-                    self.casc_start_high = float(c_high)
-                    self.casc_pullback_high = 0.0
-                    self.casc_low = float('inf')  # Жесткий сброс дна для новой волны
 
                 if self.active_routes:
                     self.last_event_type = "SCAN"
@@ -608,23 +499,19 @@ class VRedTopWatcher:
         
         dist_from_level = ((actual_entry - self.min) / self.min) * 100.0 if self.min > 0 else 0.0
         
-        # Формируем расширенный лог в зависимости от маршрута
-        if self.route == "RED 4 CASCADE":
-            c1_range = self.c1['range_pct'] if self.c1 and 'range_pct' in self.c1 else 0.0
-            base_reason = f"{self.route} | ур. ниже {dist_from_level:.1f}% | Спуск: {c1_range:.2f}%"
-        else:
-            c1_dict = self.c1 if isinstance(self.c1, dict) else {}
-            c1_range = c1_dict.get('range_pct', 0.0)
-            req_range = self.CONFIG.get('C1_MIN_RANGE_PCT', 0.0)
-            c1_vol = c1_dict.get('vol_mult', 0.0) * 100
-            c1_body = c1_dict.get('body_pct', 0.0)
-            
-            if self.route == "RED 1": req_body = self.CONFIG.get('RED1_C1_MIN_BODY_PCT', 0.0)
-            elif self.route == "RED 2": req_body = self.CONFIG.get('RED2_C1_MIN_BODY_PCT', 0.0)
-            elif self.route == "RED 3": req_body = self.CONFIG.get('RED3_C1_MIN_BODY_PCT', 0.0)
-            else: req_body = 0.0
-            
-            base_reason = f"{self.route} | ур. ниже {dist_from_level:.1f}% | С1: V {c1_vol:.0f}% | R: {c1_range:.2f}% ({req_range}%) | тело {c1_body:.0f}%/{req_body:.0f}%"
+        # Формируем расширенный лог
+        c1_dict = self.c1 if isinstance(self.c1, dict) else {}
+        c1_range = c1_dict.get('range_pct', 0.0)
+        req_range = self.CONFIG.get('C1_MIN_RANGE_PCT', 0.0)
+        c1_vol = c1_dict.get('vol_mult', 0.0) * 100
+        c1_body = c1_dict.get('body_pct', 0.0)
+        
+        if self.route == "RED 1": req_body = self.CONFIG.get('RED1_C1_MIN_BODY_PCT', 0.0)
+        elif self.route == "RED 2": req_body = self.CONFIG.get('RED2_C1_MIN_BODY_PCT', 0.0)
+        elif self.route == "RED 3": req_body = self.CONFIG.get('RED3_C1_MIN_BODY_PCT', 0.0)
+        else: req_body = 0.0
+        
+        base_reason = f"{self.route} | ур. ниже {dist_from_level:.1f}% | С1: V {c1_vol:.0f}% | R: {c1_range:.2f}% ({req_range}%) | тело {c1_body:.0f}%/{req_body:.0f}%"
 
         # Добавляем RSI и номер сделки в конец строки
         reason_str = f"{base_reason} | RSI:{c_rsi:.1f} | Сделка #{self.trades_count + 1}"
@@ -638,7 +525,6 @@ class VRedTopWatcher:
         else:
             self.state = "WAIT_C1"
             self.c1, self.c2 = None, None
-            self.casc_state = "IDLE"
             self._dbg(f"🔄 Сделка #{self.trades_count} открыта. Возврат в поиск новых пиков (WAIT_C1).")
 
         return {"action": "SELL", "entry_price": actual_entry, "sl": risk_data['sl'], "tp": risk_data['tp'], "reason": reason_str}

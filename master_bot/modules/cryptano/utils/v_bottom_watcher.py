@@ -71,6 +71,8 @@ class VBottomWatcher:
         self._last_time = None
         self.last_event_time = None
         self.last_event_msg = None
+        self.last_event_type = None
+        self.event_log = []  # [{time, type, price}, ...] — путь вотчера для дашборда
 
     def _tp(self):
         """Строка с временем текущей свечи для debug-принтов, если время передано."""
@@ -85,6 +87,21 @@ class VBottomWatcher:
         self.last_event_msg = msg
         with open("v_bottom_debug.log", "a", encoding="utf-8") as f:
             f.write(f"{self._tp()}[{self.max:.4f}] {msg}\n")
+
+    def _record_event(self, event_type, price):
+        """Копит точки пути вотчера (для отрисовки на графике дашборда).
+        Ограничено 100 точками на вотчер — этого с большим запасом хватает
+        на один цикл жизни (от Ориентира до входа/смерти).
+        Время конвертируем в unix-секунды сразу тут: candle_time приходит
+        как pandas.Timestamp, который json.dump не умеет сериализовать —
+        если оставить как есть, экспорт в JSON будет тихо падать."""
+        self.last_event_type = event_type
+        t = self._last_time
+        if t is not None and hasattr(t, "timestamp"):
+            t = int(t.timestamp())
+        self.event_log.append({"time": t, "type": event_type, "price": price})
+        if len(self.event_log) > 100:
+            self.event_log = self.event_log[-100:]
 
     @staticmethod
     def _fmt(v):
@@ -134,6 +151,7 @@ class VBottomWatcher:
                 if self.state != "SEARCHING":
                     if self.history_log:
                         self._dbg(f"🛑 [СРЫВ] {self.history_log} -> [ОТМЕНА: цена ушла выше буфера ({self.CONFIG['BREATH_BUFFER_PCT']}%)]")
+                    self._record_event("CANCEL", c_close)
                     self._reset_chain()
                 return None
             if c_low > self.max:
@@ -152,6 +170,7 @@ class VBottomWatcher:
                     self.tracker_vol = c_vol
                     self.state = "WAIT_START"
                     self.history_log = f"Фон:{self._fmt(baseline_vol)} -> Ориентир:{self._fmt(c_vol)}"
+                    self._record_event("ORIENTIR", c_close)
                     if self.CONFIG.get('DEBUG'):
                         self._dbg(self.history_log)
                 return None
@@ -164,6 +183,7 @@ class VBottomWatcher:
                     self.start_vol = c_vol
                     self.state = "WAIT_PEAK"
                     self.history_log += f" -> Старт:{self._fmt(c_vol)}"
+                    self._record_event("START", c_close)
                     if self.CONFIG.get('DEBUG'):
                         self._dbg(self.history_log)
                 return None
@@ -185,6 +205,7 @@ class VBottomWatcher:
                     self.cand_vol = c_vol if c_vol > self.start_vol else self.start_vol
                     self.state = "WAIT_NEW_PEAK"
                     self.history_log += f" -> Пик:{self._fmt(c_vol)}"
+                    self._record_event("PEAK", c_close)
                     if self.CONFIG.get('DEBUG'):
                         self._dbg(self.history_log)
                 return None
@@ -218,6 +239,7 @@ class VBottomWatcher:
                     if c_vol > self.cand_vol:
                         self.cand_vol = c_vol
                     self.history_log += f" -> Пик+:{self._fmt(c_vol)}"
+                    self._record_event("PEAK", c_close)
                     if self.CONFIG.get('DEBUG'):
                         self._dbg(self.history_log)
                 else:
@@ -239,6 +261,7 @@ class VBottomWatcher:
                         self.cand_vol = c_vol
                     self.state = "WAIT_GREEN"
                     self.history_log += f" -> Пик+:{self._fmt(c_vol)}"
+                    self._record_event("PEAK", c_close)
                     if self.CONFIG.get('DEBUG'):
                         self._dbg(f"{self.history_log} (новый пик)")
                 return None
@@ -260,6 +283,7 @@ class VBottomWatcher:
         risk_data, err = calc_tp_and_rr(actual_entry, actual_sl, self.trade_type, all_opposite_levels, self.CONFIG)
         if err or not risk_data:
             self.state = "DEAD"
+            self._record_event("DEAD", actual_entry)
             if self.CONFIG.get('DEBUG'):
                 self._dbg(f"❌ Калькулятор УБИЛ сделку: {err}")
             return {'error': err or "Risk data is None"}
@@ -267,6 +291,7 @@ class VBottomWatcher:
         self.entry_price = actual_entry
         self.sl_price = risk_data['sl']
 
+        self._record_event("ENTRY", actual_entry)
         self.history_log += f" -> Зел:{self._fmt(c_vol)}(ВХОД!)"
         reason_str = f"V-Дно [{self.history_log}]"
 

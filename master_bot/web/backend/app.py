@@ -11,22 +11,24 @@ import os
 import sys
 import json
 import time
+import threading
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-# --- Гарантируем, что "modules.cryptano..." резолвится независимо от того,
-# из какой директории реально запущен uvicorn ---
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))          # .../master_bot/web/backend
 WEB_DIR = os.path.dirname(BACKEND_DIR)                            # .../master_bot/web
 BASE_DIR = os.path.dirname(WEB_DIR)                                # .../master_bot
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
+if BACKEND_DIR not in sys.path:
+    sys.path.insert(0, BACKEND_DIR)
 
 from modules.cryptano.utils.crypto_utils import exchange
 from modules.cryptano.utils.common import resolve_symbol, KNOWN_TICKER_ALIASES, price_precision_from_market
+import candle_store
 
 
 def _read_json(path: str, default: Any) -> Any:
@@ -50,6 +52,7 @@ WATCHLIST_PATH = os.path.join(CRYPTANO_DIR, "watchlist.json")
 MACRO_LEVELS_PATH = os.path.join(CRYPTANO_DIR, "macro_levels.json")
 SIGNALS_PATH = os.path.join(CRYPTANO_DIR, "signals.json")
 ACTIVE_WATCHERS_PATH = os.path.join(CRYPTANO_DIR, "active_watchers.json")
+WATCHER_HISTORY_PATH = os.path.join(CRYPTANO_DIR, "watcher_history.json")
 
 STATIC_DIR = os.path.join(WEB_DIR, "static")
 
@@ -74,12 +77,6 @@ IDLE_STATES = {"SEARCHING", "WAIT_FIRST_DUMP"}
 # Конечные состояния — вотчер уже отработал, ждёт удаления сборщиком мусора бота.
 TERMINAL_STATES = {"TRIGGERED", "DEAD"}
 
-# Простой in-memory кэш свечей: ключ (symbol, timeframe, limit) -> (timestamp, candles).
-# Не для защиты биржи (там и так enableRateLimit), а чтобы переключение между уже
-# просмотренными монетами/таймфреймами ощущалось мгновенно, без похода в сеть.
-_ohlcv_cache: dict = {}
-_OHLCV_CACHE_TTL_SEC = 90
-
 
 @app.on_event("startup")
 def _load_markets_on_startup():
@@ -90,6 +87,38 @@ def _load_markets_on_startup():
     except Exception as e:
         print(f"[DASHBOARD] ⚠️ Не удалось загрузить markets при старте: {e}")
 
+    candle_store.init_db()
+
+    # Фоновая докачка истории по монетам из watchlist. Список читается заново
+    # на каждом проходе — если watchlist пополнился/сократился, воркер сам
+    # подхватит изменения на следующем цикле, без рестарта дашборда.
+    def _candle_backfill_worker():
+        WATCHLIST_REFRESH_INTERVAL_SEC = 180
+        while True:
+            try:
+                wl = _read_json(WATCHLIST_PATH, default={})
+                coins = list(wl.keys()) if isinstance(wl, dict) else []
+                for coin in coins:
+                    try:
+                        symbol = resolve_symbol(coin, exchange.markets)
+                    except Exception:
+                        continue
+                    if not symbol:
+                        continue
+                    for tf in candle_store.TIMEFRAME_MS.keys():
+                        if candle_store.has_data(symbol, tf):
+                            candle_store.top_up_tail(exchange, symbol, tf)
+                        else:
+                            print(f"[DASHBOARD] Backfill старт: {symbol} {tf} (~{candle_store.BACKFILL_DAYS}д)")
+                            candle_store.backfill_symbol(exchange, symbol, tf)
+                        time.sleep(candle_store.REQUEST_DELAY_SEC)
+                candle_store.cleanup_old()
+            except Exception as e:
+                print(f"⚠️ [DASHBOARD] candle backfill worker: {e}")
+            time.sleep(WATCHLIST_REFRESH_INTERVAL_SEC)
+
+    threading.Thread(target=_candle_backfill_worker, daemon=True).start()
+
 
 # ---------------------------------------------------------------------------
 # API
@@ -97,8 +126,30 @@ def _load_markets_on_startup():
 
 @app.get("/api/watchlist")
 def get_watchlist():
-    """Весь watchlist как есть."""
-    return _read_json(WATCHLIST_PATH, default={})
+    """
+    Watchlist, размеченный по наличию уровней в macro_levels.json:
+    "with_levels" — монеты, по которым уровни уже построены (можно смотреть
+    осмысленно), "without_levels" — ещё нет (обычно временно, до ближайшего
+    построения уровней по расписанию/вручную через 'rebuild' в консоли).
+    Список каждый раз считается заново от watchlist.json — если он
+    поменялся (монета добавилась/ушла, уровни досчитались), это сразу видно.
+    """
+    wl = _read_json(WATCHLIST_PATH, default={})
+    if not isinstance(wl, dict):
+        wl = {}
+    macro = _read_json(MACRO_LEVELS_PATH, default={})
+
+    with_levels = []
+    without_levels = []
+    for coin, meta in wl.items():
+        has_levels = coin in macro or KNOWN_TICKER_ALIASES.get(coin) in macro
+        entry = {"coin": coin, "has_levels": has_levels, **(meta or {})}
+        (with_levels if has_levels else without_levels).append(entry)
+
+    with_levels.sort(key=lambda x: x.get("added_at") or "", reverse=True)
+    without_levels.sort(key=lambda x: x.get("added_at") or "", reverse=True)
+
+    return {"with_levels": with_levels, "without_levels": without_levels}
 
 
 @app.get("/api/watchlist/active")
@@ -156,13 +207,46 @@ def get_signals(limit: int = Query(default=50, ge=1, le=500)):
     return signals_sorted[:limit]
 
 
-@app.get("/api/ohlcv/{coin}")
-def get_ohlcv(coin: str, timeframe: str = "15m", limit: int = Query(default=200, ge=10, le=1000)):
+@app.get("/api/events/{coin}")
+def get_watcher_events(coin: str):
     """
-    Свечи по монете напрямую с биржи, тикер резолвится так же, как у бота.
-    Кэшируется на _OHLCV_CACHE_TTL секунд по ключу (symbol, timeframe, limit) —
-    переключение туда-обратно между уже открытыми монетами/таймфреймами не
-    бьёт биржу заново каждый раз.
+    Путь вотчеров по монете — точки скана для наложения на график.
+    "active" — вотчеры, которые прямо сейчас в работе (из active_watchers.json).
+    "history" — последний УМЕРШИЙ/СРАБОТАВШИЙ вотчер по каждой стратегии
+    (из watcher_history.json, только один слепок на монету+стратегию —
+    перезаписывается при следующей смерти по этому же ключу).
+
+    Каждая запись содержит "events": [{"time": unix_seconds, "type": str, "price": float}, ...]
+    — time уже в unix-секундах, совместим напрямую с time свечей из /api/ohlcv.
+    """
+    coin = coin.upper().strip()
+
+    active_raw = _read_json(ACTIVE_WATCHERS_PATH, default={})
+    active = [
+        {"level_id": lid, **w}
+        for lid, w in active_raw.items()
+        if (w.get("coin") or "").upper() == coin
+    ]
+
+    history_raw = _read_json(WATCHER_HISTORY_PATH, default={})
+    history = [
+        {"key": key, **w}
+        for key, w in history_raw.items()
+        if (w.get("coin") or "").upper() == coin
+    ]
+
+    return {"coin": coin, "active": active, "history": history}
+
+
+@app.get("/api/ohlcv/{coin}")
+def get_ohlcv(coin: str, timeframe: str = "15m", limit: int = Query(default=200, ge=10, le=6000)):
+    """
+    Свечи по монете — из локальной SQLite-истории (candle_store), а не
+    напрямую с биржи каждый раз. Для монет из watchlist история уже
+    докачана фоновым воркером (~2 месяца, см. candle_store.BACKFILL_DAYS).
+    Если монеты в базе ещё нет вообще (открыли не-watchlist монету
+    напрямую) — докачиваем её здесь же, синхронно: это разовая пауза
+    в несколько секунд на первое открытие, дальше она уже в базе.
     """
     coin = coin.upper().strip()
     try:
@@ -178,29 +262,14 @@ def get_ohlcv(coin: str, timeframe: str = "15m", limit: int = Query(default=200,
     market_info = exchange.markets.get(symbol, {}) if exchange.markets else {}
     price_precision = price_precision_from_market(market_info, default=4)
 
-    cache_key = (symbol, timeframe, limit)
-    now = time.time()
-    cached = _ohlcv_cache.get(cache_key)
-    if cached and (now - cached[0]) < _OHLCV_CACHE_TTL_SEC:
-        candles = cached[1]
-    else:
-        try:
-            raw = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
-        except Exception as e:
-            raise HTTPException(status_code=502, detail=f"fetch_ohlcv failed for {symbol}: {e}")
+    if timeframe not in candle_store.TIMEFRAME_MS:
+        raise HTTPException(status_code=400, detail=f"Unsupported timeframe: {timeframe}")
 
-        candles = [
-            {
-                "time": int(c[0] / 1000),  # lightweight-charts ждёт секунды, ccxt отдаёт мс
-                "open": c[1],
-                "high": c[2],
-                "low": c[3],
-                "close": c[4],
-                "volume": c[5],
-            }
-            for c in raw
-        ]
-        _ohlcv_cache[cache_key] = (now, candles)
+    if not candle_store.has_data(symbol, timeframe):
+        # Ленивая докачка для монет вне watchlist — фоновый воркер их не трогает.
+        candle_store.backfill_symbol(exchange, symbol, timeframe)
+
+    candles = candle_store.get_candles(symbol, timeframe, limit=limit)
 
     return {
         "symbol": symbol,

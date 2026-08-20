@@ -54,7 +54,7 @@ GLOBAL_SKIPPED_COINS = []
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "ALL"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "SOL"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
@@ -63,15 +63,15 @@ TEST_START_DATE = "2026-05-01 00:00:00"
 WARMUP_DAYS = 18  
 MIN_LEVEL_SCORE = 1.0
 
-# STRATEGY "SFP" "V_BOTTOM" "V_GREEN_BOTTOM" "V_RED_TOP"
+# STRATEGY "SFP" "V_BOTTOM" "V_GREEN_BOTTOM" "V_RED_TOP" "V_RED_CASCADE"
 # "SWEEP_RECLAIM" или "VOLUME_REVERSAL" или "PIT_CLIMAX" или "PANIC_TRAP"  "BREAKOUT_RETEST"
-STRATEGY = "V_RED_TOP"
+STRATEGY = "V_RED_CASCADE"
 VBOTTOM_BREATH_BUFFER_PCT = 3.0  # должно совпадать с CONFIG['BREATH_BUFFER_PCT'] в v_bottom_watcher.py
 
 # --- DIAGNOSTIC: проверка качества точки входа без SL ---
 # Если True: SL игнорируется, позиция держится до TP или до конца дедлайна.
 DISABLE_SL_DIAGNOSTIC = True
-DIAGNOSTIC_DEADLINE_DAYS = 12  
+DIAGNOSTIC_DEADLINE_DAYS = 10
 
 ALLOW_LONG_TRADES = True
 ALLOW_SHORT_TRADES = True
@@ -120,15 +120,10 @@ class SmartSniperUniversal(Strategy):
         self.draw_res_min = self.I(lambda: self.data.df['res_min'], name="Resist Bottom", overlay=True)
         
         # Маркеры только для стратегий ям
-        if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM", "PANIC_TRAP", "SFP"):
+        if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM", "PANIC_TRAP"):
             self.draw_vbottom_pit = self.I(lambda: self.data.df['vbottom_pit'], name="Яма (PIT)", overlay=True, scatter=True, color='red')
             self.draw_vbottom_scan = self.I(lambda: self.data.df['vbottom_scan'], name="Поиск (SCAN)", overlay=True, scatter=True, color='yellow')
             self.draw_vbottom_good = self.I(lambda: self.data.df['vbottom_good'], name="Кандидат (GOOD)", overlay=True, scatter=True, color='blue')
-            
-        # Дополнительные маркеры только для SFP
-        if STRATEGY == "SFP":
-            self.draw_sfp_touch = self.I(lambda: self.data.df['sfp_touch'], name="SFP Касание", overlay=True, scatter=True, color='orange')
-            self.draw_sfp_trigger = self.I(lambda: self.data.df['sfp_trigger'], name="SFP Вход", overlay=True, scatter=True, color='lime')
             
         # Маркеры только для новой стратегии Breakout
         if STRATEGY == "BREAKOUT_RETEST":
@@ -137,10 +132,9 @@ class SmartSniperUniversal(Strategy):
             self.draw_br_pullback = self.I(lambda: self.data.df['br_pullback'], name="BR Откат", overlay=True, scatter=True, color='fuchsia')
             self.draw_br_good = self.I(lambda: self.data.df['br_good'], name="BR Вход", overlay=True, scatter=True, color='blue')
         
-        if STRATEGY in ("V_RED_TOP", "SFP"):
+        if STRATEGY in ("V_RED_TOP", "V_RED_CASCADE"):
             self.draw_red_scan = self.I(lambda: self.data.df['red_scan'], name="SCAN", overlay=True, scatter=True, color='yellow')
             self.draw_red_good = self.I(lambda: self.data.df['red_good'], name="ВХОД", overlay=True, scatter=True, color='red')
-            # НОВЫЕ МАРКЕРЫ СТРУКТУРЫ
             self.draw_track_start = self.I(lambda: self.data.df['track_start'], name="START_PEAK_1", overlay=True, scatter=True, color='blue')
             self.draw_new_peak = self.I(lambda: self.data.df['new_peak'], name="NEW_PEAK", overlay=True, scatter=True, color='fuchsia')
         
@@ -154,16 +148,24 @@ class SmartSniperUniversal(Strategy):
 
         current_time = self.data.index[-1]
 
-        # === ПРОВЕРКА ВЫХОДА ИЗ ПОЗИЦИИ ===
-        if self.exit_mgr.is_open() and self.position:
-            c_high, c_low, c_close = self.data.High[-1], self.data.Low[-1], self.data.Close[-1]
-            exit_triggered, exit_reason, exit_price = self.exit_mgr.check_exit(c_high, c_low, c_close, current_time=current_time)
-            if exit_triggered:
-                entry_key = getattr(self, 'current_trade_signal_time', None)
-                if entry_key is not None and entry_key in GLOBAL_TRADE_CONTEXTS:
-                    GLOBAL_TRADE_CONTEXTS[entry_key]['exit_reason'] = exit_reason
-                    GLOBAL_TRADE_CONTEXTS[entry_key]['mae_pct'] = round(self.exit_mgr.last_closed_mae, 2)
-                self.position.close()
+        # === ПРОВЕРКА ВЫХОДА ИЗ ПОЗИЦИИ (ИНДИВИДУАЛЬНАЯ ДЛЯ КАЖДОЙ СДЕЛКИ) ===
+        if self.position:
+            # 1. Отсчитываем 10 дней для КАЖДОЙ сделки отдельно
+            for trade in self.trades:
+                trade_entry_time = self.data.index[trade.entry_bar]
+                if current_time - trade_entry_time >= pd.Timedelta(days=DIAGNOSTIC_DEADLINE_DAYS):
+                    trade.close()  # Закрываем ТОЛЬКО эту сделку, рисуется линия
+
+            # 2. Логирование MAE (без принудительного закрытия позиций!)
+            if self.exit_mgr.is_open():
+                c_high, c_low, c_close = self.data.High[-1], self.data.Low[-1], self.data.Close[-1]
+                exit_triggered, exit_reason, exit_price = self.exit_mgr.check_exit(c_high, c_low, c_close, current_time=current_time)
+                if exit_triggered:
+                    entry_key = getattr(self, 'current_trade_signal_time', None)
+                    if entry_key is not None and entry_key in GLOBAL_TRADE_CONTEXTS:
+                        GLOBAL_TRADE_CONTEXTS[entry_key]['exit_reason'] = exit_reason
+                        GLOBAL_TRADE_CONTEXTS[entry_key]['mae_pct'] = round(self.exit_mgr.last_closed_mae, 2)
+                    # СТРОКА self.position.close() УДАЛЕНА НАВСЕГДА
 
         # === WARMUP ===
         if self.test_start_dt and current_time < self.test_start_dt:
@@ -208,7 +210,7 @@ class SmartSniperUniversal(Strategy):
             active_sup, active_res = np.nan, np.nan
             
             # 1. Приоритет: Активный пробитый уровень, за которым мы СЕЙЧАС следим
-            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP", "V_RED_TOP", "BREAKOUT_RETEST"):
+            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "V_RED_CASCADE", "V_RED_TOP", "BREAKOUT_RETEST"):
                 if self.tracked_support is not None:
                     if STRATEGY == "BREAKOUT_RETEST":
                         active_res = self.tracked_support['min']
@@ -256,7 +258,7 @@ class SmartSniperUniversal(Strategy):
         can_short = (len(CURRENT_RESISTANCES) > 0 or self.tracked_resistance is not None) and ALLOW_SHORT_TRADES
 
         df_slice = None
-        if STRATEGY in ["VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP", "BREAKOUT_RETEST", "V_RED_TOP"]:
+        if STRATEGY in ["VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "V_RED_CASCADE", "BREAKOUT_RETEST", "V_RED_TOP"]:
             lookback_size = 260 if STRATEGY == "VOLUME_REVERSAL" else 100
             current_len = len(self.data)
             start_idx = max(0, current_len - lookback_size)
@@ -321,7 +323,7 @@ class SmartSniperUniversal(Strategy):
                     self.tracked_support = dict(found)
                     GLOBAL_DEBUG_STATS["Origins_Long_Total"] += 1
                     self.tracked_support['_pit_start_time'] = current_time
-                    if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM", "SFP", "BREAKOUT_RETEST"):
+                    if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM", "BREAKOUT_RETEST"):
                         self.manager.notify_breach(self.tracked_support, 'LONG')
             else:
                 # Блок сброса уровня
@@ -357,7 +359,7 @@ class SmartSniperUniversal(Strategy):
                     self.tracked_resistance = dict(found)
                     GLOBAL_DEBUG_STATS["Origins_Short_Total"] += 1
                     self.tracked_resistance['_pit_start_time'] = current_time
-                    if STRATEGY in ("V_RED_TOP", "SFP", "PANIC_TRAP"):
+                    if STRATEGY in ("V_RED_TOP", "V_RED_CASCADE", "PANIC_TRAP"):
                         self.manager.notify_breach(self.tracked_resistance, 'SHORT')
             else:
                 if c_close < self.tracked_resistance['min'] and not self._origin_still_needed(self.tracked_resistance, 'SHORT'):
@@ -365,13 +367,13 @@ class SmartSniperUniversal(Strategy):
 
         if can_long:
             # ТЕПЕРЬ КАПКАН ЗДЕСЬ. Работает строго с одним пробитым уровнем.
-            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP", "BREAKOUT_RETEST"):
+            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "BREAKOUT_RETEST"):
                 if self.tracked_support is not None:
                     ctx_eval_long = self._get_context(self.tracked_support, 'LONG', c_atr)
                     decision = self._evaluate(self.tracked_support, 'LONG', c_open, c_high, c_low, c_close,
                                                CURRENT_RESISTANCES, df_slice, trend=ctx_eval_long.get('trend', 'UNKNOWN'),
                                                c_atr=c_atr, c_ema=current_ema)
-                    if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM", "PANIC_TRAP", "SFP", "BREAKOUT_RETEST") and self.original_df is not None:
+                    if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM", "PANIC_TRAP", "BREAKOUT_RETEST") and self.original_df is not None:
                         # Авто-маркер
                         level_id = self.manager._level_id(self.tracked_support, 'LONG')
                         watcher = self.manager._watchers.get(level_id)
@@ -383,10 +385,6 @@ class SmartSniperUniversal(Strategy):
                                 self.original_df.at[current_time, 'vbottom_scan'] = c_close
                             elif event_type == "GOOD_GREEN":
                                 self.original_df.at[current_time, 'vbottom_good'] = c_close
-                            elif event_type == "TOUCH":
-                                self.original_df.at[current_time, 'sfp_touch'] = c_close
-                            elif event_type == "TRIGGER":
-                                self.original_df.at[current_time, 'sfp_trigger'] = c_close
                             # НОВЫЙ БЛОК ДЛЯ BREAKOUT:
                             if STRATEGY == "BREAKOUT_RETEST":
                                 if event_type == "SCAN":
@@ -412,7 +410,7 @@ class SmartSniperUniversal(Strategy):
                         break
 
         if can_short:
-            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "SFP", "V_RED_TOP", "BREAKOUT_RETEST"):
+            if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "V_RED_CASCADE", "V_RED_TOP", "BREAKOUT_RETEST"):
                 if self.tracked_resistance is not None:
                     ctx_eval_short = self._get_context(self.tracked_resistance, 'SHORT', c_atr)
                     decision = self._evaluate(self.tracked_resistance, 'SHORT', c_open, c_high, c_low, c_close, 
@@ -420,7 +418,7 @@ class SmartSniperUniversal(Strategy):
                                       c_atr=c_atr, c_ema=current_ema)
                     
                     # --- ДОБАВИТЬ ЭТОТ БЛОК ДЛЯ МАРКЕРОВ ШОРТА ---
-                    if STRATEGY in ("V_RED_TOP", "SFP") and self.original_df is not None:
+                    if STRATEGY in ("V_RED_TOP", "V_RED_CASCADE") and self.original_df is not None:
                         level_id = self.manager._level_id(self.tracked_resistance, 'SHORT')
                         watcher = self.manager._watchers.get(level_id)
                         if watcher is not None and getattr(watcher, 'last_event_time', None) == current_time:
@@ -475,9 +473,10 @@ class SmartSniperUniversal(Strategy):
             decision = self.manager.evaluate_v_green_bottom(
                 level, df_slice, trade_type, opposite_levels, trend=trend, c_atr=c_atr, c_ema=c_ema
             )
-        elif STRATEGY == "SFP":
-            decision = self.manager.evaluate_sfp(
-                level, df_slice, trade_type, opposite_levels, trend=trend, c_atr=c_atr
+        elif STRATEGY == "V_RED_CASCADE":
+            c_atr_slow = self.atr_slow[-1] if not np.isnan(self.atr_slow[-1]) else (c_atr if c_atr else 0.0)
+            decision = self.manager.evaluate_v_red_cascade(
+                level, df_slice, trade_type, opposite_levels, trend=trend, c_atr=c_atr, c_atr_slow=c_atr_slow, c_ema=c_ema
             )
         
         elif STRATEGY == "BREAKOUT_RETEST":
@@ -499,7 +498,7 @@ class SmartSniperUniversal(Strategy):
             if ('No signal' in reason_str or 'No CHoCH' in reason_str
                     or 'No volume reversal' in reason_str or 'No pit climax' in reason_str
                     or 'No V bottom' in reason_str or 'No V-Green bottom' in reason_str
-                    or 'No SFP signal' in reason_str 
+                    or 'No V_RED_CASCADE signal' in reason_str
                     or 'No Breakout-Retest signal' in reason_str):
                 GLOBAL_DEBUG_STATS["No_Signal"] += 1
             else:
@@ -617,7 +616,7 @@ class SmartSniperUniversal(Strategy):
 
         if trade_type == 'LONG':
             if DISABLE_SL_DIAGNOSTIC:
-                self.buy(size=0.98)  
+                self.buy(size=0.98, tp=decision['tp'])  # Вшили TP напрямую в брокер
             else:
                 self.buy(size=0.98, sl=decision['sl'], tp=decision['tp'])
             self.exit_mgr.open_position('LONG', current_price, decision['tp'], decision['sl'],
@@ -625,7 +624,7 @@ class SmartSniperUniversal(Strategy):
         else:
             trade_size = 0.05 if ALLOW_PYRAMIDING else 0.98
             if DISABLE_SL_DIAGNOSTIC:
-                self.sell(size=trade_size)
+                self.sell(size=trade_size, tp=decision['tp'])  # Вшили TP напрямую в брокер
             else:
                 self.sell(size=trade_size, sl=decision['sl'], tp=decision['tp'])
             self.exit_mgr.open_position('SHORT', current_price, decision['tp'], decision['sl'],
@@ -1080,8 +1079,6 @@ else:
             df['vbottom_pit'] = np.nan
             df['vbottom_scan'] = np.nan
             df['vbottom_good'] = np.nan
-            df['sfp_touch'] = np.nan
-            df['sfp_trigger'] = np.nan
             df['ema'] = df['Close'].ewm(span=13, adjust=False).mean()
             df['avg_vol'] = df['Volume'].rolling(window=20).mean()
             df['open'] = df['Open']
