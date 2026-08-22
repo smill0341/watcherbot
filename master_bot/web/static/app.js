@@ -119,7 +119,22 @@ function initChart() {
       vertLines: { color: "#1b1d24" },
       horzLines: { color: "#1b1d24" },
     },
-    timeScale: { timeVisible: true, secondsVisible: false },
+    timeScale: {
+      timeVisible: true,
+      secondsVisible: false,
+      // Данные приходят в UTC (unix-секунды), lightweight-charts по
+      // умолчанию рисует шкалу тоже в UTC. Переводим подписи на Киев
+      // (UTC+3) явным форматтером, сами данные не трогаем.
+      tickMarkFormatter: (time) => new Date(time * 1000).toLocaleTimeString("ru-RU", {
+        timeZone: "Europe/Kyiv", hour: "2-digit", minute: "2-digit",
+      }),
+    },
+    localization: {
+      timeFormatter: (time) => new Date(time * 1000).toLocaleString("ru-RU", {
+        timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit",
+        hour: "2-digit", minute: "2-digit",
+      }),
+    },
   });
 
   candleSeries = chart.addCandlestickSeries({
@@ -198,28 +213,46 @@ function clearLevelLines() {
 async function loadLevels(coin) {
   clearLevelLines();
   try {
-    const res = await fetch(`/api/levels/${encodeURIComponent(coin)}`);
-    if (!res.ok) return; // нет уровней для монеты — молча пропускаем
-    const data = await res.json();
+    const [levelsRes, activeRes] = await Promise.all([
+      fetch(`/api/levels/${encodeURIComponent(coin)}`),
+      fetch(`/api/watchlist/active`).catch(() => null),
+    ]);
+    if (!levelsRes.ok) return; // нет уровней для монеты — молча пропускаем
+    const data = await levelsRes.json();
+
+    // Находим уровни, которые ПРЯМО СЕЙЧАС отслеживает живой вотчер этой
+    // монеты — чтобы выделить их жирной линией и подписью со стратегией,
+    // а не просто рисовать все supports/resistances монеты одинаково.
+    let activeLevels = [];
+    if (activeRes && activeRes.ok) {
+      const activeData = await activeRes.json();
+      activeLevels = (Array.isArray(activeData) ? activeData : [])
+        .filter((w) => (w.coin || "").toUpperCase() === coin.toUpperCase());
+    }
+    const findActive = (lvl) => activeLevels.find(
+      (w) => Math.abs((w.level_min ?? NaN) - lvl.min) < 1e-9 && Math.abs((w.level_max ?? NaN) - lvl.max) < 1e-9
+    );
 
     (data.supports || []).forEach((lvl) => {
+      const active = findActive(lvl);
       levelLines.push(candleSeries.createPriceLine({
         price: (lvl.min + lvl.max) / 2,
         color: "#4caf7d",
-        lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Dotted,
+        lineWidth: active ? 3 : 1,
+        lineStyle: active ? LightweightCharts.LineStyle.Solid : LightweightCharts.LineStyle.Dotted,
         axisLabelVisible: true,
-        title: `sup ${lvl.score ?? ""}`,
+        title: active ? `🟢 АКТИВНО (${active.strategy}) sup ${lvl.score ?? ""}` : `sup ${lvl.score ?? ""}`,
       }));
     });
     (data.resistances || []).forEach((lvl) => {
+      const active = findActive(lvl);
       levelLines.push(candleSeries.createPriceLine({
         price: (lvl.min + lvl.max) / 2,
         color: "#e5654f",
-        lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Dotted,
+        lineWidth: active ? 3 : 1,
+        lineStyle: active ? LightweightCharts.LineStyle.Solid : LightweightCharts.LineStyle.Dotted,
         axisLabelVisible: true,
-        title: `res ${lvl.score ?? ""}`,
+        title: active ? `🔴 АКТИВНО (${active.strategy}) res ${lvl.score ?? ""}` : `res ${lvl.score ?? ""}`,
       }));
     });
   } catch (e) {
@@ -228,17 +261,21 @@ async function loadLevels(coin) {
 }
 
 // Цвет/форма маркера по типу события вотчера (см. _record_event в
-// v_bottom_watcher.py / v_green_bottom_watcher.py на бэкенде бота).
+// v_bottom_watcher.py / v_green_bottom_watcher.py / v_red_top_watcher.py
+// на бэкенде бота).
 const EVENT_MARKER_STYLE = {
-  ORIENTIR:   { color: "#8a8f98", shape: "circle" },   // V_BOTTOM: нашли ориентир
-  START:      { color: "#5aa9e6", shape: "circle" },   // V_BOTTOM: старт
-  PEAK:       { color: "#f2c14e", shape: "circle" },   // V_BOTTOM: пик/пик+
-  PIT:        { color: "#e5654f", shape: "circle" },   // V_GREEN_BOTTOM: новая яма
-  SCAN:       { color: "#f2c14e", shape: "circle" },   // V_GREEN_BOTTOM: активный поиск входа
-  GOOD_GREEN: { color: "#4dd0e1", shape: "circle" },   // V_GREEN_BOTTOM: кандидат на вход
-  ENTRY:      { color: "#4caf7d", shape: "arrowUp" },  // вход состоялся
-  CANCEL:     { color: "#5c6370", shape: "square" },   // цепочка сорвана (буфер/срыв)
-  DEAD:       { color: "#e5654f", shape: "square" },   // калькулятор отклонил сделку
+  ORIENTIR:    { color: "#8a8f98", shape: "circle" },   // V_BOTTOM: нашли ориентир
+  START:       { color: "#5aa9e6", shape: "circle" },   // V_BOTTOM: старт
+  PEAK:        { color: "#f2c14e", shape: "circle" },   // V_BOTTOM: пик/пик+
+  PIT:         { color: "#e5654f", shape: "circle" },   // V_GREEN_BOTTOM: новая яма
+  SCAN:        { color: "#f2c14e", shape: "circle" },   // V_GREEN_BOTTOM/V_RED_TOP: активный поиск входа
+  GOOD_GREEN:  { color: "#4dd0e1", shape: "circle" },   // V_GREEN_BOTTOM: кандидат на вход
+  TRACK_START: { color: "#8a8f98", shape: "circle" },   // V_RED_TOP: первый пик, старт слежения
+  NEW_PEAK:    { color: "#f2c14e", shape: "circle" },   // V_RED_TOP: новый структурный пик ("три индейца")
+  GOOD_RED:    { color: "#ff8a65", shape: "circle" },   // V_RED_TOP: С3 подтвердила, кандидат на вход
+  ENTRY:       { color: "#4caf7d", shape: "arrowUp" },  // вход состоялся
+  CANCEL:      { color: "#5c6370", shape: "square" },   // цепочка сорвана (буфер/срыв)
+  DEAD:        { color: "#e5654f", shape: "square" },   // калькулятор отклонил сделку
 };
 
 async function loadEvents(coin) {
@@ -257,7 +294,9 @@ async function loadEvents(coin) {
           position: "aboveBar",
           color: style.color,
           shape: style.shape,
-          text: isHistory ? `${ev.type} (посл.)` : ev.type,
+          // Подписи над точками убраны — тип события и так виден по
+          // цвету/форме (см. EVENT_MARKER_STYLE), текст только шумел.
+          text: "",
         });
       });
     };
@@ -310,14 +349,29 @@ async function loadChart(coin) {
     ema20Series.applyOptions({ priceFormat });
     ema50Series.applyOptions({ priceFormat });
 
-    candleSeries.setData(data.candles);
-    volumeSeries.setData(data.candles.map((c) => ({
+    // 1. Форматируем свечи: переводим время из миллисекунд в секунды
+    const formattedCandles = data.candles.map(c => {
+      const unixSeconds = c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time;
+      return {
+        ...c,
+        time: unixSeconds,
+      };
+    });
+
+    // 2. Строго сортируем по времени (исправляет баг "отображает криво частями")
+    formattedCandles.sort((a, b) => a.time - b.time);
+
+    // 3. Передаем уже правильные данные в график
+    candleSeries.setData(formattedCandles);
+    
+    volumeSeries.setData(formattedCandles.map((c) => ({
       time: c.time,
       value: c.volume,
       color: c.close >= c.open ? "rgba(76,175,125,0.5)" : "rgba(229,101,79,0.5)",
     })));
-    ema20Series.setData(computeEMA(data.candles, 20));
-    ema50Series.setData(computeEMA(data.candles, 50));
+    
+    ema20Series.setData(computeEMA(formattedCandles, 20));
+    ema50Series.setData(computeEMA(formattedCandles, 50));
 
     chart.timeScale().fitContent();
     loadLevels(coin);

@@ -108,15 +108,28 @@ def crypto_orchestrator(bot, admin_chat_id):
             #         print(f"[DISPATCHER ERROR] Ошибка внутри Light цикла: {e}")
 
             # =========================================================
-            # 3. ОЧЕРЕДЬ: 👀 WATCHER SCAN (Старт на 5-й минуте, далее каждые 15 минут)
-            # =========================================================
-            if elapsed >= 300 and (time.time() - last_watcher >= 900 or last_watcher == 0):
+            # 3. ОЧЕРЕДЬ: 👀 WATCHER SCAN (Старт на 5-й минуте, далее —
+            # синхронизировано с закрытием 15м свечи на бирже + 1 минута
+            # запас, а не "каждые 900 сек от старта бота". Раньше скан
+            # мог попасть на любой момент внутри ещё не закрытой свечи —
+            # вотчер видел один и тот же формирующийся бар по несколько
+            # раз с разными high/close, что давало задвоенные/лишние
+            # события (NEW_PEAK и т.п.) на одной и той же свече.
+            # Теперь: следующий запуск — это ближайшая граница 15м
+            # (:00/:15/:30/:45 по UTC, ровно как биржевые свечи) + 60 сек,
+            # чтобы биржа гарантированно успела закрыть и отдать свечу.
+            # ============================================================
+            _WATCHER_QUARTER_SEC = 900
+            _WATCHER_CLOSE_BUFFER_SEC = 60
+            _now_ts = time.time()
+            _next_watcher_boundary = (_now_ts // _WATCHER_QUARTER_SEC) * _WATCHER_QUARTER_SEC + _WATCHER_CLOSE_BUFFER_SEC
+            if elapsed >= 300 and _now_ts >= _next_watcher_boundary and (last_watcher < _next_watcher_boundary or last_watcher == 0):
                 print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [DISPATCHER] ⏱ Начало анализа Watcher списка...")
                 last_watcher = time.time()
                 
                 try:
-                    from modules.cryptano.live_scan import _load_watchlist, _save_watchlist, watcher_cooldown_cache, _watcher_lock, AUTO_REMOVE_AFTER_SIGNAL, COOLDOWN_HOURS, v_bottom_mgr
-                    from modules.cryptano.watcher_plan import check_manual_extreme, check_v_bottom, check_v_green_bottom
+                    from modules.cryptano.live_scan import _load_watchlist, _save_watchlist, watcher_cooldown_cache, _watcher_lock, AUTO_REMOVE_AFTER_SIGNAL, COOLDOWN_HOURS, v_bottom_mgr, tracked_origin_levels, tracked_origin_levels_vrt
+                    from modules.cryptano.watcher_plan import check_v_bottom, check_v_green_bottom, check_v_red_top
                     
                     wl = _load_watchlist()
                     if wl:
@@ -129,11 +142,12 @@ def crypto_orchestrator(bot, admin_chat_id):
                                 coins_to_remove = []
                                 total_scanned = 0
                                 signals_found = 0
-                                sfp_signals = 0
                                 vbottom_signals = 0
                                 vbottom_levels_checked = 0
                                 vgb_signals = 0
                                 vgb_levels_checked = 0
+                                vrt_signals = 0
+                                vrt_levels_checked = 0
                                 active_level_ids = set()  # для clear_dead_watchers в конце скана
                                 level_id_meta = {}  # level_id -> {"coin":..., "direction":...} для экспорта дашборду
                                 macro_path = os.path.join(os.path.dirname(__file__), "modules", "cryptano", "macro_levels.json")
@@ -160,26 +174,18 @@ def crypto_orchestrator(bot, admin_chat_id):
                                                 level_id_meta[vgb_id] = {"coin": coin, "direction": "LONG", "strategy": "V_GREEN_BOTTOM"}
                                         if "SHORT" in dirs:
                                             for lvl in coin_macro.get("resistances", []):
-                                                vb_id = f"VB_SHORT_{lvl['min']}_{lvl['max']}"
-                                                active_level_ids.add(vb_id)
-                                                level_id_meta[vb_id] = {"coin": coin, "direction": "SHORT", "strategy": "V_BOTTOM"}
+                                                vrt_id = f"VRT_SHORT_{lvl['min']}_{lvl['max']}"
+                                                active_level_ids.add(vrt_id)
+                                                level_id_meta[vrt_id] = {"coin": coin, "direction": "SHORT", "strategy": "V_RED_TOP"}
 
                                     for d in dirs:
                                         if f"{coin}_{d}" in watcher_cooldown_cache: continue
                                         
                                         coin_signal_found = False
 
-                                        # --- 1. SFP стратегия (старая) ---
-                                        is_ready, report = check_manual_extreme(coin, d, source)
-                                        if report and not report.startswith("❌") and not report.startswith("⚠️") and is_ready:
-                                            signals_found += 1
-                                            sfp_signals += 1
-                                            coin_signal_found = True
-                                            bot.send_message(admin_chat_id, report, parse_mode="Markdown")
-
-                                        # --- 2. V-BOTTOM стратегия ---
+                                        # --- 1. V-BOTTOM стратегия ---
                                         # Проверяем НЕЗАВИСИМО от результата SFP — если сработали обе, шлём обе
-                                        v_is_ready, v_report, v_levels = check_v_bottom(coin, d, v_bottom_mgr)
+                                        v_is_ready, v_report, v_levels = check_v_bottom(coin, d, v_bottom_mgr, tracked_origin_levels)
                                         vbottom_levels_checked += v_levels
                                         if v_report and not v_report.startswith("❌") and not v_report.startswith("⚠️") and v_is_ready:
                                             signals_found += 1
@@ -187,15 +193,28 @@ def crypto_orchestrator(bot, admin_chat_id):
                                             coin_signal_found = True
                                             bot.send_message(admin_chat_id, v_report, parse_mode="Markdown")
 
-                                        # --- 3. V-GREEN-BOTTOM стратегия (в паре с V-BOTTOM, один менеджер на двоих) ---
+                                        # --- 2. V-GREEN-BOTTOM стратегия (в паре с V-BOTTOM, один менеджер на двоих) ---
                                         # Только LONG — функция сама пропускает SHORT без обращения к бирже
-                                        vgb_is_ready, vgb_report, vgb_levels = check_v_green_bottom(coin, d, v_bottom_mgr)
+                                        vgb_is_ready, vgb_report, vgb_levels = check_v_green_bottom(coin, d, v_bottom_mgr, tracked_origin_levels)
                                         vgb_levels_checked += vgb_levels
                                         if vgb_report and not vgb_report.startswith("❌") and not vgb_report.startswith("⚠️") and vgb_is_ready:
                                             signals_found += 1
                                             vgb_signals += 1
                                             coin_signal_found = True
                                             bot.send_message(admin_chat_id, vgb_report, parse_mode="Markdown")
+
+                                        # --- 3. V-RED-TOP стратегия ---
+                                        # Только SHORT — функция сама пропускает LONG без обращения к бирже.
+                                        # Свой персистентный tracked_origin_levels_vrt (см. live_scan.py) —
+                                        # один уровень может дать несколько сигналов подряд, поэтому
+                                        # untrack происходит только когда вотчер реально завершился.
+                                        vrt_is_ready, vrt_report, vrt_levels = check_v_red_top(coin, d, v_bottom_mgr, tracked_origin_levels_vrt)
+                                        vrt_levels_checked += vrt_levels
+                                        if vrt_report and not vrt_report.startswith("❌") and not vrt_report.startswith("⚠️") and vrt_is_ready:
+                                            signals_found += 1
+                                            vrt_signals += 1
+                                            coin_signal_found = True
+                                            bot.send_message(admin_chat_id, vrt_report, parse_mode="Markdown")
 
                                         if coin_signal_found:
                                             watcher_cooldown_cache[f"{coin}_{d}"] = now_dt
@@ -275,9 +294,9 @@ def crypto_orchestrator(bot, admin_chat_id):
                                     
                                 # 🚀 ФИНАЛЬНЫЙ ПРИНТ СО СТАТИСТИКОЙ (общий + отдельно по каждой стратегии)
                                 print(f"✅ [DISPATCHER] Анализ прошел. Монет просканировано: {total_scanned} | Сигналов найдено: {signals_found}")
-                                print(f"   -> SFP: Сигналов найдено: {sfp_signals}")
                                 print(f"   -> V_BOTTOM: Уровней оценено: {vbottom_levels_checked} | Сделок найдено: {vbottom_signals}")
                                 print(f"   -> V_GREEN_BOTTOM: Уровней оценено: {vgb_levels_checked} | Сделок найдено: {vgb_signals}")
+                                print(f"   -> V_RED_TOP: Уровней оценено: {vrt_levels_checked} | Сделок найдено: {vrt_signals}")
                                 print(f"   -> Очистка: удалено вотчеров {cleared_count}, осталось в памяти {v_bottom_mgr.watcher_count()}")
                                 
                             finally:

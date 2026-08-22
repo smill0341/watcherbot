@@ -8,7 +8,7 @@ import gc
 import traceback
 from modules.cryptano.utils.common import calculate_rsi, exchange, format_price as fmt_p, price_precision_from_market, resolve_symbol, KNOWN_TICKER_ALIASES
 from modules.cryptano.utils.market_cache import load_markets_cached
-from modules.cryptano.utils.indicators import pandas_get_local_structure, calculate_atr
+from modules.cryptano.utils.indicators import pandas_get_local_structure, calculate_atr, calculate_ema
 from modules.cryptano.utils.watcher_logic import analyze_extreme_pattern
 from modules.cryptano.utils.vbottom_manager import VBottomManager
 
@@ -35,6 +35,23 @@ def _find_fresh_breach(levels, c_close, c_low, prev_close):
         if c_close < lvl['min'] or c_low < lvl['min']:
             return lvl
     return None
+
+
+def _find_fresh_breach_up(levels, c_close, c_high, prev_close):
+    """
+    Зеркало _find_fresh_breach для SHORT-стратегий от сопротивления:
+    ищет уровень, который цена только что пробила ВВЕРХ (через lvl['max']).
+    Сначала "свежий" пробой, если такого нет — fallback на любой уровень,
+    над которым цена уже находится.
+    """
+    for lvl in levels:
+        if (c_close > lvl['max'] or c_high > lvl['max']) and prev_close <= lvl['max']:
+            return lvl
+    for lvl in levels:
+        if c_close > lvl['max'] or c_high > lvl['max']:
+            return lvl
+    return None
+
 
 def check_manual_extreme(coin, direction, source="Manual"):
     """
@@ -428,3 +445,142 @@ def check_v_green_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None)
         print(f"\n[V_GREEN_BOTTOM ERROR] ❌ ОШИБКА ПРИ ПРОВЕРКЕ V-GREEN-BOTTOM ({coin}): {e}")
         traceback.print_exc()
         return False, f"❌ Ошибка V-GREEN-BOTTOM анализа {coin}: {e}", 0
+
+
+def check_v_red_top(coin, direction, vbottom_mgr=None, tracked_levels=None):
+    """
+    Проверяет V-RED-TOP паттерн (шорт от сопротивления, "три индейца" +
+    якорь/реакция/подтверждение). Работает только для SHORT.
+
+    В отличие от check_v_bottom/check_v_green_bottom, ОДИН пробитый уровень
+    может дать НЕСКОЛЬКО сигналов подряд (вотчер сам крутится обратно в
+    WAIT_C1 после сделки, пока не упрётся в MAX_TRADES_PER_LEVEL) — поэтому
+    уровень снимается со слежения только когда вотчер реально завершил
+    работу (TRIGGERED/DEAD/IDLE), а не после первого же сигнала.
+
+    tracked_levels — персистентный словарь {f"{coin}_VRT_SHORT": level_dict},
+    должен жить между вызовами (передаётся из live_scan.py), отдельный от
+    словаря V_BOTTOM/V_GREEN_BOTTOM.
+
+    Возвращает (is_ready, report_text, levels_checked).
+    """
+    if direction != "SHORT":
+        return False, None, 0
+
+    if tracked_levels is None:
+        tracked_levels = {}
+
+    try:
+        time.sleep(0.3)
+
+        coin = coin.upper().replace("USDT", "").replace("/", "").strip()
+
+        markets = load_markets_cached(exchange)
+        symbol = resolve_symbol(coin, markets)
+        if not symbol:
+            return False, f"❌ Монета *{coin}* не найдена на Bybit.", 0
+
+        ohlcv = None
+        for attempt in range(3):
+            try:
+                ohlcv = exchange.fetch_ohlcv(symbol, timeframe="15m", limit=120)
+                break
+            except Exception as e:
+                if "Rate Limit" in str(e) or "10006" in str(e):
+                    print(f"[V_RED_TOP WARNING] Bybit rate limit на {coin}. Пауза 1.5 сек...")
+                    time.sleep(1.5)
+                else:
+                    raise e
+
+        if not ohlcv or len(ohlcv) < 100:
+            # 100, а не 52 — ATR_slow (SMA100 от ATR) требует запаса истории
+            return False, f"⚠️ Недостаточно данных V-RED-TOP для {coin} ({len(ohlcv) if ohlcv else 0} свечей).", 0
+
+        df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+        df.set_index("timestamp", inplace=True)
+        df = df[["open", "high", "low", "close", "volume"]].astype(float)
+
+        atr_series = calculate_atr(df, 14)
+        c_atr = float(atr_series.iloc[-1]) if not atr_series.empty and atr_series.iloc[-1] == atr_series.iloc[-1] else None
+
+        atr_slow_series = atr_series.rolling(window=100).mean()
+        c_atr_slow = float(atr_slow_series.iloc[-1]) if not atr_slow_series.empty and atr_slow_series.iloc[-1] == atr_slow_series.iloc[-1] else c_atr
+
+        ema_series = calculate_ema(df, period=50)
+        c_ema = float(ema_series.iloc[-1]) if not ema_series.empty and ema_series.iloc[-1] == ema_series.iloc[-1] else None
+
+        df_rsi = df.reset_index(drop=True)  # calculate_rsi не завязан на индекс, но не рискуем
+        rsi_series = calculate_rsi(df_rsi)
+        c_rsi = float(rsi_series.iloc[-1]) if not rsi_series.empty and rsi_series.iloc[-1] == rsi_series.iloc[-1] else None
+
+        macro_path = os.path.join(os.path.dirname(__file__), "macro_levels.json")
+        macro_db = load_json(macro_path, default={})
+        coin_macro = macro_db.get(coin) or macro_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
+
+        if not coin_macro:
+            return False, f"⚠️ Нет уровней для {coin} в macro_levels.json.", 0
+
+        if vbottom_mgr is None:
+            vbottom_mgr = VBottomManager()
+
+        resistances = [r for r in coin_macro.get("resistances", []) if r.get('score', 0) >= MIN_LEVEL_SCORE]
+        supports = coin_macro.get("supports", [])
+
+        if not resistances:
+            return False, f"⚠️ Нет сопротивлений для V-RED-TOP на {coin} (после фильтра score).", 0
+
+        track_key = f"{coin}_VRT_SHORT"
+        c_close = float(df['close'].iloc[-1])
+        c_high = float(df['high'].iloc[-1])
+        prev_close = float(df['close'].iloc[-2]) if len(df) > 1 else c_close
+
+        tracked = tracked_levels.get(track_key)
+
+        if tracked is None:
+            found = _find_fresh_breach_up(resistances, c_close, c_high, prev_close)
+            if found is None:
+                return False, None, 0
+            tracked = dict(found)
+            tracked_levels[track_key] = tracked
+            vbottom_mgr.notify_breach(tracked, 'SHORT')
+
+        result = vbottom_mgr.evaluate_v_red_top(
+            tracked, df, "SHORT", supports, trend="UNKNOWN",
+            c_atr=c_atr, c_atr_slow=c_atr_slow, c_ema=c_ema, c_rsi=c_rsi
+        )
+        levels_checked = 1
+
+        # Уровень снимаем со слежения, только если вотчер реально завершился —
+        # иначе следующий скан снова словит "fresh breach" и notify_breach()
+        # дёрнет on_breach_start(), сбросив накопленные пики/сделки впустую.
+        vrt_level_id = f"VRT_SHORT_{tracked['min']}_{tracked['max']}"
+        watcher = vbottom_mgr._watchers.get(vrt_level_id)
+        if watcher is not None and getattr(watcher, "state", None) in ("TRIGGERED", "DEAD", "IDLE"):
+            del tracked_levels[track_key]
+
+        if not result.get('allow'):
+            return False, None, levels_checked
+
+        entry_price = result.get('entry_price', 0.0)
+        sl = result.get('sl', 0.0)
+        tp = result.get('tp', 0.0)
+        history_log = result.get('history_log', '')
+        level_id = result.get('level_id', 'unknown')
+
+        report = (
+            f"🔴 *V-RED-TOP SHORT* _{coin}_\n\n"
+            f"Entry: `{entry_price:.8f}`\n"
+            f"SL: `{sl:.8f}`\n"
+            f"TP: `{tp:.8f}`\n"
+            f"R/R: `{(entry_price-tp)/(sl-entry_price) if sl > entry_price else 0:.2f}`\n\n"
+            f"📊 {history_log}\n"
+            f"Level: `{level_id}`"
+        )
+
+        return True, report, levels_checked
+
+    except Exception as e:
+        print(f"\n[V_RED_TOP ERROR] ❌ ОШИБКА ПРИ ПРОВЕРКЕ V-RED-TOP ({coin}): {e}")
+        traceback.print_exc()
+        return False, f"❌ Ошибка V-RED-TOP анализа {coin}: {e}", 0

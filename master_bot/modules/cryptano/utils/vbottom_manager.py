@@ -9,6 +9,7 @@ vbottom_manager.py
 
 from .v_bottom_watcher import VBottomWatcher
 from .v_green_bottom_watcher import VGreenBottomWatcher
+from .v_red_top_watcher import VRedTopWatcher
 
 
 class VBottomManager:
@@ -200,4 +201,71 @@ class VBottomManager:
             'level_id': level_id,
             'history_log': watcher.history_log,
             'action': signal.get('action', 'BUY'),
+        }
+
+    def evaluate_v_red_top(self, level, df, trade_type, all_opposite_levels, trend='UNKNOWN',
+                            c_atr=None, c_atr_slow=None, c_ema=None, c_rsi=None):
+        """
+        Проверяет V-RED-TOP паттерн (шорт от сопротивления, структура "три
+        индейца" + якорь/реакция/подтверждение по трём маршрутам RED1-3).
+        Работает только для SHORT — лимит сделок на уровень (MAX_TRADES_PER_LEVEL)
+        контролирует сам вотчер, менеджер уровень не блокирует после сигнала.
+
+        Args:
+            level: dict {'min': float, 'max': float} — уровень сопротивления
+            df: DataFrame с колонками [open, high, low, close, volume] и индексом time
+            trade_type: должен быть 'SHORT' (LONG отклоняется сразу)
+            all_opposite_levels: list[dict] — уровни поддержки (для TP расчёта)
+            trend: str — тренд, пока не используется
+            c_atr: float — ATR (быстрый), используется вотчером для отката/пробоя пиков
+            c_atr_slow: float — ATR_slow (SMA100 от ATR), пока не используется вотчером,
+                прокидывается для паритета с симулятором
+            c_ema: float — EMA50, фильтр "цена должна быть выше EMA на N%"
+            c_rsi: float — RSI, используется только в логах/reason при входе
+
+        Returns:
+            dict: {'allow': True/False, 'entry_price': float, 'sl': float, 'tp': float, ...}
+        """
+        if trade_type != 'SHORT':
+            return self._deny("V-RED-TOP поддерживает только SHORT")
+
+        level_id = self._level_id(level, trade_type, "VRT")
+
+        if level_id not in self._watchers:
+            self._watchers[level_id] = VRedTopWatcher(level['min'], level['max'], trade_type)
+
+        watcher = self._watchers[level_id]
+
+        if len(df) < 52:
+            return self._deny("Not enough data (< 52 candles)")
+
+        baseline_vol = float(df['volume'].iloc[-52:-2].mean())
+
+        c = df.iloc[-1]
+        c_open, c_high, c_low, c_close, c_vol = (
+            float(c['open']), float(c['high']), float(c['low']), float(c['close']), float(c['volume'])
+        )
+
+        candle_time = df.index[-1] if hasattr(df, 'index') else None
+
+        signal = watcher.update(
+            c_open, c_high, c_low, c_close, c_vol, baseline_vol, c_atr, all_opposite_levels,
+            c_atr_slow=c_atr_slow, c_ema=c_ema, c_rsi=c_rsi, candle_time=candle_time
+        )
+
+        if not signal:
+            return self._deny(f"No V-red-top signal (state: {watcher.state})")
+
+        if 'error' in signal:
+            return self._deny(signal['error'])
+
+        return {
+            'allow': True,
+            'reason': signal.get('reason', 'V-RED-TOP pattern detected'),
+            'entry_price': signal.get('entry_price', c_close),
+            'sl': signal.get('sl', 0.0),
+            'tp': signal.get('tp', 0.0),
+            'level_id': level_id,
+            'history_log': watcher.history_log,
+            'action': signal.get('action', 'SELL'),
         }

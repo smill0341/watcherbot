@@ -21,6 +21,12 @@ def pandas_get_local_structure(df, lookback=15):
     swing_high = float(context_df['high'].max())
     return swing_high, swing_low
 
+def calculate_ema(df, period=50, source_col="close"):
+    """EMA по колонке source_col (по умолчанию 'close', в нижнем регистре —
+    так же, как называются колонки в df внутри watcher_plan.py). Нужна
+    для V_RED_TOP (фильтр 'уровень должен быть выше EMA')."""
+    return df[source_col].ewm(span=period, adjust=False).mean()
+
 def calculate_atr(df, period=14):
     high_low = df["high"] - df["low"]
     high_cp = (df["high"] - df["close"].shift()).abs()
@@ -142,4 +148,3 @@ def get_cryptano_signal(df, current_price, price_precision, scan_type, rsi_high=
             "take_profit_3": impulse_low + (wave_size * 0.5), "stop_loss": stop_loss,
         }
     return None
-

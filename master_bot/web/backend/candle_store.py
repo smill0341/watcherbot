@@ -126,7 +126,7 @@ def top_up_tail(exchange, symbol, timeframe):
     if last_ts is None:
         backfill_symbol(exchange, symbol, timeframe)
         return
-    since_ms = (last_ts + 1) * 1000
+    since_ms = last_ts * 1000
     try:
         batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since_ms, limit=EXCHANGE_MAX_LIMIT)
     except Exception as e:

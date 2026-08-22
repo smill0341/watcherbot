@@ -60,6 +60,11 @@ def scan_market(scan_type="auto"):
             try:
                 coin_name = symbol.split("/")[0]
                 
+                # 🆕 ЗАЩИТА ОТ ДУБЛЕЙ: Если монета уже в Watchlist — сразу пропускаем
+                from modules.cryptano.live_scan import is_in_watchlist
+                if is_in_watchlist(coin_name):
+                    return None
+                
                 if scan_type == "auto" and coin_name in critical_cooldown_cache:
                     return None
                     

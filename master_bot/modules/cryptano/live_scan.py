@@ -4,7 +4,7 @@ import datetime
 import os
 import threading
 import re
-from modules.cryptano.watcher_plan import check_manual_extreme, check_v_bottom, check_v_green_bottom
+from modules.cryptano.watcher_plan import check_manual_extreme, check_v_bottom, check_v_green_bottom, check_v_red_top
 from modules.cryptano.utils.storage import load_json, save_json_atomic
 from modules.cryptano.utils.vbottom_manager import VBottomManager
 import json
@@ -25,6 +25,11 @@ v_bottom_mgr = VBottomManager()  # Менеджер V-BOTTOM/V-GREEN-BOTTOM ст
 # внутри watcher_plan.py (coin_LONG / coin_VGB_LONG), поэтому это один
 # общий словарь на обе стратегии, без коллизий.
 tracked_origin_levels = {}
+# Отдельный персистентный словарь для V_RED_TOP (SHORT от сопротивлений).
+# Не общий с tracked_origin_levels: track_key там всё равно не пересекается
+# (coin_LONG / coin_VGB_LONG против coin_VRT_SHORT), но разводим по смыслу —
+# разные направления, разный источник уровней (supports vs resistances).
+tracked_origin_levels_vrt = {}
 _watcher_lock = threading.Lock()
 
 def is_in_watchlist(coin):
@@ -252,34 +257,37 @@ def run_live_scanner(bot, admin_chat_id):
                         if cache_key in watcher_cooldown_cache:
                             continue  # Монета в кулдауне, пропускаем
                         
-                        # Вызываем готовую логику с передачей источника
-                        is_ready, report = check_manual_extreme(coin, d, source=data.get("source", "Manual"))
-                        
                         signal_found = False
-                        
-                        if report and not report.startswith("❌") and not report.startswith("⚠️"):
-                            if is_ready:
-                                # SFP Сигнал подтвержден! Пересылаем готовый отчет
-                                bot.send_message(admin_chat_id, report, parse_mode="Markdown")
-                                signal_found = True
-                        
-                        # Если SFP не дал сигнал — пытаемся V-BOTTOM (параллельная стратегия)
-                        if not signal_found:
-                            v_is_ready, v_report, v_levels = check_v_bottom(coin, d, v_bottom_mgr)
+                        report = ""
+
+                        # --- ВЕТКА LONG ---
+                        if d == "LONG":
+                            # 1. V-BOTTOM
+                            v_is_ready, v_report, v_levels = check_v_bottom(coin, d, v_bottom_mgr, tracked_origin_levels)
                             if v_report and not v_report.startswith("❌") and not v_report.startswith("⚠️"):
                                 if v_is_ready:
                                     bot.send_message(admin_chat_id, v_report, parse_mode="Markdown")
                                     signal_found = True
-                                    report = v_report  # Для логирования
+                                report = v_report
 
-                        # Если ничего не сработало — пытаемся V-GREEN-BOTTOM (работает в паре с V-BOTTOM)
-                        if not signal_found:
-                            vgb_is_ready, vgb_report, vgb_levels = check_v_green_bottom(coin, d, v_bottom_mgr)
-                            if vgb_report and not vgb_report.startswith("❌") and not vgb_report.startswith("⚠️"):
-                                if vgb_is_ready:
-                                    bot.send_message(admin_chat_id, vgb_report, parse_mode="Markdown")
+                            # 2. V-GREEN-BOTTOM (если V-BOTTOM не дал сигнал)
+                            if not signal_found:
+                                vgb_is_ready, vgb_report, vgb_levels = check_v_green_bottom(coin, d, v_bottom_mgr, tracked_origin_levels)
+                                if vgb_report and not vgb_report.startswith("❌") and not vgb_report.startswith("⚠️"):
+                                    if vgb_is_ready:
+                                        bot.send_message(admin_chat_id, vgb_report, parse_mode="Markdown")
+                                        signal_found = True
+                                    report = vgb_report
+
+                        # --- ВЕТКА SHORT ---
+                        elif d == "SHORT":
+                            # 3. V-RED-TOP
+                            vrt_is_ready, vrt_report, vrt_levels = check_v_red_top(coin, d, v_bottom_mgr, tracked_origin_levels_vrt)
+                            if vrt_report and not vrt_report.startswith("❌") and not vrt_report.startswith("⚠️"):
+                                if vrt_is_ready:
+                                    bot.send_message(admin_chat_id, vrt_report, parse_mode="Markdown")
                                     signal_found = True
-                                    report = vgb_report  # Для логирования
+                                report = vrt_report
                         
                         if signal_found:
                             # Замораживаем, чтобы не спамить
