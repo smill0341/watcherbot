@@ -128,7 +128,7 @@ def crypto_orchestrator(bot, admin_chat_id):
                 last_watcher = time.time()
                 
                 try:
-                    from modules.cryptano.live_scan import _load_watchlist, _save_watchlist, watcher_cooldown_cache, _watcher_lock, AUTO_REMOVE_AFTER_SIGNAL, COOLDOWN_HOURS, v_bottom_mgr, tracked_origin_levels, tracked_origin_levels_vrt
+                    from modules.cryptano.live_scan import _load_watchlist, _save_watchlist, watcher_cooldown_cache, _watcher_lock, AUTO_REMOVE_AFTER_SIGNAL, COOLDOWN_HOURS, v_bottom_mgr, tracked_origin_levels, tracked_origin_levels_vrt, save_watcher_state
                     from modules.cryptano.watcher_plan import check_v_bottom, check_v_green_bottom, check_v_red_top
                     
                     wl = _load_watchlist()
@@ -155,6 +155,17 @@ def crypto_orchestrator(bot, admin_chat_id):
                                 
                                 for coin, data in list(wl.items()):
                                     total_scanned += 1
+
+                                    # --- НОВЫЙ БЛОК: Проверка флага ручного рескана ---
+                                    flag_path = os.path.join(os.path.dirname(__file__), "modules", "cryptano", f"rescan_{coin}.flag")
+                                    if os.path.exists(flag_path):
+                                        print(f"[DISPATCHER] 🔄 Запрошен ручной рескан для {coin}. Сбрасываем память...")
+                                        v_bottom_mgr.remove_watchers_by_coin(coin)
+                                        try:
+                                            os.remove(flag_path)
+                                        except:
+                                            pass
+
                                     # Достаем реальный источник (Swing, Momentum, Manual)
                                     source = data.get("source", "Manual") 
                                     
@@ -289,6 +300,11 @@ def crypto_orchestrator(bot, admin_chat_id):
                                         os.path.dirname(__file__), "modules", "cryptano", "active_watchers.json"
                                     )
                                     save_json_atomic(active_watchers_path, export)
+
+                                    # Персистентность: сохраняем реальное состояние вотчеров
+                                    # (не только event_log для дашборда, а весь прогресс паттерна)
+                                    # + оба tracked-словаря, чтобы рестарт бота не обнулял прогресс.
+                                    save_watcher_state()
                                 except Exception as e:
                                     print(f"⚠️ [DASHBOARD EXPORT] Не удалось сохранить active_watchers.json: {e}")
                                     

@@ -6,7 +6,7 @@ from modules.cryptano.utils.common import calculate_rsi, exchange, format_price 
 from modules.cryptano.utils.market_cache import load_markets_cached, get_ohlcv_cached
 from modules.cryptano.utils.price_action import check_live_confirmation
 from modules.cryptano.utils.regime import detect_market_regime
-from modules.cryptano.watcher_plan import check_manual_extreme
+from modules.cryptano.utils.manual_sfp import check_manual_extreme
 from modules.cryptano.utils.indicators import calculate_atr
 
 # ==========================================

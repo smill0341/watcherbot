@@ -4,7 +4,7 @@ import datetime
 import os
 import threading
 import re
-from modules.cryptano.watcher_plan import check_manual_extreme, check_v_bottom, check_v_green_bottom, check_v_red_top
+
 from modules.cryptano.utils.storage import load_json, save_json_atomic
 from modules.cryptano.utils.vbottom_manager import VBottomManager
 import json
@@ -17,8 +17,19 @@ COOLDOWN_HOURS = 4     # Заморозка повторных сигналов 
 AUTO_ADD_FROM_CRITICAL = True   # Разрешить Critical фильтру самому добавлять монеты
 AUTO_REMOVE_AFTER_SIGNAL = True # Удалять монету из Watchlist после успешного сигнала
 
+# ========== ПЕРСИСТЕНТНОСТЬ СОСТОЯНИЯ ВОТЧЕРОВ МЕЖДУ РЕСТАРТАМИ ==========
+# Раньше весь прогресс паттерна (пики, C1/C2, счётчик сделок) жил только
+# в памяти процесса и терялся при каждом рестарте бота. Теперь раз в скан
+# (см. background_tasks.py::save_watcher_state) состояние сбрасывается на
+# диск, а тут, при импорте модуля (то есть при старте бота), читается
+# обратно — если файлов ещё нет (первый запуск), просто начинаем с чистого
+# листа, ничего не падает.
+WATCHER_STATE_FILE = os.path.join(os.path.dirname(__file__), "watcher_state.json")
+TRACKED_LONG_FILE = os.path.join(os.path.dirname(__file__), "tracked_origin_levels.json")
+TRACKED_VRT_FILE = os.path.join(os.path.dirname(__file__), "tracked_origin_levels_vrt.json")
+
 watcher_cooldown_cache = {}
-v_bottom_mgr = VBottomManager()  # Менеджер V-BOTTOM/V-GREEN-BOTTOM стратегий
+v_bottom_mgr = VBottomManager()  # Менеджер V-BOTTOM/V-GREEN-BOTTOM/V-RED-TOP стратегий
 # Персистентное состояние origin-tracking (какой уровень сейчас "пробит"
 # и отслеживается на монету) — та же модель, что в test_simulator.py.
 # Разные ключи для V_BOTTOM/V_GREEN_BOTTOM зашиты в самих track_key
@@ -30,6 +41,26 @@ tracked_origin_levels = {}
 # (coin_LONG / coin_VGB_LONG против coin_VRT_SHORT), но разводим по смыслу —
 # разные направления, разный источник уровней (supports vs resistances).
 tracked_origin_levels_vrt = {}
+
+# Восстанавливаем всё сохранённое в прошлую сессию (если было)
+v_bottom_mgr.load_state(WATCHER_STATE_FILE)
+_restored_long = load_json(TRACKED_LONG_FILE, default={})
+if isinstance(_restored_long, dict):
+    tracked_origin_levels.update(_restored_long)
+_restored_vrt = load_json(TRACKED_VRT_FILE, default={})
+if isinstance(_restored_vrt, dict):
+    tracked_origin_levels_vrt.update(_restored_vrt)
+
+
+def save_watcher_state():
+    """Сохраняет вотчеров + оба tracked-словаря на диск. Вызывается из
+    background_tasks.py раз в скан-цикл — небольшая, дешёвая операция,
+    не нужно дёргать чаще."""
+    v_bottom_mgr.save_state(WATCHER_STATE_FILE)
+    save_json_atomic(TRACKED_LONG_FILE, tracked_origin_levels)
+    save_json_atomic(TRACKED_VRT_FILE, tracked_origin_levels_vrt)
+
+
 _watcher_lock = threading.Lock()
 
 def is_in_watchlist(coin):
@@ -204,125 +235,3 @@ def show_watchlist(bot, chat_id):
     markup.add(types.InlineKeyboardButton("🗑 Полная очистка списка", callback_data="clear_entire_watchlist"))
     
     bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=markup)
-
-def run_live_scanner(bot, admin_chat_id):
-    """
-    Главный фоновый цикл Watcher. Проверяет монеты раз в 15 минут.
-    """
-    print(" 📡 Watcher live scan инициализирован! Синхронизация с 15m свечами включена.")
-    
-    while True:
-        now = datetime.datetime.utcnow()
-        mins_past = now.minute
-
-        if mins_past % 15 == 0 and now.second < 35:
-            sleep_time = 35 - now.second
-        else:
-            next_mark = ((mins_past // 15) + 1) * 15
-            sleep_time = (next_mark - mins_past) * 60 - now.second + 35
-
-        current_local_time = datetime.datetime.now().strftime("%H:%M:%S")
-        print(f"[{current_local_time}] 📡 [WATCHER] Ждем {int(sleep_time)} сек. (синхронизация с 15m свечой Bybit + 35 сек)...")
-        time.sleep(sleep_time)
-        
-        try:
-            wl = _load_watchlist()
-            if not wl:
-                continue
-
-            now = datetime.datetime.now()
-
-            # Очистка старых записей из кэша (защита от утечки памяти)
-            keys_to_delete = [k for k, v in watcher_cooldown_cache.items() if (now - v).total_seconds() >= (COOLDOWN_HOURS * 3600)]
-            for k in keys_to_delete:
-                del watcher_cooldown_cache[k]
-
-            if not _watcher_lock.acquire(blocking=False):
-                time.sleep(30)
-                continue
-
-            try:
-                # 🆕 Список для монет, которые отработали и подлежат удалению
-                coins_to_remove = []
-
-                # 🆕 Безопасная итерация через list(), чтобы словарь не менял размер в процессе
-                for coin, data in list(wl.items()):
-                    time.sleep(0.3)
-                    # Если ANY - проверяем оба направления. Иначе - только заданное.
-                    directions_to_check = ["LONG", "SHORT"] if data["direction"] == "ANY" else [data["direction"]]
-                    
-                    for d in directions_to_check:
-                        cache_key = f"{coin}_{d}"
-                        
-                        if cache_key in watcher_cooldown_cache:
-                            continue  # Монета в кулдауне, пропускаем
-                        
-                        signal_found = False
-                        report = ""
-
-                        # --- ВЕТКА LONG ---
-                        if d == "LONG":
-                            # 1. V-BOTTOM
-                            v_is_ready, v_report, v_levels = check_v_bottom(coin, d, v_bottom_mgr, tracked_origin_levels)
-                            if v_report and not v_report.startswith("❌") and not v_report.startswith("⚠️"):
-                                if v_is_ready:
-                                    bot.send_message(admin_chat_id, v_report, parse_mode="Markdown")
-                                    signal_found = True
-                                report = v_report
-
-                            # 2. V-GREEN-BOTTOM (если V-BOTTOM не дал сигнал)
-                            if not signal_found:
-                                vgb_is_ready, vgb_report, vgb_levels = check_v_green_bottom(coin, d, v_bottom_mgr, tracked_origin_levels)
-                                if vgb_report and not vgb_report.startswith("❌") and not vgb_report.startswith("⚠️"):
-                                    if vgb_is_ready:
-                                        bot.send_message(admin_chat_id, vgb_report, parse_mode="Markdown")
-                                        signal_found = True
-                                    report = vgb_report
-
-                        # --- ВЕТКА SHORT ---
-                        elif d == "SHORT":
-                            # 3. V-RED-TOP
-                            vrt_is_ready, vrt_report, vrt_levels = check_v_red_top(coin, d, v_bottom_mgr, tracked_origin_levels_vrt)
-                            if vrt_report and not vrt_report.startswith("❌") and not vrt_report.startswith("⚠️"):
-                                if vrt_is_ready:
-                                    bot.send_message(admin_chat_id, vrt_report, parse_mode="Markdown")
-                                    signal_found = True
-                                report = vrt_report
-                        
-                        if signal_found:
-                            # Замораживаем, чтобы не спамить
-                            watcher_cooldown_cache[cache_key] = now
-                            
-                            # 🆕 Отмечаем монету на удаление, если включена настройка
-                            if AUTO_REMOVE_AFTER_SIGNAL:
-                                coins_to_remove.append(coin)
-                                
-                            break  # Если нашли одну сторону, вторую не проверяем
-
-                        # Микро-пауза между запросами разных монет (внутри цикла for)
-                        time.sleep(1) 
-                
-                # 🆕 Авто-удаление отработавших монет
-                if coins_to_remove:
-                    # Загружаем свежий список, чтобы не затереть ручные добавления за время скана
-                    current_wl = _load_watchlist()
-                    # Используем set, чтобы избежать дублей (если вдруг монета добавилась дважды)
-                    unique_coins_to_remove = set(coins_to_remove)
-                    
-                    for c in unique_coins_to_remove:
-                        if c in current_wl:
-                            del current_wl[c]
-                            
-                    _save_watchlist(current_wl)
-                    print(f"[WATCHER] 🗑 Отработавшие монеты удалены из списка: {', '.join(unique_coins_to_remove)}")
-                
-                # Пульс для консоли
-                current_time = datetime.datetime.now().strftime("%H:%M:%S")
-                # Выводим длину заново загруженного списка (уже без удаленных)
-                print(f"[{current_time}] 📡 [WATCHER] Скан завершен. Монет в прицеле: {len(_load_watchlist())}")
-                        
-            finally:
-                _watcher_lock.release()
-
-        except Exception as e:
-            print(f"[WATCHER ERROR] Ошибка в цикле live_scan: {e}")

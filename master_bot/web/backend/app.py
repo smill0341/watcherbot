@@ -180,6 +180,18 @@ def get_active_watchers(all_states: bool = Query(default=False)):
     return result
 
 
+@app.post("/api/rescan/{coin}")
+def trigger_rescan(coin: str):
+    """Ставит флаг-заявку на сброс памяти монеты для боевого сканера."""
+    coin = coin.upper().strip()
+    flag_path = os.path.join(CRYPTANO_DIR, f"rescan_{coin}.flag")
+    try:
+        with open(flag_path, "w", encoding="utf-8") as f:
+            f.write("1")
+        return {"status": "ok", "message": f"Rescan requested for {coin}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/levels/{coin}")
 def get_levels(coin: str):
     """Уровни поддержки/сопротивления по монете."""
@@ -266,8 +278,10 @@ def get_ohlcv(coin: str, timeframe: str = "15m", limit: int = Query(default=200,
         raise HTTPException(status_code=400, detail=f"Unsupported timeframe: {timeframe}")
 
     if not candle_store.has_data(symbol, timeframe):
-        # Ленивая докачка для монет вне watchlist — фоновый воркер их не трогает.
         candle_store.backfill_symbol(exchange, symbol, timeframe)
+    else:
+        # ПРИНУДИТЕЛЬНАЯ ДОКАЧКА: всегда стягиваем хвост до текущей секунды при открытии графика
+        candle_store.top_up_tail(exchange, symbol, timeframe)
 
     candles = candle_store.get_candles(symbol, timeframe, limit=limit)
 

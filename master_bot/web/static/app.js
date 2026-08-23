@@ -11,27 +11,22 @@ let candleSeries = null;
 let volumeSeries = null;
 let ema20Series = null;
 let ema50Series = null;
-let levelLines = []; // храним price line объекты, чтобы удалять при смене монеты
+let rsiSeries = null; // Невидимая линия для расчёта RSI
+let levelLines = []; 
 let selectedCoin = null;
 let currentPrecision = 4;
 
 const ema20ValueEl = document.getElementById("ema20-value");
 const ema50ValueEl = document.getElementById("ema50-value");
 
-// На каком таймфрейме сколько свечей просить у /api/ohlcv (теперь это чтение
-// из локальной SQLite-истории на backend, а не поход на биржу за раз — можно
-// смело просить глубину вплоть до того, что реально накоплено, ~2 месяца):
 const TF_LIMITS = {
-  "15m": 5760,  // ~60 дней
-  "1h": 1440,   // ~60 дней
-  "4h": 360,    // ~60 дней
-  "1d": 60,     // ~60 дней
+  "15m": 5760,
+  "1h": 1440,
+  "4h": 360,
+  "1d": 60,
 };
 let currentTimeframe = "15m";
 
-// index.html пока без готовой разметки под OHLCV-легенду и блок истории —
-// создаём и вставляем их из JS в существующие контейнеры (.chart-legend, .sidebar),
-// вместо того чтобы требовать правки HTML.
 function formatVolume(v) {
   if (v === null || v === undefined) return "—";
   const abs = Math.abs(v);
@@ -40,24 +35,45 @@ function formatVolume(v) {
   return String(Math.round(v));
 }
 
+// === ЛЕГЕНДА И RSI ===
 let ohlcvLegendTextEl = null;
+let legendHtmlInjected = false;
+
 function ensureOhlcvLegend() {
   if (ohlcvLegendTextEl) return ohlcvLegendTextEl;
   const container = document.querySelector(".chart-legend");
   if (!container) return null;
+  
   const item = document.createElement("div");
   item.className = "legend-item ohlcv-legend-item";
   item.innerHTML = `<span id="ohlcv-legend-text" class="muted">—</span>`;
   container.appendChild(item);
   ohlcvLegendTextEl = document.getElementById("ohlcv-legend-text");
+  
+  // Визуальная расшифровка маркеров
+  if (!legendHtmlInjected) {
+    const marksLegend = document.createElement("div");
+    marksLegend.style.cssText = "font-size:12px; color:#8a8f98; margin-top:8px;";
+    marksLegend.innerHTML = `
+      <b>Маркеры:</b> 
+      <span style="color:#8a8f98">⚪️ Старт</span> | 
+      <span style="color:#f2c14e">🟡 Пик (Структура)</span> | 
+      <span style="color:#4dd0e1">🔵 Поиск</span> | 
+      <span style="color:#ff8a65">🟠 Кандидат</span> | 
+      <span style="color:#4caf7d">🟢 Вход</span> | 
+      <span style="color:#e5654f">🔴 Сброс/Стоп</span>
+    `;
+    container.appendChild(marksLegend);
+    legendHtmlInjected = true;
+  }
   return ohlcvLegendTextEl;
 }
 
-function setOhlcvLegend(candle, vol) {
+function setOhlcvLegend(candle, vol, rsiVal) {
   const el = ensureOhlcvLegend();
   if (!el) return;
   if (!candle) {
-    el.textContent = "—";
+    el.innerHTML = "—";
     return;
   }
   const p = currentPrecision;
@@ -66,7 +82,48 @@ function setOhlcvLegend(candle, vol) {
   const l = candle.low.toFixed(p);
   const c = candle.close.toFixed(p);
   const volTxt = vol ? formatVolume(vol.value) : "—";
-  el.textContent = `O ${o}  H ${h}  L ${l}  C ${c}  Vol ${volTxt}`;
+  const rsiTxt = rsiVal !== null ? rsiVal : "—";
+  
+  el.innerHTML = `O ${o} &nbsp; H ${h} &nbsp; L ${l} &nbsp; C ${c} &nbsp; Vol ${volTxt} &nbsp; <b style="color:#b2b5be;">RSI: ${rsiTxt}</b>`;
+}
+
+// === РАСЧЕТ ИНДИКАТОРОВ ===
+function computeEMA(candles, period) {
+  const k = 2 / (period + 1);
+  let emaPrev = null;
+  const out = [];
+  candles.forEach((c) => {
+    const price = c.close;
+    emaPrev = emaPrev === null ? price : price * k + emaPrev * (1 - k);
+    out.push({ time: c.time, value: emaPrev });
+  });
+  return out;
+}
+
+function computeRSI(candles, period = 14) {
+  if (candles.length <= period) return [];
+  const rsi = [];
+  let gains = 0, losses = 0;
+  
+  for (let i = 1; i <= period; i++) {
+    const diff = candles[i].close - candles[i-1].close;
+    if (diff >= 0) gains += diff;
+    else losses -= diff;
+  }
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+  rsi.push({ time: candles[period].time, value: avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain/avgLoss)) });
+
+  for (let i = period + 1; i < candles.length; i++) {
+    const diff = candles[i].close - candles[i-1].close;
+    const gain = diff >= 0 ? diff : 0;
+    const loss = diff < 0 ? -diff : 0;
+    
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    rsi.push({ time: candles[i].time, value: avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain/avgLoss)) });
+  }
+  return rsi;
 }
 
 let historyPanelBodyEl = null;
@@ -115,16 +172,10 @@ function initChart() {
   const box = document.getElementById("chart");
   chart = LightweightCharts.createChart(box, {
     layout: { background: { color: "#0e0f13" }, textColor: "#cfd3da" },
-    grid: {
-      vertLines: { color: "#1b1d24" },
-      horzLines: { color: "#1b1d24" },
-    },
+    grid: { vertLines: { color: "#1b1d24" }, horzLines: { color: "#1b1d24" } },
     timeScale: {
       timeVisible: true,
       secondsVisible: false,
-      // Данные приходят в UTC (unix-секунды), lightweight-charts по
-      // умолчанию рисует шкалу тоже в UTC. Переводим подписи на Киев
-      // (UTC+3) явным форматтером, сами данные не трогаем.
       tickMarkFormatter: (time) => new Date(time * 1000).toLocaleTimeString("ru-RU", {
         timeZone: "Europe/Kyiv", hour: "2-digit", minute: "2-digit",
       }),
@@ -143,29 +194,23 @@ function initChart() {
     wickUpColor: "#4caf7d", wickDownColor: "#e5654f",
   });
 
-  // Объём — отдельная шкала цен, прижатая к низу того же графика (не отдельный chart)
   volumeSeries = chart.addHistogramSeries({
     priceFormat: { type: "volume" },
     priceScaleId: "volume",
   });
   chart.priceScale("volume").applyOptions({
-    scaleMargins: { top: 0.82, bottom: 0 }, // занимает нижние ~18% высоты
+    scaleMargins: { top: 0.82, bottom: 0 }, 
   });
 
-  // crosshairMarkerVisible: false — убирает кружок-маркер на самой линии EMA
-  // в точке под курсором. Без этого визуально кажется, что курсор "прилип"
-  // к EMA, а не к свече — крестик при этом всё равно обычный, просто без
-  // лишней точки поверх линии. Цифры EMA в легенде под курсором не зависят
-  // от этой настройки и продолжают обновляться как обычно.
   ema20Series = chart.addLineSeries({ color: "#f2c14e", lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false });
   ema50Series = chart.addLineSeries({ color: "#5aa9e6", lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false });
+  rsiSeries = chart.addLineSeries({ visible: false, crosshairMarkerVisible: false }); // Скрытая линия для цифр RSI
 
-  // Живые значения EMA под курсором вместо непонятных плавающих кружков без подписи
   chart.subscribeCrosshairMove((param) => {
     if (!param || !param.time) {
       ema20ValueEl.textContent = "—";
       ema50ValueEl.textContent = "—";
-      setOhlcvLegend(null, null);
+      setOhlcvLegend(null, null, null);
       return;
     }
     const e20 = param.seriesData.get(ema20Series);
@@ -175,7 +220,10 @@ function initChart() {
 
     const candle = param.seriesData.get(candleSeries);
     const vol = param.seriesData.get(volumeSeries);
-    setOhlcvLegend(candle, vol);
+    const rsiData = param.seriesData.get(rsiSeries);
+    const rsiVal = rsiData ? rsiData.value.toFixed(1) : null;
+    
+    setOhlcvLegend(candle, vol, rsiVal);
   });
 
   new ResizeObserver(() => {
@@ -192,19 +240,6 @@ function initChart() {
   });
 }
 
-// Простая EMA по массиву свечей lightweight-charts формата {time, close, ...}
-function computeEMA(candles, period) {
-  const k = 2 / (period + 1);
-  let emaPrev = null;
-  const out = [];
-  candles.forEach((c) => {
-    const price = c.close;
-    emaPrev = emaPrev === null ? price : price * k + emaPrev * (1 - k);
-    out.push({ time: c.time, value: emaPrev });
-  });
-  return out;
-}
-
 function clearLevelLines() {
   levelLines.forEach((line) => candleSeries.removePriceLine(line));
   levelLines = [];
@@ -217,12 +252,9 @@ async function loadLevels(coin) {
       fetch(`/api/levels/${encodeURIComponent(coin)}`),
       fetch(`/api/watchlist/active`).catch(() => null),
     ]);
-    if (!levelsRes.ok) return; // нет уровней для монеты — молча пропускаем
+    if (!levelsRes.ok) return; 
     const data = await levelsRes.json();
 
-    // Находим уровни, которые ПРЯМО СЕЙЧАС отслеживает живой вотчер этой
-    // монеты — чтобы выделить их жирной линией и подписью со стратегией,
-    // а не просто рисовать все supports/resistances монеты одинаково.
     let activeLevels = [];
     if (activeRes && activeRes.ok) {
       const activeData = await activeRes.json();
@@ -260,22 +292,19 @@ async function loadLevels(coin) {
   }
 }
 
-// Цвет/форма маркера по типу события вотчера (см. _record_event в
-// v_bottom_watcher.py / v_green_bottom_watcher.py / v_red_top_watcher.py
-// на бэкенде бота).
 const EVENT_MARKER_STYLE = {
-  ORIENTIR:    { color: "#8a8f98", shape: "circle" },   // V_BOTTOM: нашли ориентир
-  START:       { color: "#5aa9e6", shape: "circle" },   // V_BOTTOM: старт
-  PEAK:        { color: "#f2c14e", shape: "circle" },   // V_BOTTOM: пик/пик+
-  PIT:         { color: "#e5654f", shape: "circle" },   // V_GREEN_BOTTOM: новая яма
-  SCAN:        { color: "#f2c14e", shape: "circle" },   // V_GREEN_BOTTOM/V_RED_TOP: активный поиск входа
-  GOOD_GREEN:  { color: "#4dd0e1", shape: "circle" },   // V_GREEN_BOTTOM: кандидат на вход
-  TRACK_START: { color: "#8a8f98", shape: "circle" },   // V_RED_TOP: первый пик, старт слежения
-  NEW_PEAK:    { color: "#f2c14e", shape: "circle" },   // V_RED_TOP: новый структурный пик ("три индейца")
-  GOOD_RED:    { color: "#ff8a65", shape: "circle" },   // V_RED_TOP: С3 подтвердила, кандидат на вход
-  ENTRY:       { color: "#4caf7d", shape: "arrowUp" },  // вход состоялся
-  CANCEL:      { color: "#5c6370", shape: "square" },   // цепочка сорвана (буфер/срыв)
-  DEAD:        { color: "#e5654f", shape: "square" },   // калькулятор отклонил сделку
+  ORIENTIR:    { color: "#8a8f98", shape: "circle" },   
+  START:       { color: "#5aa9e6", shape: "circle" },   
+  PEAK:        { color: "#f2c14e", shape: "circle" },   
+  PIT:         { color: "#e5654f", shape: "circle" },   
+  SCAN:        { color: "#f2c14e", shape: "circle" },   
+  GOOD_GREEN:  { color: "#4dd0e1", shape: "circle" },   
+  TRACK_START: { color: "#8a8f98", shape: "circle" },   
+  NEW_PEAK:    { color: "#f2c14e", shape: "circle" },   
+  GOOD_RED:    { color: "#ff8a65", shape: "circle" },   
+  ENTRY:       { color: "#4caf7d", shape: "arrowUp" },  
+  CANCEL:      { color: "#5c6370", shape: "square" },   
+  DEAD:        { color: "#e5654f", shape: "square" },   
 };
 
 async function loadEvents(coin) {
@@ -287,15 +316,13 @@ async function loadEvents(coin) {
     const markers = [];
     const pushWatcherEvents = (w, isHistory) => {
       (w.events || []).forEach((ev) => {
-        if (!ev.time) return; // событие записано до конвертации времени на бэкенде — пропускаем
+        if (!ev.time) return; 
         const style = EVENT_MARKER_STYLE[ev.type] || { color: "#cfd3da", shape: "circle" };
         markers.push({
           time: ev.time,
           position: "aboveBar",
           color: style.color,
           shape: style.shape,
-          // Подписи над точками убраны — тип события и так виден по
-          // цвету/форме (см. EVENT_MARKER_STYLE), текст только шумел.
           text: "",
         });
       });
@@ -304,10 +331,8 @@ async function loadEvents(coin) {
     (data.active || []).forEach((w) => pushWatcherEvents(w, false));
     (data.history || []).forEach((w) => pushWatcherEvents(w, true));
 
-    // lightweight-charts требует маркеры отсортированными по времени
     markers.sort((a, b) => a.time - b.time);
     candleSeries.setMarkers(markers);
-
     renderHistoryPanel(data.history);
   } catch (e) {
     console.error("events load failed", e);
@@ -333,6 +358,7 @@ async function loadChart(coin) {
       volumeSeries.setData([]);
       ema20Series.setData([]);
       ema50Series.setData([]);
+      rsiSeries.setData([]);
       clearLevelLines();
       return;
     }
@@ -340,38 +366,25 @@ async function loadChart(coin) {
     currentSymbolEl.textContent = `${data.symbol} · ${data.timeframe}`;
     currentPrecision = data.price_precision ?? 4;
 
-    const priceFormat = {
-      type: "price",
-      precision: currentPrecision,
-      minMove: 1 / Math.pow(10, currentPrecision),
-    };
+    const priceFormat = { type: "price", precision: currentPrecision, minMove: 1 / Math.pow(10, currentPrecision) };
     candleSeries.applyOptions({ priceFormat });
     ema20Series.applyOptions({ priceFormat });
     ema50Series.applyOptions({ priceFormat });
 
-    // 1. Форматируем свечи: переводим время из миллисекунд в секунды
     const formattedCandles = data.candles.map(c => {
       const unixSeconds = c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time;
-      return {
-        ...c,
-        time: unixSeconds,
-      };
+      return { ...c, time: unixSeconds };
     });
 
-    // 2. Строго сортируем по времени (исправляет баг "отображает криво частями")
     formattedCandles.sort((a, b) => a.time - b.time);
 
-    // 3. Передаем уже правильные данные в график
     candleSeries.setData(formattedCandles);
-    
     volumeSeries.setData(formattedCandles.map((c) => ({
-      time: c.time,
-      value: c.volume,
-      color: c.close >= c.open ? "rgba(76,175,125,0.5)" : "rgba(229,101,79,0.5)",
+      time: c.time, value: c.volume, color: c.close >= c.open ? "rgba(76,175,125,0.5)" : "rgba(229,101,79,0.5)",
     })));
-    
     ema20Series.setData(computeEMA(formattedCandles, 20));
     ema50Series.setData(computeEMA(formattedCandles, 50));
+    rsiSeries.setData(computeRSI(formattedCandles, 14)); // Скрытый расчет RSI
 
     chart.timeScale().fitContent();
     loadLevels(coin);
@@ -389,15 +402,22 @@ function highlightSelection() {
 }
 
 async function loadWatchlist() {
-  const res = await fetch("/api/watchlist");
+  const [res, activeRes] = await Promise.all([
+    fetch("/api/watchlist"),
+    fetch("/api/watchlist/active")
+  ]);
   const data = await res.json();
-  const withLevels = data.with_levels || [];
-  const withoutLevels = data.without_levels || [];
+  const activeData = await activeRes.json();
+  
+  const activeCoins = activeData.map(w => (w.coin || "").toUpperCase());
+  const withLevels = (data.with_levels || []).filter(c => !activeCoins.includes((c.coin || "").toUpperCase()));
+  const withoutLevels = (data.without_levels || []).filter(c => !activeCoins.includes((c.coin || "").toUpperCase()));
+  
   const total = withLevels.length + withoutLevels.length;
   watchlistCountEl.textContent = total;
 
   if (total === 0) {
-    watchlistListEl.innerHTML = "<div class='muted'>пусто</div>";
+    watchlistListEl.innerHTML = "<div class='muted'>все монеты в работе (или пусто)</div>";
     return;
   }
 
@@ -412,10 +432,7 @@ async function loadWatchlist() {
         </div>`
       )
       .join("");
-
-  // Две группы: сверху монеты, по которым уже есть построенные уровни
-  // (macro_levels.json), снизу — которые ещё в очереди. Список пересчитывается
-  // при каждой загрузке, так что деление обновляется само по себе.
+      
   let html = "";
   if (withLevels.length > 0) {
     html += `<div class="list-section-header">📊 С уровнями (${withLevels.length})</div>`;
@@ -448,8 +465,9 @@ async function loadActiveWatchers() {
     div.className = "list-item";
     div.dataset.coin = w.coin;
     div.innerHTML = `
-      <span>${w.coin ?? "?"} <span class="dir-${w.direction}">${w.direction ?? ""}</span></span>
+      <span style="flex-grow: 1;">${w.coin ?? "?"} <span class="dir-${w.direction}">${w.direction ?? ""}</span></span>
       <span class="state-tag">${w.state}</span>
+      <button title="Пересчитать структуру" onclick="triggerRescan(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 8px;">🔄</button>
     `;
     div.title = w.history_log || "";
     div.onclick = () => loadChart(w.coin);
@@ -490,5 +508,52 @@ async function refreshAll() {
 
 initChart();
 refreshAll();
-// Обновляем списки каждые 60 секунд, график руками (по клику) — без агрессивного polling'а
-setInterval(refreshAll, 60000);
+
+// === АВТООБНОВЛЕНИЕ РАЗ В МИНУТУ ===
+setInterval(async () => {
+  refreshAll(); // Обновляет списки слева
+  
+  if (selectedCoin) {
+    try {
+      const res = await fetch(`/api/ohlcv/${encodeURIComponent(selectedCoin)}?timeframe=${currentTimeframe}&limit=10`);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      const formattedCandles = data.candles.map(c => ({
+        ...c,
+        time: c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time,
+      })).sort((a, b) => a.time - b.time);
+
+      formattedCandles.forEach(c => {
+        try {
+          candleSeries.update(c);
+          volumeSeries.update({
+            time: c.time,
+            value: c.volume,
+            color: c.close >= c.open ? "rgba(76,175,125,0.5)" : "rgba(229,101,79,0.5)",
+          });
+        } catch (e) {
+           // Библиотека игнорирует старые свечи, это нормально
+        }
+      });
+      
+      loadEvents(selectedCoin);
+    } catch (e) {
+      console.error("Ошибка автообновления свечей:", e);
+    }
+  }
+}, 60000);
+
+// === ФУНКЦИЯ РУЧНОГО РЕСКАНА ===
+window.triggerRescan = async function(event, coin) {
+  event.stopPropagation(); 
+  try {
+      const res = await fetch(`/api/rescan/${encodeURIComponent(coin)}`, { method: "POST" });
+      if (res.ok) {
+          console.log(`[RESCAN] Заявка отправлена для ${coin}. Ждем тик сканера...`);
+          setTimeout(() => { if (selectedCoin === coin) loadChart(coin); }, 2000);
+      }
+  } catch (e) {
+      console.error("Ошибка рескана", e);
+  }
+};

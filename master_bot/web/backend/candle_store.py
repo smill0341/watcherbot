@@ -113,6 +113,7 @@ def backfill_symbol(exchange, symbol, timeframe, days=BACKFILL_DAYS):
         if not batch:
             break
         _insert_candles(symbol, timeframe, batch)
+        print(f"🔄 Стягиваю историю {symbol} ({timeframe}): скачано {len(batch)} свечей...")
         last_ts = batch[-1][0]
         if len(batch) < EXCHANGE_MAX_LIMIT or last_ts + tf_ms > time.time() * 1000:
             break  # дошли до текущего момента
@@ -133,6 +134,7 @@ def top_up_tail(exchange, symbol, timeframe):
         print(f"⚠️ [candle_store] top_up {symbol} {timeframe}: {e}")
         return
     _insert_candles(symbol, timeframe, batch)
+    print(f"📥 Докачано {len(batch)} свежих свечей для {symbol} ({timeframe})")
 
 
 def get_candles(symbol, timeframe, limit=None):

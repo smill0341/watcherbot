@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
+import os
 from .risk_calc import calc_tp_and_rr
 
 class VRedTopWatcher:
-    _log_cleared = False 
-
     CONFIG = {
         # ==========================================
         # [0] МАКРО-ФИЛЬТР (Старт)
@@ -85,16 +84,12 @@ class VRedTopWatcher:
         'USE_RR_FILTER': False,
         'DEBUG': True,
     }
-    def __init__(self, level_min: float, level_max: float, trade_type: str):
+    def __init__(self, level_min: float, level_max: float, trade_type: str, coin: str = "UNKNOWN"):
         self.min = level_min
         self.max = level_max
         self.trade_type = trade_type
-        
-        if self.CONFIG.get('DEBUG') and not VRedTopWatcher._log_cleared:
-            with open("v_red_debug.log", "w", encoding="utf-8") as f:
-                f.write("=== НОВЫЙ ТЕСТ ЗАПУЩЕН ===\n")
-            VRedTopWatcher._log_cleared = True
-        
+        self.coin = coin
+
         self.state = "WAIT_PUMP"
         self.peak_high = 0.0
         
@@ -149,8 +144,10 @@ class VRedTopWatcher:
         self.last_event_time = self._last_time
         self.last_event_msg = msg
         if self.CONFIG.get('DEBUG'):
-            with open("v_red_debug.log", "a", encoding="utf-8") as f:
-                f.write(f"{self._tp()}[{self.min:.4f}] {msg}\n")
+            log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "logs", "watchers")
+            os.makedirs(log_dir, exist_ok=True)
+            with open(os.path.join(log_dir, f"{self.coin}.log"), "a", encoding="utf-8") as f:
+                f.write(f"{self._tp()}[V_RED_TOP][{self.min:.4f}] {msg}\n")
 
     def on_breach_start(self):
         # 1. Если уже идет поиск точек входа или сделка завершена — игнорируем повторный вызов
@@ -207,8 +204,6 @@ class VRedTopWatcher:
             if self.CONFIG.get('EMA_MUST_BE_ABOVE_LEVEL', False) and c_ema is not None and float(c_ema) < self.min:
                 return None
 
-            is_green_struct = c_close > c_open
-
             if self.peaks_count == 0 and high_val > self.min:
                 self.peaks_count = 1
                 self.current_peak_high = high_val
@@ -218,9 +213,6 @@ class VRedTopWatcher:
                 self._record_event("TRACK_START", high_val)
                 
             elif self.peaks_count > 0:
-                if is_green_struct and not self.pullback_confirmed:
-                    self._record_event("NEW_PEAK", high_val)
-
                 if not self.pullback_confirmed:
                     # ФАЗА 1: Летим вверх, тянем макушку
                     if high_val > self.current_peak_high:

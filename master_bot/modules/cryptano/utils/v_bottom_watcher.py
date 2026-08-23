@@ -33,6 +33,7 @@ v_bottom_watcher.py
     зоне не сбрасывает цепочку, только выход ЗА буфер — полный сброс.
 """
 
+import os
 from .risk_calc import calc_tp_and_rr
 
 
@@ -53,10 +54,11 @@ class VBottomWatcher:
         'DEBUG': True,
     }
 
-    def __init__(self, level_min, level_max, trade_type):
+    def __init__(self, level_min, level_max, trade_type, coin="UNKNOWN"):
         self.min = level_min
         self.max = level_max
         self.trade_type = trade_type
+        self.coin = coin
         self.state = "SEARCHING"
 
         self.tracker_vol = 0.0
@@ -79,14 +81,17 @@ class VBottomWatcher:
         return f"{self._last_time} " if self._last_time is not None else ""
 
     def _dbg(self, msg):
-        """Пишет строку в файл v_bottom_debug.log (дописывает), а не в консоль —
+        """Пишет строку в общий лог этой монеты (logs/watchers/{coin}.log,
+        дописывает, никогда не чистится автоматически) — не в консоль,
         терминал не тянет тысячи строк, файл открывается текстовым редактором
         целиком, ищется по Ctrl+F. Также запоминает событие для авто-маркера
         на графике симулятора (см. test_simulator.py)."""
         self.last_event_time = self._last_time
         self.last_event_msg = msg
-        with open("v_bottom_debug.log", "a", encoding="utf-8") as f:
-            f.write(f"{self._tp()}[{self.max:.4f}] {msg}\n")
+        log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "logs", "watchers")
+        os.makedirs(log_dir, exist_ok=True)
+        with open(os.path.join(log_dir, f"{self.coin}.log"), "a", encoding="utf-8") as f:
+            f.write(f"{self._tp()}[V_BOTTOM][{self.max:.4f}] {msg}\n")
 
     def _record_event(self, event_type, price):
         """Копит точки пути вотчера (для отрисовки на графике дашборда).

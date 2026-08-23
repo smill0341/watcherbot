@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 from .risk_calc import calc_tp_and_rr
 
 class VGreenBottomWatcher:
@@ -32,10 +33,11 @@ class VGreenBottomWatcher:
         'DEBUG': True,
     }
 
-    def __init__(self, level_min: float, level_max: float, trade_type: str):
+    def __init__(self, level_min: float, level_max: float, trade_type: str, coin: str = "UNKNOWN"):
         self.min = level_min
         self.max = level_max
         self.trade_type = trade_type
+        self.coin = coin
         
         self.state = "WAIT_FIRST_DUMP"
         
@@ -81,8 +83,10 @@ class VGreenBottomWatcher:
         self.last_event_time = self._last_time
         self.last_event_msg = msg
         if self.CONFIG.get('DEBUG'):
-            with open("v_green_debug.log", "a", encoding="utf-8") as f:
-                f.write(f"{self._tp()}[{self.max:.4f}] {msg}\n")
+            log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "logs", "watchers")
+            os.makedirs(log_dir, exist_ok=True)
+            with open(os.path.join(log_dir, f"{self.coin}.log"), "a", encoding="utf-8") as f:
+                f.write(f"{self._tp()}[V_GREEN_BOTTOM][{self.max:.4f}] {msg}\n")
 
     @staticmethod
     def _fmt(v):

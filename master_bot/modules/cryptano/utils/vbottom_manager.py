@@ -6,10 +6,19 @@ vbottom_manager.py
 Готов к расширению: можно добавить новые evaluate_*_strategy методы
 для других стратегий без переписания этого файла.
 """
+import os
+import json
+import pandas as pd
 
 from .v_bottom_watcher import VBottomWatcher
 from .v_green_bottom_watcher import VGreenBottomWatcher
 from .v_red_top_watcher import VRedTopWatcher
+
+_WATCHER_CLASSES = {
+    "VBottomWatcher": VBottomWatcher,
+    "VGreenBottomWatcher": VGreenBottomWatcher,
+    "VRedTopWatcher": VRedTopWatcher,
+}
 
 
 class VBottomManager:
@@ -57,6 +66,12 @@ class VBottomManager:
     def watcher_count(self):
         """Сколько вотчеров сейчас держим в памяти (для мониторинга/логов)."""
         return len(self._watchers)
+    
+    def remove_watchers_by_coin(self, coin):
+        """Удаляет все вотчеры конкретной монеты (используется при ручном рескане)."""
+        keys_to_delete = [k for k, w in self._watchers.items() if getattr(w, 'coin', 'UNKNOWN') == coin]
+        for k in keys_to_delete:
+            del self._watchers[k]
 
     def clear_dead_watchers(self, active_level_ids):
         """Удаляет вотчеры для уровней, которых больше нет на графике.
@@ -67,8 +82,11 @@ class VBottomManager:
         dead_keys = []
         for k, watcher in self._watchers.items():
             if k not in active_level_ids:
-                # Если вотчер в процессе (не TRIGGERED, не DEAD) — оставляем
-                if hasattr(watcher, 'state') and watcher.state not in ["TRIGGERED", "DEAD"]:
+                # Если вотчер в процессе (не TRIGGERED/DEAD/IDLE) — оставляем.
+                # IDLE добавлен отдельно: у V_RED_TOP это тоже финальное
+                # состояние движения (цена ушла под уровень), без него такие
+                # вотчеры зависали в памяти навсегда и не архивировались.
+                if hasattr(watcher, 'state') and watcher.state not in ["TRIGGERED", "DEAD", "IDLE"]:
                     continue
                 dead_keys.append(k)
 
@@ -77,7 +95,7 @@ class VBottomManager:
             removed[k] = self._watchers.pop(k)
         return removed
 
-    def evaluate_v_bottom(self, level, df, trade_type, all_opposite_levels, trend='UNKNOWN', c_atr=None):
+    def evaluate_v_bottom(self, level, df, trade_type, all_opposite_levels, trend='UNKNOWN', c_atr=None, coin="UNKNOWN"):
         """
         Проверяет V-BOTTOM паттерн на уровне по DataFrame свечей.
         
@@ -96,7 +114,7 @@ class VBottomManager:
 
         # Если это новый уровень — создаём вотчер
         if level_id not in self._watchers:
-            self._watchers[level_id] = VBottomWatcher(level['min'], level['max'], trade_type)
+            self._watchers[level_id] = VBottomWatcher(level['min'], level['max'], trade_type, coin=coin)
 
         watcher = self._watchers[level_id]
 
@@ -143,7 +161,7 @@ class VBottomManager:
             'action': signal.get('action', 'BUY'),
         }
 
-    def evaluate_v_green_bottom(self, level, df, trade_type, all_opposite_levels, trend='UNKNOWN', c_atr=None):
+    def evaluate_v_green_bottom(self, level, df, trade_type, all_opposite_levels, trend='UNKNOWN', c_atr=None, coin="UNKNOWN"):
         """
         Проверяет V-GREEN-BOTTOM паттерн (лестница из нескольких ям + режим
         кульминации на аномальном объёме). Работает только для LONG.
@@ -165,7 +183,7 @@ class VBottomManager:
         level_id = self._level_id(level, trade_type, "VGB")
 
         if level_id not in self._watchers:
-            self._watchers[level_id] = VGreenBottomWatcher(level['min'], level['max'], trade_type)
+            self._watchers[level_id] = VGreenBottomWatcher(level['min'], level['max'], trade_type, coin=coin)
 
         watcher = self._watchers[level_id]
 
@@ -204,7 +222,7 @@ class VBottomManager:
         }
 
     def evaluate_v_red_top(self, level, df, trade_type, all_opposite_levels, trend='UNKNOWN',
-                            c_atr=None, c_atr_slow=None, c_ema=None, c_rsi=None):
+                            c_atr=None, c_atr_slow=None, c_ema=None, c_rsi=None, coin="UNKNOWN"):
         """
         Проверяет V-RED-TOP паттерн (шорт от сопротивления, структура "три
         индейца" + якорь/реакция/подтверждение по трём маршрутам RED1-3).
@@ -231,13 +249,42 @@ class VBottomManager:
 
         level_id = self._level_id(level, trade_type, "VRT")
 
+        is_new_watcher = False
         if level_id not in self._watchers:
-            self._watchers[level_id] = VRedTopWatcher(level['min'], level['max'], trade_type)
+            self._watchers[level_id] = VRedTopWatcher(level['min'], level['max'], trade_type, coin=coin)
+            is_new_watcher = True
 
         watcher = self._watchers[level_id]
 
         if len(df) < 52:
             return self._deny("Not enough data (< 52 candles)")
+
+        # ==============================================================
+        # ИСТОРИЧЕСКИЙ РЕПЛЕЙ (ПРОМОТКА) ДЛЯ НОВЫХ ВОТЧЕРОВ
+        # ==============================================================
+        if is_new_watcher:
+            # 1. Ищем, когда реально был пробой уровня в прошлом
+            start_idx = len(df) - 1
+            for i in range(len(df) - 2, -1, -1):
+                if df['close'].iloc[i] <= level['max'] and df['high'].iloc[i] <= level['max']:
+                    start_idx = i + 1
+                    break
+            
+            # Если пробой был очень давно (нет в скачанной истории)
+            if start_idx == len(df) - 1 and df['close'].iloc[0] > level['max']:
+                start_idx = 0
+
+            # 2. Проматываем свечи от момента пробоя до текущей
+            for i in range(start_idx, len(df) - 1):
+                hc = df.iloc[i]
+                htime = df.index[i] if hasattr(df, 'index') else None
+                hvol_base = float(df['volume'].iloc[max(0, i-52):max(1, i-2)].mean()) if i >= 52 else 0.1
+                
+                watcher.update(
+                    float(hc['open']), float(hc['high']), float(hc['low']), float(hc['close']), float(hc['volume']), 
+                    hvol_base, c_atr, all_opposite_levels,
+                    c_atr_slow=c_atr_slow, c_ema=c_ema, c_rsi=c_rsi, candle_time=htime
+                )
 
         baseline_vol = float(df['volume'].iloc[-52:-2].mean())
 
@@ -269,3 +316,77 @@ class VBottomManager:
             'history_log': watcher.history_log,
             'action': signal.get('action', 'SELL'),
         }
+
+    # ==================================================================
+    # ПЕРСИСТЕНТНОСТЬ: сохранение/восстановление живых вотчеров между
+    # рестартами бота. Раньше весь накопленный прогресс паттерна (пики,
+    # C1/C2, счётчик сделок) жил только в оперативной памяти и терялся
+    # при любом рестарте — теперь раз в скан сохраняется на диск, а при
+    # старте бота читается обратно.
+    # ==================================================================
+
+    def to_state_dict(self):
+        """Сериализует всех вотчеров реестра в JSON-совместимый словарь."""
+        result = {}
+        for level_id, watcher in self._watchers.items():
+            state = dict(watcher.__dict__)
+            # pandas.Timestamp не сериализуется json.dump — переводим в ISO-строку
+            last_time = state.get('_last_time')
+            if last_time is not None and hasattr(last_time, 'isoformat'):
+                state['_last_time'] = last_time.isoformat()
+            result[level_id] = {
+                'class': type(watcher).__name__,
+                'min': watcher.min,
+                'max': watcher.max,
+                'trade_type': watcher.trade_type,
+                'coin': getattr(watcher, 'coin', 'UNKNOWN'),
+                'state': state,
+            }
+        return result
+
+    def save_state(self, path):
+        """Атомарно сохраняет текущее состояние всех вотчеров в файл."""
+        try:
+            data = self.to_state_dict()
+            tmp_path = f"{path}.tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+            os.replace(tmp_path, path)
+        except Exception as e:
+            print(f"[VBottomManager] ⚠️ Не удалось сохранить состояние вотчеров: {e}")
+
+    def load_state(self, path):
+        """Восстанавливает вотчеров из файла состояния при старте бота.
+        Если файла нет (первый запуск) или он битый — просто начинаем
+        с чистого реестра, ничего не падает."""
+        if not os.path.exists(path):
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"[VBottomManager] ⚠️ Не удалось прочитать состояние вотчеров: {e}")
+            return
+
+        restored = 0
+        for level_id, entry in data.items():
+            cls = _WATCHER_CLASSES.get(entry.get("class"))
+            if cls is None:
+                continue
+            try:
+                watcher = cls(entry["min"], entry["max"], entry["trade_type"], coin=entry.get("coin", "UNKNOWN"))
+                saved_state = dict(entry.get("state", {}))
+                last_time = saved_state.get("_last_time")
+                if last_time is not None:
+                    try:
+                        saved_state["_last_time"] = pd.Timestamp(last_time)
+                    except Exception:
+                        saved_state["_last_time"] = None
+                watcher.__dict__.update(saved_state)
+                self._watchers[level_id] = watcher
+                restored += 1
+            except Exception as e:
+                print(f"[VBottomManager] ⚠️ Пропущен вотчер {level_id} при восстановлении: {e}")
+
+        if restored:
+            print(f"[VBottomManager] 🔄 Восстановлено вотчеров из сохранённого состояния: {restored}")

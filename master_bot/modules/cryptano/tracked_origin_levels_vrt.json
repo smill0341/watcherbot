@@ -1,0 +1,52 @@
+{
+    "1000BONK_VRT_SHORT": {
+        "min": 0.0031380375,
+        "max": 0.0032989625,
+        "score": 2.5,
+        "type": "1W_high_PWH+4h_poc",
+        "date": "2026-07-26",
+        "reaction_count": 3
+    },
+    "DASH_VRT_SHORT": {
+        "min": 40.43325,
+        "max": 42.50675,
+        "score": 1.0,
+        "type": "1M_high_PMH",
+        "date": "2026-05-31",
+        "reaction_count": 2
+    },
+    "MNT_VRT_SHORT": {
+        "min": 0.48695357142857143,
+        "max": 0.5090464285714286,
+        "score": 3.0,
+        "type": "4h_poc_standalone",
+        "date": "2026-08-22",
+        "mitigated": false,
+        "reaction_count": 0
+    },
+    "ONDO_VRT_SHORT": {
+        "min": 0.3602625,
+        "max": 0.3787375,
+        "score": 3.0,
+        "type": "4h_poc_standalone",
+        "date": "2026-08-22",
+        "mitigated": false,
+        "reaction_count": 0
+    },
+    "AAVE_VRT_SHORT": {
+        "min": 123.7275,
+        "max": 130.07250000000002,
+        "score": 5.5,
+        "type": "1d_extreme_peak",
+        "date": "2026-03-02",
+        "reaction_count": 3
+    },
+    "SKHYNIX_VRT_SHORT": {
+        "min": 1223.7224999999999,
+        "max": 1286.4775,
+        "score": 1.0,
+        "type": "1W_high_PWH",
+        "date": "2026-07-26",
+        "reaction_count": 4
+    }
+}

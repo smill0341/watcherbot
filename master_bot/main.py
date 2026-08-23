@@ -11,9 +11,9 @@ from modules.footballnogoal.football import check_live_matches
 from modules.playerpropsbasket.player_props import check_nba_injuries
 from modules.cryptano.history import check_and_update, format_history
 from modules.cryptano.market_overview import analyze_coin
-from modules.cryptano.watcher_plan import check_manual_extreme
+from modules.cryptano.utils.manual_sfp import check_manual_extreme
 from modules.cryptano.light_filter import run_manual_light_scan
-from modules.cryptano.live_scan import manage_watchlist, show_watchlist, run_live_scanner
+from modules.cryptano.live_scan import manage_watchlist, show_watchlist
 from modules.cryptano.history import check_and_update, format_history, generate_report_file
 import threading
 load_dotenv()
