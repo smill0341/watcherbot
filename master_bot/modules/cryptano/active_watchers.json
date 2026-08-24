@@ -1,115 +1,196 @@
 {
-    "VRT_SHORT_0.0031380375_0.0032989625": {
-        "coin": "1000BONK",
-        "direction": "SHORT",
-        "strategy": "V_RED_TOP",
-        "state": "WAIT_PUMP",
-        "breach_count": 0,
+    "VB_LONG_111.15_116.85": {
+        "coin": "SOXL",
+        "direction": "LONG",
+        "strategy": "V_BOTTOM",
+        "state": "SEARCHING",
+        "breach_count": 1,
         "history_log": "",
-        "level_min": 0.0031380375,
-        "level_max": 0.0032989625,
+        "level_min": 111.15,
+        "level_max": 116.85,
         "events": [
             {
-                "time": 1787512500,
-                "type": "TRACK_START",
-                "price": 0.003281
+                "time": 1787578200,
+                "type": "ORIENTIR",
+                "price": 108.34
             }
         ],
-        "updated_at": "2026-08-23T22:31:00.720326"
+        "updated_at": "2026-08-24T17:31:00.357144"
     },
-    "VRT_SHORT_40.43325_42.50675": {
-        "coin": "DASH",
-        "direction": "SHORT",
-        "strategy": "V_RED_TOP",
-        "state": "WAIT_PUMP",
+    "VGB_LONG_111.15_116.85": {
+        "coin": "SOXL",
+        "direction": "LONG",
+        "strategy": "V_GREEN_BOTTOM",
+        "state": "TRACKING_PIT",
         "breach_count": 0,
         "history_log": "",
-        "level_min": 40.43325,
-        "level_max": 42.50675,
+        "level_min": 111.15,
+        "level_max": 116.85,
         "events": [
             {
-                "time": 1787499000,
-                "type": "TRACK_START",
-                "price": 42.9
+                "time": 1787578200,
+                "type": "PIT",
+                "price": 108.34
             }
         ],
-        "updated_at": "2026-08-23T22:31:00.720326"
+        "updated_at": "2026-08-24T17:31:00.357144"
     },
-    "VRT_SHORT_0.48695357142857143_0.5090464285714286": {
-        "coin": "MNT",
+    "VRT_SHORT_5.3420250000000005_5.615975": {
+        "coin": "INJ",
         "direction": "SHORT",
         "strategy": "V_RED_TOP",
         "state": "WAIT_PUMP",
         "breach_count": 0,
         "history_log": "",
-        "level_min": 0.48695357142857143,
-        "level_max": 0.5090464285714286,
+        "level_min": 5.3420250000000005,
+        "level_max": 5.615975,
         "events": [
             {
-                "time": 1787499900,
+                "time": 1787509800,
                 "type": "TRACK_START",
-                "price": 0.51
-            }
-        ],
-        "updated_at": "2026-08-23T22:31:00.720326"
-    },
-    "VRT_SHORT_0.3602625_0.3787375": {
-        "coin": "ONDO",
-        "direction": "SHORT",
-        "strategy": "V_RED_TOP",
-        "state": "WAIT_PUMP",
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.3602625,
-        "level_max": 0.3787375,
-        "events": [
-            {
-                "time": 1787491800,
-                "type": "TRACK_START",
-                "price": 0.3795
+                "price": 5.344
             },
             {
-                "time": 1787500800,
+                "time": 1787580000,
                 "type": "NEW_PEAK",
-                "price": 0.3911
+                "price": 5.604
             }
         ],
-        "updated_at": "2026-08-23T22:31:00.720326"
+        "updated_at": "2026-08-24T17:31:00.357144"
     },
-    "VRT_SHORT_1223.7224999999999_1286.4775": {
-        "coin": "SKHYNIX",
+    "VRT_SHORT_0.02808_0.029519999999999998": {
+        "coin": "MON",
         "direction": "SHORT",
         "strategy": "V_RED_TOP",
         "state": "WAIT_PUMP",
         "breach_count": 0,
         "history_log": "",
-        "level_min": 1223.7224999999999,
-        "level_max": 1286.4775,
+        "level_min": 0.02808,
+        "level_max": 0.029519999999999998,
         "events": [
             {
-                "time": 1787510700,
+                "time": 1787354100,
                 "type": "TRACK_START",
-                "price": 1286.56
+                "price": 0.0297
+            },
+            {
+                "time": 1787492700,
+                "type": "NEW_PEAK",
+                "price": 0.0305
             }
         ],
-        "updated_at": "2026-08-23T22:31:00.720326"
+        "updated_at": "2026-08-24T17:31:00.357144"
     },
-    "VRT_SHORT_123.7275_130.07250000000002": {
-        "coin": "AAVE",
-        "direction": "SHORT",
-        "strategy": "V_RED_TOP",
-        "state": "WAIT_PUMP",
+    "VB_LONG_894.2421428571429_938.2578571428571": {
+        "coin": "MU",
+        "direction": "LONG",
+        "strategy": "V_BOTTOM",
+        "state": "SEARCHING",
+        "breach_count": 1,
+        "history_log": "",
+        "level_min": 894.2421428571429,
+        "level_max": 938.2578571428571,
+        "events": [
+            {
+                "time": 1787133600,
+                "type": "ORIENTIR",
+                "price": 932.33
+            },
+            {
+                "time": 1787143500,
+                "type": "CANCEL",
+                "price": 969.26
+            },
+            {
+                "time": 1787146200,
+                "type": "ORIENTIR",
+                "price": 945.4
+            },
+            {
+                "time": 1787148000,
+                "type": "START",
+                "price": 919.33
+            },
+            {
+                "time": 1787253300,
+                "type": "CANCEL",
+                "price": 967.29
+            },
+            {
+                "time": 1787569200,
+                "type": "ORIENTIR",
+                "price": 934.22
+            },
+            {
+                "time": 1787574600,
+                "type": "START",
+                "price": 933.77
+            },
+            {
+                "time": 1787578200,
+                "type": "PEAK",
+                "price": 903.53
+            }
+        ],
+        "updated_at": "2026-08-24T17:31:00.357144"
+    },
+    "VGB_LONG_894.2421428571429_938.2578571428571": {
+        "coin": "MU",
+        "direction": "LONG",
+        "strategy": "V_GREEN_BOTTOM",
+        "state": "TRACKING_PIT",
         "breach_count": 0,
         "history_log": "",
-        "level_min": 123.7275,
-        "level_max": 130.07250000000002,
+        "level_min": 894.2421428571429,
+        "level_max": 938.2578571428571,
         "events": [
             {
-                "time": 1787487300,
-                "type": "TRACK_START",
-                "price": 130.34
+                "time": 1787133600,
+                "type": "PIT",
+                "price": 932.33
+            },
+            {
+                "time": 1787578200,
+                "type": "PIT",
+                "price": 903.53
             }
         ],
-        "updated_at": "2026-08-23T22:31:00.720326"
+        "updated_at": "2026-08-24T17:31:00.357144"
+    },
+    "VB_LONG_211.11285714285714_215.24714285714288": {
+        "coin": "NVDA",
+        "direction": "LONG",
+        "strategy": "V_BOTTOM",
+        "state": "SEARCHING",
+        "breach_count": 1,
+        "history_log": "",
+        "level_min": 211.11285714285714,
+        "level_max": 215.24714285714288,
+        "events": [
+            {
+                "time": 1787578200,
+                "type": "ORIENTIR",
+                "price": 210.35
+            }
+        ],
+        "updated_at": "2026-08-24T17:31:00.357144"
+    },
+    "VGB_LONG_211.11285714285714_215.24714285714288": {
+        "coin": "NVDA",
+        "direction": "LONG",
+        "strategy": "V_GREEN_BOTTOM",
+        "state": "TRACKING_PIT",
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 211.11285714285714,
+        "level_max": 215.24714285714288,
+        "events": [
+            {
+                "time": 1787578200,
+                "type": "PIT",
+                "price": 210.35
+            }
+        ],
+        "updated_at": "2026-08-24T17:31:00.357144"
     }
 }

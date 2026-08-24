@@ -192,6 +192,21 @@ def trigger_rescan(coin: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.get("/api/history/all")
+def get_global_history():
+    """Отдает глобальную историю всех умерших/отработавших вотчеров."""
+    history_raw = _read_json(WATCHER_HISTORY_PATH, default={})
+    if not isinstance(history_raw, dict):
+        return []
+    
+    # Собираем в список и сортируем (самые свежие события сверху)
+    history = list(history_raw.values())
+    history.sort(key=lambda x: x.get("died_at") or "", reverse=True)
+    
+    # Отдаем топ-50 последних записей, чтобы не перегружать интерфейс
+    return history[:50]
+
 @app.get("/api/levels/{coin}")
 def get_levels(coin: str):
     """Уровни поддержки/сопротивления по монете."""

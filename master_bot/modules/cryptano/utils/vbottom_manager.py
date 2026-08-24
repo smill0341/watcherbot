@@ -73,6 +73,53 @@ class VBottomManager:
         for k in keys_to_delete:
             del self._watchers[k]
 
+    def _replay_watcher(self, watcher, df, level, direction, all_opposite_levels, c_atr, extra_kwargs=None):
+        extra_kwargs = extra_kwargs or {}
+        n = len(df)
+        if n < 3:
+            return
+
+        # 1. ЖЕСТКО ОГРАНИЧИВАЕМ ГЛУБИНУ РЕПЛЕЯ (макс 500 свечей ~ 5 дней)
+        # Это защитит график от "100500 точек" из далекого прошлого.
+        lookback = min(n, 500)
+        start_search = n - lookback
+        
+        start_idx = start_search
+        
+        # Идем слева направо в пределах этого окна, ищем ИСТИННЫЙ пробой
+        for i in range(start_search + 1, n - 1):
+            prev = df.iloc[i-1]
+            curr = df.iloc[i]
+            
+            if direction == "SHORT":
+                if prev['close'] <= level['max'] and curr['close'] > level['max']:
+                    start_idx = i
+                    break
+            else:
+                if prev['close'] >= level['min'] and curr['close'] < level['min']:
+                    start_idx = i
+                    break
+
+        # 2. Проматываем свечи от найденного момента до текущего времени
+        for i in range(start_idx, n - 1):
+            hc = df.iloc[i]
+            htime = df.index[i] if hasattr(df, 'index') else None
+            
+            if i >= 52:
+                hvol_base = float(df['volume'].iloc[i - 52:i - 2].mean())
+            else:
+                hvol_base = float(df['volume'].iloc[:max(1, i)].mean()) if i > 0 else float(hc['volume'])
+                
+            try:
+                watcher.update(
+                    float(hc['open']), float(hc['high']), float(hc['low']), float(hc['close']), float(hc['volume']),
+                    hvol_base, c_atr, all_opposite_levels,
+                    candle_time=htime, **extra_kwargs
+                )
+            except Exception as e:
+                # Глушим ошибки прошлого, чтобы реплей не крашился
+                pass
+
     def clear_dead_watchers(self, active_level_ids):
         """Удаляет вотчеры для уровней, которых больше нет на графике.
 
@@ -113,14 +160,21 @@ class VBottomManager:
         level_id = self._level_id(level, trade_type, "VB")
 
         # Если это новый уровень — создаём вотчер
+        is_new_watcher = False
         if level_id not in self._watchers:
             self._watchers[level_id] = VBottomWatcher(level['min'], level['max'], trade_type, coin=coin)
+            is_new_watcher = True
 
         watcher = self._watchers[level_id]
 
         # Нужно минимум 52 свечи для расчёта baseline volume
         if len(df) < 52:
             return self._deny("Not enough data (< 52 candles)")
+
+        # Новый вотчер — сперва тихо восстанавливаем состояние реплеем
+        # (см. _replay_watcher), не начинаем слежение с нуля на текущей свече.
+        if is_new_watcher:
+            self._replay_watcher(watcher, df, level, trade_type, all_opposite_levels, c_atr, extra_kwargs={'trend': trend})
 
         # Считаем средний объём из последних 52 свечей (исключаем последние 2)
         baseline_vol = float(df['volume'].iloc[-52:-2].mean())
@@ -182,13 +236,18 @@ class VBottomManager:
 
         level_id = self._level_id(level, trade_type, "VGB")
 
+        is_new_watcher = False
         if level_id not in self._watchers:
             self._watchers[level_id] = VGreenBottomWatcher(level['min'], level['max'], trade_type, coin=coin)
+            is_new_watcher = True
 
         watcher = self._watchers[level_id]
 
         if len(df) < 52:
             return self._deny("Not enough data (< 52 candles)")
+
+        if is_new_watcher:
+            self._replay_watcher(watcher, df, level, trade_type, all_opposite_levels, c_atr, extra_kwargs={'trend': trend})
 
         baseline_vol = float(df['volume'].iloc[-52:-2].mean())
 
@@ -259,32 +318,11 @@ class VBottomManager:
         if len(df) < 52:
             return self._deny("Not enough data (< 52 candles)")
 
-        # ==============================================================
-        # ИСТОРИЧЕСКИЙ РЕПЛЕЙ (ПРОМОТКА) ДЛЯ НОВЫХ ВОТЧЕРОВ
-        # ==============================================================
         if is_new_watcher:
-            # 1. Ищем, когда реально был пробой уровня в прошлом
-            start_idx = len(df) - 1
-            for i in range(len(df) - 2, -1, -1):
-                if df['close'].iloc[i] <= level['max'] and df['high'].iloc[i] <= level['max']:
-                    start_idx = i + 1
-                    break
-            
-            # Если пробой был очень давно (нет в скачанной истории)
-            if start_idx == len(df) - 1 and df['close'].iloc[0] > level['max']:
-                start_idx = 0
-
-            # 2. Проматываем свечи от момента пробоя до текущей
-            for i in range(start_idx, len(df) - 1):
-                hc = df.iloc[i]
-                htime = df.index[i] if hasattr(df, 'index') else None
-                hvol_base = float(df['volume'].iloc[max(0, i-52):max(1, i-2)].mean()) if i >= 52 else 0.1
-                
-                watcher.update(
-                    float(hc['open']), float(hc['high']), float(hc['low']), float(hc['close']), float(hc['volume']), 
-                    hvol_base, c_atr, all_opposite_levels,
-                    c_atr_slow=c_atr_slow, c_ema=c_ema, c_rsi=c_rsi, candle_time=htime
-                )
+            self._replay_watcher(
+                watcher, df, level, trade_type, all_opposite_levels, c_atr,
+                extra_kwargs={'trend': trend, 'c_atr_slow': c_atr_slow, 'c_ema': c_ema, 'c_rsi': c_rsi}
+            )
 
         baseline_vol = float(df['volume'].iloc[-52:-2].mean())
 
@@ -356,9 +394,7 @@ class VBottomManager:
             print(f"[VBottomManager] ⚠️ Не удалось сохранить состояние вотчеров: {e}")
 
     def load_state(self, path):
-        """Восстанавливает вотчеров из файла состояния при старте бота.
-        Если файла нет (первый запуск) или он битый — просто начинаем
-        с чистого реестра, ничего не падает."""
+        """Восстанавливает вотчеров из файла состояния при старте бота."""
         if not os.path.exists(path):
             return
         try:
@@ -373,8 +409,16 @@ class VBottomManager:
             cls = _WATCHER_CLASSES.get(entry.get("class"))
             if cls is None:
                 continue
+            
+            # --- УБИВАЕМ ЗОМБИ (вотчеры, потерявшие монету при старых сохранениях) ---
+            saved_coin = entry.get("coin")
+            if not saved_coin or saved_coin == "UNKNOWN":
+                print(f"[VBottomManager] 🗑️ Игнорируем зомби-вотчер без монеты: {level_id}")
+                continue
+            # -------------------------------------------------------------------------
+
             try:
-                watcher = cls(entry["min"], entry["max"], entry["trade_type"], coin=entry.get("coin", "UNKNOWN"))
+                watcher = cls(entry["min"], entry["max"], entry["trade_type"], coin=saved_coin)
                 saved_state = dict(entry.get("state", {}))
                 last_time = saved_state.get("_last_time")
                 if last_time is not None:
@@ -389,4 +433,4 @@ class VBottomManager:
                 print(f"[VBottomManager] ⚠️ Пропущен вотчер {level_id} при восстановлении: {e}")
 
         if restored:
-            print(f"[VBottomManager] 🔄 Восстановлено вотчеров из сохранённого состояния: {restored}")
+            print(f"[VBottomManager] 🔄 Восстановлено вотчеров: {restored}")

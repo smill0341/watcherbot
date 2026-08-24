@@ -11,10 +11,11 @@ let candleSeries = null;
 let volumeSeries = null;
 let ema20Series = null;
 let ema50Series = null;
-let rsiSeries = null; // Невидимая линия для расчёта RSI
+let rsiSeries = null; 
 let levelLines = []; 
 let selectedCoin = null;
 let currentPrecision = 4;
+let globalCandles = []; // Храним историю свечей для привязки линий к датам
 
 const ema20ValueEl = document.getElementById("ema20-value");
 const ema50ValueEl = document.getElementById("ema50-value");
@@ -35,25 +36,16 @@ function formatVolume(v) {
   return String(Math.round(v));
 }
 
-// === ЛЕГЕНДА И RSI ===
+// === ЛЕГЕНДА: OHLCV СВЕРХУ, ЦВЕТА СНИЗУ ===
 let ohlcvLegendTextEl = null;
-let legendHtmlInjected = false;
+let bottomMarksLegendCreated = false;
 
 function ensureOhlcvLegend() {
-  if (ohlcvLegendTextEl) return ohlcvLegendTextEl;
-  const container = document.querySelector(".chart-legend");
-  if (!container) return null;
-  
-  const item = document.createElement("div");
-  item.className = "legend-item ohlcv-legend-item";
-  item.innerHTML = `<span id="ohlcv-legend-text" class="muted">—</span>`;
-  container.appendChild(item);
-  ohlcvLegendTextEl = document.getElementById("ohlcv-legend-text");
-  
-  // Визуальная расшифровка маркеров
-  if (!legendHtmlInjected) {
+  // 1. Создаем текстовую шпаргалку по цветам снизу (один раз)
+  if (!bottomMarksLegendCreated) {
+    const chartBox = document.getElementById("chart");
     const marksLegend = document.createElement("div");
-    marksLegend.style.cssText = "font-size:12px; color:#8a8f98; margin-top:8px;";
+    marksLegend.style.cssText = "padding: 10px 15px; font-size:12px; color:#8a8f98; background: #0e0f13; border-top: 1px solid #1b1d24;";
     marksLegend.innerHTML = `
       <b>Маркеры:</b> 
       <span style="color:#8a8f98">⚪️ Старт</span> | 
@@ -63,9 +55,24 @@ function ensureOhlcvLegend() {
       <span style="color:#4caf7d">🟢 Вход</span> | 
       <span style="color:#e5654f">🔴 Сброс/Стоп</span>
     `;
-    container.appendChild(marksLegend);
-    legendHtmlInjected = true;
+    chartBox.parentElement.insertBefore(marksLegend, chartBox.nextSibling);
+    bottomMarksLegendCreated = true;
   }
+
+  // 2. Создаем контейнер для OHLCV сверху графика (внутри .chart-legend)
+  if (ohlcvLegendTextEl) return ohlcvLegendTextEl;
+  const container = document.querySelector(".chart-legend");
+  if (!container) return null;
+  
+  // Включаем отображение контейнера (на случай, если прошлая версия его скрыла)
+  container.style.display = "block";
+  
+  const item = document.createElement("div");
+  item.className = "legend-item ohlcv-legend-item";
+  item.innerHTML = `<span id="ohlcv-legend-text" style="color: #cfd3da;">—</span>`;
+  container.appendChild(item);
+  ohlcvLegendTextEl = document.getElementById("ohlcv-legend-text");
+  
   return ohlcvLegendTextEl;
 }
 
@@ -86,7 +93,6 @@ function setOhlcvLegend(candle, vol, rsiVal) {
   
   el.innerHTML = `O ${o} &nbsp; H ${h} &nbsp; L ${l} &nbsp; C ${c} &nbsp; Vol ${volTxt} &nbsp; <b style="color:#b2b5be;">RSI: ${rsiTxt}</b>`;
 }
-
 // === РАСЧЕТ ИНДИКАТОРОВ ===
 function computeEMA(candles, period) {
   const k = 2 / (period + 1);
@@ -148,18 +154,20 @@ function renderHistoryPanel(historyArr) {
   const el = ensureHistoryPanel();
   if (!el) return;
   if (!historyArr || historyArr.length === 0) {
-    el.innerHTML = `<div class="history-empty">Пока нет завершённых сканов по этой монете.</div>`;
+    el.innerHTML = `<div class="history-empty">История пуста.</div>`;
     return;
   }
   el.innerHTML = historyArr.map((w) => {
     const state = w.final_state || "?";
     const stateClass = state === "TRIGGERED" ? "history-state-TRIGGERED" : "history-state-DEAD";
-    const diedAt = w.died_at ? new Date(w.died_at).toLocaleString() : "—";
+    const diedAt = w.died_at ? new Date(w.died_at).toLocaleString('ru-RU', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'}) : "—";
     const dir = w.direction ? `<span class="dir-${w.direction}">${w.direction}</span>` : "";
+    
+    // Добавили w.coin и onclick для перехода на график
     return `
-      <div class="history-card">
+      <div class="history-card" onclick="loadChart('${w.coin}')" style="cursor: pointer;" title="Кликни, чтобы открыть график">
         <div class="history-card-head">
-          <span>${w.strategy || "?"} ${dir}</span>
+          <span><b>${w.coin || "?"}</b> | ${w.strategy || "?"} ${dir}</span>
           <span class="history-state ${stateClass}">${state}</span>
         </div>
         <div class="history-log-text">${diedAt} · ${w.history_log || "нет лога"}</div>
@@ -204,7 +212,7 @@ function initChart() {
 
   ema20Series = chart.addLineSeries({ color: "#f2c14e", lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false });
   ema50Series = chart.addLineSeries({ color: "#5aa9e6", lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false });
-  rsiSeries = chart.addLineSeries({ visible: false, crosshairMarkerVisible: false }); // Скрытая линия для цифр RSI
+  rsiSeries = chart.addLineSeries({ visible: false, crosshairMarkerVisible: false }); 
 
   chart.subscribeCrosshairMove((param) => {
     if (!param || !param.time) {
@@ -241,12 +249,17 @@ function initChart() {
 }
 
 function clearLevelLines() {
-  levelLines.forEach((line) => candleSeries.removePriceLine(line));
+  levelLines.forEach((series) => {
+    try { chart.removeSeries(series); } catch(e) {}
+  });
   levelLines = [];
 }
 
+// === РИСУЕМ УРОВНИ СТРОГО ОТ ДАТЫ ВОЗНИКНОВЕНИЯ ===
 async function loadLevels(coin) {
   clearLevelLines();
+  if (globalCandles.length === 0) return;
+
   try {
     const [levelsRes, activeRes] = await Promise.all([
       fetch(`/api/levels/${encodeURIComponent(coin)}`),
@@ -265,28 +278,38 @@ async function loadLevels(coin) {
       (w) => Math.abs((w.level_min ?? NaN) - lvl.min) < 1e-9 && Math.abs((w.level_max ?? NaN) - lvl.max) < 1e-9
     );
 
-    (data.supports || []).forEach((lvl) => {
+    const firstTime = globalCandles[0].time;
+
+    const addLevel = (lvl, color, isSupport) => {
       const active = findActive(lvl);
-      levelLines.push(candleSeries.createPriceLine({
-        price: (lvl.min + lvl.max) / 2,
-        color: "#4caf7d",
+      const midPrice = (lvl.min + lvl.max) / 2;
+      
+      const series = chart.addLineSeries({
+        color: color,
         lineWidth: active ? 3 : 1,
-        lineStyle: active ? LightweightCharts.LineStyle.Solid : LightweightCharts.LineStyle.Dotted,
-        axisLabelVisible: true,
-        title: active ? `🟢 АКТИВНО (${active.strategy}) sup ${lvl.score ?? ""}` : `sup ${lvl.score ?? ""}`,
-      }));
-    });
-    (data.resistances || []).forEach((lvl) => {
-      const active = findActive(lvl);
-      levelLines.push(candleSeries.createPriceLine({
-        price: (lvl.min + lvl.max) / 2,
-        color: "#e5654f",
-        lineWidth: active ? 3 : 1,
-        lineStyle: active ? LightweightCharts.LineStyle.Solid : LightweightCharts.LineStyle.Dotted,
-        axisLabelVisible: true,
-        title: active ? `🔴 АКТИВНО (${active.strategy}) res ${lvl.score ?? ""}` : `res ${lvl.score ?? ""}`,
-      }));
-    });
+        lineStyle: LightweightCharts.LineStyle.Solid,
+        crosshairMarkerVisible: false,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        title: active ? `${isSupport ? '🟢' : '🔴'} АКТИВНО (${active.strategy}) ${lvl.score ?? ""}` : `${isSupport ? 'sup' : 'res'} ${lvl.score ?? ""}`
+      });
+      
+      // Парсим дату. Если ее нет или она кривая — берем начало графика
+      let startTime = lvl.date ? new Date(lvl.date).getTime() / 1000 : firstTime;
+      
+      // Строим линию ИСКЛЮЧИТЕЛЬНО по реальным меткам времени свечей, иначе библиотека ломается
+      const lineData = globalCandles
+        .filter(c => c.time >= startTime)
+        .map(c => ({ time: c.time, value: midPrice }));
+        
+      if (lineData.length > 0) {
+        series.setData(lineData);
+        levelLines.push(series);
+      }
+    };
+
+    (data.supports || []).forEach((lvl) => addLevel(lvl, "#4caf7d", true));
+    (data.resistances || []).forEach((lvl) => addLevel(lvl, "#e5654f", false));
   } catch (e) {
     console.error("levels load failed", e);
   }
@@ -333,19 +356,21 @@ async function loadEvents(coin) {
 
     markers.sort((a, b) => a.time - b.time);
     candleSeries.setMarkers(markers);
-    renderHistoryPanel(data.history);
   } catch (e) {
-    console.error("events load failed", e);
-    renderHistoryPanel([]);
+    console.error("events load failed", e);   
   }
 }
 
 async function loadChart(coin) {
+  // --- ЗАЩИТА ОТ 404 ОШИБКИ И ПУСТЫХ КЛИКОВ ---
+  if (!coin || coin === "null" || coin === "undefined") return;
+  // ---------------------------------------------
+  
   selectedCoin = coin;
   currentCoinEl.textContent = coin;
   currentSymbolEl.textContent = "загрузка графика...";
   highlightSelection();
-
+  
   const limit = TF_LIMITS[currentTimeframe] ?? 200;
 
   try {
@@ -377,6 +402,7 @@ async function loadChart(coin) {
     });
 
     formattedCandles.sort((a, b) => a.time - b.time);
+    globalCandles = formattedCandles; // Сохраняем историю для привязки линий
 
     candleSeries.setData(formattedCandles);
     volumeSeries.setData(formattedCandles.map((c) => ({
@@ -384,7 +410,7 @@ async function loadChart(coin) {
     })));
     ema20Series.setData(computeEMA(formattedCandles, 20));
     ema50Series.setData(computeEMA(formattedCandles, 50));
-    rsiSeries.setData(computeRSI(formattedCandles, 14)); // Скрытый расчет RSI
+    rsiSeries.setData(computeRSI(formattedCandles, 14)); 
 
     chart.timeScale().fitContent();
     loadLevels(coin);
@@ -502,8 +528,19 @@ async function loadSignals() {
   });
 }
 
+async function loadGlobalHistory() {
+  try {
+    const res = await fetch("/api/history/all");
+    if (!res.ok) return;
+    const data = await res.json();
+    renderHistoryPanel(data);
+  } catch (e) {
+    console.error("Ошибка загрузки глобальной истории", e);
+  }
+}
+
 async function refreshAll() {
-  await Promise.all([loadWatchlist(), loadActiveWatchers(), loadSignals()]);
+  await Promise.all([loadWatchlist(), loadActiveWatchers(), loadSignals(), loadGlobalHistory()]);
 }
 
 initChart();
@@ -511,7 +548,7 @@ refreshAll();
 
 // === АВТООБНОВЛЕНИЕ РАЗ В МИНУТУ ===
 setInterval(async () => {
-  refreshAll(); // Обновляет списки слева
+  refreshAll(); 
   
   if (selectedCoin) {
     try {
@@ -533,7 +570,7 @@ setInterval(async () => {
             color: c.close >= c.open ? "rgba(76,175,125,0.5)" : "rgba(229,101,79,0.5)",
           });
         } catch (e) {
-           // Библиотека игнорирует старые свечи, это нормально
+           // Библиотека игнорирует старые свечи
         }
       });
       

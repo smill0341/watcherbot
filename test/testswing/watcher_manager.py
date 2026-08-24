@@ -8,8 +8,9 @@ watcher_manager.py
 
 import pandas as pd
 
-from .watcher_methods import (SweepReclaimWatcher, ChochRetestWatcher, check_choch_zone,
+from .watcher_methods import (ChochRetestWatcher, check_choch_zone,
                                check_pit_climax, _calc_tp_and_rr)
+from .bounce_watcher import BounceWatcher
 from .v_bottom_watcher import VBottomWatcher
 from .panic_trap_watcher import PanicTrapWatcher
 from .v_green_bottom_watcher import VGreenBottomWatcher
@@ -17,7 +18,7 @@ from .v_red_cascade_watcher import VRedCascadeWatcher
 from .v_red_top_watcher import VRedTopWatcher
 from .breakout_retest_watcher import BreakoutRetestWatcher
 
-STRATEGIES = ["SWEEP_RECLAIM", "VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "V_RED_CASCADE", "V_RED_TOP", "BREAKOUT_RETEST"]
+STRATEGIES = ["BOUNCE", "VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "V_RED_CASCADE", "V_RED_TOP", "BREAKOUT_RETEST"]
 
 class WatcherManager:
     def __init__(self, strategy, config=None):
@@ -70,32 +71,49 @@ class WatcherManager:
             del self._watchers[k]
 
     # -------------------------------------------------------------------------
-    # 1. SWEEP RECLAIM
+    # 1. BOUNCE (Отбой от макро-уровня)
     # -------------------------------------------------------------------------
-    def evaluate_sweep_reclaim(self, level, c_open, c_high, c_low, c_close, all_opposite_levels, trade_type):
+    def evaluate_bounce(self, level, df, trade_type, all_opposite_levels):
         level_id = self._level_id(level, trade_type)
         if level_id in self.burned_levels:
             return self._deny("Level already burned")
 
         if level_id not in self._watchers:
-            self._watchers[level_id] = SweepReclaimWatcher(level['min'], level['max'], trade_type)
+            self._watchers[level_id] = BounceWatcher(level['min'], level['max'], trade_type)
 
         watcher = self._watchers[level_id]
-        signal = watcher.update(c_open, c_high, c_low, c_close, all_opposite_levels)
+
+        if len(df) < 22:
+            return self._deny("Not enough data")
+
+        # Берем средний объем за 20 свечей (без учета последней формирующейся)
+        baseline_vol = float(df['volume'].iloc[-22:-2].mean())
+        
+        c = df.iloc[-1]
+        c_open, c_high, c_low, c_close, c_vol = (
+            float(c['open']), float(c['high']), float(c['low']), float(c['close']), float(c['volume'])
+        )
+
+        signal = watcher.update(
+            c_open, c_high, c_low, c_close, c_vol, baseline_vol, 
+            all_opposite_levels, level_score=level.get('score', 0), candle_time=df.index[-1]
+        )
 
         if not signal:
             return self._deny(f"No signal (state: {watcher.state})")
             
-        # Защита от ошибки калькулятора
         if 'error' in signal:
             return self._deny(signal['error'])
+            
         self.burned_levels.add(level_id)
 
         signal['allow'] = True
         signal['level_id'] = level_id
-        signal['extreme_price'] = str(watcher.extreme_price) if watcher.extreme_price is not None else "0.0"
+        signal['extreme_price'] = "0.0"
+        signal['is_real_sweep'] = False
+        signal['overshoot_pct'] = 0.0
+        signal['candles_in_sweep'] = 0
         return signal
-
     # -------------------------------------------------------------------------
     # 2. VOLUME REVERSAL (SMC)
     # -------------------------------------------------------------------------

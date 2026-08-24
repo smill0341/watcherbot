@@ -2,6 +2,7 @@
 
 import time
 import os
+import sys
 from modules.cryptano.utils.storage import load_json
 import pandas as pd
 import gc
@@ -11,7 +12,80 @@ from modules.cryptano.utils.market_cache import load_markets_cached
 from modules.cryptano.utils.indicators import pandas_get_local_structure, calculate_atr, calculate_ema
 from modules.cryptano.utils.vbottom_manager import VBottomManager
 
+# candle_store.py лежит в web/backend/ и не является пакетом (нет __init__.py) —
+# app.py подключает его тем же способом: добавляет свою папку в sys.path и
+# делает обычный import. Повторяем тот же приём здесь, чтобы читать общую
+# локальную базу свечей вместо похода на биржу на каждый скан.
+# NOTE: статический анализатор (Pylance/Pyright) не умеет проследить импорт
+# через динамически дополненный sys.path — отсюда "could not be resolved"
+# в редакторе. Это не ошибка выполнения, реальный импорт по факту работает
+# (candle_store.py гарантированно лежит по вычисленному пути), поэтому
+# просто глушим предупреждение явно.
+_CANDLE_STORE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "web", "backend")
+if _CANDLE_STORE_DIR not in sys.path:
+    sys.path.insert(0, _CANDLE_STORE_DIR)
+try:
+    import candle_store  # type: ignore[import]
+except Exception as e:
+    candle_store = None
+    print(f"[watcher_plan] ⚠️ candle_store недоступен, буду ходить на биржу напрямую: {e}")
+
 SCAN_COINS_LIMIT = 150
+
+# Сколько свечей просить из локальной базы дашборда — она хранит до ~60 дней
+# на 15м (см. candle_store.BACKFILL_DAYS), берём с запасом, чтобы реплей мог
+# найти реальный момент пробоя уровня, а не упираться в старое окно 120 свечей.
+DEEP_LOOKBACK_LIMIT = 5760  # ~60 дней на 15м
+
+
+def _fetch_candles_df(symbol, coin, min_candles, strategy_tag):
+    # type: (str, str, int, str) -> tuple[pd.DataFrame | None, str | None]
+    """
+    Тянет свечи для стратегии.
+    1. Сперва — из локальной базы дашборда (candle_store.py). Она уже
+       копится фоновым потоком в app.py, читать оттуда быстро и не тратит
+       лимиты биржи, плюс там глубина до ~60 дней — этого достаточно, чтобы
+       найти реальный момент пробоя уровня, а не только последние 30 часов.
+    2. Если там пока пусто/мало (монета только что попала в вотчлист,
+       фоновый поток дашборда ещё не успел докачать) — подстраховка: тянем
+       последние 120 свечей напрямую с биржи, как раньше.
+
+    Возвращает (df, error_msg) — df is None при ошибке, тогда error_msg заполнен.
+    """
+    candles = []
+    if candle_store is not None:
+        try:
+            candles = candle_store.get_candles(symbol, "15m", limit=DEEP_LOOKBACK_LIMIT)
+        except Exception as e:
+            print(f"[{strategy_tag} WARNING] candle_store недоступен для {coin}: {e}")
+
+    if len(candles) >= min_candles:
+        df = pd.DataFrame(candles)
+        df["timestamp"] = pd.to_datetime(df["time"], unit="s", utc=True)
+        df = df.drop(columns=["time"]).set_index("timestamp")
+        return df[["open", "high", "low", "close", "volume"]].astype(float), None
+
+    # Подстраховка — локальной истории пока мало, идём напрямую на биржу
+    ohlcv = None
+    for attempt in range(3):
+        try:
+            ohlcv = exchange.fetch_ohlcv(symbol, timeframe="15m", limit=120)
+            break
+        except Exception as e:
+            if "Rate Limit" in str(e) or "10006" in str(e):
+                print(f"[{strategy_tag} WARNING] Bybit rate limit на {coin}. Пауза 1.5 сек...")
+                time.sleep(1.5)
+            else:
+                raise e
+
+    if not ohlcv or len(ohlcv) < min_candles:
+        return None, f"⚠️ Недостаточно данных {strategy_tag} для {coin} ({len(ohlcv) if ohlcv else 0} свечей)."
+
+    df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+    df = df.set_index("timestamp")
+    return df[["open", "high", "low", "close", "volume"]].astype(float), None
+
 
 # --- Настройки origin-tracking для V_BOTTOM/V_GREEN_BOTTOM ---
 # Должны совпадать с тем, что реально тестируется в test_simulator.py,
@@ -84,27 +158,11 @@ def check_v_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None):
         if not symbol:
             return False, f"❌ Монета *{coin}* не найдена на Bybit.", 0
 
-        # Тянем 15m-свечи (120 свечей = 30 часов истории, достаточно для 52-свечи baseline)
-        ohlcv = None
-        for attempt in range(3):
-            try:
-                ohlcv = exchange.fetch_ohlcv(symbol, timeframe="15m", limit=120)
-                break
-            except Exception as e:
-                if "Rate Limit" in str(e) or "10006" in str(e):
-                    print(f"[V_BOTTOM WARNING] Bybit rate limit на {coin}. Пауза 1.5 сек...")
-                    time.sleep(1.5)
-                else:
-                    raise e
-
-        if not ohlcv or len(ohlcv) < 52:
-            return False, f"⚠️ Недостаточно данных V-BOTTOM для {coin} ({len(ohlcv) if ohlcv else 0} свечей).", 0
-
-        # Формируем DataFrame с индексом по времени для VBottomManager
-        df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
-        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
-        df.set_index("timestamp", inplace=True)
-        df = df[["open", "high", "low", "close", "volume"]].astype(float)
+        # Тянем 15m-свечи (сначала из локальной базы дашборда, глубже и быстрее,
+        # см. _fetch_candles_df; подстраховка на биржу — только если базы ещё нет)
+        df, fetch_err = _fetch_candles_df(symbol, coin, 52, "V_BOTTOM")
+        if df is None:
+            return False, fetch_err, 0
 
         # Загружаем макро-уровни
         macro_path = os.path.join(os.path.dirname(__file__), "macro_levels.json")
@@ -203,27 +261,11 @@ def check_v_green_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None)
         if not symbol:
             return False, f"❌ Монета *{coin}* не найдена на Bybit.", 0
 
-        # Тянем 15m-свечи (120 свечей = 30 часов истории, достаточно для 52-свечи baseline)
-        ohlcv = None
-        for attempt in range(3):
-            try:
-                ohlcv = exchange.fetch_ohlcv(symbol, timeframe="15m", limit=120)
-                break
-            except Exception as e:
-                if "Rate Limit" in str(e) or "10006" in str(e):
-                    print(f"[V_GREEN_BOTTOM WARNING] Bybit rate limit на {coin}. Пауза 1.5 сек...")
-                    time.sleep(1.5)
-                else:
-                    raise e
-
-        if not ohlcv or len(ohlcv) < 52:
-            return False, f"⚠️ Недостаточно данных V-GREEN-BOTTOM для {coin} ({len(ohlcv) if ohlcv else 0} свечей).", 0
-
-        # Формируем DataFrame с индексом по времени
-        df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
-        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
-        df.set_index("timestamp", inplace=True)
-        df = df[["open", "high", "low", "close", "volume"]].astype(float)
+        # Тянем 15m-свечи (сначала из локальной базы дашборда, глубже и быстрее,
+        # см. _fetch_candles_df; подстраховка на биржу — только если базы ещё нет)
+        df, fetch_err = _fetch_candles_df(symbol, coin, 52, "V_GREEN_BOTTOM")
+        if df is None:
+            return False, fetch_err, 0
 
         # V-GREEN-BOTTOM реально использует ATR (в отличие от V-BOTTOM) — считаем по-настоящему
         atr_series = calculate_atr(df, 14)
@@ -333,26 +375,12 @@ def check_v_red_top(coin, direction, vbottom_mgr=None, tracked_levels=None):
         if not symbol:
             return False, f"❌ Монета *{coin}* не найдена на Bybit.", 0
 
-        ohlcv = None
-        for attempt in range(3):
-            try:
-                ohlcv = exchange.fetch_ohlcv(symbol, timeframe="15m", limit=120)
-                break
-            except Exception as e:
-                if "Rate Limit" in str(e) or "10006" in str(e):
-                    print(f"[V_RED_TOP WARNING] Bybit rate limit на {coin}. Пауза 1.5 сек...")
-                    time.sleep(1.5)
-                else:
-                    raise e
-
-        if not ohlcv or len(ohlcv) < 100:
-            # 100, а не 52 — ATR_slow (SMA100 от ATR) требует запаса истории
-            return False, f"⚠️ Недостаточно данных V-RED-TOP для {coin} ({len(ohlcv) if ohlcv else 0} свечей).", 0
-
-        df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
-        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
-        df.set_index("timestamp", inplace=True)
-        df = df[["open", "high", "low", "close", "volume"]].astype(float)
+        # Тянем 15m-свечи (сначала из локальной базы дашборда, глубже и быстрее,
+        # см. _fetch_candles_df; подстраховка на биржу — только если базы ещё нет).
+        # 100, а не 52 — ATR_slow (SMA100 от ATR) требует запаса истории.
+        df, fetch_err = _fetch_candles_df(symbol, coin, 100, "V_RED_TOP")
+        if df is None:
+            return False, fetch_err, 0
 
         atr_series = calculate_atr(df, 14)
         c_atr = float(atr_series.iloc[-1]) if not atr_series.empty and atr_series.iloc[-1] == atr_series.iloc[-1] else None

@@ -54,18 +54,18 @@ GLOBAL_SKIPPED_COINS = []
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "ONDO"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ALL"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 2880
 
-TEST_START_DATE = "2026-05-01 00:00:00"
+TEST_START_DATE = "2026-07-01 00:00:00"
 WARMUP_DAYS = 18  
 MIN_LEVEL_SCORE = 1.0
 
 # STRATEGY "V_BOTTOM" "V_GREEN_BOTTOM" "V_RED_TOP" "V_RED_CASCADE"
 # "SWEEP_RECLAIM" или "VOLUME_REVERSAL" или "PIT_CLIMAX" или "PANIC_TRAP"  "BREAKOUT_RETEST"
-STRATEGY = "V_RED_TOP"
+STRATEGY = "BOUNCE"
 VBOTTOM_BREATH_BUFFER_PCT = 3.0  # должно совпадать с CONFIG['BREATH_BUFFER_PCT'] в v_bottom_watcher.py
 
 # --- DIAGNOSTIC: проверка качества точки входа без SL ---
@@ -74,7 +74,7 @@ DISABLE_SL_DIAGNOSTIC = True
 DIAGNOSTIC_DEADLINE_DAYS = 10
 
 ALLOW_LONG_TRADES = True
-ALLOW_SHORT_TRADES = True
+ALLOW_SHORT_TRADES = False
 
 USE_CONTEXT_FILTER = False  
 USE_LEVEL_BURN = False # Сжигать ли уровень после успешной сделки
@@ -194,7 +194,7 @@ class SmartSniperUniversal(Strategy):
                     n_after = len([s for s in CURRENT_SUPPORTS if s.get('score', 0) >= MIN_LEVEL_SCORE])
                     
 
-                if STRATEGY == "SWEEP_RECLAIM":
+                if STRATEGY == "BOUNCE":
                     current_level_ids = set()
                     for s in CURRENT_SUPPORTS:
                         current_level_ids.add(f"LONG_{s['min']}_{s['max']}")
@@ -258,7 +258,7 @@ class SmartSniperUniversal(Strategy):
         can_short = (len(CURRENT_RESISTANCES) > 0 or self.tracked_resistance is not None) and ALLOW_SHORT_TRADES
 
         df_slice = None
-        if STRATEGY in ["VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "V_RED_CASCADE", "BREAKOUT_RETEST", "V_RED_TOP"]:
+        if STRATEGY in ["VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "V_RED_CASCADE", "BREAKOUT_RETEST", "V_RED_TOP", "BOUNCE"]:
             lookback_size = 260 if STRATEGY == "VOLUME_REVERSAL" else 100
             current_len = len(self.data)
             start_idx = max(0, current_len - lookback_size)
@@ -449,9 +449,9 @@ class SmartSniperUniversal(Strategy):
                         break
                         
     def _evaluate(self, level, trade_type, c_open, c_high, c_low, c_close, opposite_levels, df_slice, trend='UNKNOWN', c_atr=None, c_ema=None):
-        if STRATEGY == "SWEEP_RECLAIM":
-            decision = self.manager.evaluate_sweep_reclaim(
-                level, c_open, c_high, c_low, c_close, opposite_levels, trade_type
+        if STRATEGY == "BOUNCE":
+            decision = self.manager.evaluate_bounce(
+                level, df_slice, trade_type, opposite_levels
             )
         elif STRATEGY == "VOLUME_REVERSAL":
             decision = self.manager.evaluate_volume_reversal(
