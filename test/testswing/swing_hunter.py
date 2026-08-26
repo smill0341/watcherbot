@@ -106,16 +106,20 @@ def build_macro_levels(bot=None, admin_chat_id=None, target_time_str=None):
 
             try:
                 # === АНАЛИЗ через новый levels_builder ===
+                ohlcv_1M = safe_fetch_ohlcv(symbol, "1M", 60, fetch_params)
+                ohlcv_1W = safe_fetch_ohlcv(symbol, "1W", 150, fetch_params)
                 ohlcv_1d = safe_fetch_ohlcv(symbol, "1d", 365, fetch_params)
                 ohlcv_4h = safe_fetch_ohlcv(symbol, "4h", 200, fetch_params)
 
                 if len(ohlcv_1d) < 50:
                     continue
 
+                df_1M = pd.DataFrame(ohlcv_1M, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_1M) >= 5 else None
+                df_1W = pd.DataFrame(ohlcv_1W, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_1W) >= 5 else None
                 df_1d = pd.DataFrame(ohlcv_1d, columns=["timestamp", "open", "high", "low", "close", "volume"])
                 df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_4h) >= 50 else None
 
-                levels = build_levels(df_1d, df_4h, coin)
+                levels = build_levels(df_1M, df_1W, df_1d, df_4h, coin)
 
                 has_any = (levels["supports"] or levels["resistances"])
                 if has_any:
@@ -123,7 +127,7 @@ def build_macro_levels(bot=None, admin_chat_id=None, target_time_str=None):
                         "supports": levels["supports"],
                         "resistances": levels["resistances"],
                         "updated_at": datetime.datetime.now().isoformat()
-    }
+                    }
 
             except Exception as e:
                 print(f"[TEST ERROR] Ошибка для {coin}: {e}")

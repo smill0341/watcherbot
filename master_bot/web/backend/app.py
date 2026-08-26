@@ -223,6 +223,43 @@ def get_levels(coin: str):
     return data
 
 
+@app.get("/api/macro/coins")
+def get_macro_coins():
+    """
+    Список монет, прошедших фильтр по обороту (те же тикеры, что лежат
+    ключами в macro_levels.json — их туда кладёт swing_hunter.build_macro_levels,
+    топ-70 по объёму). Для панели "Симуляция" — просто список, без расчётов.
+    """
+    macro = _read_json(MACRO_LEVELS_PATH, default={})
+    coins = sorted(c for c in macro.keys() if c != "_meta")
+    return {"coins": coins, "count": len(coins)}
+
+
+@app.post("/api/simulate/{coin}")
+def simulate_watcher(coin: str, start: str = Query(..., description="Дата/время старта симуляции, UTC. 'YYYY-MM-DD' или 'YYYY-MM-DD HH:MM'")):
+    """
+    Прогоняет боевые классы вотчеров (VBottomManager + evaluate_v_bottom/
+    v_green_bottom/v_red_top — те же, что использует бот, без отдельной
+    копии логики) по истории от указанной даты до сейчас.
+
+    Импорт торговой логики — намеренно ЛОКАЛЬНЫЙ (внутри функции, а не
+    на верху файла): дашборд в остальном read-only и не тянет модули
+    стратегий при обычном старте, симулятор — единственное исключение,
+    и то только когда его реально дёрнули.
+
+    Ничего не пишет: результат просто возвращается, боевые
+    macro_levels.json / watcher_state.json / tracked_origin_levels*.json
+    не трогаются.
+    """
+    from modules.cryptano.simulator.simulate_engine import run_simulation
+    try:
+        return run_simulation(coin, start)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка симуляции: {e}")
+
+
 @app.get("/api/signals")
 def get_signals(limit: int = Query(default=50, ge=1, le=500)):
     """Последние сработавшие сигналы, свежие сверху."""

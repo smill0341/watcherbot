@@ -1,0 +1,128 @@
+{
+    "VIRTUAL_VRT_SHORT": {
+        "min": 0.7495312500000001,
+        "max": 0.78796875,
+        "score": 1.0,
+        "type": "1W_high_PWH + 1M_high_PMH",
+        "date": "2026-08-16",
+        "reaction_count": 2
+    },
+    "INJ_VRT_SHORT": {
+        "min": 5.3420250000000005,
+        "max": 5.615975,
+        "score": 7.5,
+        "type": "1W_high_PWH + 1M_high_PMH + 1d_extreme_peak",
+        "date": "2026-08-16",
+        "reaction_count": 3
+    },
+    "MON_VRT_SHORT": {
+        "min": 0.02808,
+        "max": 0.029519999999999998,
+        "score": 3.0,
+        "type": "4h_poc_standalone",
+        "date": "2026-08-24",
+        "mitigated": false,
+        "reaction_count": 0
+    },
+    "SOL_VRT_SHORT": {
+        "min": 96.39174821428571,
+        "max": 99.3275375,
+        "score": 7.5,
+        "type": "1d_extreme_peak + 1M_high_PMH",
+        "date": "2026-03-16",
+        "reaction_count": 3
+    },
+    "HBAR_VRT_SHORT": {
+        "min": 0.07861214285714285,
+        "max": 0.08078785714285713,
+        "score": 3.0,
+        "type": "4h_poc_standalone",
+        "date": "2026-08-24",
+        "mitigated": false,
+        "reaction_count": 0
+    },
+    "XMR_VRT_SHORT": {
+        "min": 428.44321428571425,
+        "max": 449.3567857142857,
+        "score": 8.0,
+        "type": "1M_high_PMH + 1d_extreme_peak",
+        "date": "2026-04-30",
+        "reaction_count": 4
+    },
+    "PENGU_VRT_SHORT": {
+        "min": 0.009887300892857144,
+        "max": 0.010394341964285715,
+        "score": 6.5,
+        "type": "1d_extreme_peak + 1W_high_PWH",
+        "date": "2026-05-22",
+        "reaction_count": 1
+    },
+    "BTC_VRT_SHORT": {
+        "min": 78390.26428571428,
+        "max": 80728.13571428572,
+        "score": 1.0,
+        "type": "1W_high_PWH",
+        "date": "2026-08-16",
+        "reaction_count": 2
+    },
+    "POL_VRT_SHORT": {
+        "min": 0.11667981696428573,
+        "max": 0.12266339732142859,
+        "score": 7.5,
+        "type": "1d_extreme_peak + 1W_high_PWH",
+        "date": "2026-02-25",
+        "reaction_count": 3
+    },
+    "ACE_VRT_SHORT": {
+        "min": 0.2218125,
+        "max": 0.23318750000000002,
+        "score": 3.0,
+        "type": "4h_poc_standalone",
+        "date": "2026-08-25",
+        "mitigated": false,
+        "reaction_count": 0
+    },
+    "ZRO_VRT_SHORT": {
+        "min": 1.2303925446428572,
+        "max": 1.2934895982142858,
+        "score": 7.5,
+        "type": "1d_extreme_peak + 1W_high_PWH + 1M_high_PMH",
+        "date": "2026-06-15",
+        "reaction_count": 2
+    },
+    "STX_VRT_SHORT": {
+        "min": 0.26032500000000003,
+        "max": 0.273675,
+        "score": 3.0,
+        "type": "4h_poc_standalone",
+        "date": "2026-08-26",
+        "mitigated": false,
+        "reaction_count": 0
+    },
+    "APT_VRT_SHORT": {
+        "min": 0.550657142857143,
+        "max": 0.5693428571428572,
+        "score": 3.0,
+        "type": "4h_poc_standalone",
+        "date": "2026-08-26",
+        "mitigated": false,
+        "reaction_count": 0
+    },
+    "TAC_VRT_SHORT": {
+        "min": 0.003202875,
+        "max": 0.0033671250000000003,
+        "score": 1.5,
+        "type": "1W_high_PWH",
+        "date": "2026-08-16",
+        "reaction_count": 3
+    },
+    "CL_VRT_SHORT": {
+        "min": 81.78135714285715,
+        "max": 82.96564285714287,
+        "score": 3.0,
+        "type": "4h_poc_standalone",
+        "date": "2026-08-26",
+        "mitigated": false,
+        "reaction_count": 0
+    }
+}

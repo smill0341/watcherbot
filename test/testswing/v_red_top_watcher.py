@@ -113,6 +113,8 @@ class VRedTopWatcher:
         
         self.pump_threshold = 0.0
         
+        self.casc_state = "IDLE"
+        
         self.sl_price = None
         self.entry_price = None
         self.history_log = ""

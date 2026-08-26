@@ -63,8 +63,8 @@ class WatcherManager:
         for k, watcher in self._watchers.items():
             if k not in active_level_ids:
                 # СПАСАЕМ КАПКАНЫ И SMC: Если бот заряжен на ожидание ретеста, оставляем его в памяти!
-                if hasattr(watcher, 'state') and watcher.state in ["TRAP_SET", "WAIT_RETEST", "WAIT_GREEN", "WAIT_RED", "CANDIDATE_ARMED", "WAIT_CHOCH", "WAIT_BREAKOUT", "WAIT_PULLBACK", "WAIT_TRIGGER"]:
-                    continue  # <-- ВОТ ЭТО СЛОВО ТЫ УДАЛИЛ, ВЕРНИ ЕГО
+                if hasattr(watcher, 'state') and watcher.state in ["TRAP_SET", "WAIT_RETEST", "WAIT_GREEN", "WAIT_RED", "CANDIDATE_ARMED", "WAIT_CHOCH", "WAIT_BREAKOUT", "WAIT_PULLBACK", "WAIT_TRIGGER", "SCANNING", "TRIGGERED", "DEAD"]:
+                    continue
                 dead_keys.append(k)
                 
         for k in dead_keys:
@@ -80,14 +80,13 @@ class WatcherManager:
 
         if level_id not in self._watchers:
             self._watchers[level_id] = BounceWatcher(level['min'], level['max'], trade_type)
-
         watcher = self._watchers[level_id]
 
-        if len(df) < 22:
+        if len(df) < 52:
             return self._deny("Not enough data")
 
-        # Берем средний объем за 20 свечей (без учета последней формирующейся)
-        baseline_vol = float(df['volume'].iloc[-22:-2].mean())
+        # Считаем 90-й перцентиль (отсекаем мусор и ночной флэт)
+        baseline_vol = float(df['volume'].iloc[-52:-2].quantile(0.9))
         
         c = df.iloc[-1]
         c_open, c_high, c_low, c_close, c_vol = (
@@ -105,7 +104,9 @@ class WatcherManager:
         if 'error' in signal:
             return self._deny(signal['error'])
             
-        self.burned_levels.add(level_id)
+        # Уровень НЕ сжигаем! Менеджер больше не блочит уровень.
+        # Вотчер сам перейдет в DEAD, когда исчерпает лимит сделок в своем конфиге.
+        # self.burned_levels.add(level_id)
 
         signal['allow'] = True
         signal['level_id'] = level_id
@@ -113,6 +114,7 @@ class WatcherManager:
         signal['is_real_sweep'] = False
         signal['overshoot_pct'] = 0.0
         signal['candles_in_sweep'] = 0
+        
         return signal
     # -------------------------------------------------------------------------
     # 2. VOLUME REVERSAL (SMC)

@@ -15,6 +15,27 @@ from modules.cryptano.swing_hunter import start_swing_hunter
 from modules.footballnogoal.football import run_football_monitor
 from modules.playerpropsbasket.player_props import run_nba_monitor
 
+# level_id всегда имеет вид "{TAG}_{trade_type}_{min}_{max}" (см. _level_id
+# в vbottom_manager.py) — TAG однозначно говорит, какая это стратегия,
+# независимо от того, есть ли метаданные в текущем macro_levels.json.
+_STRATEGY_BY_TAG = {"VB": "V_BOTTOM", "VGB": "V_GREEN_BOTTOM", "VRT": "V_RED_TOP"}
+
+
+def _resolve_watcher_meta(level_id, watcher, level_id_meta):
+    """
+    Надёжно достаёт coin/direction/strategy для вотчера — сначала из
+    level_id_meta (свежий скан, самый точный источник), а если там пусто
+    (уровень в этот скан не встретился в macro_levels.json — не значит,
+    что вотчер "ничей"), достраивает из самого вотчера и из level_id.
+    Раньше при пустой meta coin/strategy улетали в None и на дашборде
+    превращались в "?", хотя вотчер прекрасно знает, кто он.
+    """
+    meta = level_id_meta.get(level_id, {})
+    coin = meta.get("coin") or getattr(watcher, "coin", None)
+    direction = meta.get("direction") or getattr(watcher, "trade_type", None)
+    strategy = meta.get("strategy") or _STRATEGY_BY_TAG.get(level_id.split("_", 1)[0])
+    return coin, direction, strategy
+
 def crypto_orchestrator(bot, admin_chat_id):
     """
     Единый каскадный Диспетчер автоматики Крипты.
@@ -257,15 +278,13 @@ def crypto_orchestrator(bot, admin_chat_id):
                                         )
                                         history_db = load_json(history_path, default={})
                                         for level_id, watcher in removed_watchers.items():
-                                            meta = level_id_meta.get(level_id, {})
-                                            coin = meta.get("coin")
-                                            strategy = meta.get("strategy")
+                                            coin, direction, strategy = _resolve_watcher_meta(level_id, watcher, level_id_meta)
                                             if not coin or not strategy:
-                                                continue  # уровень уже не в macro_levels.json — метаданных нет, архивировать нечего
+                                                continue  # ни meta, ни сам вотчер не знают, кто это — совсем битый случай
                                             hist_key = f"{coin}_{strategy}"
                                             history_db[hist_key] = {
                                                 "coin": coin,
-                                                "direction": meta.get("direction", getattr(watcher, "trade_type", None)),
+                                                "direction": direction,
                                                 "strategy": strategy,
                                                 "final_state": getattr(watcher, "state", None),
                                                 "history_log": getattr(watcher, "history_log", ""),
@@ -283,11 +302,11 @@ def crypto_orchestrator(bot, admin_chat_id):
                                 try:
                                     export = {}
                                     for level_id, watcher in v_bottom_mgr._watchers.items():
-                                        meta = level_id_meta.get(level_id, {})
+                                        coin, direction, strategy = _resolve_watcher_meta(level_id, watcher, level_id_meta)
                                         export[level_id] = {
-                                            "coin": meta.get("coin"),
-                                            "direction": meta.get("direction", getattr(watcher, "trade_type", None)),
-                                            "strategy": meta.get("strategy"),
+                                            "coin": coin,
+                                            "direction": direction,
+                                            "strategy": strategy,
                                             "state": getattr(watcher, "state", None),
                                             "breach_count": getattr(watcher, "breach_count", 0),
                                             "history_log": getattr(watcher, "history_log", ""),

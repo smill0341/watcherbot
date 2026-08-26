@@ -17,6 +17,12 @@ from modules.cryptano.utils.levels_builder import build_levels
 TIME_ASIAN_CLOSE = "03:05"
 TIME_US_OPEN = "15:05"       
 
+# Сколько дней монета может отсутствовать в топ-70 по обороту, прежде чем
+# её запись в macro_levels.json реально удаляется (мердж вместо перезаписи,
+# см. build_macro_levels). Слишком мало — вернёмся к старому багу (вотчер
+# осиротеет за один цикл), слишком много — файл будет копить мусор.
+MACRO_STALE_DAYS = 14
+
 # 🎛 НАСТРОЙКИ V2 ФИЛЬТРОВ
 IMPULSE_ATR_MULTIPLIER = 2.5  # Цена должна улететь минимум на 2.5 ATR от зоны
 IMPULSE_LOOKAHEAD_DAYS = 10   # Даем цене 10 дней на то, чтобы показать этот импульс
@@ -55,7 +61,15 @@ def build_macro_levels(bot=None, admin_chat_id=None):
         valid_symbols = [sym for sym, vol in symbols_with_volume[:70]]
         
         print(f"🔥 Найдено {len(symbols_with_volume)} монет. Фильтруем до ТОП-70 самых ликвидных.")
-        macro_base = {}
+
+        # МЕРДЖ вместо полной перезаписи: если монета в этот раз не попала
+        # в топ-70 (или биржа моргнула ошибкой на fetch_tickers) — её старая
+        # запись остаётся как есть, а не пропадает из файла. Иначе вотчер,
+        # который на неё завязан, замирает (check_v_* видит coin_macro=None
+        # и выходит рано) и на дашборде превращается в "?", хотя формально
+        # ещё жив в памяти — см. cleanup_ghost_watchers.py и обсуждение бага.
+        macro_base = load_json(MACRO_LEVELS_FILE, default={})
+        seen_coins = set()
         
         # Safe fetcher with retry logic against rate limits
         def safe_fetch_ohlcv(sym, tf, lim):
@@ -82,6 +96,8 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                 if len(ohlcv_1d) < 50:
                     continue
 
+                seen_coins.add(coin)  # реально дошли до расчёта — точка отсчёта для "протухания"
+
                 df_1d = pd.DataFrame(ohlcv_1d, columns=["timestamp", "open", "high", "low", "close", "volume"])
                 df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_4h) >= 50 else None
 
@@ -94,11 +110,34 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                         "resistances": levels["resistances"],
                         "updated_at": datetime.datetime.now().isoformat()
                     }
+                else:
+                    # Явно пересчитали и уровней не нашли — это не "выпал из
+                    # топ-70", а честный пустой результат, тут можно смело убрать.
+                    macro_base.pop(coin, None)
 
             except Exception as e:
                 print(f"[HUNTER ERROR] Ошибка для {coin}: {e}")
                 continue
-                
+
+        # Чистим только по-настоящему протухшие записи — монеты, которые
+        # не сканировались (не в топ-70) уже дольше STALE_DAYS. Если монета
+        # просто на пару циклов выпала и вернулась — её данные спокойно ждут.
+        cutoff = datetime.datetime.now() - datetime.timedelta(days=MACRO_STALE_DAYS)
+        stale_coins = []
+        for coin, entry in macro_base.items():
+            if coin == "_meta" or coin in seen_coins:
+                continue
+            updated_at = entry.get("updated_at") if isinstance(entry, dict) else None
+            try:
+                if not updated_at or datetime.datetime.fromisoformat(updated_at) < cutoff:
+                    stale_coins.append(coin)
+            except Exception:
+                stale_coins.append(coin)  # битая/непонятная дата — тоже протухшая
+        for coin in stale_coins:
+            del macro_base[coin]
+        if stale_coins:
+            print(f"🧹 Убраны протухшие (>{MACRO_STALE_DAYS} дн. вне топ-70): {stale_coins}")
+
         # 🕒 Метаданные всего файла — чтобы одним взглядом видеть, когда последний раз обновлялось
         macro_base["_meta"] = {
             "last_build": datetime.datetime.now().isoformat(),

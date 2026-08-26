@@ -605,7 +605,60 @@ def resolve_cross_overlaps(supports, resistances):
     return final_sup, final_res
 
 
-def build_levels(df_1d, df_4h, coin, current_idx=None):
+def _extract_macro_swings(df, current_price, max_distance, base_score, label_prefix):
+    """Ищет структурные макро-свинги (по теням) и отсеивает пробитые."""
+    if df is None or len(df) < 5:
+        return []
+        
+    work = df.copy()
+    # Фрактал: 2 свечи слева, 1 центр, 2 справа
+    work['is_swing_low'] = (work['low'] == work['low'].rolling(window=5, center=True).min())
+    work['is_swing_high'] = (work['high'] == work['high'].rolling(window=5, center=True).max())
+    
+    zones = []
+    
+    # Проходим по графику, отступив края
+    for i in range(2, len(work) - 2):
+        ts = work['timestamp'].iloc[i]
+        date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
+        
+        # --- Поддержка (LONG) ---
+        if work['is_swing_low'].iloc[i]:
+            price = float(work['low'].iloc[i])
+            if abs(price - current_price) <= max_distance:
+                # Проверяем, пробит ли уровень закрытием (mitigated)
+                mitigated = False
+                future_closes = work['close'].iloc[i + 3:]
+                if not future_closes.empty and (future_closes < price).any():
+                    mitigated = True
+                    
+                if not mitigated:
+                    # Узкая зона (1.5% от цены), так как ATR на макро слишком широкий
+                    atr_fake = price * 0.015 
+                    zone = _build_zone(price, atr_fake, base_score, f"{label_prefix}_Support", date_str, False)
+                    zone['_is_support'] = True
+                    zone['class'] = 'MACRO'
+                    zones.append(zone)
+                    
+        # --- Сопротивление (SHORT) ---
+        if work['is_swing_high'].iloc[i]:
+            price = float(work['high'].iloc[i])
+            if abs(price - current_price) <= max_distance:
+                mitigated = False
+                future_closes = work['close'].iloc[i + 3:]
+                if not future_closes.empty and (future_closes > price).any():
+                    mitigated = True
+                    
+                if not mitigated:
+                    atr_fake = price * 0.015
+                    zone = _build_zone(price, atr_fake, base_score, f"{label_prefix}_Resistance", date_str, False)
+                    zone['_is_support'] = False
+                    zone['class'] = 'MACRO'
+                    zones.append(zone)
+                    
+    return zones
+
+def build_levels(df_1M, df_1W, df_1d, df_4h, coin, current_idx=None):
     """
     Главная функция модуля.
 
@@ -634,6 +687,13 @@ def build_levels(df_1d, df_4h, coin, current_idx=None):
 
     all_zones = []
 
+    # --- НОВОЕ: НЕЗАВИСИМЫЕ МАКРО-УРОВНИ (MACRO) ---
+    # max_distance умножаем, чтобы макро-радар видел дальше локального
+    if df_1M is not None:
+        all_zones += _extract_macro_swings(df_1M, current_price, max_distance * 2.5, 5.0, "1M_MACRO")
+    if df_1W is not None:
+        all_zones += _extract_macro_swings(df_1W, current_price, max_distance * 1.5, 4.0, "1W_MACRO")
+    
     # 1. PMH/PML (месячные - старший масштаб)
     all_zones += _extract_period_extremes(
         df_1d, 'ME', PERIODS_MONTHS_BACK, current_price, atr_1d, max_distance,

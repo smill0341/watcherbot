@@ -55,6 +55,13 @@ def _fetch_candles_df(symbol, coin, min_candles, strategy_tag):
     candles = []
     if candle_store is not None:
         try:
+            # ВАЖНО: дашборд (/api/ohlcv) на каждый запрос дотягивает хвост
+            # свежих свечей через top_up_tail — иначе локальная база может
+            # отставать от биржи, и вотчер будет сканить по устаревшей
+            # "последней" свече, а точки на графике потом не совпадут с тем,
+            # что реально видно в дашборде. Повторяем тот же приём здесь.
+            if candle_store.has_data(symbol, "15m"):
+                candle_store.top_up_tail(exchange, symbol, "15m")
             candles = candle_store.get_candles(symbol, "15m", limit=DEEP_LOOKBACK_LIMIT)
         except Exception as e:
             print(f"[{strategy_tag} WARNING] candle_store недоступен для {coin}: {e}")

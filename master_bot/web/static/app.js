@@ -1,7 +1,9 @@
 const activeListEl = document.getElementById("active-list");
 const watchlistListEl = document.getElementById("watchlist-list");
+const simListEl = document.getElementById("sim-list");
 const activeCountEl = document.getElementById("active-count");
 const watchlistCountEl = document.getElementById("watchlist-count");
+const simCountEl = document.getElementById("sim-count");
 const currentCoinEl = document.getElementById("current-coin");
 const currentSymbolEl = document.getElementById("current-symbol");
 const signalsBody = document.getElementById("signals-body");
@@ -10,12 +12,30 @@ let chart = null;
 let candleSeries = null;
 let volumeSeries = null;
 let ema20Series = null;
-let ema50Series = null;
-let rsiSeries = null; 
+let ema50Series = null;let rsiSeries = null; 
 let levelLines = []; 
 let selectedCoin = null;
 let currentPrecision = 4;
 let globalCandles = []; // Храним историю свечей для привязки линий к датам
+
+// === СИМУЛЯЦИЯ ===
+let simMode = false;
+let simStartTime = null; // unix seconds клика по свече
+let simRunning = false;
+let simLevelLines = []; // линии уровней симуляции (жёлтый/фиолетовый), отдельно от боевых levelLines
+let simPlaybackTimer = null; // таймер анимации плейбека
+
+function clearSimLevelLines() {
+  simLevelLines.forEach((series) => { try { chart.removeSeries(series); } catch (e) {} });
+  simLevelLines = [];
+}
+
+function stopSimPlayback() {
+  if (simPlaybackTimer) {
+    clearInterval(simPlaybackTimer);
+    simPlaybackTimer = null;
+  }
+}
 
 const ema20ValueEl = document.getElementById("ema20-value");
 const ema50ValueEl = document.getElementById("ema50-value");
@@ -135,17 +155,6 @@ function computeRSI(candles, period = 14) {
 let historyPanelBodyEl = null;
 function ensureHistoryPanel() {
   if (historyPanelBodyEl) return historyPanelBodyEl;
-  const sidebar = document.querySelector(".sidebar");
-  if (!sidebar) return null;
-  const panel = document.createElement("div");
-  panel.className = "panel";
-  panel.innerHTML = `
-    <h2>Последний скан</h2>
-    <div id="history-panel-body" class="history-panel-body">
-      <div class="history-empty">Выбери монету слева</div>
-    </div>
-  `;
-  sidebar.appendChild(panel);
   historyPanelBodyEl = document.getElementById("history-panel-body");
   return historyPanelBodyEl;
 }
@@ -234,6 +243,12 @@ function initChart() {
     setOhlcvLegend(candle, vol, rsiVal);
   });
 
+  chart.subscribeClick((param) => {
+    if (!simMode || !param || !param.time) return;
+    simStartTime = param.time;
+    updateSimUI();
+  });
+
   new ResizeObserver(() => {
     chart.applyOptions({ width: box.clientWidth, height: box.clientHeight });
   }).observe(box);
@@ -246,6 +261,168 @@ function initChart() {
       if (selectedCoin) loadChart(selectedCoin);
     };
   });
+
+  document.getElementById("sim-mode-btn").onclick = () => {
+    simMode = !simMode;
+    if (!simMode) {
+      simStartTime = null;
+      stopSimPlayback();
+      clearSimLevelLines();
+      candleSeries.setMarkers([]);
+      if (selectedCoin) loadEvents(selectedCoin); // возвращаем боевые маркеры
+    }
+    updateSimUI();
+  };
+  document.getElementById("sim-cancel-btn").onclick = () => {
+    simStartTime = null;
+    stopSimPlayback();
+    clearSimLevelLines();
+    candleSeries.setMarkers([]);
+    if (selectedCoin) loadEvents(selectedCoin);
+    updateSimUI();
+  };
+  document.getElementById("sim-run-btn").onclick = runSimulation;
+}
+
+function updateSimUI() {
+  const modeBtn = document.getElementById("sim-mode-btn");
+  const status = document.getElementById("sim-status");
+  const runBtn = document.getElementById("sim-run-btn");
+  const cancelBtn = document.getElementById("sim-cancel-btn");
+
+  modeBtn.classList.toggle("active", simMode);
+
+  if (!simMode) {
+    status.textContent = "";
+    runBtn.style.display = "none";
+    cancelBtn.style.display = "none";
+    return;
+  }
+
+  if (simStartTime) {
+    const d = new Date(simStartTime * 1000);
+    status.textContent = "Старт: " + d.toLocaleString("ru-RU", { timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    runBtn.style.display = "";
+    cancelBtn.style.display = "";
+  } else {
+    status.textContent = "Кликни свечу на графике — точка старта";
+    runBtn.style.display = "none";
+    cancelBtn.style.display = "none";
+  }
+}
+
+async function runSimulation() {
+  if (!selectedCoin || !simStartTime || simRunning) return;
+  simRunning = true;
+  stopSimPlayback();
+
+  const status = document.getElementById("sim-status");
+  const runBtn = document.getElementById("sim-run-btn");
+  runBtn.disabled = true;
+  status.textContent = "Считаю...";
+
+  // Бэкенд ждёт 'YYYY-MM-DD HH:MM' в UTC (см. simulate_engine.run_simulation)
+  const iso = new Date(simStartTime * 1000).toISOString(); // "2026-07-01T12:00:00.000Z"
+  const startParam = iso.slice(0, 16).replace("T", " ");
+
+  try {
+    const res = await fetch(`/api/simulate/${encodeURIComponent(selectedCoin)}?start=${encodeURIComponent(startParam)}`, { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) {
+      status.textContent = data.detail || "ошибка симуляции";
+      return;
+    }
+
+    const episodes = [...(data.active || []), ...(data.history || [])];
+
+    drawSimLevels(data.levels || []);
+    playSimulation(episodes);
+
+    if (episodes.length === 0) {
+      status.textContent = "Старт: " + startParam + " · пробоев не найдено (уровней проверено: " + (data.levels || []).length + ")";
+    } else {
+      const summary = episodes.map((ep) => `${friendlyStrategy(ep.strategy)}:${ep.state}`).join(", ");
+      status.textContent = `Найдено: ${summary}`;
+    }
+  } catch (e) {
+    console.error("simulate failed", e);
+    status.textContent = "ошибка запроса";
+  } finally {
+    runBtn.disabled = false;
+    simRunning = false;
+  }
+}
+
+// === УРОВНИ СИМУЛЯЦИИ — жёлтый (support) / фиолетовый (resistance),
+// отдельным цветом от боевых (зелёный/красный из loadLevels), чтобы не путать
+// "что сейчас реально висит в боте" с "что проверялось в этом прогоне" ===
+function drawSimLevels(levels) {
+  clearSimLevelLines();
+  if (!levels.length || !simStartTime || !globalCandles.length) return;
+
+  const relevant = globalCandles.filter((c) => c.time >= simStartTime);
+  if (relevant.length === 0) return;
+
+  levels.forEach((lvl) => {
+    const midPrice = (lvl.min + lvl.max) / 2;
+    const color = lvl.is_support ? "#f2c14e" : "#b46ee0"; // жёлтый / фиолетовый
+    const series = chart.addLineSeries({
+      color,
+      lineWidth: 2,
+      lineStyle: LightweightCharts.LineStyle.Dashed,
+      crosshairMarkerVisible: false,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      title: `🧪 ${friendlyLevelType(lvl.type)} ${lvl.score ?? ""}`,
+    });
+    series.setData(relevant.map((c) => ({ time: c.time, value: midPrice })));
+    simLevelLines.push(series);
+  });
+}
+
+// === ПЛЕЙБЕК: "проигрываем" сканирование свечей от точки старта до сейчас,
+// с бегущим курсором и постепенным появлением маркеров — наглядно видно,
+// что реально идёт скан, а не просто мгновенно нарисовался готовый результат ===
+function playSimulation(episodes) {
+  stopSimPlayback();
+
+  const allMarkers = [];
+  episodes.forEach((ep) => {
+    (ep.events || []).forEach((ev) => {
+      if (!ev.time) return;
+      const style = EVENT_MARKER_STYLE[ev.type] || { color: "#cfd3da", shape: "circle" };
+      allMarkers.push({ time: ev.time, position: "aboveBar", color: style.color, shape: style.shape, text: "" });
+    });
+  });
+  allMarkers.sort((a, b) => a.time - b.time);
+
+  const playCandles = globalCandles.filter((c) => c.time >= simStartTime).sort((a, b) => a.time - b.time);
+  if (playCandles.length === 0) {
+    candleSeries.setMarkers(allMarkers);
+    return;
+  }
+
+  const TOTAL_MS = 3000;
+  const STEP_MS = 20;
+  const steps = Math.max(1, Math.floor(TOTAL_MS / STEP_MS));
+  const candlesPerStep = Math.max(1, Math.ceil(playCandles.length / steps));
+
+  let idx = 0;
+  simPlaybackTimer = setInterval(() => {
+    idx += candlesPerStep;
+    const done = idx >= playCandles.length - 1;
+    if (done) idx = playCandles.length - 1;
+
+    const cursorTime = playCandles[idx].time;
+    const revealed = allMarkers.filter((m) => m.time <= cursorTime);
+    const cursorMarker = { time: cursorTime, position: "inBar", color: "#5aa9e6", shape: "circle", text: "" };
+    candleSeries.setMarkers([...revealed, cursorMarker]);
+
+    if (done) {
+      stopSimPlayback();
+      candleSeries.setMarkers(allMarkers); // финально — без курсора, все маркеры на местах
+    }
+  }, STEP_MS);
 }
 
 function clearLevelLines() {
@@ -253,6 +430,28 @@ function clearLevelLines() {
     try { chart.removeSeries(series); } catch(e) {}
   });
   levelLines = [];
+}
+
+// === ЧЕЛОВЕЧЕСКИЕ ПОДПИСИ ВМЕСТО "sup1"/"АКТИВНО" ===
+const STRATEGY_LABELS = {
+  V_BOTTOM: "V-Bottom",
+  V_GREEN_BOTTOM: "V-Green",
+  V_RED_TOP: "V-Red",
+};
+function friendlyStrategy(code) {
+  return STRATEGY_LABELS[code] || code || "?";
+}
+function friendlyLevelType(type) {
+  if (!type) return "уровень";
+  if (type.includes("poc")) return "Объём (POC)";
+  if (type.includes("PMH")) return "Хай месяца";
+  if (type.includes("PML")) return "Лоу месяца";
+  if (type.includes("PWH")) return "Хай недели";
+  if (type.includes("PWL")) return "Лоу недели";
+  if (type.includes("PDH")) return "Хай дня";
+  if (type.includes("PDL")) return "Лоу дня";
+  if (type.includes("extreme_peak")) return "Экстремум";
+  return type;
 }
 
 // === РИСУЕМ УРОВНИ СТРОГО ОТ ДАТЫ ВОЗНИКНОВЕНИЯ ===
@@ -283,6 +482,7 @@ async function loadLevels(coin) {
     const addLevel = (lvl, color, isSupport) => {
       const active = findActive(lvl);
       const midPrice = (lvl.min + lvl.max) / 2;
+      const levelLabel = friendlyLevelType(lvl.type);
       
       const series = chart.addLineSeries({
         color: color,
@@ -291,7 +491,7 @@ async function loadLevels(coin) {
         crosshairMarkerVisible: false,
         priceLineVisible: false,
         lastValueVisible: false,
-        title: active ? `${isSupport ? '🟢' : '🔴'} АКТИВНО (${active.strategy}) ${lvl.score ?? ""}` : `${isSupport ? 'sup' : 'res'} ${lvl.score ?? ""}`
+        title: active ? `${isSupport ? '🟢' : '🔴'} ${friendlyStrategy(active.strategy)} · ${levelLabel}` : `${levelLabel} ${lvl.score ?? ""}`
       });
       
       // Парсим дату. Если ее нет или она кривая — берем начало графика
@@ -370,6 +570,12 @@ async function loadChart(coin) {
   currentCoinEl.textContent = coin;
   currentSymbolEl.textContent = "загрузка графика...";
   highlightSelection();
+
+  // При смене монеты старая точка старта симуляции теряет смысл
+  simStartTime = null;
+  stopSimPlayback();
+  clearSimLevelLines();
+  updateSimUI();
   
   const limit = TF_LIMITS[currentTimeframe] ?? 200;
 
@@ -475,6 +681,35 @@ async function loadWatchlist() {
   });
 }
 
+// === ПАНЕЛЬ "СИМУЛЯЦИЯ" ===
+// Пока просто список монет (те же, что прошли фильтр по обороту в
+// macro_levels.json) + клик открывает график. Без расчётов — это делаем
+// следующим шагом.
+async function loadSimCoins() {
+  try {
+    const res = await fetch("/api/macro/coins");
+    const data = await res.json();
+    const coins = data.coins || [];
+    simCountEl.textContent = coins.length;
+
+    if (coins.length === 0) {
+      simListEl.innerHTML = "<div class='muted'>нет монет с уровнями</div>";
+      return;
+    }
+
+    simListEl.innerHTML = coins
+      .map((coin) => `<div class="list-item" data-coin="${coin}"><span>${coin}</span></div>`)
+      .join("");
+
+    simListEl.querySelectorAll(".list-item").forEach((div) => {
+      div.onclick = () => loadChart(div.dataset.coin);
+    });
+  } catch (e) {
+    console.error("sim coins load failed", e);
+    simListEl.innerHTML = "<div class='muted'>ошибка загрузки</div>";
+  }
+}
+
 async function loadActiveWatchers() {
   const res = await fetch("/api/watchlist/active");
   const data = await res.json();
@@ -491,7 +726,7 @@ async function loadActiveWatchers() {
     div.className = "list-item";
     div.dataset.coin = w.coin;
     div.innerHTML = `
-      <span style="flex-grow: 1;">${w.coin ?? "?"} <span class="dir-${w.direction}">${w.direction ?? ""}</span></span>
+      <span style="flex-grow: 1;">${w.coin ?? "?"} <span class="dir-${w.direction}">${w.direction ?? ""}</span> <span class="muted">${friendlyStrategy(w.strategy)}</span></span>
       <span class="state-tag">${w.state}</span>
       <button title="Пересчитать структуру" onclick="triggerRescan(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 8px;">🔄</button>
     `;
@@ -540,7 +775,7 @@ async function loadGlobalHistory() {
 }
 
 async function refreshAll() {
-  await Promise.all([loadWatchlist(), loadActiveWatchers(), loadSignals(), loadGlobalHistory()]);
+  await Promise.all([loadWatchlist(), loadActiveWatchers(), loadSignals(), loadGlobalHistory(), loadSimCoins()]);
 }
 
 initChart();

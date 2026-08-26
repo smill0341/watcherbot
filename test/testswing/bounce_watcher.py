@@ -1,24 +1,39 @@
 # -*- coding: utf-8 -*-
-from .watcher_methods import _calc_tp_and_rr
 
 class BounceWatcher:
-    _log_cleared = False 
+    """
+    v1 — ПРИМИТИВ. Задача не "точная стратегия", а быстро увидеть на графике,
+    где вообще срабатывает идея "объёмный вход у уровня", прежде чем
+    ужесточать условия (тень/тело, RR-фильтр, ATR-стоп и т.д. — см. TODO ниже).
+
+    Условие входа:
+        - цена коснулась зоны уровня (не обязательно глубоко)
+        - свеча правильного цвета (зелёная для LONG, красная для SHORT)
+        - объём >= VOL_SPIKE_MULT (по умолчанию x3) от фонового (baseline_vol)
+
+    Выход: фиксированный % (FIXED_TP_PCT) — работает по-настоящему в этой
+    версии, в отличие от старой (там 'fixed_pct' был мёртвой веткой и TP
+    реально брался от противоположных уровней через _calc_tp_and_rr).
+    """
+
+    _log_cleared = False
 
     CONFIG = {
-        'MIN_SCORE': 3.0,               # Фильтр: только сильные уровни
-        'MIN_VOL_MULT': 1.5,            # Всплеск объема х1.5 от фона
-        'PINBAR_SHADOW_RATIO': 2.0,     # Тень минимум в 2 раза больше тела
-        'MAX_BODY_PCT': 30.0,           # Плотность тела не более 30%
-        
-        'TP_MODE': 'fixed_pct',         # Или 'structural', если хочешь тянуть до противоположного уровня
-        'FIXED_TP_PCT': 10.0,            # Условный профит, если не структурный
-        'TAKE_PROFIT': 5.0,
-        'TP_BUFFER_PCT': 0.0,
-        'SL_BUFFER': 0.1,               # Отступ стопа за кончик тени
-        'RR_TARGET': 1.0,               # Целевой Risk/Reward (например, 1 к 5)
-        'MIN_RR': 1.0,
-        'USE_RR_FILTER': false,                # Фильтр по R:R (если True, то сделки с R:R < MIN_RR не открываются)
+        'MIN_SCORE': 1.0,          
+        'VOL_SPIKE_MULT': 3.0,     
+        'MIN_VOL_MULT_TO_LOG': 2.0,   # Фильтр мусора: не рисовать SCAN и не писать лог, если объем ниже х2
+        'MIN_BODY_PCT': 20.0,         # Плотность свечи: тело должно занимать минимум 40% от всего размаха
+        'MAX_WICKS_PCT': 60.0,        # Защита от отвержения: верхняя тень (для лонга) не больше 30%
+        'FIXED_TP_PCT': 7.0,       
+        'SL_PCT': 50.0,            
+        'MAX_TRADES_PER_LEVEL': 4, 
         'DEBUG': True,
+
+        # --- TODO для следующих итераций (сейчас не используется) ---
+        # 'PINBAR_SHADOW_RATIO': 1.5,   # требовать тень/тело — вернуть, когда примитив обкатан
+        # 'MAX_BODY_PCT': 40.0,         # ограничить жирность тела свечи входа
+        # 'USE_RR_FILTER': True,        # включить проверку риск/прибыль перед входом
+        # 'MIN_RR': 1.0,
     }
 
     def __init__(self, level_min: float, level_max: float, trade_type: str):
@@ -27,12 +42,19 @@ class BounceWatcher:
         self.trade_type = trade_type
         self.state = "SCANNING"
         self._last_time = None
+        self.last_event_time = None
+        self.last_event_type = None
         self.trades_count = 0
-        
+    
+
         if self.CONFIG.get('DEBUG') and not BounceWatcher._log_cleared:
             with open("bounce_debug.log", "w", encoding="utf-8") as f:
-                f.write("=== НОВЫЙ ТЕСТ BOUNCE ЗАПУЩЕН ===\n")
+                f.write("=== НОВЫЙ ТЕСТ BOUNCE (v1, примитив) ЗАПУЩЕН ===\n")
             BounceWatcher._log_cleared = True
+
+    def on_breach_start(self):
+        if self.state not in ("DEAD", "TRIGGERED"):
+            self.state = "SCANNING"
 
     def _dbg(self, msg):
         if self.CONFIG.get('DEBUG'):
@@ -40,73 +62,121 @@ class BounceWatcher:
             with open("bounce_debug.log", "a", encoding="utf-8") as f:
                 f.write(f"{time_str}[{self.trade_type} {self.min:.4f}-{self.max:.4f}] {msg}\n")
 
-    def update(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, level_score=0, candle_time=None):
+    @staticmethod
+    def _fmt(v):
+        if v >= 1_000_000: return f"{v/1_000_000:.1f}M"
+        if v >= 1_000: return f"{v/1_000:.1f}k"
+        return str(int(v))
+
+    def update(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, level_score=0, candle_time=None, vol_90=0.0):
         self._last_time = candle_time
-        
+        self.last_event_time = candle_time
+        self.last_event_type = None
+
         if self.state in ("TRIGGERED", "DEAD"):
             return None
-            
+
         if level_score < self.CONFIG['MIN_SCORE']:
             return None
 
         c_open, c_high, c_low, c_close, c_vol = map(float, (c_open, c_high, c_low, c_close, c_vol))
-        hl = c_high - c_low
-        if hl <= 0: return None
+        
+        # Для математики входа используем 90-й перцентиль (vol_90)
+        logic_vol = vol_90 if vol_90 > 0 else baseline_vol
+        vol_mult = (c_vol / logic_vol) if logic_vol > 0 else 0.0
+        
+        is_green = c_close > c_open
+        is_red = c_close < c_open
 
-        body = abs(c_close - c_open)
-        body_pct = (body / hl) * 100.0
-        vol_mult = (c_vol / baseline_vol) if baseline_vol and baseline_vol > 0 else 0.0
+        v_str = self._fmt(c_vol)
+
+        # Высчитываем анатомию свечи
+        hl = float(c_high - c_low)
+        body = abs(float(c_close - c_open))
+        top_shadow = float(c_high - max(c_open, c_close))
+        bottom_shadow = min(c_open, c_close) - float(c_low)
+        
+        body_pct = (body / hl * 100.0) if hl > 0 else 0.0
+        top_shadow_pct = (top_shadow / hl * 100.0) if hl > 0 else 0.0
+        bottom_shadow_pct = (bottom_shadow / hl * 100.0) if hl > 0 else 0.0
 
         if self.trade_type == 'LONG':
-            # Лонг от поддержки (верхняя граница уровня - max)
-            if c_low <= self.max and c_close > self.max:
-                lower_shadow = min(c_open, c_close) - c_low
-                shadow_ratio = (lower_shadow / body) if body > 0 else 999.0
-                
-                if shadow_ratio >= self.CONFIG['PINBAR_SHADOW_RATIO'] and body_pct <= self.CONFIG['MAX_BODY_PCT']:
-                    if vol_mult >= self.CONFIG['MIN_VOL_MULT']:
-                        sl = c_low * (1.0 - self.CONFIG['SL_BUFFER'] / 100.0)
-                        return self._enter(c_close, sl, vol_mult, shadow_ratio, body_pct, all_opposite_levels)
+            touched = c_low <= self.max and c_high >= self.min
+            if touched and is_green:
+                # Фильтр мусора: игнорим всё, что ниже MIN_VOL_MULT_TO_LOG
+                if vol_mult >= self.CONFIG['MIN_VOL_MULT_TO_LOG']:
+                    self.last_event_type = "SCAN"
+                    
+                    is_vol_ok = vol_mult >= self.CONFIG['VOL_SPIKE_MULT']
+                    is_body_ok = body_pct >= self.CONFIG['MIN_BODY_PCT']
+                    is_shadow_ok = top_shadow_pct <= self.CONFIG['MAX_WICKS_PCT']
+                    
+                    if is_vol_ok and is_body_ok and is_shadow_ok:
+                        self.last_event_type = "GOOD_GREEN"
+                        return self._enter(c_close, vol_mult, c_vol, logic_vol, baseline_vol)
+                    else:
+                        # Собираем причины отказа в строку
+                        fail_reasons = []
+                        if not is_vol_ok: fail_reasons.append(f"V:x{vol_mult:.1f}(<{self.CONFIG['VOL_SPIKE_MULT']})")
+                        if not is_body_ok: fail_reasons.append(f"Тело:{body_pct:.0f}%(<{self.CONFIG['MIN_BODY_PCT']}%)")
+                        if not is_shadow_ok: fail_reasons.append(f"В.Тень:{top_shadow_pct:.0f}%(>{self.CONFIG['MAX_WICKS_PCT']}%)")
+                        
+                        self._dbg(f"🟡 ПРОПУСК | ЗЕЛЕНАЯ | {', '.join(fail_reasons)} | V:{v_str}")
 
         elif self.trade_type == 'SHORT':
-            # Шорт от сопротивления (нижняя граница уровня - min)
-            if c_high >= self.min and c_close < self.min:
-                upper_shadow = c_high - max(c_open, c_close)
-                shadow_ratio = (upper_shadow / body) if body > 0 else 999.0
-                
-                if shadow_ratio >= self.CONFIG['PINBAR_SHADOW_RATIO'] and body_pct <= self.CONFIG['MAX_BODY_PCT']:
-                    if vol_mult >= self.CONFIG['MIN_VOL_MULT']:
-                        sl = c_high * (1.0 + self.CONFIG['SL_BUFFER'] / 100.0)
-                        return self._enter(c_close, sl, vol_mult, shadow_ratio, body_pct, all_opposite_levels)
+            touched = c_high >= self.min and c_low <= self.max
+            if touched and is_red:
+                if vol_mult >= self.CONFIG['MIN_VOL_MULT_TO_LOG']:
+                    self.last_event_type = "SCAN"
+                    
+                    is_vol_ok = vol_mult >= self.CONFIG['VOL_SPIKE_MULT']
+                    is_body_ok = body_pct >= self.CONFIG['MIN_BODY_PCT']
+                    is_shadow_ok = bottom_shadow_pct <= self.CONFIG['MAX_WICKS_PCT']
+                    
+                    if is_vol_ok and is_body_ok and is_shadow_ok:
+                        self.last_event_type = "GOOD_RED"
+                        return self._enter(c_close, vol_mult, c_vol, logic_vol, baseline_vol)
+                    else:
+                        fail_reasons = []
+                        if not is_vol_ok: fail_reasons.append(f"V:x{vol_mult:.1f}(<{self.CONFIG['VOL_SPIKE_MULT']})")
+                        if not is_body_ok: fail_reasons.append(f"Тело:{body_pct:.0f}%(<{self.CONFIG['MIN_BODY_PCT']}%)")
+                        if not is_shadow_ok: fail_reasons.append(f"Н.Тень:{bottom_shadow_pct:.0f}%(>{self.CONFIG['MAX_WICKS_PCT']}%)")
+                        
+                        self._dbg(f"🟡 ПРОПУСК | КРАСНАЯ | {', '.join(fail_reasons)} | V:{v_str}")
 
         return None
 
-    def _enter(self, actual_entry, actual_sl, vol_mult, shadow_ratio, body_pct, all_opposite_levels):
-        self.state = "TRIGGERED"
-        
-        # Запрашиваем расчет профита у штатного калькулятора
-        risk_data, err = _calc_tp_and_rr(actual_entry, actual_sl, self.trade_type, all_opposite_levels, self.CONFIG)
-        if err or not risk_data:
-            self.state = "DEAD"
-            self._dbg(f"❌ Калькулятор отклонил сделку: {err}")
-            return {'error': err}
+    def _enter(self, actual_entry, vol_mult, c_vol, logic_vol, baseline_vol):
+        tp_pct = self.CONFIG['FIXED_TP_PCT'] / 100.0
+        sl_pct = self.CONFIG['SL_PCT'] / 100.0
 
-        # Если используем жесткий R:R вместо расчетного TP:
-        if self.CONFIG['TP_MODE'] == 'fixed_rr':
-            risk = abs(actual_entry - actual_sl)
-            tp = actual_entry + (risk * self.CONFIG['RR_TARGET']) if self.trade_type == 'LONG' else actual_entry - (risk * self.CONFIG['RR_TARGET'])
+        if self.trade_type == 'LONG':
+            tp = actual_entry * (1 + tp_pct)
+            sl = actual_entry * (1 - sl_pct)
         else:
-            tp = risk_data['tp']
+            tp = actual_entry * (1 - tp_pct)
+            sl = actual_entry * (1 + sl_pct)
 
-        reason_str = f"BOUNCE | V x{vol_mult:.1f} | Тень x{shadow_ratio:.1f} | Тело {body_pct:.1f}%"
-        self._dbg(f"✅ ВХОД! Entry: {actual_entry:.4f}, SL: {actual_sl:.4f}, TP: {tp:.4f}")
+        self.trades_count += 1
+        max_trades = self.CONFIG.get('MAX_TRADES_PER_LEVEL', 1)
+
+        if max_trades > 0 and self.trades_count >= max_trades:
+            self.state = "TRIGGERED"
+        else:
+            self.state = "SCANNING"
+
+        v_str = self._fmt(c_vol)
+        
+        # Короткий и четкий лог
+        reason_str = f"BOUNCE ({self.trades_count}/{max_trades}) | V:{v_str} (x{vol_mult:.1f})"
+        self._dbg(f"✅ ВХОД: {actual_entry:.4f} | {reason_str}")
 
         return {
             "allow": True,
             "level_id": f"{self.min}_{self.max}",
             "action": "BUY" if self.trade_type == 'LONG' else "SELL",
             "entry_price": actual_entry,
-            "sl": actual_sl,
+            "sl": sl,
             "tp": tp,
             "reason": reason_str,
             "is_real_sweep": False,

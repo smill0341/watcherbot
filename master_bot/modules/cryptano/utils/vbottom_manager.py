@@ -79,28 +79,65 @@ class VBottomManager:
         if n < 3:
             return
 
-        # 1. ЖЕСТКО ОГРАНИЧИВАЕМ ГЛУБИНУ РЕПЛЕЯ (макс 500 свечей ~ 5 дней)
-        # Это защитит график от "100500 точек" из далекого прошлого.
-        lookback = min(n, 500)
-        start_search = n - lookback
-        
-        start_idx = start_search
-        
-        # Идем слева направо в пределах этого окна, ищем ИСТИННЫЙ пробой
-        for i in range(start_search + 1, n - 1):
+        # 1. ЯКОРЬ — ДАТА РОЖДЕНИЯ УРОВНЯ (level['date'], ставится в levels_builder.py).
+        # Именно так это делает симулятор (test_simulator.py: _pit_start_time
+        # ставится в момент первого касания уровня ПОСЛЕ его появления на графике,
+        # а не "N последних свечей назад"). Ищем свечу, ближайшую к этой дате —
+        # с неё и начинаем поиск первого пробоя.
+        anchor_idx = 0
+        level_date_str = level.get('date')
+        if level_date_str:
+            try:
+                level_ts = pd.Timestamp(level_date_str, tz='UTC')
+                anchor_idx = int(df.index.searchsorted(level_ts))
+                anchor_idx = max(0, min(anchor_idx, n - 1))
+            except Exception:
+                anchor_idx = 0
+
+        # 2. От даты рождения уровня идём вперёд и ищем ПЕРВЫЙ реальный пробой —
+        # ровно тот момент, с которого стратегия обязана начать слежение.
+        # ВАЖНО: диапазон включает и самую последнюю свечу (n, не n-1) — если
+        # пробой произошёл прямо сейчас, живым свежим пробоем в этот же скан
+        # (обычный случай, не только "бот был offline"), он обязан находиться
+        # здесь и получать start_idx = текущая свеча. Раньше последняя свеча
+        # исключалась из поиска, из-за чего любой обычный живой пробой не
+        # находился, code проваливался в аварийный фолбэк ниже и откатывался
+        # к ДАТЕ РОЖДЕНИЯ уровня (может быть недели давности) — и весь путь
+        # от неё до сейчас реплеился и печатался заново при каждом создании
+        # вотчера. См. обсуждение растущих дублей в history_log.
+        start_idx = anchor_idx
+        found_breach = False
+        for i in range(anchor_idx + 1, n):
             prev = df.iloc[i-1]
             curr = df.iloc[i]
-            
+
             if direction == "SHORT":
                 if prev['close'] <= level['max'] and curr['close'] > level['max']:
                     start_idx = i
+                    found_breach = True
                     break
             else:
                 if prev['close'] >= level['min'] and curr['close'] < level['min']:
                     start_idx = i
+                    found_breach = True
                     break
 
-        # 2. Проматываем свечи от найденного момента до текущего времени
+        if not found_breach:
+            last_close = float(df['close'].iloc[-1])
+            already_breached = (last_close > level['max']) if direction == "SHORT" else (last_close < level['min'])
+            if not already_breached:
+                # Уровень ещё ни разу не тронут с момента своего рождения —
+                # реплеить нечего, слежение стартует "с нуля" на текущей свече.
+                return
+            # Крайний случай: цена уже за уровнем, но ни на одной свече в
+            # окне не нашли явного перехода close-через-границу (например,
+            # уровень был пробит гэпом, а не постепенным переходом close).
+            # Берём дату рождения уровня как наиболее точную известную нам
+            # границу — это тот самый ЗАКОННЫЙ путь для "бот был offline,
+            # восстанавливаем пропущенное", не для обычного текущего пробоя.
+            start_idx = anchor_idx
+
+        # 3. Проматываем свечи от найденного момента ПЕРВОГО пробоя до текущего времени
         for i in range(start_idx, n - 1):
             hc = df.iloc[i]
             htime = df.index[i] if hasattr(df, 'index') else None
@@ -368,10 +405,12 @@ class VBottomManager:
         result = {}
         for level_id, watcher in self._watchers.items():
             state = dict(watcher.__dict__)
-            # pandas.Timestamp не сериализуется json.dump — переводим в ISO-строку
-            last_time = state.get('_last_time')
-            if last_time is not None and hasattr(last_time, 'isoformat'):
-                state['_last_time'] = last_time.isoformat()
+            # pandas.Timestamp не сериализуется json.dump — переводим в ISO-строку.
+            # last_event_time — копия _last_time (см. log() в *_watcher.py), тоже сырой Timestamp.
+            for ts_field in ('_last_time', 'last_event_time'):
+                val = state.get(ts_field)
+                if val is not None and hasattr(val, 'isoformat'):
+                    state[ts_field] = val.isoformat()
             result[level_id] = {
                 'class': type(watcher).__name__,
                 'min': watcher.min,
