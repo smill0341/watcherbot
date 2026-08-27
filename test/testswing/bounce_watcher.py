@@ -26,7 +26,7 @@ class BounceWatcher:
         'MAX_WICKS_PCT': 60.0,        # Защита от отвержения: верхняя тень (для лонга) не больше 30%
         'FIXED_TP_PCT': 7.0,       
         'SL_PCT': 50.0,            
-        'MAX_TRADES_PER_LEVEL': 4, 
+        'MAX_TRADES_PER_LEVEL': 2, 
         'DEBUG': True,
 
         # --- TODO для следующих итераций (сейчас не используется) ---
@@ -80,6 +80,32 @@ class BounceWatcher:
             return None
 
         c_open, c_high, c_low, c_close, c_vol = map(float, (c_open, c_high, c_low, c_close, c_vol))
+
+        # --- СБОР СТАТИСТИКИ: Прокол дна (Sweep) ---
+        if not hasattr(self, 'pierced_bottom'):
+            self.pierced_bottom = False
+            self.currently_pierced = False
+            
+        if self.trade_type == 'LONG':
+            if c_low <= self.min:
+                self.pierced_bottom = True  # Глобальный флаг для отчета (навсегда)
+                if not self.currently_pierced:
+                    self.last_event_type = "SWEEP_BOTTOM"  # Рисуем точку только 1 раз на прокол
+                    self.currently_pierced = True
+            else:
+                self.currently_pierced = False  # Цена полностью поднялась над линией (c_low > min)
+                
+        elif self.trade_type == 'SHORT':
+            if c_high >= self.max:
+                self.pierced_bottom = True
+                if not self.currently_pierced:
+                    self.last_event_type = "SWEEP_BOTTOM"
+                    self.currently_pierced = True
+            else:
+                self.currently_pierced = False
+        # -------------------------------------------
+        # -------------------------------------------
+
         
         # Для математики входа используем 90-й перцентиль (vol_90)
         logic_vol = vol_90 if vol_90 > 0 else baseline_vol
@@ -124,8 +150,6 @@ class BounceWatcher:
                         self._dbg(f"🟡 ПРОПУСК | ЗЕЛЕНАЯ | {', '.join(fail_reasons)} | V:{v_str}")
 
         elif self.trade_type == 'SHORT':
-            touched = c_high >= self.min and c_low <= self.max
-            if touched and is_red:
                 if vol_mult >= self.CONFIG['MIN_VOL_MULT_TO_LOG']:
                     self.last_event_type = "SCAN"
                     
@@ -180,5 +204,6 @@ class BounceWatcher:
             "tp": tp,
             "reason": reason_str,
             "is_real_sweep": False,
-            "candles_in_sweep": 0
+            "candles_in_sweep": 0,
+            "pierced_bottom": getattr(self, 'pierced_bottom', False)
         }
