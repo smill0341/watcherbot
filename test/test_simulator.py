@@ -218,23 +218,57 @@ class SmartSniperUniversal(Strategy):
         if TARGET_COIN.upper() != "ALL":
             # Используем .loc для безопасной записи по индексу времени
             if self.original_df is not None and current_time in self.original_df.index:
-                # Отрисовка поддержки (зеленая) ТОЛЬКО если разрешены лонги
-                last_sup = getattr(self, 'last_breached_support', None)
-                if last_sup is not None and ALLOW_LONG_TRADES:
-                    self.original_df.loc[current_time, 'sup_max'] = last_sup['max']
-                    self.original_df.loc[current_time, 'sup_min'] = last_sup['min']
-                else:
-                    self.original_df.loc[current_time, 'sup_max'] = np.nan
-                    self.original_df.loc[current_time, 'sup_min'] = np.nan
+                if STRATEGY == "BOUNCE":
+                    # Источник — живые вотчеры менеджера (то же самое, что решает сделки),
+                    # а не last_breached_support/resistance — та память для BOUNCE больше
+                    # не ведётся (см. шаг 3), рисовать из неё уже нечего.
+                    c_close_draw = float(self.data.Close[-1])
 
-                # Отрисовка сопротивления (красная) ТОЛЬКО если разрешены шорты
-                last_res = getattr(self, 'last_breached_resistance', None)
-                if last_res is not None and ALLOW_SHORT_TRADES:
-                    self.original_df.loc[current_time, 'res_min'] = last_res['min']
-                    self.original_df.loc[current_time, 'res_max'] = last_res['max']
+                    near_sup = None
+                    if ALLOW_LONG_TRADES:
+                        active_longs = [w for w in self.manager._watchers.values()
+                                         if getattr(w, 'trade_type', None) == 'LONG'
+                                         and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED")]
+                        if active_longs:
+                            near_sup = min(active_longs, key=lambda w: abs(((w.min + w.max) / 2) - c_close_draw))
+                    if near_sup is not None:
+                        self.original_df.loc[current_time, 'sup_max'] = near_sup.max
+                        self.original_df.loc[current_time, 'sup_min'] = near_sup.min
+                    else:
+                        self.original_df.loc[current_time, 'sup_max'] = np.nan
+                        self.original_df.loc[current_time, 'sup_min'] = np.nan
+
+                    near_res = None
+                    if ALLOW_SHORT_TRADES:
+                        active_shorts = [w for w in self.manager._watchers.values()
+                                          if getattr(w, 'trade_type', None) == 'SHORT'
+                                          and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED")]
+                        if active_shorts:
+                            near_res = min(active_shorts, key=lambda w: abs(((w.min + w.max) / 2) - c_close_draw))
+                    if near_res is not None:
+                        self.original_df.loc[current_time, 'res_min'] = near_res.min
+                        self.original_df.loc[current_time, 'res_max'] = near_res.max
+                    else:
+                        self.original_df.loc[current_time, 'res_min'] = np.nan
+                        self.original_df.loc[current_time, 'res_max'] = np.nan
                 else:
-                    self.original_df.loc[current_time, 'res_min'] = np.nan
-                    self.original_df.loc[current_time, 'res_max'] = np.nan
+                    # Отрисовка поддержки (зеленая) ТОЛЬКО если разрешены лонги
+                    last_sup = getattr(self, 'last_breached_support', None)
+                    if last_sup is not None and ALLOW_LONG_TRADES:
+                        self.original_df.loc[current_time, 'sup_max'] = last_sup['max']
+                        self.original_df.loc[current_time, 'sup_min'] = last_sup['min']
+                    else:
+                        self.original_df.loc[current_time, 'sup_max'] = np.nan
+                        self.original_df.loc[current_time, 'sup_min'] = np.nan
+
+                    # Отрисовка сопротивления (красная) ТОЛЬКО если разрешены шорты
+                    last_res = getattr(self, 'last_breached_resistance', None)
+                    if last_res is not None and ALLOW_SHORT_TRADES:
+                        self.original_df.loc[current_time, 'res_min'] = last_res['min']
+                        self.original_df.loc[current_time, 'res_max'] = last_res['max']
+                    else:
+                        self.original_df.loc[current_time, 'res_min'] = np.nan
+                        self.original_df.loc[current_time, 'res_max'] = np.nan
 
         # --- Сжигание уровня ---
         if len(self.closed_trades) > self.last_closed_trades:
@@ -248,6 +282,8 @@ class SmartSniperUniversal(Strategy):
             return
 
         has_active_origin = self.tracked_support is not None or self.tracked_resistance is not None
+        if STRATEGY == "BOUNCE":
+            has_active_origin = has_active_origin or self.manager.has_active_bounce_watchers()
         if (not ALLOW_PYRAMIDING and self.position) or (not CURRENT_SUPPORTS and not CURRENT_RESISTANCES and not has_active_origin):
             return
 
@@ -294,7 +330,7 @@ class SmartSniperUniversal(Strategy):
         # --- Отслеживание уровня "исхода" ---
         target_long_levels = CURRENT_RESISTANCES if STRATEGY == "BREAKOUT_RETEST" else CURRENT_SUPPORTS
 
-        if target_long_levels:
+        if target_long_levels and STRATEGY != "BOUNCE":
             if self.tracked_support is None:
                 prev_close = float(self.data.Close[-2]) if len(self.data.Close) > 1 else c_close
                 found = None
@@ -310,12 +346,6 @@ class SmartSniperUniversal(Strategy):
                             if c_close > res['max']:
                                 found = res
                                 break
-                elif STRATEGY == "BOUNCE":
-                    # Ловим касание верхней границы поддержки
-                    for sup in target_long_levels:
-                        if c_low <= sup['max']:
-                            found = sup
-                            break
                 else:
                     # Обычная логика: пробой ВНИЗ (поддержки)
                     for sup in target_long_levels:
@@ -333,22 +363,16 @@ class SmartSniperUniversal(Strategy):
                     self.last_breached_support = dict(found)  # Запоминаем для непрерывной отрисовки
                     GLOBAL_DEBUG_STATS["Origins_Long_Total"] += 1
                     self.tracked_support['_pit_start_time'] = current_time
-                    if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM", "BREAKOUT_RETEST", "BOUNCE"):
+                    if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM", "BREAKOUT_RETEST"):
                         self.manager.notify_breach(self.tracked_support, 'LONG')
             else:
                 # Блок сброса уровня
                 if STRATEGY == "BREAKOUT_RETEST":
                     if not self._origin_still_needed(self.tracked_support, 'LONG'):
                         self.tracked_support = None
-                elif STRATEGY == "BOUNCE" and self._bounce_watcher_state(self.tracked_support, 'LONG') in ("TRIGGERED", "DEAD"):
-                    # Лимит сделок исчерпан — освобождаем слот сразу, не дожидаясь ухода цены
-                    self._log_level_release(self.tracked_support, 'LONG', "лимит сделок исчерпан", current_time)
-                    self.tracked_support = None
-                    self.last_breached_support = None
                 else:
                     origin_max = self.tracked_support['max']
-                    # Динамический сброс: если цена ушла выше буфера (1.5 ATR от уровня)
-                    cancel_limit = origin_max + (c_atr * 1.5) if STRATEGY == "BOUNCE" else origin_max * (1 + VBOTTOM_BREATH_BUFFER_PCT / 100.0)
+                    cancel_limit = origin_max * (1 + VBOTTOM_BREATH_BUFFER_PCT / 100.0)
                     
                     # Отменяем слежку, только если УЖЕ прошлая свеча была выше лимита,
                     # чтобы не убить сканер прямо во время пробойной зеленой свечи
@@ -357,72 +381,48 @@ class SmartSniperUniversal(Strategy):
                         if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM") or not self._origin_still_needed(self.tracked_support, 'LONG'):
                             if STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM"):
                                 self.manager.force_reset_watcher(self.tracked_support, 'LONG')
-                            if STRATEGY == "BOUNCE":
-                                self._log_level_release(self.tracked_support, 'LONG', f"цена ушла далеко (prev_close={prev_c:.4f} > лимит={cancel_limit:.4f})", current_time)
                             self.tracked_support = None
 
-        if CURRENT_RESISTANCES and ALLOW_SHORT_TRADES:
+        if CURRENT_RESISTANCES and ALLOW_SHORT_TRADES and STRATEGY != "BOUNCE":
             if self.tracked_resistance is None:
                 prev_close = float(self.data.Close[-2]) if len(self.data.Close) > 1 else c_close
                 found = None
                 
-                if STRATEGY == "BOUNCE":
-                    # Ловим касание нижней границы сопротивления
+                for res in CURRENT_RESISTANCES:
+                    if c_close > res['max'] and prev_close <= res['max']:
+                        found = res
+                        break
+                if found is None:
                     for res in CURRENT_RESISTANCES:
-                        if c_high >= res['min']:
+                        if c_close > res['max']:
                             found = res
                             break
-                else:
-                    for res in CURRENT_RESISTANCES:
-                        if c_close > res['max'] and prev_close <= res['max']:
-                            found = res
-                            break
-                    if found is None:
-                        for res in CURRENT_RESISTANCES:
-                            if c_close > res['max']:
-                                found = res
-                                break
                 if found is not None:
                     self.tracked_resistance = dict(found)
                     self.last_breached_resistance = dict(found)  # ЗАПОМИНАЕМ ШОРТ ДЛЯ ОТРИСОВКИ
                     GLOBAL_DEBUG_STATS["Origins_Short_Total"] += 1
                     self.tracked_resistance['_pit_start_time'] = current_time
-                    if STRATEGY in ("V_RED_TOP", "V_RED_CASCADE", "PANIC_TRAP", "BOUNCE"):
+                    if STRATEGY in ("V_RED_TOP", "V_RED_CASCADE", "PANIC_TRAP"):
                         self.manager.notify_breach(self.tracked_resistance, 'SHORT')
             else:
-                if STRATEGY == "BOUNCE" and self._bounce_watcher_state(self.tracked_resistance, 'SHORT') in ("TRIGGERED", "DEAD"):
-                    # Лимит сделок исчерпан — освобождаем слот сразу, не дожидаясь ухода цены
-                    self._log_level_release(self.tracked_resistance, 'SHORT', "лимит сделок исчерпан", current_time)
+                res_min = self.tracked_resistance['min']
+                cancel_limit = res_min * (1 - VBOTTOM_BREATH_BUFFER_PCT / 100.0)
+                
+                prev_c = float(self.data.Close[-2]) if len(self.data.Close) > 1 else c_close
+                if prev_c < cancel_limit and not self._origin_still_needed(self.tracked_resistance, 'SHORT'):
                     self.tracked_resistance = None
-                    self.last_breached_resistance = None
-                else:
-                    res_min = self.tracked_resistance['min']
-                    # Динамический сброс для ШОРТА: если цена ушла ниже буфера (1.5 ATR от уровня)
-                    cancel_limit = res_min - (c_atr * 1.5) if STRATEGY == "BOUNCE" else res_min * (1 - VBOTTOM_BREATH_BUFFER_PCT / 100.0)
-                    
-                    prev_c = float(self.data.Close[-2]) if len(self.data.Close) > 1 else c_close
-                    if prev_c < cancel_limit and not self._origin_still_needed(self.tracked_resistance, 'SHORT'):
-                        self._log_level_release(self.tracked_resistance, 'SHORT', f"цена ушла далеко (prev_close={prev_c:.4f} < лимит={cancel_limit:.4f})", current_time)
-                        self.tracked_resistance = None
 
         if can_long:
             if STRATEGY == "BOUNCE":
-                # 1. Собираем уровни: активные вотчеры (память) + свежие касания текущей базы
-                active_levels = []
-                for level_id, w in list(self.manager._watchers.items()):
-                    if getattr(w, 'trade_type', None) == 'LONG' and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED"):
-                        active_levels.append({'min': w.min, 'max': w.max, 'score': 5.0, 'type': 'MACRO'})
-                
-                for sup in CURRENT_SUPPORTS:
-                    if c_low <= sup['max'] and not any(a['min'] == sup['min'] and a['max'] == sup['max'] for a in active_levels):
-                        active_levels.append(sup)
+                # Уровни, которых свеча коснулась только что (менеджер сам добавит
+                # к ним уже активные вотчеры — см. evaluate_bounce_side)
+                touched_long = [sup for sup in CURRENT_SUPPORTS if c_low <= sup['max']]
 
-                # 2. Проверяем все собранные уровни
-                for sup in active_levels:
-                    decision = self._evaluate(sup, 'LONG', c_open, c_high, c_low, c_close, CURRENT_RESISTANCES, df_slice, c_ema=current_ema)
-                    
+                def _eval_bounce_long(level_id, lvl):
+                    return self._evaluate(lvl, 'LONG', c_open, c_high, c_low, c_close, CURRENT_RESISTANCES, df_slice, c_ema=current_ema)
+
+                for level_id, lvl, decision in self.manager.evaluate_bounce_side('LONG', touched_long, _eval_bounce_long):
                     if self.original_df is not None:
-                        level_id = self.manager._level_id(sup, 'LONG')
                         watcher = self.manager._watchers.get(level_id)
                         if watcher is not None and getattr(watcher, 'last_event_time', None) == current_time:
                             event_type = getattr(watcher, 'last_event_type', None)
@@ -430,10 +430,10 @@ class SmartSniperUniversal(Strategy):
                             elif event_type == "SCAN": self.original_df.at[current_time, 'bounce_scan'] = c_close
                             elif event_type in ("GOOD_GREEN", "GOOD_RED"): self.original_df.at[current_time, 'bounce_good'] = c_close
                             elif event_type == "RUNAWAY": self.original_df.at[current_time, 'bounce_release'] = c_close
-                    
+
                     if decision.get('allow'):
                         # Восстанавливаем оригинальные данные уровня для красивого лога
-                        actual_lvl = next((s for s in CURRENT_SUPPORTS if s['min'] == sup['min'] and s['max'] == sup['max']), sup)
+                        actual_lvl = next((s for s in CURRENT_SUPPORTS if s['min'] == lvl['min'] and s['max'] == lvl['max']), lvl)
                         self._try_enter(actual_lvl, 'LONG', c_close, c_atr, decision)
                         
             elif STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "BREAKOUT_RETEST"):
@@ -472,20 +472,13 @@ class SmartSniperUniversal(Strategy):
 
         if can_short:
             if STRATEGY == "BOUNCE":
-                active_levels = []
-                for level_id, w in list(self.manager._watchers.items()):
-                    if getattr(w, 'trade_type', None) == 'SHORT' and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED"):
-                        active_levels.append({'min': w.min, 'max': w.max, 'score': 5.0, 'type': 'MACRO'})
-                
-                for res in CURRENT_RESISTANCES:
-                    if c_high >= res['min'] and not any(a['min'] == res['min'] and a['max'] == res['max'] for a in active_levels):
-                        active_levels.append(res)
+                touched_short = [res for res in CURRENT_RESISTANCES if c_high >= res['min']]
 
-                for res in active_levels:
-                    decision = self._evaluate(res, 'SHORT', c_open, c_high, c_low, c_close, CURRENT_SUPPORTS, df_slice, c_ema=current_ema)
-                    
+                def _eval_bounce_short(level_id, lvl):
+                    return self._evaluate(lvl, 'SHORT', c_open, c_high, c_low, c_close, CURRENT_SUPPORTS, df_slice, c_ema=current_ema)
+
+                for level_id, lvl, decision in self.manager.evaluate_bounce_side('SHORT', touched_short, _eval_bounce_short):
                     if self.original_df is not None:
-                        level_id = self.manager._level_id(res, 'SHORT')
                         watcher = self.manager._watchers.get(level_id)
                         if watcher is not None and getattr(watcher, 'last_event_time', None) == current_time:
                             event_type = getattr(watcher, 'last_event_type', None)
@@ -493,9 +486,9 @@ class SmartSniperUniversal(Strategy):
                             elif event_type == "SCAN": self.original_df.at[current_time, 'bounce_scan'] = c_close
                             elif event_type in ("GOOD_GREEN", "GOOD_RED"): self.original_df.at[current_time, 'bounce_good'] = c_close
                             elif event_type == "RUNAWAY": self.original_df.at[current_time, 'bounce_release'] = c_close
-                    
+
                     if decision.get('allow'):
-                        actual_lvl = next((r for r in CURRENT_RESISTANCES if r['min'] == res['min'] and r['max'] == res['max']), res)
+                        actual_lvl = next((r for r in CURRENT_RESISTANCES if r['min'] == lvl['min'] and r['max'] == lvl['max']), lvl)
                         self._try_enter(actual_lvl, 'SHORT', c_close, c_atr, decision)
 
             elif STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "V_RED_CASCADE", "V_RED_TOP", "BREAKOUT_RETEST"):
@@ -582,20 +575,6 @@ class SmartSniperUniversal(Strategy):
             else:
                 GLOBAL_DEBUG_STATS["Killed_by_QUALITY"] += 1
         return decision
-
-    def _bounce_watcher_state(self, level, trade_type):
-        """Текущее состояние вотчера BOUNCE для этого уровня, или None, если его ещё нет."""
-        level_id = self.manager._level_id(level, trade_type)
-        watcher = self.manager._watchers.get(level_id)
-        return getattr(watcher, 'state', None)
-
-    def _log_level_release(self, level, trade_type, reason, current_time):
-        """Пишет в bounce_debug.log, почему tracked_support/tracked_resistance был отпущен."""
-        with open("bounce_debug.log", "a", encoding="utf-8") as f:
-            f.write(f"{current_time} [{trade_type} {level['min']:.4f}-{level['max']:.4f}] "
-                    f"🔓 ОТПУЩЕН СЛОТ (тестер) | {reason}\n")
-        if self.original_df is not None and current_time in self.original_df.index:
-            self.original_df.at[current_time, 'bounce_release'] = float(self.data.Close[-1])
 
     def _origin_still_needed(self, level, trade_type):
         level_id = self.manager._level_id(level, trade_type)

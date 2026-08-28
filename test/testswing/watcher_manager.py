@@ -10,7 +10,7 @@ import pandas as pd
 
 from .watcher_methods import (ChochRetestWatcher, check_choch_zone,
                                check_pit_climax, _calc_tp_and_rr)
-from .bounce_watcher import BounceWatcher
+from .bounce_manager import BounceManager
 from .v_bottom_watcher import VBottomWatcher
 from .panic_trap_watcher import PanicTrapWatcher
 from .v_green_bottom_watcher import VGreenBottomWatcher
@@ -28,6 +28,7 @@ class WatcherManager:
         self.config = config or {}
         self.burned_levels = set()
         self._watchers = {}
+        self.bounce = BounceManager(self)
 
     def _level_id(self, level, trade_type):
         return f"{trade_type}_{level['min']}_{level['max']}"
@@ -71,95 +72,19 @@ class WatcherManager:
             del self._watchers[k]
 
     def has_active_bounce_watchers(self, trade_type=None):
-        """True, если есть хотя бы один живой (не DEAD/TRIGGERED) BOUNCE-вотчер.
-        Нужно тестеру, чтобы не пропускать свечу, пока по уровню ещё идёт сканирование,
-        даже если CURRENT_SUPPORTS/RESISTANCES на этот момент пусты."""
-        for w in self._watchers.values():
-            if trade_type is not None and getattr(w, 'trade_type', None) != trade_type:
-                continue
-            if getattr(w, 'state', None) not in ("DEAD", "TRIGGERED"):
-                return True
-        return False
+        """Тонкая обёртка — реальная логика теперь в BounceManager (bounce_manager.py)."""
+        return self.bounce.has_active_bounce_watchers(trade_type)
 
     def evaluate_bounce_side(self, trade_type, touched_levels, evaluator):
-        """
-        Перебирает ВСЕ уровни BOUNCE этой стороны (LONG/SHORT), которые нужно
-        проверить на этой свече:
-          1. уже активные вотчеры (защита от того, что 12-часовое обновление
-             CURRENT_SUPPORTS/RESISTANCES выкинет уровень, пока по нему ещё
-             идёт сканирование)
-          2. плюс новые уровни, которых свеча только что коснулась (touched_levels)
-
-        evaluator(level_id, level) -> decision dict — вызывающий код сам считает
-        контекст (тренд, ATR и т.д.) и зовёт self.evaluate_bounce(...); менеджер
-        этого не делает, у него нет доступа к индикаторам симулятора.
-
-        Возвращает список (level_id, level, decision) для ВСЕХ проверенных
-        уровней — вызывающий код сам решает, что делать с решениями (войти,
-        нарисовать событие на графике).
-        """
-        levels_to_eval = {}
-        for level_id, w in list(self._watchers.items()):
-            if w.trade_type == trade_type and w.state not in ("DEAD", "TRIGGERED"):
-                levels_to_eval[level_id] = {'min': w.min, 'max': w.max, 'score': 5.0, 'type': 'BOUNCE_ACTIVE'}
-
-        for lvl in touched_levels:
-            level_id = self._level_id(lvl, trade_type)
-            if level_id not in levels_to_eval:
-                levels_to_eval[level_id] = lvl
-
-        results = []
-        for level_id, lvl in levels_to_eval.items():
-            decision = evaluator(level_id, lvl)
-            results.append((level_id, lvl, decision))
-        return results
+        """Тонкая обёртка — реальная логика теперь в BounceManager (bounce_manager.py)."""
+        return self.bounce.evaluate_bounce_side(trade_type, touched_levels, evaluator)
 
     # -------------------------------------------------------------------------
     # 1. BOUNCE (Отбой от макро-уровня)
     # -------------------------------------------------------------------------
     def evaluate_bounce(self, level, df, trade_type, all_opposite_levels):
-        level_id = self._level_id(level, trade_type)
-        if level_id in self.burned_levels:
-            return self._deny("Level already burned")
-
-        if level_id not in self._watchers:
-            self._watchers[level_id] = BounceWatcher(level['min'], level['max'], trade_type)
-        watcher = self._watchers[level_id]
-
-        if len(df) < 52:
-            return self._deny("Not enough data")
-
-        # Считаем 90-й перцентиль (отсекаем мусор и ночной флэт)
-        baseline_vol = float(df['volume'].iloc[-52:-2].quantile(0.9))
-        
-        c = df.iloc[-1]
-        c_open, c_high, c_low, c_close, c_vol = (
-            float(c['open']), float(c['high']), float(c['low']), float(c['close']), float(c['volume'])
-        )
-
-        signal = watcher.update(
-            c_open, c_high, c_low, c_close, c_vol, baseline_vol, 
-            all_opposite_levels, level_score=level.get('score', 0), candle_time=df.index[-1]
-        )
-
-        if not signal:
-            return self._deny(f"No signal (state: {watcher.state})")
-            
-        if 'error' in signal:
-            return self._deny(signal['error'])
-            
-        # Уровень НЕ сжигаем! Менеджер больше не блочит уровень.
-        # Вотчер сам перейдет в DEAD, когда исчерпает лимит сделок в своем конфиге.
-        # self.burned_levels.add(level_id)
-
-        signal['allow'] = True
-        signal['level_id'] = level_id
-        signal['extreme_price'] = "0.0"
-        signal['is_real_sweep'] = False
-        signal['overshoot_pct'] = 0.0
-        signal['candles_in_sweep'] = 0
-        
-        return signal
+        """Тонкая обёртка — реальная логика теперь в BounceManager (bounce_manager.py)."""
+        return self.bounce.evaluate_bounce(level, df, trade_type, all_opposite_levels)
     # -------------------------------------------------------------------------
     # 2. VOLUME REVERSAL (SMC)
     # -------------------------------------------------------------------------
