@@ -70,6 +70,50 @@ class WatcherManager:
         for k in dead_keys:
             del self._watchers[k]
 
+    def has_active_bounce_watchers(self, trade_type=None):
+        """True, если есть хотя бы один живой (не DEAD/TRIGGERED) BOUNCE-вотчер.
+        Нужно тестеру, чтобы не пропускать свечу, пока по уровню ещё идёт сканирование,
+        даже если CURRENT_SUPPORTS/RESISTANCES на этот момент пусты."""
+        for w in self._watchers.values():
+            if trade_type is not None and getattr(w, 'trade_type', None) != trade_type:
+                continue
+            if getattr(w, 'state', None) not in ("DEAD", "TRIGGERED"):
+                return True
+        return False
+
+    def evaluate_bounce_side(self, trade_type, touched_levels, evaluator):
+        """
+        Перебирает ВСЕ уровни BOUNCE этой стороны (LONG/SHORT), которые нужно
+        проверить на этой свече:
+          1. уже активные вотчеры (защита от того, что 12-часовое обновление
+             CURRENT_SUPPORTS/RESISTANCES выкинет уровень, пока по нему ещё
+             идёт сканирование)
+          2. плюс новые уровни, которых свеча только что коснулась (touched_levels)
+
+        evaluator(level_id, level) -> decision dict — вызывающий код сам считает
+        контекст (тренд, ATR и т.д.) и зовёт self.evaluate_bounce(...); менеджер
+        этого не делает, у него нет доступа к индикаторам симулятора.
+
+        Возвращает список (level_id, level, decision) для ВСЕХ проверенных
+        уровней — вызывающий код сам решает, что делать с решениями (войти,
+        нарисовать событие на графике).
+        """
+        levels_to_eval = {}
+        for level_id, w in list(self._watchers.items()):
+            if w.trade_type == trade_type and w.state not in ("DEAD", "TRIGGERED"):
+                levels_to_eval[level_id] = {'min': w.min, 'max': w.max, 'score': 5.0, 'type': 'BOUNCE_ACTIVE'}
+
+        for lvl in touched_levels:
+            level_id = self._level_id(lvl, trade_type)
+            if level_id not in levels_to_eval:
+                levels_to_eval[level_id] = lvl
+
+        results = []
+        for level_id, lvl in levels_to_eval.items():
+            decision = evaluator(level_id, lvl)
+            results.append((level_id, lvl, decision))
+        return results
+
     # -------------------------------------------------------------------------
     # 1. BOUNCE (Отбой от макро-уровня)
     # -------------------------------------------------------------------------
