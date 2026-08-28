@@ -114,12 +114,14 @@ class BounceWatcher:
                 runaway_limit = self.max * (1 + self.CONFIG['MAX_RUNAWAY_PCT'] / 100.0)
                 if c_close > runaway_limit:
                     self.state = "DEAD"
+                    self.last_event_type = "RUNAWAY"
                     self._dbg(f"🔴 ОТБОЙ | Цена ушла слишком высоко: {c_close:.4f} > лимит {runaway_limit:.4f}")
                     return None
             elif self.trade_type == 'SHORT':
                 runaway_limit = self.min * (1 - self.CONFIG['MAX_RUNAWAY_PCT'] / 100.0)
                 if c_close < runaway_limit:
                     self.state = "DEAD"
+                    self.last_event_type = "RUNAWAY"
                     self._dbg(f"🔴 ОТБОЙ | Цена ушла слишком низко: {c_close:.4f} < лимит {runaway_limit:.4f}")
                     return None
         # -------------------------------------------

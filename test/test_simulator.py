@@ -139,6 +139,7 @@ class SmartSniperUniversal(Strategy):
                 self.draw_bounce_sweep = self.I(lambda: self.data.df['bounce_sweep'], name="Старт (Свип)", overlay=True, scatter=True, color='blue')
                 self.draw_bounce_scan = self.I(lambda: self.data.df['bounce_scan'], name="SCAN BOUNCE", overlay=True, scatter=True, color='yellow')
                 self.draw_bounce_good = self.I(lambda: self.data.df['bounce_good'], name="ВХОД BOUNCE", overlay=True, scatter=True, color='lime')
+                self.draw_bounce_release = self.I(lambda: self.data.df['bounce_release'], name="СТОП (Отбой/Отпущен)", overlay=True, scatter=True, color='red')
                 
             if STRATEGY in ("V_RED_TOP", "V_RED_CASCADE"):
                 self.draw_red_scan = self.I(lambda: self.data.df['red_scan'], name="SCAN", overlay=True, scatter=True, color='yellow')
@@ -360,7 +361,7 @@ class SmartSniperUniversal(Strategy):
                                 self._log_level_release(self.tracked_support, 'LONG', f"цена ушла далеко (prev_close={prev_c:.4f} > лимит={cancel_limit:.4f})", current_time)
                             self.tracked_support = None
 
-        if CURRENT_RESISTANCES:
+        if CURRENT_RESISTANCES and ALLOW_SHORT_TRADES:
             if self.tracked_resistance is None:
                 prev_close = float(self.data.Close[-2]) if len(self.data.Close) > 1 else c_close
                 found = None
@@ -410,7 +411,7 @@ class SmartSniperUniversal(Strategy):
                 active_levels = []
                 for level_id, w in list(self.manager._watchers.items()):
                     if getattr(w, 'trade_type', None) == 'LONG' and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED"):
-                        active_levels.append({'min': w.min, 'max': w.max, 'score': 5.0, 'type': 'BOUNCE_ACTIVE'})
+                        active_levels.append({'min': w.min, 'max': w.max, 'score': 5.0, 'type': 'MACRO'})
                 
                 for sup in CURRENT_SUPPORTS:
                     if c_low <= sup['max'] and not any(a['min'] == sup['min'] and a['max'] == sup['max'] for a in active_levels):
@@ -428,6 +429,7 @@ class SmartSniperUniversal(Strategy):
                             if event_type == "SWEEP_BOTTOM": self.original_df.at[current_time, 'bounce_sweep'] = c_low
                             elif event_type == "SCAN": self.original_df.at[current_time, 'bounce_scan'] = c_close
                             elif event_type in ("GOOD_GREEN", "GOOD_RED"): self.original_df.at[current_time, 'bounce_good'] = c_close
+                            elif event_type == "RUNAWAY": self.original_df.at[current_time, 'bounce_release'] = c_close
                     
                     if decision.get('allow'):
                         # Восстанавливаем оригинальные данные уровня для красивого лога
@@ -473,7 +475,7 @@ class SmartSniperUniversal(Strategy):
                 active_levels = []
                 for level_id, w in list(self.manager._watchers.items()):
                     if getattr(w, 'trade_type', None) == 'SHORT' and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED"):
-                        active_levels.append({'min': w.min, 'max': w.max, 'score': 5.0, 'type': 'BOUNCE_ACTIVE'})
+                        active_levels.append({'min': w.min, 'max': w.max, 'score': 5.0, 'type': 'MACRO'})
                 
                 for res in CURRENT_RESISTANCES:
                     if c_high >= res['min'] and not any(a['min'] == res['min'] and a['max'] == res['max'] for a in active_levels):
@@ -490,6 +492,7 @@ class SmartSniperUniversal(Strategy):
                             if event_type == "SWEEP_BOTTOM": self.original_df.at[current_time, 'bounce_sweep'] = c_high
                             elif event_type == "SCAN": self.original_df.at[current_time, 'bounce_scan'] = c_close
                             elif event_type in ("GOOD_GREEN", "GOOD_RED"): self.original_df.at[current_time, 'bounce_good'] = c_close
+                            elif event_type == "RUNAWAY": self.original_df.at[current_time, 'bounce_release'] = c_close
                     
                     if decision.get('allow'):
                         actual_lvl = next((r for r in CURRENT_RESISTANCES if r['min'] == res['min'] and r['max'] == res['max']), res)
@@ -591,6 +594,8 @@ class SmartSniperUniversal(Strategy):
         with open("bounce_debug.log", "a", encoding="utf-8") as f:
             f.write(f"{current_time} [{trade_type} {level['min']:.4f}-{level['max']:.4f}] "
                     f"🔓 ОТПУЩЕН СЛОТ (тестер) | {reason}\n")
+        if self.original_df is not None and current_time in self.original_df.index:
+            self.original_df.at[current_time, 'bounce_release'] = float(self.data.Close[-1])
 
     def _origin_still_needed(self, level, trade_type):
         level_id = self.manager._level_id(level, trade_type)
@@ -985,6 +990,7 @@ if TARGET_COIN.upper() == "ALL":
         df['br_good'] = np.nan
         df['bounce_scan'] = np.nan
         df['bounce_good'] = np.nan
+        df['bounce_release'] = np.nan
         
         df['red_scan'] = np.nan
         df['red_peak'] = np.nan
@@ -1190,6 +1196,7 @@ else:
             df['bounce_good'] = np.nan
             df['bounce_sweep'] = np.nan
             df['bounce_scan'] = np.nan
+            df['bounce_release'] = np.nan
             
             df['red_scan'] = np.nan
             df['red_peak'] = np.nan
