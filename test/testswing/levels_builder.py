@@ -57,6 +57,10 @@ SCORE_PMH_PML = 0.0  # Без confluence — календарная метка =
 SCORE_PDH_PDL = 0.0  # Без confluence — календарная метка = мусор
 CONFLUENCE_BONUS = 2.0  # бонус за совпадение с find_peaks или POC
 POC_BONUS = 1.0  # дополнительный бонус если POC совпал с существующей зоной
+# Пол score для зон, где сошлись календарные уровни РАЗНЫХ таймфреймов
+# (месяц + неделя, напр. 1M_low_PML + 1W_low_PWL) — временная мера, до
+# полного пересмотра скоринга. См. merge_overlapping_zones().
+MIN_SCORE_MONTH_WEEK_CONFLUENCE = 9.0
 
 # find_peaks-слой (lookahead-фильтр - старый алгоритм)
 IMPULSE_ATR_MULTIPLIER = 2.5
@@ -525,7 +529,13 @@ def merge_overlapping_zones(zones):
     а за подтверждение find_peaks/POC отвечают отдельные функции ПОСЛЕ merge.
 
     Исключение: если слились РАЗНЫЕ по природе источники (календарный + find_peaks),
-    это настоящая confluence -> +CONFLUENCE_BONUS один раз."""
+    это настоящая confluence -> +CONFLUENCE_BONUS один раз.
+
+    Отдельный, более сильный случай: если в одной зоне сошлись календарные
+    уровни РАЗНЫХ таймфреймов (месяц + неделя, например 1M_low_PML + 1W_low_PWL) -
+    это структурная confluence сама по себе, без find_peaks/POC. Временно (до
+    полного пересмотра скоринга) даём такой зоне пол MIN_SCORE_MONTH_WEEK_CONFLUENCE,
+    ниже которого score упасть не может."""
     if not zones:
         return []
 
@@ -535,6 +545,8 @@ def merge_overlapping_zones(zones):
         z['base_score'] = z.get('score', 0.0)
         z['_has_peak'] = 'extreme_peak' in z.get('type', '')
         z['_has_calendar'] = any(t in z.get('type', '') for t in ('PMH', 'PML', 'PWH', 'PWL'))
+        z['_has_month_cal'] = any(t in z.get('type', '') for t in ('PMH', 'PML'))
+        z['_has_week_cal'] = any(t in z.get('type', '') for t in ('PWH', 'PWL'))
 
     merged = [sorted_zones[0]]
 
@@ -545,10 +557,16 @@ def merge_overlapping_zones(zones):
             last['base_score'] = max(last['base_score'], current['base_score'])
             last['_has_peak'] = last['_has_peak'] or current['_has_peak']
             last['_has_calendar'] = last['_has_calendar'] or current['_has_calendar']
+            last['_has_month_cal'] = last['_has_month_cal'] or current['_has_month_cal']
+            last['_has_week_cal'] = last['_has_week_cal'] or current['_has_week_cal']
 
             # Настоящая confluence: календарный уровень совпал с find_peaks -> бонус ОДИН раз
             confluence = CONFLUENCE_BONUS if (last['_has_peak'] and last['_has_calendar']) else 0.0
             last['score'] = round(last['base_score'] + confluence, 2)
+
+            # Пол для месяц+неделя confluence (см. докстринг)
+            if last['_has_month_cal'] and last['_has_week_cal']:
+                last['score'] = max(last['score'], MIN_SCORE_MONTH_WEEK_CONFLUENCE)
 
             if current.get('type') and last.get('type') and current['type'] not in last['type']:
                 last['type'] = f"{last['type']} + {current['type']}"
@@ -560,6 +578,8 @@ def merge_overlapping_zones(zones):
         m.pop('base_score', None)
         m.pop('_has_peak', None)
         m.pop('_has_calendar', None)
+        m.pop('_has_month_cal', None)
+        m.pop('_has_week_cal', None)
 
     return merged
 

@@ -21,7 +21,7 @@ from swing_hunter import build_macro_levels
 # Можешь добавлять сюда или удалять любые нужные периоды
 MONTHS_TO_CALC = [
    
-    {"start": "2026-08-01", "end": "2026-08-26"}    
+    {"start": "2026-07-01", "end": "2026-07-31"}    
 ]
 
 def build_timeline_for_month(start_date, end_date):

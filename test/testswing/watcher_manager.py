@@ -355,14 +355,10 @@ class WatcherManager:
         )
 
         c_rsi = float(c['rsi']) if 'rsi' in df.columns and c['rsi'] == c['rsi'] else 50.0
-        
-        # Достаем опорный свинг из датафрейма
-        current_swing_low = float(df['swing_low'].iloc[-1]) if 'swing_low' in df.columns and not pd.isna(df['swing_low'].iloc[-1]) else None
 
         signal = watcher.update(
             c_open, c_high, c_low, c_close, c_vol, baseline_vol, c_atr, all_opposite_levels, 
-            candle_time=df.index[-1], c_ema=c_ema, c_atr_slow=c_atr_slow, c_rsi=c_rsi,
-            swing_low=current_swing_low
+            candle_time=df.index[-1], c_ema=c_ema, c_atr_slow=c_atr_slow, c_rsi=c_rsi
         )
 
         if not signal:

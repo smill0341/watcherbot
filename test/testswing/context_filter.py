@@ -54,20 +54,27 @@ def analyze_context(closes, highs, lows, current_atr, trade_type, level_min, lev
     current_close = closes[-1]
     
     # ===== 1. TREND ANALYSIS =====
-    # Считаем структуру: Higher Highs/Lows за последние 64 свечи (4 часа на 15m)
+    # Было: строгая монотонная цепочка h1<h2<h3<h4 (и то же для low) по 4
+    # укрупнённым блокам — ОДНА свеча-выброс в любом из 4 блоков рвёт всю
+    # цепочку, и чёткий визуальный тренд (лестница вниз с плоскими паузами)
+    # скатывался в RANGE. Заменено на линейную регрессию по наклону хаёв и
+    # лоёв за то же окно (64 свечи = 4 часа на 15m) — устойчиво к отдельным
+    # свечам-выбросам, реагирует на общее направление, а не на 4 точки.
     recent_highs = highs[-64:]
     recent_lows = lows[-64:]
-    
-    # Разбиваем на 4 блока по 16 свечей, считаем max/min каждого
-    h1, h2, h3, h4 = (max(recent_highs[0:16]), max(recent_highs[16:32]),
-                       max(recent_highs[32:48]), max(recent_highs[48:64]))
-    l1, l2, l3, l4 = (min(recent_lows[0:16]), min(recent_lows[16:32]),
-                       min(recent_lows[32:48]), min(recent_lows[48:64]))
-    
-    # Определяем тренд через последовательность
-    is_uptrend = (h1 < h2 < h3 < h4) and (l1 < l2 < l3 < l4)  # Higher Highs & Higher Lows
-    is_downtrend = (h1 > h2 > h3 > h4) and (l1 > l2 > l3 > l4)  # Lower Highs & Lower Lows
-    
+
+    x = np.arange(len(recent_highs))
+    highs_slope = np.polyfit(x, recent_highs, 1)[0]
+    lows_slope = np.polyfit(x, recent_lows, 1)[0]
+
+    # Порог наклона в единицах ATR за свечу — ниже этого считаем шумом, не трендом.
+    # Настраиваемо: 0.1*ATR за свечу на окне 64 свечи = суммарное движение ~6.4*ATR,
+    # что уже заметно на графике, а не дрожание.
+    slope_threshold = current_atr * 0.1
+
+    is_uptrend = (highs_slope > slope_threshold) and (lows_slope > slope_threshold)
+    is_downtrend = (highs_slope < -slope_threshold) and (lows_slope < -slope_threshold)
+
     trend = "UP" if is_uptrend else ("DOWN" if is_downtrend else "RANGE")
 
     
