@@ -34,6 +34,15 @@ class BounceWatcher:
                                           # сторону уровня на первой же свече жизни вотчера). False — не хоронить
                                           # и не считать эту свечу пробоем вообще: просто пропустить её и следить
                                           # дальше как обычно, честный пробой засчитается позже своим чередом.
+        'SHORT_CLIMAX_MODE': True,     # SHORT больше не зеркалит LONG: вместо входа на первом касании
+                                          # resistance ждём, пока цена решительно (закрытием) пробьёт ЭТУ зону
+                                          # (ближнюю), а следом и следующую resistance выше неё (дальнюю) — это
+                                          # подтверждает сильный, возможно перегретый рывок. Вход ищем только
+                                          # выше дальней зоны, когда цена ушла от неё ещё на CLIMAX_ATR_BUFFER
+                                          # ATR (не просто высунулась). Если нет дальней зоны выше — не торгуем
+                                          # вообще (ждём, пока появится). False — старое зеркальное поведение.
+        'CLIMAX_ATR_BUFFER': 2.0,      # см. SHORT_CLIMAX_MODE — множитель ATR над дальней зоной, стартовое
+                                          # значение, откалибровать по логам (см. историю обсуждения проекта)
         'DEBUG': True,
 
         # --- TODO для следующих итераций (сейчас не используется) ---
@@ -57,6 +66,13 @@ class BounceWatcher:
         self.last_pierce_time = None   # когда был последний пробой — для выбора "кто сейчас в фокусе"
         self._awaiting_recovery = False  # True = уровень появился уже пробитым (телепорт), ждём честного
                                           # реклейма (закрытие обратно за уровень), прежде чем считать пробои
+
+        # --- SHORT climax mode (см. CONFIG['SHORT_CLIMAX_MODE']) ---
+        self.paired_level = None  # дальняя resistance-зона выше этой — задаётся менеджером при создании,
+                                    # None = либо LONG (не участвует), либо для SHORT нет зоны выше = не торгуем
+        self.climax_stage = None  # None -> 'WAIT_NEAR' -> 'WAIT_FAR' -> 'WAIT_BUFFER' -> 'SEARCHING'
+        if self.trade_type == 'SHORT' and self.CONFIG.get('SHORT_CLIMAX_MODE'):
+            self.climax_stage = 'WAIT_NEAR'
     
 
         if self.CONFIG.get('DEBUG') and not BounceWatcher._log_cleared:
@@ -81,7 +97,7 @@ class BounceWatcher:
         if v >= 1_000: return f"{v/1_000:.1f}k"
         return str(int(v))
 
-    def update(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, level_score=0, candle_time=None, vol_90=0.0, is_focus=True):
+    def update(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, level_score=0, candle_time=None, vol_90=0.0, is_focus=True, c_atr=0.0):
         is_first_candle = (self._last_time is None)
         
         self._last_time = candle_time
@@ -95,6 +111,16 @@ class BounceWatcher:
             return None
 
         c_open, c_high, c_low, c_close, c_vol = map(float, (c_open, c_high, c_low, c_close, c_vol))
+
+        # --- SHORT CLIMAX MODE: полностью отдельный путь, не зеркалит LONG ---
+        # см. CONFIG['SHORT_CLIMAX_MODE'] и _update_climax_short(). LONG эту
+        # ветку никогда не видит (climax_stage=None для LONG), весь код ниже
+        # для LONG работает один в один как раньше.
+        if self.trade_type == 'SHORT' and self.climax_stage is not None:
+            return self._update_climax_short(
+                c_open, c_high, c_low, c_close, c_vol, baseline_vol,
+                candle_time, vol_90, is_focus, c_atr
+            )
 
         # --- ЗАЩИТА ОТ ФАЛЬШИВОГО ПРОБОЯ (ТЕЛЕПОРТАЦИИ БАЗЫ) ---
         # Если уровень только появился в памяти бота, но свеча УЖЕ открылась
@@ -289,6 +315,114 @@ class BounceWatcher:
 
         return None
 
+    def _update_climax_short(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol,
+                                candle_time, vol_90, is_focus, c_atr):
+            
+            # 1. ЖЕСТКАЯ СМЕРТЬ (Глубокое падение на X ATR) — только если сетап
+            # уже РЕАЛЬНО прошёл ВСЮ зону (обе границы, т.е. дошёл минимум до
+            # WAIT_BUFFER). Пока вотчер ещё тестирует нижнюю/верхнюю границу
+            # (WAIT_NEAR/WAIT_MAX) — откат вниз это НЕ провал сетапа, а
+            # нормальная часть его формирования; тихий мягкий сброс (ниже)
+            # это уже обрабатывает сам, без убийства. Убивать нужно только
+            # тогда, когда уровень доказал себя (прошёл насквозь), сделки не
+            # случилось, и цена всё равно ушла вниз — вот тогда сетап реально
+            # не сработал.
+            if self.climax_stage in ('WAIT_BUFFER', 'SEARCHING'):
+                max_drop_limit = self.min - (c_atr * self.CONFIG.get('MAX_DROP_ATR_UNDER_LEVEL', 3.0))
+                if c_close < max_drop_limit:
+                    self.state = "DEAD"
+                    if is_focus:
+                        self.last_event_type = "RUNAWAY"
+                        self._dbg(f"🔴 ОТМЕНА | Уровень прошёл всю зону, сделки не было, цена ушла глубоко вниз (>3 ATR). Сетап убит.")
+                    return None
+
+            # 2. МЯГКИЙ СБРОС (Для 2-й сделки или отката)
+            # Тихо обнуляем прогресс, без логов и точек.
+            if self.climax_stage != 'WAIT_NEAR' and c_close < self.min:
+                self.climax_stage = 'WAIT_NEAR'
+                return None
+
+            # 3. ШАГ 1: закрытие выше нижней границы зоны (не касание фитилем —
+            # иначе эта точка выполнялась бы мгновенно, тем же самым условием,
+            # что уже проверил внешний фильтр touched_short в process_candle).
+            if self.climax_stage == 'WAIT_NEAR':
+                if c_close >= self.min:
+                    self.climax_stage = 'WAIT_MAX'
+                    self.last_event_type = "CLIMAX_NEAR_BREACH"
+                    self._dbg(f"🔵 ШАГ 1 | Закрытие выше нижней границы ({self.min:.4f})")
+                return None
+
+            # 4. ШАГ 2: закрытие выше верхней границы зоны (тоже не фитиль —
+            # иначе одна свеча с длинной тенью могла бы пробить сразу и это,
+            # и буфер ATR ниже, без реального удержания цены наверху).
+            if self.climax_stage == 'WAIT_MAX':
+                if c_close >= self.max:
+                    self.climax_stage = 'WAIT_BUFFER'
+                    self.last_event_type = "CLIMAX_FAR_BREACH"
+                    self._dbg(f"🔵 ШАГ 2 | Закрытие выше верхней границы ({self.max:.4f})")
+                return None
+
+            # 5. ШАГ 3 (Уход на ATR) — тоже закрытием, не фитилём.
+            # Фиксация нового лидера
+            if self.climax_stage == 'WAIT_BUFFER':
+                buffer_limit = self.max + (c_atr * self.CONFIG.get('CLIMAX_ATR_BUFFER', 2.0))
+                if c_close >= buffer_limit:
+                    self.climax_stage = 'SEARCHING'
+                    self.pierce_count += 1
+                    self.trades_since_pierce = 0
+                    self.last_pierce_time = candle_time
+                    self.last_event_type = "SWEEP_BOTTOM"
+                    self._dbg(f"🔵 ШАГ 3 | Закрытие выше буфера ({buffer_limit:.4f}). Старт поиска.")
+                return None
+
+            # 6. ПОИСК ВХОДА
+            if self.climax_stage == 'SEARCHING':
+                if c_close <= self.max: return None
+                
+                is_red = c_close < c_open
+                logic_vol = vol_90 if vol_90 > 0 else baseline_vol
+                vol_mult = (c_vol / logic_vol) if logic_vol > 0 else 0.0
+
+                if not is_red or vol_mult < 2.0: return None
+                
+                # АНТИ-СПАМ: Желтые сканы пишет ТОЛЬКО лидер (is_focus)
+                if not is_focus: return None
+
+                hl = float(c_high - c_low)
+                body = abs(float(c_close - c_open))
+                bottom_shadow = min(c_open, c_close) - float(c_low)
+                body_pct = (body / hl * 100.0) if hl > 0 else 0.0
+                bottom_shadow_pct = (bottom_shadow / hl * 100.0) if hl > 0 else 0.0
+
+                max_per_pierce = self.CONFIG.get('MAX_TRADES_PER_PIERCE', 1)
+                is_pierce_budget_ok = (max_per_pierce <= 0) or (self.trades_since_pierce < max_per_pierce)
+
+                self.last_event_type = "SCAN"
+                is_vol_ok = vol_mult >= self.CONFIG['VOL_SPIKE_MULT']
+                is_body_ok = body_pct >= self.CONFIG['MIN_BODY_PCT']
+                is_shadow_ok = bottom_shadow_pct <= self.CONFIG['MAX_WICKS_PCT']
+
+                if is_vol_ok and is_body_ok and is_shadow_ok and is_pierce_budget_ok:
+                    self.last_event_type = "GOOD_RED"
+                    decision = self._enter(c_close, vol_mult, c_vol, logic_vol, baseline_vol)
+                    
+                    # Блокировка: ждем физического падения под зону для 2-й сделки
+                    if self.state != "TRIGGERED":
+                        self.climax_stage = 'WAIT_RECHARGE'
+                        
+                    return decision
+                else:
+                    fail_reasons = []
+                    if not is_pierce_budget_ok: fail_reasons.append("лимит исчерпан")
+                    if not is_vol_ok: fail_reasons.append(f"V:x{vol_mult:.1f}(<{self.CONFIG['VOL_SPIKE_MULT']})")
+                    if not is_body_ok: fail_reasons.append(f"Тело:{body_pct:.0f}%")
+                    if not is_shadow_ok: fail_reasons.append(f"Н.Тень:{bottom_shadow_pct:.0f}%")
+                    
+                    v_str = self._fmt(c_vol)
+                    self._dbg(f"🟡 Скан | {', '.join(fail_reasons)} | V:{v_str}")
+                    return None
+
+            return None
     def _enter(self, actual_entry, vol_mult, c_vol, logic_vol, baseline_vol):
         tp_pct = self.CONFIG['FIXED_TP_PCT'] / 100.0
         sl_pct = self.CONFIG['SL_PCT'] / 100.0

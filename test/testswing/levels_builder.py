@@ -7,10 +7,16 @@ levels_builder.py
 
 ИЕРАРХИЯ БАЗОВЫХ БАЛЛОВ (откуда пришёл уровень):
     PMH/PML (месяц, закрытый)        -> 5
-    PWH/PWL (неделя, закрытая)       -> 4
-    find_peaks + lookahead (1D)      -> 3
-    PDH/PDL (день, закрытый)         -> 2
-    4H POC (volume profile)          -> +1 confluence-бонус к существующей зоне
+    PWH/PWL (неделя, закрытая)       -> 5
+    find_peaks + lookahead (1D)      -> 4
+    4H POC (volume profile)          -> 3 самостоятельно, либо +1 confluence-бонус к существующей зоне
+    PDH/PDL (день, закрытый)         -> слой не используется в build_levels (мёртвый код)
+    Месяц + неделя сошлись в одной зоне -> пол 9 (см. MIN_SCORE_MONTH_WEEK_CONFLUENCE)
+
+    Значения PMH/PML и PWH/PWL подняты с 0 по факту бэктестов: календарные
+    уровни без find_peaks/POC confluence стабильно показывали положительный
+    результат несколько месяцев подряд, тогда как "самодоказанный" POC —
+    гораздо более волатильно. См. обсуждение в истории проекта.
 
 МОДИФИКАТОРЫ SCORE:
     - Reaction count (сколько раз цена касалась зоны и отбивалась без закрытия
@@ -44,17 +50,18 @@ from scipy.signal import find_peaks
 # =========================================================
 # БАЗОВЫЕ ВЕСА ИСТОЧНИКОВ
 # =========================================================
-# Иерархия по принципу: доказанный рынком сигнал > календарная метка.
-# find_peaks = цена РЕАЛЬНО развернулась здесь (price evidence) - самый сильный
-# POC        = здесь торговали больше всего объёма (volume evidence) - тоже самостоятельный
-# PWH/PMH/PDH = просто "вчера/на неделе/в месяце был такой-то экстремум" -
-#               НЕТ собственного доказательства, БЕЗ CONFLUENCE = score 0 (мусор)
-#               С confluence (find_peaks или POC) = получают базовый score как бонус
+# Изначальная идея была: доказанный рынком сигнал (find_peaks/POC) > календарная
+# метка (PWH/PMH). На практике за несколько месяцев бэктеста вышло НАОБОРОТ —
+# одиночные PWH/PML стабильно прибыльны, а POC гораздо более волатилен
+# (то сильно лучше, то сильно хуже месяц от месяца). Веса ниже подогнаны под
+# фактический результат, а не под изначальную теорию — это сознательный выбор.
 SCORE_FIND_PEAKS = 4.0
 SCORE_POC = 3.0
-SCORE_PWH_PWL = 0.0  # Без confluence — календарная метка = мусор
-SCORE_PMH_PML = 0.0  # Без confluence — календарная метка = мусор
-SCORE_PDH_PDL = 0.0  # Без confluence — календарная метка = мусор
+SCORE_PWH_PWL = 5.0  # Раньше было 0 (без confluence = мусор) — по факту бэктестов
+                       # одиночные PWL стабильно давали положительный результат
+                       # каждый месяц, поднято до 5, чтобы не отсеивались фильтром MIN_SCORE
+SCORE_PMH_PML = 5.0  # См. комментарий к SCORE_PWH_PWL — та же причина
+SCORE_PDH_PDL = 0.0  # Без confluence — календарная метка = мусор (слой не используется в build_levels)
 CONFLUENCE_BONUS = 2.0  # бонус за совпадение с find_peaks или POC
 POC_BONUS = 1.0  # дополнительный бонус если POC совпал с существующей зоной
 # Пол score для зон, где сошлись календарные уровни РАЗНЫХ таймфреймов
@@ -296,12 +303,24 @@ def _extract_period_extremes(df_1d, freq, n_periods_back, current_price, atr_1d,
             reactions = _count_reactions(df_1d, idx_ref, price, atr_1d, is_support, current_idx)
             vol_bonus = _volume_bonus(df_1d, idx_ref)
 
-            # Определяем base_score: 0 по умолчанию (без confluence = мусор)
-            # Confluence добавится через merge_overlapping_zones и _apply_poc_confluence
+            # Определяем base_score из константы наверху файла (SCORE_PMH_PML/
+            # SCORE_PWH_PWL) — раньше тут был захардкожен 0.0, из-за чего
+            # правка констант (0 -> 5, по факту бэктестов) никогда не применялась
+            # к реальным зонам. См. историю обсуждения проекта.
             date_str = period_start.strftime('%Y-%m-%d')
-            base_score = 0.0  # PWH/PWL/PMH/PML БЕЗ confluence = score 0
+            base_score = SCORE_PMH_PML if freq == 'ME' else SCORE_PWH_PWL
 
-            zone = _build_zone(price, atr_1d, base_score, label, date_str,
+            # Ширина зоны — тот же принцип, что уже используется для MACRO-слоя
+            # (см. _extract_macro_swings): фиксированный % от цены САМОЙ ТОЧКИ
+            # (хай/лоу закрытого периода), а не от живого atr_1d. atr_1d каждый
+            # 12ч-пересчёт немного другой (скользящее окно), из-за чего границы
+            # PMH/PML/PWH/PWL слегка дрожали между снимками, даже когда сама
+            # точка (price) уже давно зафиксирована. reactions/mitigated ниже
+            # по-прежнему используют живой atr_1d — это другой расчёт (допуск
+            # на касание), его не трогаем.
+            zone_width_ref = price * 0.015
+
+            zone = _build_zone(price, zone_width_ref, base_score, label, date_str,
                                 mitigated=mitigated, reaction_count=reactions, 
                                 volume_bonus=vol_bonus)
             zone['_is_support'] = is_support

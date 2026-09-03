@@ -7,10 +7,16 @@ levels_builder.py
 
 ИЕРАРХИЯ БАЗОВЫХ БАЛЛОВ (откуда пришёл уровень):
     PMH/PML (месяц, закрытый)        -> 5
-    PWH/PWL (неделя, закрытая)       -> 4
-    find_peaks + lookahead (1D)      -> 3
-    PDH/PDL (день, закрытый)         -> 2
-    4H POC (volume profile)          -> +1 confluence-бонус к существующей зоне
+    PWH/PWL (неделя, закрытая)       -> 5
+    find_peaks + lookahead (1D)      -> 4
+    4H POC (volume profile)          -> 3 самостоятельно, либо +1 confluence-бонус к существующей зоне
+    PDH/PDL (день, закрытый)         -> слой не используется в build_levels (мёртвый код)
+    Месяц + неделя сошлись в одной зоне -> пол 9 (см. MIN_SCORE_MONTH_WEEK_CONFLUENCE)
+
+    Значения PMH/PML и PWH/PWL подняты с 0 по факту бэктестов: календарные
+    уровни без find_peaks/POC confluence стабильно показывали положительный
+    результат несколько месяцев подряд, тогда как "самодоказанный" POC —
+    гораздо более волатильно. См. обсуждение в истории проекта.
 
 МОДИФИКАТОРЫ SCORE:
     - Reaction count (сколько раз цена касалась зоны и отбивалась без закрытия
@@ -44,19 +50,24 @@ from scipy.signal import find_peaks
 # =========================================================
 # БАЗОВЫЕ ВЕСА ИСТОЧНИКОВ
 # =========================================================
-# Иерархия по принципу: доказанный рынком сигнал > календарная метка.
-# find_peaks = цена РЕАЛЬНО развернулась здесь (price evidence) - самый сильный
-# POC        = здесь торговали больше всего объёма (volume evidence) - тоже самостоятельный
-# PWH/PMH/PDH = просто "вчера/на неделе/в месяце был такой-то экстремум" -
-#               НЕТ собственного доказательства, БЕЗ CONFLUENCE = score 0 (мусор)
-#               С confluence (find_peaks или POC) = получают базовый score как бонус
+# Изначальная идея была: доказанный рынком сигнал (find_peaks/POC) > календарная
+# метка (PWH/PMH). На практике за несколько месяцев бэктеста вышло НАОБОРОТ —
+# одиночные PWH/PML стабильно прибыльны, а POC гораздо более волатилен
+# (то сильно лучше, то сильно хуже месяц от месяца). Веса ниже подогнаны под
+# фактический результат, а не под изначальную теорию — это сознательный выбор.
 SCORE_FIND_PEAKS = 4.0
 SCORE_POC = 3.0
-SCORE_PWH_PWL = 0.0  # Без confluence — календарная метка = мусор
-SCORE_PMH_PML = 0.0  # Без confluence — календарная метка = мусор
-SCORE_PDH_PDL = 0.0  # Без confluence — календарная метка = мусор
+SCORE_PWH_PWL = 5.0  # Раньше было 0 (без confluence = мусор) — по факту бэктестов
+                       # одиночные PWL стабильно давали положительный результат
+                       # каждый месяц, поднято до 5, чтобы не отсеивались фильтром MIN_SCORE
+SCORE_PMH_PML = 5.0  # См. комментарий к SCORE_PWH_PWL — та же причина
+SCORE_PDH_PDL = 0.0  # Без confluence — календарная метка = мусор (слой не используется в build_levels)
 CONFLUENCE_BONUS = 2.0  # бонус за совпадение с find_peaks или POC
 POC_BONUS = 1.0  # дополнительный бонус если POC совпал с существующей зоной
+# Пол score для зон, где сошлись календарные уровни РАЗНЫХ таймфреймов
+# (месяц + неделя, напр. 1M_low_PML + 1W_low_PWL) — временная мера, до
+# полного пересмотра скоринга. См. merge_overlapping_zones().
+MIN_SCORE_MONTH_WEEK_CONFLUENCE = 9.0
 
 # find_peaks-слой (lookahead-фильтр - старый алгоритм)
 IMPULSE_ATR_MULTIPLIER = 2.5
@@ -292,12 +303,24 @@ def _extract_period_extremes(df_1d, freq, n_periods_back, current_price, atr_1d,
             reactions = _count_reactions(df_1d, idx_ref, price, atr_1d, is_support, current_idx)
             vol_bonus = _volume_bonus(df_1d, idx_ref)
 
-            # Определяем base_score: 0 по умолчанию (без confluence = мусор)
-            # Confluence добавится через merge_overlapping_zones и _apply_poc_confluence
+            # Определяем base_score из константы наверху файла (SCORE_PMH_PML/
+            # SCORE_PWH_PWL) — раньше тут был захардкожен 0.0, из-за чего
+            # правка констант (0 -> 5, по факту бэктестов) никогда не применялась
+            # к реальным зонам. См. историю обсуждения проекта.
             date_str = period_start.strftime('%Y-%m-%d')
-            base_score = 0.0  # PWH/PWL/PMH/PML БЕЗ confluence = score 0
+            base_score = SCORE_PMH_PML if freq == 'ME' else SCORE_PWH_PWL
 
-            zone = _build_zone(price, atr_1d, base_score, label, date_str,
+            # Ширина зоны — тот же принцип, что уже используется для MACRO-слоя
+            # (см. _extract_macro_swings): фиксированный % от цены САМОЙ ТОЧКИ
+            # (хай/лоу закрытого периода), а не от живого atr_1d. atr_1d каждый
+            # 12ч-пересчёт немного другой (скользящее окно), из-за чего границы
+            # PMH/PML/PWH/PWL слегка дрожали между снимками, даже когда сама
+            # точка (price) уже давно зафиксирована. reactions/mitigated ниже
+            # по-прежнему используют живой atr_1d — это другой расчёт (допуск
+            # на касание), его не трогаем.
+            zone_width_ref = price * 0.015
+
+            zone = _build_zone(price, zone_width_ref, base_score, label, date_str,
                                 mitigated=mitigated, reaction_count=reactions, 
                                 volume_bonus=vol_bonus)
             zone['_is_support'] = is_support
@@ -525,7 +548,13 @@ def merge_overlapping_zones(zones):
     а за подтверждение find_peaks/POC отвечают отдельные функции ПОСЛЕ merge.
 
     Исключение: если слились РАЗНЫЕ по природе источники (календарный + find_peaks),
-    это настоящая confluence -> +CONFLUENCE_BONUS один раз."""
+    это настоящая confluence -> +CONFLUENCE_BONUS один раз.
+
+    Отдельный, более сильный случай: если в одной зоне сошлись календарные
+    уровни РАЗНЫХ таймфреймов (месяц + неделя, например 1M_low_PML + 1W_low_PWL) -
+    это структурная confluence сама по себе, без find_peaks/POC. Временно (до
+    полного пересмотра скоринга) даём такой зоне пол MIN_SCORE_MONTH_WEEK_CONFLUENCE,
+    ниже которого score упасть не может."""
     if not zones:
         return []
 
@@ -535,6 +564,8 @@ def merge_overlapping_zones(zones):
         z['base_score'] = z.get('score', 0.0)
         z['_has_peak'] = 'extreme_peak' in z.get('type', '')
         z['_has_calendar'] = any(t in z.get('type', '') for t in ('PMH', 'PML', 'PWH', 'PWL'))
+        z['_has_month_cal'] = any(t in z.get('type', '') for t in ('PMH', 'PML'))
+        z['_has_week_cal'] = any(t in z.get('type', '') for t in ('PWH', 'PWL'))
 
     merged = [sorted_zones[0]]
 
@@ -545,10 +576,16 @@ def merge_overlapping_zones(zones):
             last['base_score'] = max(last['base_score'], current['base_score'])
             last['_has_peak'] = last['_has_peak'] or current['_has_peak']
             last['_has_calendar'] = last['_has_calendar'] or current['_has_calendar']
+            last['_has_month_cal'] = last['_has_month_cal'] or current['_has_month_cal']
+            last['_has_week_cal'] = last['_has_week_cal'] or current['_has_week_cal']
 
             # Настоящая confluence: календарный уровень совпал с find_peaks -> бонус ОДИН раз
             confluence = CONFLUENCE_BONUS if (last['_has_peak'] and last['_has_calendar']) else 0.0
             last['score'] = round(last['base_score'] + confluence, 2)
+
+            # Пол для месяц+неделя confluence (см. докстринг)
+            if last['_has_month_cal'] and last['_has_week_cal']:
+                last['score'] = max(last['score'], MIN_SCORE_MONTH_WEEK_CONFLUENCE)
 
             if current.get('type') and last.get('type') and current['type'] not in last['type']:
                 last['type'] = f"{last['type']} + {current['type']}"
@@ -560,6 +597,8 @@ def merge_overlapping_zones(zones):
         m.pop('base_score', None)
         m.pop('_has_peak', None)
         m.pop('_has_calendar', None)
+        m.pop('_has_month_cal', None)
+        m.pop('_has_week_cal', None)
 
     return merged
 
@@ -605,7 +644,60 @@ def resolve_cross_overlaps(supports, resistances):
     return final_sup, final_res
 
 
-def build_levels(df_1d, df_4h, coin, current_idx=None):
+def _extract_macro_swings(df, current_price, max_distance, base_score, label_prefix):
+    """Ищет структурные макро-свинги (по теням) и отсеивает пробитые."""
+    if df is None or len(df) < 5:
+        return []
+        
+    work = df.copy()
+    # Фрактал: 2 свечи слева, 1 центр, 2 справа
+    work['is_swing_low'] = (work['low'] == work['low'].rolling(window=5, center=True).min())
+    work['is_swing_high'] = (work['high'] == work['high'].rolling(window=5, center=True).max())
+    
+    zones = []
+    
+    # Проходим по графику, отступив края
+    for i in range(2, len(work) - 2):
+        ts = work['timestamp'].iloc[i]
+        date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
+        
+        # --- Поддержка (LONG) ---
+        if work['is_swing_low'].iloc[i]:
+            price = float(work['low'].iloc[i])
+            if abs(price - current_price) <= max_distance:
+                # Проверяем, пробит ли уровень закрытием (mitigated)
+                mitigated = False
+                future_closes = work['close'].iloc[i + 3:]
+                if not future_closes.empty and (future_closes < price).any():
+                    mitigated = True
+                    
+                if not mitigated:
+                    # Узкая зона (1.5% от цены), так как ATR на макро слишком широкий
+                    atr_fake = price * 0.015 
+                    zone = _build_zone(price, atr_fake, base_score, f"{label_prefix}_Support", date_str, False)
+                    zone['_is_support'] = True
+                    zone['class'] = 'MACRO'
+                    zones.append(zone)
+                    
+        # --- Сопротивление (SHORT) ---
+        if work['is_swing_high'].iloc[i]:
+            price = float(work['high'].iloc[i])
+            if abs(price - current_price) <= max_distance:
+                mitigated = False
+                future_closes = work['close'].iloc[i + 3:]
+                if not future_closes.empty and (future_closes > price).any():
+                    mitigated = True
+                    
+                if not mitigated:
+                    atr_fake = price * 0.015
+                    zone = _build_zone(price, atr_fake, base_score, f"{label_prefix}_Resistance", date_str, False)
+                    zone['_is_support'] = False
+                    zone['class'] = 'MACRO'
+                    zones.append(zone)
+                    
+    return zones
+
+def build_levels(df_1M, df_1W, df_1d, df_4h, coin, current_idx=None):
     """
     Главная функция модуля.
 
@@ -634,6 +726,13 @@ def build_levels(df_1d, df_4h, coin, current_idx=None):
 
     all_zones = []
 
+    # --- НОВОЕ: НЕЗАВИСИМЫЕ МАКРО-УРОВНИ (MACRO) ---
+    # max_distance умножаем, чтобы макро-радар видел дальше локального
+    if df_1M is not None:
+        all_zones += _extract_macro_swings(df_1M, current_price, max_distance * 2.5, 5.0, "1M_MACRO")
+    if df_1W is not None:
+        all_zones += _extract_macro_swings(df_1W, current_price, max_distance * 1.5, 4.0, "1W_MACRO")
+    
     # 1. PMH/PML (месячные - старший масштаб)
     all_zones += _extract_period_extremes(
         df_1d, 'ME', PERIODS_MONTHS_BACK, current_price, atr_1d, max_distance,

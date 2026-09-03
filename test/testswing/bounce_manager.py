@@ -18,7 +18,7 @@ class BounceManager:
         # Если середины двух уровней (одной стороны, LONG/LONG или SHORT/SHORT)
         # отличаются меньше чем на этот % — считаем их одним и тем же уровнем
         # (дрожание пересчёта базы раз в 12ч), не заводим второй вотчер.
-        'LEVEL_DEDUP_TOLERANCE_PCT': 2.0,
+        'LEVEL_DEDUP_TOLERANCE_PCT': 4.0,
         # "Кладбище": на сколько % цена должна уйти от мёртвой (DEAD/TRIGGERED)
         # зоны, чтобы система перестала считать новый уровень на этом месте клоном.
         'GRAVEYARD_ESCAPE_PCT': 5.0,
@@ -187,20 +187,64 @@ class BounceManager:
             current_level_ids.add(self._level_id(r, 'SHORT'))
         self.parent.clear_dead_watchers(current_level_ids)
 
+    def _get_active_climax_id(self):
+        """Фокус держится на уровне с максимальной стадией.
+        Новый уровень заберет фокус, только когда дойдет до стадии SEARCHING."""
+        STAGE_RANK = {'WAIT_MAX': 1, 'WAIT_BUFFER': 2, 'SEARCHING': 3}
+        candidates = [
+            (lid, w) for lid, w in self._watchers.items()
+            if getattr(w, 'trade_type', None) == 'SHORT'
+            and getattr(w, 'climax_stage', None) in STAGE_RANK
+            and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED")
+        ]
+        if not candidates:
+            return None
+        # Сначала сравниваем стадию, при равной стадии выигрывает самый верхний (max)
+        return max(candidates, key=lambda item: (STAGE_RANK[item[1].climax_stage], item[1].max))[0]
+
+    def get_active_climax_short(self):
+        active_id = self._get_active_climax_id()
+        if active_id is None:
+            return None, None, None, None
+            
+        best = self._watchers.get(active_id)
+        if best is None:
+            return None, None, None, None
+            
+        return best.min, best.max, None, None
+
+
+    def _get_focus_level_id(self, trade_type):
+        """Единый центр принятия решений по фокусу для всех стратегий и сторон."""
+        # Новая логика для шортов в режиме Climax
+        if trade_type == 'SHORT' and BounceWatcher.CONFIG.get('SHORT_CLIMAX_MODE'):
+            STAGE_RANK = {'WAIT_MAX': 1, 'WAIT_BUFFER': 2, 'SEARCHING': 3}
+            candidates = [
+                (lid, w) for lid, w in self._watchers.items()
+                if getattr(w, 'trade_type', None) == 'SHORT'
+                and getattr(w, 'climax_stage', None) in STAGE_RANK
+                and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED")
+            ]
+            if not candidates:
+                return None
+            return max(candidates, key=lambda item: (STAGE_RANK[item[1].climax_stage], item[1].max))[0]
+
+        # Старая логика для лонгов
+        candidates = [
+            (lid, w) for lid, w in self._watchers.items()
+            if getattr(w, 'trade_type', None) == trade_type
+            and getattr(w, 'state', None) == "SCANNING"
+            and getattr(w, 'pierced_bottom', False)
+            and getattr(w, 'last_pierce_time', None) is not None
+        ]
+        if not candidates:
+            return None
+        if trade_type == 'LONG':
+            return max(candidates, key=lambda item: (item[1].last_pierce_time, -item[1].min))[0]
+        else:
+            return max(candidates, key=lambda item: (item[1].last_pierce_time, item[1].max))[0]
+
     def get_zone_drawing(self, c_close, allow_long=True, allow_short=True):
-        """Возвращает (sup_min, sup_max, res_min, res_max) — границы зоны,
-        которая СЕЙЧАС в фокусе (последний реально пробитый живой уровень —
-        тот же принцип, что определяет право на вход, см. _get_focus_level_id),
-        или None там, где живых вотчеров нет / сторона выключена.
-
-        Раньше рисовалась просто ближайшая к цене живая зона — из-за этого
-        линия скакала (зигзаг) каждый раз, когда две зоны оказывались на
-        похожем расстоянии от цены. Теперь линия висит на одном уровне,
-        пока он в фокусе, и переезжает только когда фокус реально сменился
-        (новый пробой перехватил приоритет) — так же, как переключаются входы.
-
-        Тестер сам решает, писать ли NaN вместо None — менеджер про numpy/
-        pandas ничего не знает."""
         sup_min = sup_max = res_min = res_max = None
 
         if allow_long:
@@ -210,8 +254,6 @@ class BounceManager:
                 if w is not None:
                     sup_min, sup_max = w.min, w.max
             else:
-                # Ещё никто не пробит — фокуса нет, откатываемся на ближайшую
-                # живую зону, просто чтобы было что показать до первого пробоя.
                 active_longs = [w for w in self._watchers.values()
                                  if getattr(w, 'trade_type', None) == 'LONG'
                                  and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED")]
@@ -235,48 +277,8 @@ class BounceManager:
 
         return sup_min, sup_max, res_min, res_max
 
-    def _get_focus_level_id(self, trade_type):
-        """Среди уже пробитых и ещё живых (SCANNING) вотчеров этой стороны —
-        какой пробит последним по времени. Только он имеет право на вход в
-        этот момент; остальные наблюдаются (сканируются, событие пишется),
-        но сделку не открывают, пока сами не станут последним пробитым, или
-        пока текущий фокус не умрёт (TRIGGERED/DEAD/RUNAWAY навсегда).
-
-        Возвращает None, если ещё никто из живых вотчеров этой стороны не был
-        пробит — тогда ограничение снимается (первый пробой всегда свободен)."""
-        candidates = [
-            (lid, w) for lid, w in self._watchers.items()
-            if getattr(w, 'trade_type', None) == trade_type
-            and getattr(w, 'state', None) == "SCANNING"
-            and getattr(w, 'pierced_bottom', False)
-            and getattr(w, 'last_pierce_time', None) is not None
-        ]
-        if not candidates:
-            return None
-        if trade_type == 'LONG':
-            # При равном времени пробоя — предпочитаем более глубокий (низкий) уровень
-            return max(candidates, key=lambda item: (item[1].last_pierce_time, -item[1].min))[0]
-        else:
-            return max(candidates, key=lambda item: (item[1].last_pierce_time, item[1].max))[0]
-
     def process_candle(self, c_low, c_high, c_close, current_supports, current_resistances,
-                        df_slice, allow_long=True, allow_short=True):
-        """
-        Единая точка входа на одну свечу для BOUNCE. Заменяет собой то, что
-        раньше было двумя отдельными блоками в test_simulator.py (LONG и SHORT):
-        сбор уровней (активные + только что тронутые), вызов evaluate_bounce
-        для каждого, сборка решений на вход и событий для отрисовки.
-
-        Тестеру НЕ нужно знать про touched/evaluate_bounce_side/события вотчера —
-        он просто зовёт это один раз и слепо исполняет то, что вернулось.
-
-        Возвращает (orders, draw_events):
-          orders      — список dict {'trade_type', 'level', 'decision'} с
-                        allow=True, готовых к self._try_enter(...) в тестере.
-          draw_events — список (имя_колонки, значение) для слепой записи в
-                        self.original_df — менеджер сам решил, что произошло
-                        и в какую колонку это рисуется, тестер просто копирует.
-        """
+                        df_slice, allow_long=True, allow_short=True, c_atr=0.0):
         self._update_graveyard(c_close)
 
         orders = []
@@ -296,6 +298,8 @@ class BounceManager:
                 draw_events.append(('bounce_good', c_close))
             elif et == "RUNAWAY":
                 draw_events.append(('bounce_release', c_close))
+            elif et in ("CLIMAX_NEAR_BREACH", "CLIMAX_FAR_BREACH"):
+                draw_events.append(('climax_breach', c_high))
 
         if allow_long:
             focus_long_id = self._get_focus_level_id('LONG')
@@ -304,7 +308,7 @@ class BounceManager:
                     'LONG', touched_long,
                     lambda lid, l: self.evaluate_bounce(
                         l, df_slice, 'LONG', current_resistances,
-                        is_focus=(focus_long_id is None or lid == focus_long_id))):
+                        is_focus=(focus_long_id is None or lid == focus_long_id), c_atr=c_atr)):
                 _collect_event(level_id, 'LONG')
                 if decision.get('allow'):
                     actual_lvl = next((s for s in current_supports if s['min'] == lvl['min'] and s['max'] == lvl['max']), lvl)
@@ -317,18 +321,36 @@ class BounceManager:
                     'SHORT', touched_short,
                     lambda lid, l: self.evaluate_bounce(
                         l, df_slice, 'SHORT', current_supports,
-                        is_focus=(focus_short_id is None or lid == focus_short_id))):
+                        is_focus=(focus_short_id is None or lid == focus_short_id), c_atr=c_atr,
+                        same_side_levels=current_resistances)):
                 _collect_event(level_id, 'SHORT')
                 if decision.get('allow'):
                     actual_lvl = next((r for r in current_resistances if r['min'] == lvl['min'] and r['max'] == lvl['max']), lvl)
                     orders.append({'trade_type': 'SHORT', 'level': actual_lvl, 'decision': decision})
 
-        return orders, draw_events
+            # === ЖЕСТКОЕ УБИЙСТВО НИЖНИХ УРОВНЕЙ ===
+            if BounceWatcher.CONFIG.get('SHORT_CLIMAX_MODE'):
+                searching_shorts = [
+                    w for w in self._watchers.values() 
+                    if getattr(w, 'trade_type', None) == 'SHORT' 
+                    and getattr(w, 'climax_stage', None) == 'SEARCHING'
+                    and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED")
+                ]
+                if searching_shorts:
+                    highest_max = max(w.max for w in searching_shorts)
+                    for w in self._watchers.values():
+                        if getattr(w, 'trade_type', None) == 'SHORT' and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED"):
+                            if w.max < highest_max:
+                                w.state = "DEAD"
+                                w.last_event_type = "RUNAWAY"
+                                w._dbg(f"🔴 ОТМЕНА | Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.")
 
+        return orders, draw_events
     # -------------------------------------------------------------------------
     # BOUNCE (Отбой от макро-уровня)
     # -------------------------------------------------------------------------
-    def evaluate_bounce(self, level, df, trade_type, all_opposite_levels, is_focus=True):
+    def evaluate_bounce(self, level, df, trade_type, all_opposite_levels, is_focus=True,
+                        c_atr=0.0, same_side_levels=None):
         level_id = self._level_id(level, trade_type)
         if level_id in self.burned_levels:
             return self._deny("Level already burned")
@@ -343,6 +365,16 @@ class BounceManager:
                     "🪦 ВОСКРЕС | Эта зона уже была здесь и умерла раньше, "
                     "но цена уходила и вернулась — считаем новым сетапом"
                 )
+            if trade_type == 'SHORT' and same_side_levels:
+                # Дальняя (следующая по цене выше) resistance-зона для SHORT
+                # climax-логики — считается ОДИН раз, при рождении вотчера,
+                # и дальше не меняется (как и сама зона вотчера).
+                candidates = [r for r in same_side_levels if r['min'] > level['max']]
+                if candidates:
+                    farthest_near = min(candidates, key=lambda r: r['min'] - level['max'])
+                    self._watchers[level_id].paired_level = dict(farthest_near)
+                # Если candidates пуст — paired_level остаётся None (задан в
+                # __init__ вотчера), это и есть "нет верхней зоны — не торгуем".
         watcher = self._watchers[level_id]
 
         if len(df) < 52:
@@ -359,7 +391,7 @@ class BounceManager:
         signal = watcher.update(
             c_open, c_high, c_low, c_close, c_vol, baseline_vol,
             all_opposite_levels, level_score=level.get('score', 0), candle_time=df.index[-1],
-            is_focus=is_focus
+            is_focus=is_focus, c_atr=c_atr
         )
 
         if watcher.state in ("DEAD", "TRIGGERED"):

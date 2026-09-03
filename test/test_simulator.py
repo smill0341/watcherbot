@@ -54,7 +54,7 @@ GLOBAL_SKIPPED_COINS = []
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "LIT"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "BTC"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 4500
@@ -71,7 +71,7 @@ VBOTTOM_BREATH_BUFFER_PCT = 3.0  # должно совпадать с CONFIG['BR
 # --- DIAGNOSTIC: проверка качества точки входа без SL ---
 # Если True: SL игнорируется, позиция держится до TP или до конца дедлайна.
 DISABLE_SL_DIAGNOSTIC = True
-DIAGNOSTIC_DEADLINE_DAYS = 15
+DIAGNOSTIC_DEADLINE_DAYS = 12
 
 ALLOW_LONG_TRADES = True
 ALLOW_SHORT_TRADES = True
@@ -105,6 +105,9 @@ class SmartSniperUniversal(Strategy):
 
         self.tracked_support = None
         self.tracked_resistance = None
+        self._draw_sup_zones = []  # топ-2 ближайшие к цене support-зоны НА МОМЕНТ последнего
+        self._draw_res_zones = []  # 12-часового пересчёта — обновляются только на пересчёте,
+                                     # не каждую свечу, чтобы линии не скакали (см. get_zone_drawing)
 
         high_low = pd.Series(self.data.High) - pd.Series(self.data.Low)
         self.atr = self.I(SMA, high_low, 14) 
@@ -114,13 +117,19 @@ class SmartSniperUniversal(Strategy):
         def EMA(values, n):
             return pd.Series(values).ewm(span=n, adjust=False).mean()
 
-        self.ema_4h_200 = self.I(EMA, self.data.Close, 3200)
+        self.ema_4h_200 = self.I(EMA, self.data.Close, 3200, name="EMA 4H", overlay=True, color='cyan')
 
-        self.draw_sup_max = self.I(lambda: self.data.df['sup_max'], name="Support (Ближняя)", overlay=True, color='lime')
-        self.draw_sup_min = self.I(lambda: self.data.df['sup_min'], name="Support (Дальняя)", overlay=True, color='darkgreen')
-        
-        self.draw_res_min = self.I(lambda: self.data.df['res_min'], name="Resist (Ближняя)", overlay=True, color='red')
-        self.draw_res_max = self.I(lambda: self.data.df['res_max'], name="Resist (Дальняя)", overlay=True, color='darkred')
+        if STRATEGY == "BOUNCE":
+            self.draw_sup_max = self.I(lambda: self.data.df['sup_max'], name="Support (ближняя)", overlay=True, color='lime')
+            self.draw_sup_min = self.I(lambda: self.data.df['sup_min'], name="Support (дальняя)", overlay=True, color='darkgreen')
+            self.draw_res_min = self.I(lambda: self.data.df['res_min'], name="Resist (ближняя)", overlay=True, color='red')
+            self.draw_res_max = self.I(lambda: self.data.df['res_max'], name="Resist (дальняя)", overlay=True, color='darkred')
+        else:
+            self.draw_sup_max = self.I(lambda: self.data.df['sup_max'], name="Support (Ближняя)", overlay=True, color='lime')
+            self.draw_sup_min = self.I(lambda: self.data.df['sup_min'], name="Support (Дальняя)", overlay=True, color='darkgreen')
+
+            self.draw_res_min = self.I(lambda: self.data.df['res_min'], name="Resist (Ближняя)", overlay=True, color='red')
+            self.draw_res_max = self.I(lambda: self.data.df['res_max'], name="Resist (Дальняя)", overlay=True, color='darkred')
         
         # Инициализируем маркеры ТОЛЬКО если строим график
         if TARGET_COIN.upper() != "ALL":
@@ -140,6 +149,7 @@ class SmartSniperUniversal(Strategy):
                 self.draw_bounce_scan = self.I(lambda: self.data.df['bounce_scan'], name="SCAN BOUNCE", overlay=True, scatter=True, color='yellow')
                 self.draw_bounce_good = self.I(lambda: self.data.df['bounce_good'], name="ВХОД BOUNCE", overlay=True, scatter=True, color='lime')
                 self.draw_bounce_release = self.I(lambda: self.data.df['bounce_release'], name="СТОП (Отбой/Отпущен)", overlay=True, scatter=True, color='red')
+                self.draw_climax_breach = self.I(lambda: self.data.df['climax_breach'], name="CLIMAX: пробит уровень", overlay=True, scatter=True, color='dodgerblue')
                 
             if STRATEGY in ("V_RED_TOP", "V_RED_CASCADE"):
                 self.draw_red_scan = self.I(lambda: self.data.df['red_scan'], name="SCAN", overlay=True, scatter=True, color='yellow')
@@ -151,6 +161,14 @@ class SmartSniperUniversal(Strategy):
             self.original_df['atr'] = self.atr
 
         self.test_start_dt = pd.Timestamp(TEST_START_DATE) if TEST_START_DATE else None
+        # Конец календарного месяца TEST_START_DATE — после этой даты НОВЫЕ
+        # сделки не открываются (даже если уровень пробит), но уже открытые
+        # позиции продолжают жить и закрываются как обычно (TP/SL/дедлайн) —
+        # данные после этой даты нужны только на "дожитие", не на новый вход.
+        self.trade_entry_cutoff = (
+            (self.test_start_dt + pd.offsets.MonthEnd(0)).normalize() + pd.Timedelta(hours=23, minutes=59)
+            if self.test_start_dt else None
+        )
 
     def next(self):
         global GLOBAL_DEBUG_STATS, CURRENT_SUPPORTS, CURRENT_RESISTANCES, GLOBAL_TIMELINE, TARGET_COIN_CURRENT
@@ -205,7 +223,7 @@ class SmartSniperUniversal(Strategy):
 
                 if STRATEGY == "BOUNCE":
                     self.manager.bounce.on_levels_refreshed(CURRENT_SUPPORTS, CURRENT_RESISTANCES)
-                    
+
             elif STRATEGY in ("V_BOTTOM", "V_GREEN_BOTTOM"):
                 self.current_period_key = period_key
 
@@ -214,13 +232,12 @@ class SmartSniperUniversal(Strategy):
             # Используем .loc для безопасной записи по индексу времени
             if self.original_df is not None and current_time in self.original_df.index:
                 if STRATEGY == "BOUNCE":
-                    # Источник — живые вотчеры менеджера (то же самое, что решает сделки).
                     c_close_draw = float(self.data.Close[-1])
                     sup_min, sup_max, res_min, res_max = self.manager.bounce.get_zone_drawing(
                         c_close_draw, allow_long=ALLOW_LONG_TRADES, allow_short=ALLOW_SHORT_TRADES
                     )
-                    self.original_df.loc[current_time, 'sup_max'] = sup_max if sup_max is not None else np.nan
                     self.original_df.loc[current_time, 'sup_min'] = sup_min if sup_min is not None else np.nan
+                    self.original_df.loc[current_time, 'sup_max'] = sup_max if sup_max is not None else np.nan
                     self.original_df.loc[current_time, 'res_min'] = res_min if res_min is not None else np.nan
                     self.original_df.loc[current_time, 'res_max'] = res_max if res_max is not None else np.nan
                 else:
@@ -385,17 +402,18 @@ class SmartSniperUniversal(Strategy):
                     self.tracked_resistance = None
 
         if STRATEGY == "BOUNCE":
-            # Один вызов на свечу — менеджер сам собирает уровни, вызывает вотчеры,
-            # решает, кому входить, и что рисовать. Тестер это просто исполняет.
-            orders, draw_events = self.manager.bounce.process_candle(
-                c_low, c_high, c_close, CURRENT_SUPPORTS, CURRENT_RESISTANCES, df_slice,
-                allow_long=can_long, allow_short=can_short
-            )
-            if self.original_df is not None:
-                for col, val in draw_events:
-                    self.original_df.at[current_time, col] = val
-            for order in orders:
-                self._try_enter(order['level'], order['trade_type'], c_close, c_atr, order['decision'])
+            # Полностью отключаем сканер после конца месяца
+            if self.trade_entry_cutoff is None or current_time <= self.trade_entry_cutoff:
+                orders, draw_events = self.manager.bounce.process_candle(
+                    c_low, c_high, c_close, CURRENT_SUPPORTS, CURRENT_RESISTANCES, df_slice,
+                    allow_long=can_long, allow_short=can_short, c_atr=c_atr
+                )
+                if self.original_df is not None:
+                    for col, val in draw_events:
+                        self.original_df.at[current_time, col] = val
+
+                for order in orders:
+                    self._try_enter(order['level'], order['trade_type'], c_close, c_atr, order['decision'])
 
         if can_long:
             if STRATEGY in ("VOLUME_REVERSAL", "PIT_CLIMAX", "PANIC_TRAP", "V_BOTTOM", "V_GREEN_BOTTOM", "BREAKOUT_RETEST"):
@@ -581,18 +599,32 @@ class SmartSniperUniversal(Strategy):
             gap_pct = ((level['min'] - closest) / closest) * 100 if closest else 999.0
             dist_from_level_pct = ((current_price - level['min']) / level['min']) * 100
 
-        ema_val = self.ema_4h_200[-1]
-        ema_dist_pct = ((current_price - ema_val) / ema_val) * 100 if ema_val and ema_val > 0 else 0.0
-
-        # Наклон EMA за неделю: отрицательное = вниз, положительное = вверх,
-        # около нуля = плоско. 672 = 7 дней * 24ч * 4 (15-минутные свечи).
-        EMA_SLOPE_LOOKBACK = 672
-        ema_series = self.ema_4h_200
-        if len(ema_series) > EMA_SLOPE_LOOKBACK and ema_series[-EMA_SLOPE_LOOKBACK] and ema_series[-EMA_SLOPE_LOOKBACK] > 0:
-            ema_week_ago = ema_series[-EMA_SLOPE_LOOKBACK]
-            ema_slope_pct = ((ema_val - ema_week_ago) / ema_week_ago) * 100
+        # STRATEGY == "BOUNCE" → дневная EMA из отдельного файла (daily_ema.py),
+        # обновляется раз в 12ч вместе с уровнями (self.current_period_key).
+        # Любая другая стратегия → БЕЗ ИЗМЕНЕНИЙ, старый расчёт на 15m как был.
+        if STRATEGY == "BOUNCE":
+            period_key = getattr(self, 'current_period_key', None)
+            ema_entry = GLOBAL_EMA_TIMELINE.get(period_key, {}).get(TARGET_COIN_CURRENT.upper()) if period_key else None
+            if ema_entry:
+                ema_val = ema_entry.get('ema_daily')
+                ema_slope_pct = ema_entry.get('ema_slope_pct', 0.0)
+            else:
+                ema_val = None
+                ema_slope_pct = 0.0
+            ema_dist_pct = ((current_price - ema_val) / ema_val) * 100 if ema_val and ema_val > 0 else 0.0
         else:
-            ema_slope_pct = 0.0
+            ema_val = self.ema_4h_200[-1]
+            ema_dist_pct = ((current_price - ema_val) / ema_val) * 100 if ema_val and ema_val > 0 else 0.0
+
+            # Наклон EMA за неделю: отрицательное = вниз, положительное = вверх,
+            # около нуля = плоско. 672 = 7 дней * 24ч * 4 (15-минутные свечи).
+            EMA_SLOPE_LOOKBACK = 672
+            ema_series = self.ema_4h_200
+            if len(ema_series) > EMA_SLOPE_LOOKBACK and ema_series[-EMA_SLOPE_LOOKBACK] and ema_series[-EMA_SLOPE_LOOKBACK] > 0:
+                ema_week_ago = ema_series[-EMA_SLOPE_LOOKBACK]
+                ema_slope_pct = ((ema_val - ema_week_ago) / ema_week_ago) * 100
+            else:
+                ema_slope_pct = 0.0
 
         current_rsi = float(self.data.rsi[-1]) if hasattr(self.data, 'rsi') and not np.isnan(self.data.rsi[-1]) else 0.0
 
@@ -749,6 +781,22 @@ except Exception as e:
 
 first_time_key = list(GLOBAL_TIMELINE.keys())[0] if GLOBAL_TIMELINE else None
 macro_db = GLOBAL_TIMELINE.get(first_time_key, {}) if first_time_key else {}
+
+# --- ЗАГРУЗКА ДНЕВНОЙ EMA (см. daily_ema.py) — ОТДЕЛЬНЫЙ файл, отдельный
+# от уровней. Используется ТОЛЬКО для STRATEGY == "BOUNCE" (см. _try_enter) —
+# self.ema_4h_200 (15m, старый расчёт) остаётся как есть и продолжает питать
+# все остальные стратегии без единого изменения, чтобы их точно не задеть.
+try:
+    ema_timeline_filename = f'ema_timeline_{month_label}.json'
+    ema_timeline_path = os.path.join(r'D:\bot\test', ema_timeline_filename)
+    with open(ema_timeline_path, 'r') as f:
+        GLOBAL_EMA_TIMELINE = json.load(f)
+    print(f"✅ Подгружена дневная EMA: {ema_timeline_filename}")
+except Exception as e:
+    print(f"⚠️ Файл {ema_timeline_filename} не найден в D:\\bot\\test\\ — "
+          f"для BOUNCE ema_dist/ema_slope в отчёте будут пустыми (0). "
+          f"Запусти daily_ema.py, если нужна дневная EMA в отчёте.")
+    GLOBAL_EMA_TIMELINE = {}
 
 
 def print_trade_log(coin, tr, trade_type_filter=None):
@@ -927,6 +975,7 @@ if TARGET_COIN.upper() == "ALL":
         df['bounce_scan'] = np.nan
         df['bounce_good'] = np.nan
         df['bounce_release'] = np.nan
+        df['climax_breach'] = np.nan
         
         df['red_scan'] = np.nan
         df['red_peak'] = np.nan
@@ -1127,6 +1176,13 @@ else:
         if df.empty:
             print("❌ Ошибка загрузки данных.")
         else:
+            if TEST_START_DATE:
+                start_dt = pd.to_datetime(TEST_START_DATE)
+                warmup_dt = start_dt - pd.Timedelta(days=WARMUP_DAYS)
+                month_end = (start_dt + pd.offsets.MonthEnd(0)).normalize() + pd.Timedelta(hours=23, minutes=59)
+                tail_dt = month_end + pd.Timedelta(days=DIAGNOSTIC_DEADLINE_DAYS)
+                df = df.loc[warmup_dt:tail_dt].copy()
+
             df['sup_max'] = np.nan
             df['sup_min'] = np.nan
             df['res_min'] = np.nan
@@ -1151,6 +1207,7 @@ else:
             df['bounce_sweep'] = np.nan
             df['bounce_scan'] = np.nan
             df['bounce_release'] = np.nan
+            df['climax_breach'] = np.nan
             
             df['red_scan'] = np.nan
             df['red_peak'] = np.nan

@@ -39,18 +39,80 @@ if TEST_ROOT not in sys.path:
 
 import pandas as pd
 from modules.cryptano.utils.crypto_utils import exchange
-from testswing.levels_builder import build_levels
+from testswing.levels_builder import build_levels, compress_fat_zones, CONFLUENCE_BONUS, MIN_SCORE_MONTH_WEEK_CONFLUENCE
 
 # =====================================================================
 # НАСТРОЙКИ
 # =====================================================================
 CONFIG = {
-    'COINS': ['XRP'],                     # список монет
+    'COINS': ['UNI'],                     # список монет
     'DATE_START': "2026-07-01 00:00:00",  # начало периода
     'DATE_END': "2026-07-31 00:00:00",    # конец периода
     'STEP_HOURS': 12,                     # шаг пересчёта — 12ч = как у настоящего бота
     'OUTPUT_CSV': "count_levels_out.csv",
+    # Допуск на слияние БЛИЗКИХ (не обязательно физически пересекающихся) зон,
+    # % от цены. Обычный merge_overlapping_zones внутри build_levels сливает
+    # зоны только если они пересекаются — если между ними есть зазор, они так
+    # и остаются двумя отдельными записями, даже если это дрожание одного и
+    # того же уровня между соседними 12ч-пересчётами. Этот скрипт считает
+    # ВТОРОЙ, отдельный проход слияния поверх обычного результата — просто
+    # чтобы на цифрах увидеть, насколько сильно это сократило бы число зон,
+    # ничего не меняя в боевом levels_builder.py.
+    'ZONE_MERGE_DISTANCE_PCT': 4.0,
 }
+
+
+def merge_by_distance(zones, tolerance_pct):
+    """Второй проход слияния ПОВЕРХ уже готовых зон (после обычного
+    merge_overlapping_zones внутри build_levels). Та же логика подсчёта
+    score, что и в levels_builder.merge_overlapping_zones — но условие
+    слияния ослаблено: не только 'пересекается', а 'зазор между зонами
+    меньше tolerance_pct% от цены соседней зоны'."""
+    if not zones:
+        return []
+
+    sorted_zones = sorted(zones, key=lambda x: x['min'])
+
+    for z in sorted_zones:
+        z['base_score'] = z.get('score', 0.0)
+        z['_has_peak'] = 'extreme_peak' in z.get('type', '')
+        z['_has_calendar'] = any(t in z.get('type', '') for t in ('PMH', 'PML', 'PWH', 'PWL'))
+        z['_has_month_cal'] = any(t in z.get('type', '') for t in ('PMH', 'PML'))
+        z['_has_week_cal'] = any(t in z.get('type', '') for t in ('PWH', 'PWL'))
+
+    merged = [sorted_zones[0]]
+
+    for current in sorted_zones[1:]:
+        last = merged[-1]
+        gap_tolerance = last['max'] * (tolerance_pct / 100.0)
+        if current['min'] <= last['max'] + gap_tolerance:
+            last['max'] = max(last['max'], current['max'])
+            last['base_score'] = max(last['base_score'], current['base_score'])
+            last['_has_peak'] = last['_has_peak'] or current['_has_peak']
+            last['_has_calendar'] = last['_has_calendar'] or current['_has_calendar']
+            last['_has_month_cal'] = last['_has_month_cal'] or current['_has_month_cal']
+            last['_has_week_cal'] = last['_has_week_cal'] or current['_has_week_cal']
+
+            confluence = CONFLUENCE_BONUS if (last['_has_peak'] and last['_has_calendar']) else 0.0
+            last['score'] = round(last['base_score'] + confluence, 2)
+
+            if last['_has_month_cal'] and last['_has_week_cal']:
+                last['score'] = max(last['score'], MIN_SCORE_MONTH_WEEK_CONFLUENCE)
+
+            if current.get('type') and last.get('type') and current['type'] not in last['type']:
+                last['type'] = f"{last['type']} + {current['type']}"
+            last['reaction_count'] = max(last.get('reaction_count', 0), current.get('reaction_count', 0))
+        else:
+            merged.append(current)
+
+    for m in merged:
+        m.pop('base_score', None)
+        m.pop('_has_peak', None)
+        m.pop('_has_calendar', None)
+        m.pop('_has_month_cal', None)
+        m.pop('_has_week_cal', None)
+
+    return merged
 
 
 # =====================================================================
@@ -74,7 +136,7 @@ def _resolve_symbol(coin):
         exchange.load_markets()
     symbol_perp = f"{coin.upper()}/USDT:USDT"
     symbol_spot = f"{coin.upper()}/USDT"
-    return symbol_perp if symbol_perp in exchange.markets else symbol_spot
+    return symbol_perp if symbol_perp in exchange.markets else symbol_spot # type: ignore
 
 
 def _fetch_levels_at(symbol, coin, dt):
@@ -129,39 +191,52 @@ def run():
                 print(f"  {dt}: недостаточно данных — пропуск")
                 continue
 
-            supports = levels.get("supports", [])
-            resistances = levels.get("resistances", [])
+            supports_before = levels.get("supports", [])
+            resistances_before = levels.get("resistances", [])
 
-            # Краткая консольная сводка — только цифры, отсортировано по цене
-            sup_str = ", ".join(f"{z['min']:.4f}-{z['max']:.4f}[{z.get('type','?')}]" for z in sorted(supports, key=lambda z: z['min']))
-            res_str = ", ".join(f"{z['min']:.4f}-{z['max']:.4f}[{z.get('type','?')}]" for z in sorted(resistances, key=lambda z: z['min']))
-            print(f"  {dt} | supports({len(supports)}): {sup_str or '-'}")
-            print(f"  {' ' * len(str(dt))} | resistances({len(resistances)}): {res_str or '-'}")
+            tolerance = CONFIG['ZONE_MERGE_DISTANCE_PCT']
+            supports_after = compress_fat_zones(
+                merge_by_distance([dict(z) for z in supports_before], tolerance), coin
+            )
+            resistances_after = compress_fat_zones(
+                merge_by_distance([dict(z) for z in resistances_before], tolerance), coin
+            )
 
-            for z in supports:
-                rows.append({'date': dt, 'coin': coin, 'side': 'support',
-                             'min': z['min'], 'max': z['max'],
-                             'mid': (z['min'] + z['max']) / 2,
-                             'score': z.get('score', 0), 'type': z.get('type', '?'),
-                             'class': z.get('class', 'regular')})
-            for z in resistances:
-                rows.append({'date': dt, 'coin': coin, 'side': 'resistance',
-                             'min': z['min'], 'max': z['max'],
-                             'mid': (z['min'] + z['max']) / 2,
-                             'score': z.get('score', 0), 'type': z.get('type', '?'),
-                             'class': z.get('class', 'regular')})
+            # Краткая консольная сводка — только цифры, отсортировано по цене,
+            # плюс было/стало после доп. слияния по расстоянию.
+            sup_str = ", ".join(f"{z['min']:.4f}-{z['max']:.4f}[{z.get('type','?')}]" for z in sorted(supports_before, key=lambda z: z['min']))
+            res_str = ", ".join(f"{z['min']:.4f}-{z['max']:.4f}[{z.get('type','?')}]" for z in sorted(resistances_before, key=lambda z: z['min']))
+            print(f"  {dt} | supports({len(supports_before)}->{len(supports_after)}): {sup_str or '-'}")
+            print(f"  {' ' * len(str(dt))} | resistances({len(resistances_before)}->{len(resistances_after)}): {res_str or '-'}")
+
+            for stage, supports, resistances in (('before', supports_before, resistances_before),
+                                                  ('after', supports_after, resistances_after)):
+                for z in supports:
+                    rows.append({'date': dt, 'coin': coin, 'stage': stage, 'side': 'support',
+                                 'min': z['min'], 'max': z['max'],
+                                 'mid': (z['min'] + z['max']) / 2,
+                                 'score': z.get('score', 0), 'type': z.get('type', '?'),
+                                 'class': z.get('class', 'regular')})
+                for z in resistances:
+                    rows.append({'date': dt, 'coin': coin, 'stage': stage, 'side': 'resistance',
+                                 'min': z['min'], 'max': z['max'],
+                                 'mid': (z['min'] + z['max']) / 2,
+                                 'score': z.get('score', 0), 'type': z.get('type', '?'),
+                                 'class': z.get('class', 'regular')})
 
             time.sleep(0.3)  # чтобы не улететь в rate limit
 
     if rows:
         out_path = os.path.join(CURRENT_DIR, CONFIG['OUTPUT_CSV'])
         with open(out_path, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=['date', 'coin', 'side', 'min', 'max', 'mid', 'score', 'type', 'class'])
+            writer = csv.DictWriter(f, fieldnames=['date', 'coin', 'stage', 'side', 'min', 'max', 'mid', 'score', 'type', 'class'])
             writer.writeheader()
             writer.writerows(rows)
         print(f"\nСохранено: {out_path} ({len(rows)} строк)")
-        print("Откройте в Excel, отсортируйте по 'coin' -> 'side' -> 'mid' — "
-              "почти одинаковые зоны на соседних датах лягут рядом, дрожание видно сразу.")
+        print(f"Допуск слияния ZONE_MERGE_DISTANCE_PCT = {CONFIG['ZONE_MERGE_DISTANCE_PCT']}%")
+        print("Колонка 'stage': 'before' — как сейчас у бота, 'after' — с доп. слиянием близких зон.")
+        print("Откройте в Excel, отсортируйте по 'coin' -> 'side' -> 'stage' -> 'mid' — "
+              "видно и дрожание между датами, и разницу before/after сразу.")
 
     print("\nГотово.")
 

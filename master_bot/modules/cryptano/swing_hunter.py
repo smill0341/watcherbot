@@ -38,6 +38,23 @@ MIN_VOLUME_USD = 10_000_000
 
 _hunter_lock = threading.Lock()
 
+
+# Вынесено на уровень модуля (раньше жило только внутри build_macro_levels)
+# — build_levels_for_single_coin теперь тоже качает 1M/1W и должен так же
+# переживать rate-limit биржи, а не падать с первой ошибки.
+def _safe_fetch_ohlcv(sym, tf, lim):
+    for attempt in range(5):  # 5 попыток пробить блок
+        try:
+            return exchange.fetch_ohlcv(sym, timeframe=tf, limit=lim)
+        except Exception as e:
+            if "10006" in str(e) or "Rate Limit" in str(e) or "Too many visits" in str(e):
+                print(f"⚠️  Bybit Rate Limit. Ждем 4 сек (Попытка {attempt+1}/5)...")
+                time.sleep(4.0)
+            else:
+                raise e
+    raise Exception("Биржа заблокировала запросы после 5 попыток")
+
+
 def build_macro_levels(bot=None, admin_chat_id=None):
     print(f"[SWING HUNTER] Запуск генерации институциональных зон...")
     try:
@@ -70,38 +87,33 @@ def build_macro_levels(bot=None, admin_chat_id=None):
         # ещё жив в памяти — см. cleanup_ghost_watchers.py и обсуждение бага.
         macro_base = load_json(MACRO_LEVELS_FILE, default={})
         seen_coins = set()
-        
-        # Safe fetcher with retry logic against rate limits
-        def safe_fetch_ohlcv(sym, tf, lim):
-            for attempt in range(5):  # 5 попыток пробить блок
-                try:
-                    return exchange.fetch_ohlcv(sym, timeframe=tf, limit=lim)
-                except Exception as e:
-                    if "10006" in str(e) or "Rate Limit" in str(e) or "Too many visits" in str(e):
-                        print(f"⚠️  Bybit Rate Limit. Ждем 4 сек (Попытка {attempt+1}/5)...")
-                        time.sleep(4.0)
-                    else:
-                        raise e
-            raise Exception("Биржа заблокировала запросы после 5 попыток")
-        
+
         for symbol in valid_symbols:
             time.sleep(0.3)
             coin = symbol.split("/")[0].replace(":USDT", "")
 
             try:
                 # === АНАЛИЗ через новый levels_builder ===
-                ohlcv_1d = safe_fetch_ohlcv(symbol, "1d", 365)
-                ohlcv_4h = safe_fetch_ohlcv(symbol, "4h", 200)
+                # 1M/1W добавлены для нового макро-слоя (_extract_macro_swings)
+                # в levels_builder.py — build_levels() теперь их требует первыми
+                # двумя аргументами. limit=60/150 — тот же запас, что в тестовой
+                # версии (60 месяцев / 150 недель истории).
+                ohlcv_1M = _safe_fetch_ohlcv(symbol, "1M", 60)
+                ohlcv_1W = _safe_fetch_ohlcv(symbol, "1W", 150)
+                ohlcv_1d = _safe_fetch_ohlcv(symbol, "1d", 365)
+                ohlcv_4h = _safe_fetch_ohlcv(symbol, "4h", 200)
 
                 if len(ohlcv_1d) < 50:
                     continue
 
                 seen_coins.add(coin)  # реально дошли до расчёта — точка отсчёта для "протухания"
 
+                df_1M = pd.DataFrame(ohlcv_1M, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_1M) >= 5 else None
+                df_1W = pd.DataFrame(ohlcv_1W, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_1W) >= 5 else None
                 df_1d = pd.DataFrame(ohlcv_1d, columns=["timestamp", "open", "high", "low", "close", "volume"])
                 df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_4h) >= 50 else None
 
-                levels = build_levels(df_1d, df_4h, coin)
+                levels = build_levels(df_1M, df_1W, df_1d, df_4h, coin)
 
                 has_any = (levels["supports"] or levels["resistances"])
                 if has_any:
@@ -169,16 +181,20 @@ def build_levels_for_single_coin(coin):
             print(f"[HUNTER SKIP] {coin}: нет рынка ни SPOT, ни FUTURES на Bybit — пропускаю.")
             return None
 
-        ohlcv_1d = exchange.fetch_ohlcv(symbol, "1d", 365)
-        ohlcv_4h = exchange.fetch_ohlcv(symbol, "4h", 200)
-        
+        ohlcv_1M = _safe_fetch_ohlcv(symbol, "1M", 60)
+        ohlcv_1W = _safe_fetch_ohlcv(symbol, "1W", 150)
+        ohlcv_1d = _safe_fetch_ohlcv(symbol, "1d", 365)
+        ohlcv_4h = _safe_fetch_ohlcv(symbol, "4h", 200)
+
         if len(ohlcv_1d) < 50:
             return None
-            
+
+        df_1M = pd.DataFrame(ohlcv_1M, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_1M) >= 5 else None
+        df_1W = pd.DataFrame(ohlcv_1W, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_1W) >= 5 else None
         df_1d = pd.DataFrame(ohlcv_1d, columns=["timestamp", "open", "high", "low", "close", "volume"])
         df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_4h) >= 50 else None
-        
-        levels = build_levels(df_1d, df_4h, coin)
+
+        levels = build_levels(df_1M, df_1W, df_1d, df_4h, coin)
         
         macro_base = load_json(MACRO_LEVELS_FILE, default={})
         macro_base[coin] = {
