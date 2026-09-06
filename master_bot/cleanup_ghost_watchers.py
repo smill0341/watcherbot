@@ -32,11 +32,12 @@ import json
 import argparse
 
 CRYPTANO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modules", "cryptano")
+JSONBANK_DIR = os.path.join(CRYPTANO_DIR, "jsonbank")
 
-WATCHER_STATE_FILE = os.path.join(CRYPTANO_DIR, "watcher_state.json")
-TRACKED_LONG_FILE = os.path.join(CRYPTANO_DIR, "tracked_origin_levels.json")
-TRACKED_VRT_FILE = os.path.join(CRYPTANO_DIR, "tracked_origin_levels_vrt.json")
-MACRO_LEVELS_FILE = os.path.join(CRYPTANO_DIR, "macro_levels.json")
+WATCHER_STATE_FILE = os.path.join(JSONBANK_DIR, "watcher_state.json")
+TRACKED_LONG_FILE = os.path.join(JSONBANK_DIR, "tracked_origin_levels.json")
+TRACKED_VRT_FILE = os.path.join(JSONBANK_DIR, "tracked_origin_levels_vrt.json")
+MACRO_LEVELS_FILE = os.path.join(JSONBANK_DIR, "macro_levels.json")
 
 
 def _load(path):

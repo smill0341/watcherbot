@@ -5,8 +5,8 @@ import os
 from modules.cryptano.utils.crypto_utils import exchange
 from modules.cryptano.utils.storage import load_json, save_json_atomic
 
-# Путь к watchlist.json (поднимаемся на уровень вверх из папки utils)
-WATCHLIST_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "watchlist.json")
+# watchlist.json теперь в jsonbank/ — см. utils/paths.py
+from modules.cryptano.utils.paths import WATCHLIST_FILE
 
 def get_momentum_coins(limit_per_side=10, min_volume_usd=10000000):
     """Скачивает тикеры и возвращает Топ-N растущих и падающих."""

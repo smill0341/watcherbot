@@ -60,18 +60,24 @@ CANDLE_WINDOW = 300
 
 def _levels_at(symbol, coin, target_ts_ms):
     """Уровни ровно на дату старта — тот же build_levels(), что в бою,
-    только 1d/4h свечи обрезаны по бирже через params={"endTime": ...}."""
+    только свечи обрезаны по бирже через params={"endTime": ...}.
+    1M/1W добавлены сюда же (лимиты 60/150 — как в swing_hunter.py),
+    т.к. build_levels() теперь требует их первыми двумя аргументами."""
     params = {"endTime": target_ts_ms}
     ohlcv_1d = exchange.fetch_ohlcv(symbol, timeframe="1d", limit=365, params=params)
     if len(ohlcv_1d) < 50:
         return {"supports": [], "resistances": []}
+    ohlcv_1M = exchange.fetch_ohlcv(symbol, timeframe="1M", limit=60, params=params)
+    ohlcv_1W = exchange.fetch_ohlcv(symbol, timeframe="1W", limit=150, params=params)
     ohlcv_4h = exchange.fetch_ohlcv(symbol, timeframe="4h", limit=200, params=params)
 
     cols = ["timestamp", "open", "high", "low", "close", "volume"]
+    df_1M = pd.DataFrame(ohlcv_1M, columns=cols) if len(ohlcv_1M) >= 5 else None
+    df_1W = pd.DataFrame(ohlcv_1W, columns=cols) if len(ohlcv_1W) >= 5 else None
     df_1d = pd.DataFrame(ohlcv_1d, columns=cols)
     df_4h = pd.DataFrame(ohlcv_4h, columns=cols) if len(ohlcv_4h) >= 50 else None
 
-    return build_levels(df_1d, df_4h, coin)
+    return build_levels(df_1M, df_1W, df_1d, df_4h, coin)
 
 
 def _candles_df(symbol):

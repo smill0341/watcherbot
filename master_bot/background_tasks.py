@@ -6,6 +6,8 @@ import os
 # Импорт базовых инструментов
 from modules.cryptano.utils.storage import load_json, save_json_atomic
 from modules.cryptano.utils.common import KNOWN_TICKER_ALIASES
+from modules.cryptano.utils.paths import MACRO_LEVELS_FILE, WATCHER_HISTORY_FILE, ACTIVE_WATCHERS_FILE
+from modules.cryptano.strategy.bounce_manager import SHORT_MODES
 from modules.cryptano.filters.critical_filter import scan_market, format_results
 # from modules.cryptano.light_filter import _execute_scan_cycle  # ОТКЛЮЧЕНО: light-фильтр выключен из пайплайна
 from modules.cryptano.utils.coin_generators import update_momentum_watchlist
@@ -172,10 +174,10 @@ def crypto_orchestrator(bot, admin_chat_id):
                                 vrt_levels_checked = 0
                                 bounce_signals = 0
                                 bounce_levels_checked = 0
-                                active_level_ids = set()  # для clear_dead_watchers в конце скана
+                                active_level_ids = set()  # для clear_dead_watchers в конце скана (VB/VGB/VRT)
+                                bc_active_level_ids = set()  # то же самое, но для BOUNCE (шаг 5)
                                 level_id_meta = {}  # level_id -> {"coin":..., "direction":...} для экспорта дашборду
-                                macro_path = os.path.join(os.path.dirname(__file__), "modules", "cryptano", "macro_levels.json")
-                                macro_db = load_json(macro_path, default={})
+                                macro_db = load_json(MACRO_LEVELS_FILE, default={})
                                 
                                 for coin, data in list(wl.items()):
                                     total_scanned += 1
@@ -212,6 +214,18 @@ def crypto_orchestrator(bot, admin_chat_id):
                                                 vrt_id = f"VRT_SHORT_{lvl['min']}_{lvl['max']}"
                                                 active_level_ids.add(vrt_id)
                                                 level_id_meta[vrt_id] = {"coin": coin, "direction": "SHORT", "strategy": "V_RED_TOP"}
+                                        # BOUNCE (шаг 5 очистки) — те же supports/resistances, но
+                                        # id строятся ЧЕРЕЗ bounce_mgr._level_id, чтобы формат 1-в-1
+                                        # совпадал с тем, что реально кладётся в bounce_mgr._watchers
+                                        # (BounceParent._level_id), а не дублировался руками и не разъехался.
+                                        if "LONG" in dirs:
+                                            for lvl in coin_macro.get("supports", []):
+                                                bc_active_level_ids.add(bounce_mgr._level_id(lvl, "LONG"))
+                                        if "SHORT" in dirs:
+                                            for lvl in coin_macro.get("resistances", []):
+                                                base_bc_id = bounce_mgr._level_id(lvl, "SHORT")
+                                                for m in SHORT_MODES:
+                                                    bc_active_level_ids.add(f"{base_bc_id}__{m}")
 
                                     # --- 4. BOUNCE стратегия ---
                                     # В отличие от VB/VGB/VRT, BOUNCE не тянет один уровень за раз
@@ -287,22 +301,25 @@ def crypto_orchestrator(bot, admin_chat_id):
                                 # в актуальном macro_levels.json — иначе память растёт бесконечно.
                                 # clear_dead_watchers теперь ВОЗВРАЩАЕТ удалённых — успеваем забрать
                                 # их путь (event_log) в архив, прежде чем объект будет потерян навсегда.
-                                # NOTE: пока только для v_bottom_mgr (VB/VGB/VRT) — у bounce_mgr эта
-                                # уборка ещё не подключена (см. bounce_parent.py), реестр BOUNCE
-                                # растёт без очистки. Известное ограничение первого запуска.
                                 before_count = v_bottom_mgr.watcher_count()
                                 removed_watchers = v_bottom_mgr.clear_dead_watchers(active_level_ids)
                                 cleared_count = before_count - v_bottom_mgr.watcher_count()
+
+                                # То же самое для BOUNCE (шаг 5) — свой отдельный реестр (bounce_mgr),
+                                # свой набор актуальных id (bc_active_level_ids, собран выше по тому же
+                                # принципу, что VB/VGB/VRT). Возврат archive-словарь тут не забираем —
+                                # у BounceWatcher нет history_log/event_log (см. NOTE у экспорта ниже),
+                                # архивировать пока просто нечего.
+                                bc_before_count = bounce_mgr.watcher_count()
+                                bounce_mgr.clear_dead_watchers(bc_active_level_ids)
+                                bc_cleared_count = bc_before_count - bounce_mgr.watcher_count()
 
                                 # 📚 Архив последнего умершего/сработавшего вотчера по каждой паре
                                 # монета+стратегия (не журнал на века — только последний слепок,
                                 # перезаписывается при следующей смерти по этому же ключу).
                                 if removed_watchers:
                                     try:
-                                        history_path = os.path.join(
-                                            os.path.dirname(__file__), "modules", "cryptano", "watcher_history.json"
-                                        )
-                                        history_db = load_json(history_path, default={})
+                                        history_db = load_json(WATCHER_HISTORY_FILE, default={})
                                         for level_id, watcher in removed_watchers.items():
                                             coin, direction, strategy = _resolve_watcher_meta(level_id, watcher, level_id_meta)
                                             if not coin or not strategy:
@@ -319,16 +336,17 @@ def crypto_orchestrator(bot, admin_chat_id):
                                                 "events": getattr(watcher, "event_log", []),
                                                 "died_at": now_dt.isoformat(),
                                             }
-                                        save_json_atomic(history_path, history_db)
+                                        save_json_atomic(WATCHER_HISTORY_FILE, history_db)
                                     except Exception as e:
                                         print(f"⚠️ [DASHBOARD EXPORT] Не удалось сохранить watcher_history.json: {e}")
 
                                 # 📤 Экспорт активных вотчеров для веб-дашборда (только чтение снаружи,
                                 # сама торговая логика/состояние это никак не меняет — просто снимок).
-                                # NOTE: пока экспортируются только VB/VGB/VRT (v_bottom_mgr). BOUNCE-вотчеры
-                                # (bounce_mgr) сюда ещё не добавлены — у BounceWatcher нет history_log/
-                                # event_log атрибутов, экспорт даст пустые поля без доп. правок в
-                                # bounce_watcher.py. Отдельная задача на следующий раз.
+                                # NOTE: у BounceWatcher нет history_log/event_log (только
+                                # state/coin/min/max/trade_type) — эти два поля в экспорте
+                                # всегда будут пустыми для BOUNCE, пока отдельно не заведём
+                                # такой лог в bounce_watcher.py. Само появление уровня в
+                                # подсветке ("активный", толстая линия) уже работает.
                                 try:
                                     export = {}
                                     for level_id, watcher in v_bottom_mgr._watchers.items():
@@ -345,17 +363,32 @@ def crypto_orchestrator(bot, admin_chat_id):
                                             "events": getattr(watcher, "event_log", []),
                                             "updated_at": now_dt.isoformat(),
                                         }
-                                    active_watchers_path = os.path.join(
-                                        os.path.dirname(__file__), "modules", "cryptano", "active_watchers.json"
-                                    )
-                                    save_json_atomic(active_watchers_path, export)
+                                    # BOUNCE — тот же самый export-словарь, тот же файл (дашборд читает
+                                    # один active_watchers.json на все стратегии). coin/strategy тут
+                                    # достаются из _resolve_watcher_meta через сам вотчер (watcher.coin,
+                                    # watcher.trade_type), т.к. level_id_meta для BC не заполняется —
+                                    # префикс "BC_" в level_id и так однозначно резолвится в _STRATEGY_BY_TAG.
+                                    for level_id, watcher in bounce_mgr._watchers.items():
+                                        coin, direction, strategy = _resolve_watcher_meta(level_id, watcher, level_id_meta)
+                                        export[level_id] = {
+                                            "coin": coin,
+                                            "direction": direction,
+                                            "strategy": strategy,
+                                            "mode": getattr(watcher, "mode", None),
+                                            "state": getattr(watcher, "state", None),
+                                            "breach_count": getattr(watcher, "pierce_count", 0),
+                                            "history_log": getattr(watcher, "history_log", ""),
+                                            "level_min": getattr(watcher, "min", None),
+                                            "level_max": getattr(watcher, "max", None),
+                                            "events": getattr(watcher, "event_log", []),
+                                            "updated_at": now_dt.isoformat(),
+                                        }
+                                    save_json_atomic(ACTIVE_WATCHERS_FILE, export)
 
                                     # Персистентность: сохраняем реальное состояние вотчеров
                                     # (не только event_log для дашборда, а весь прогресс паттерна)
-                                    # + оба tracked-словаря, чтобы рестарт бота не обнулял прогресс.
-                                    # NOTE: bounce_mgr сюда не входит — у BounceManager/BounceWatcher
-                                    # нет save_state/load_state, при рестарте бота все живые
-                                    # BOUNCE-вотчеры теряются. Известное ограничение первого запуска.
+                                    # + оба tracked-словаря + BOUNCE (вотчеры/graveyard/pierced_count),
+                                    # чтобы рестарт бота не обнулял прогресс ни у одной стратегии.
                                     save_watcher_state()
                                 except Exception as e:
                                     print(f"⚠️ [DASHBOARD EXPORT] Не удалось сохранить active_watchers.json: {e}")
@@ -366,7 +399,8 @@ def crypto_orchestrator(bot, admin_chat_id):
                                 print(f"   -> V_GREEN_BOTTOM: Уровней оценено: {vgb_levels_checked} | Сделок найдено: {vgb_signals}")
                                 print(f"   -> V_RED_TOP: Уровней оценено: {vrt_levels_checked} | Сделок найдено: {vrt_signals}")
                                 print(f"   -> BOUNCE: Уровней оценено: {bounce_levels_checked} | Сделок найдено: {bounce_signals}")
-                                print(f"   -> Очистка: удалено вотчеров {cleared_count}, осталось в памяти {v_bottom_mgr.watcher_count()}")
+                                print(f"   -> Очистка VB/VGB/VRT: удалено {cleared_count}, осталось в памяти {v_bottom_mgr.watcher_count()}")
+                                print(f"   -> Очистка BOUNCE: удалено {bc_cleared_count}, осталось в памяти {bounce_mgr.watcher_count()}")
                                 
                             finally:
                                 _watcher_lock.release()

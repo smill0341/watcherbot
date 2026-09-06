@@ -27,11 +27,10 @@ MACRO_STALE_DAYS = 14
 IMPULSE_ATR_MULTIPLIER = 2.5  # Цена должна улететь минимум на 2.5 ATR от зоны
 IMPULSE_LOOKAHEAD_DAYS = 10   # Даем цене 10 дней на то, чтобы показать этот импульс
 
-# BASE_DIR указывает на modules/cryptano/
+# BASE_DIR указывает на modules/cryptano/ (json-файлы теперь в jsonbank/ — см. utils/paths.py)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-MACRO_LEVELS_FILE = os.path.join(BASE_DIR, "macro_levels.json")
-WATCHLIST_FILE = os.path.join(BASE_DIR, "watchlist.json")
+from modules.cryptano.utils.paths import MACRO_LEVELS_FILE, WATCHLIST_FILE
 
 LIGHT_RADAR_INTERVAL_SEC = 60
 MIN_VOLUME_USD = 10_000_000

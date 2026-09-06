@@ -829,3 +829,67 @@ window.triggerRescan = async function(event, coin) {
       console.error("Ошибка рескана", e);
   }
 };
+// === ПАНЕЛЬ ВКЛ/ВЫКЛ СТРАТЕГИЙ ===
+// Собирается прямо в JS (без правки index.html — файл вне репозитория,
+// см. .gitignore *.html) и вставляется фиксированной плашкой в правый
+// верхний угол. Пишет/читает config.json через /api/strategies —
+// тот же файл, что читает background_tasks.py::crypto_orchestrator
+// (перечитывается раз в секунду, поэтому переключение применяется на
+// ближайшем скане без рестарта бота).
+const STRATEGY_TOGGLE_LABELS = {
+  VB: "V_BOTTOM",
+  VGB: "V_GREEN_BOTTOM",
+  VRT: "V_RED_TOP",
+  BOUNCE: "BOUNCE",
+};
+
+function buildStrategiesPanel() {
+  const panel = document.createElement("div");
+  panel.id = "strategies-panel";
+  panel.style.cssText = `
+    position: fixed; top: 12px; right: 12px; z-index: 1000;
+    background: #1b1d24; border: 1px solid #262832; border-radius: 8px;
+    padding: 10px 12px; font-size: 13px; color: #e6e6e6;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  `;
+  panel.innerHTML = `<div style="margin-bottom:6px; color:#9aa0ab; font-weight:600;">🧩 Стратегии</div>
+    <div id="strategies-buttons" style="display:flex; flex-direction:column; gap:4px;"></div>`;
+  document.body.appendChild(panel);
+  refreshStrategiesPanel();
+}
+
+async function refreshStrategiesPanel() {
+  const container = document.getElementById("strategies-buttons");
+  if (!container) return;
+  try {
+    const res = await fetch("/api/strategies");
+    const states = await res.json();
+    container.innerHTML = "";
+    for (const tag of Object.keys(STRATEGY_TOGGLE_LABELS)) {
+      const enabled = !!states[tag];
+      const btn = document.createElement("button");
+      btn.textContent = `${enabled ? "✅" : "❌"} ${STRATEGY_TOGGLE_LABELS[tag]}`;
+      btn.style.cssText = `
+        background: ${enabled ? "#1f2e22" : "#2a1f1f"};
+        border: 1px solid ${enabled ? "#3a5c3f" : "#5c3a3a"};
+        color: #e6e6e6; border-radius: 5px; padding: 5px 8px;
+        cursor: pointer; text-align: left; font-size: 12px;
+      `;
+      btn.onclick = async () => {
+        btn.disabled = true;
+        try {
+          await fetch(`/api/strategies/${tag}/toggle`, { method: "POST" });
+          await refreshStrategiesPanel();
+        } catch (e) {
+          console.error("Ошибка переключения стратегии", tag, e);
+          btn.disabled = false;
+        }
+      };
+      container.appendChild(btn);
+    }
+  } catch (e) {
+    console.error("Не удалось загрузить состояние стратегий", e);
+  }
+}
+
+buildStrategiesPanel();

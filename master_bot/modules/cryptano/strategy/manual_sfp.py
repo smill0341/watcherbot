@@ -25,6 +25,7 @@ from modules.cryptano.utils.common import calculate_rsi, exchange, format_price 
 from modules.cryptano.utils.market_cache import load_markets_cached
 from modules.cryptano.utils.indicators import pandas_get_local_structure, calculate_atr
 from modules.cryptano.utils.watcher_logic import analyze_extreme_pattern
+from modules.cryptano.utils.paths import MACRO_LEVELS_FILE
 
 
 def check_manual_extreme(coin, direction, source="Manual"):
@@ -75,8 +76,7 @@ def check_manual_extreme(coin, direction, source="Manual"):
         
         # --- НОВОЕ: ЗАГРУЗКА МАКРО-УРОВНЕЙ ---
         
-        macro_path = os.path.join(os.path.dirname(__file__), "macro_levels.json")
-        macro_db = load_json(macro_path, default={})
+        macro_db = load_json(MACRO_LEVELS_FILE, default={})
         coin_macro = macro_db.get(coin) or macro_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
         # ------------------------------------
         

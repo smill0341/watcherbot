@@ -15,6 +15,7 @@ from modules.cryptano.strategy.manual_sfp import check_manual_extreme
 from modules.cryptano.filters.light_filter import run_manual_light_scan
 from modules.cryptano.live_scan import manage_watchlist, show_watchlist
 from modules.cryptano.history import check_and_update, format_history, generate_report_file
+from modules.cryptano.utils.paths import WATCHLIST_FILE
 import threading
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -251,8 +252,7 @@ def handle_inline(call):
     # =========================================================
     if call.data == "clear_entire_watchlist":
         try:
-            wl_path = os.path.join("modules", "cryptano", "watchlist.json")
-            save_json_atomic(wl_path, {})  # Полностью перезаписываем в пустой JSON
+            save_json_atomic(WATCHLIST_FILE, {})  # Полностью перезаписываем в пустой JSON
             
             bot.answer_callback_query(call.id, "Watchlist успешно очищен!")
             bot.edit_message_text(
@@ -335,13 +335,12 @@ def handle_inline(call):
             
             # 🧹 РЕЖИМ ДВОРНИКА: Мгновенно выметаем скальпинг-монеты из watchlist.json, не дожидаясь таймеров
             try:
-                wl_path = os.path.join("modules", "cryptano", "watchlist.json")
-                wl = load_json(wl_path, default={})
+                wl = load_json(WATCHLIST_FILE, default={})
                 # Ищем монеты, добавленные генератором пампа/дампа
                 keys_to_delete = [k for k, v in wl.items() if v.get("source") in ["MOMENTUM_PUMP", "MOMENTUM_DUMP"]]
                 for k in keys_to_delete:
                     del wl[k]
-                save_json_atomic(wl_path, wl)
+                save_json_atomic(WATCHLIST_FILE, wl)
                 print(f"[FASTTRADE] 🧹 Мгновенная очистка кнопкой. Удалено {len(keys_to_delete)} монет.")
             except Exception as e:
                 print(f"[ERROR] Ошибка мгновенной очистки watchlist: {e}")

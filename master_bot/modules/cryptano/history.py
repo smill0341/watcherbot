@@ -5,9 +5,9 @@ from modules.cryptano.utils.common import exchange
 from modules.cryptano.utils.market_cache import load_markets_cached
 from modules.cryptano.utils.storage import load_json, save_json_atomic
 
-# Путь к файлам рядом с history.py
+# report.txt остаётся рядом с history.py — только json переехали в jsonbank/
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SIGNALS_FILE = os.path.join(BASE_DIR, "signals.json")
+from modules.cryptano.utils.paths import SIGNALS_FILE
 REPORT_FILE = os.path.join(BASE_DIR, "report.txt")
 
 # ================= СОХРАНЕНИЕ СИГНАЛА =================

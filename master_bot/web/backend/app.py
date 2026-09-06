@@ -21,6 +21,7 @@ from fastapi.responses import FileResponse
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))          # .../master_bot/web/backend
 WEB_DIR = os.path.dirname(BACKEND_DIR)                            # .../master_bot/web
 BASE_DIR = os.path.dirname(WEB_DIR)                                # .../master_bot
+CONFIG_FILE = os.path.join(BASE_DIR, "config.json")               # тот же файл, что main.py (автобот/fasttrade)
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 if BACKEND_DIR not in sys.path:
@@ -29,6 +30,10 @@ if BACKEND_DIR not in sys.path:
 from modules.cryptano.utils.crypto_utils import exchange
 from modules.cryptano.utils.common import resolve_symbol, KNOWN_TICKER_ALIASES, price_precision_from_market
 import candle_store
+
+# Стратегии Watcher'а, которые можно вкл/выкл через дашборд — тот же
+# набор тегов, что "BC"/"VB"/"VGB"/"VRT" в background_tasks.py::_STRATEGY_BY_TAG.
+STRATEGY_TAGS = ("VB", "VGB", "VRT", "BOUNCE")
 
 
 def _read_json(path: str, default: Any) -> Any:
@@ -46,6 +51,16 @@ def _read_json(path: str, default: Any) -> Any:
             return json.load(f)
     except json.JSONDecodeError:
         return default
+
+
+def _write_json_atomic(path: str, data: Any) -> None:
+    """Атомарная запись (tmp + os.replace) — та же схема, что
+    save_json_atomic у бота, но своя копия, чтобы дашборд не тянул
+    модуль бота только ради одной функции (см. docstring _read_json)."""
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+    os.replace(tmp_path, path)
 
 CRYPTANO_DIR = os.path.join(BASE_DIR, "modules", "cryptano")
 WATCHLIST_PATH = os.path.join(CRYPTANO_DIR, "watchlist.json")
@@ -189,6 +204,39 @@ def trigger_rescan(coin: str):
         with open(flag_path, "w", encoding="utf-8") as f:
             f.write("1")
         return {"status": "ok", "message": f"Rescan requested for {coin}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/strategies")
+def get_strategies():
+    """Текущее вкл/выкл каждой стратегии Watcher'а. Отсутствие ключа в
+    config.json трактуется как ВКЛЮЧЕНО (True) — то же правило, что
+    в background_tasks.py::crypto_orchestrator, чтобы дашборд и реальный
+    диспетчер бота никогда не расходились в интерпретации пустого конфига."""
+    config = _read_json(CONFIG_FILE, default={})
+    saved = config.get("crypto", {}).get("strategies", {})
+    return {tag: saved.get(tag, True) for tag in STRATEGY_TAGS}
+
+
+@app.post("/api/strategies/{tag}/toggle")
+def toggle_strategy(tag: str):
+    """Переключает одну стратегию, не трогая остальные. Пишет в тот же
+    config.json, что и Telegram-бот (main.py) — диспетчер (background_tasks.py)
+    перечитывает конфиг каждую секунду, поэтому применяется без рестарта."""
+    tag = tag.upper().strip()
+    if tag not in STRATEGY_TAGS:
+        raise HTTPException(status_code=400, detail=f"Неизвестная стратегия: {tag}")
+    try:
+        config = _read_json(CONFIG_FILE, default={})
+        if "crypto" not in config:
+            config["crypto"] = {}
+        if "strategies" not in config["crypto"]:
+            config["crypto"]["strategies"] = {}
+        current = config["crypto"]["strategies"].get(tag, True)
+        config["crypto"]["strategies"][tag] = not current
+        _write_json_atomic(CONFIG_FILE, config)
+        return {"status": "ok", "tag": tag, "enabled": not current}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

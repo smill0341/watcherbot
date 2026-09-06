@@ -29,7 +29,7 @@ from modules.cryptano.swing_hunter import start_swing_hunter, build_macro_levels
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
-NOTIFICATIONS_FILE = os.path.join(BASE_DIR, "modules", "cryptano", "notifications.json")
+from modules.cryptano.utils.paths import NOTIFICATIONS_FILE
 MAX_NOTIFICATIONS = 200  # сколько последних сообщений хранить в файле
 
 ADMIN_LABEL = "web-dashboard"  # заменяет chat_id — реального Telegram-чата тут нет

@@ -1,36 +1,4 @@
 {
-    "SOXL_LONG": {
-        "min": 111.15,
-        "max": 116.85,
-        "score": 1.5,
-        "type": "1W_low_PWL+4h_poc",
-        "date": "2026-08-16",
-        "reaction_count": 1
-    },
-    "SOXL_VGB_LONG": {
-        "min": 111.15,
-        "max": 116.85,
-        "score": 1.5,
-        "type": "1W_low_PWL+4h_poc",
-        "date": "2026-08-16",
-        "reaction_count": 1
-    },
-    "NVDA_LONG": {
-        "min": 211.11285714285714,
-        "max": 215.24714285714288,
-        "score": 1.5,
-        "type": "1W_low_PWL",
-        "date": "2026-08-16",
-        "reaction_count": 2
-    },
-    "NVDA_VGB_LONG": {
-        "min": 211.11285714285714,
-        "max": 215.24714285714288,
-        "score": 1.5,
-        "type": "1W_low_PWL",
-        "date": "2026-08-16",
-        "reaction_count": 2
-    },
     "VELVET_VGB_LONG": {
         "min": 0.16904550000000002,
         "max": 0.1777145,
@@ -64,5 +32,21 @@
         "date": "2026-08-25",
         "mitigated": false,
         "reaction_count": 0
+    },
+    "STORJ_LONG": {
+        "min": 0.036484499999999996,
+        "max": 0.038355499999999994,
+        "score": 1.0,
+        "type": "1W_low_PWL",
+        "date": "2026-08-16",
+        "reaction_count": 2
+    },
+    "STORJ_VGB_LONG": {
+        "min": 0.036484499999999996,
+        "max": 0.038355499999999994,
+        "score": 1.0,
+        "type": "1W_low_PWL",
+        "date": "2026-08-16",
+        "reaction_count": 2
     }
 }

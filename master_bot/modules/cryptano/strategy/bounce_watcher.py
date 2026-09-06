@@ -56,7 +56,8 @@ class BounceWatcher:
     }
 
     def __init__(self, level_min: float, level_max: float, trade_type: str,
-                 config_overrides: Optional[dict] = None, mode: Optional[str] = None):
+                 config_overrides: Optional[dict] = None, mode: Optional[str] = None,
+                 coin: str = "UNKNOWN"):
         # Своя копия CONFIG на КАЖДЫЙ вотчер, а не общий класс-атрибут — иначе
         # два вотчера с разными режимами (climax/mirror) на одной и той же
         # монете в одном процессе читали бы ОДНО и то же значение
@@ -64,6 +65,11 @@ class BounceWatcher:
         # лога/фокуса ('CLIMAX'/'MIRROR'/None), сама логика идёт через CONFIG.
         self.CONFIG = {**BounceWatcher.CONFIG, **(config_overrides or {})}
         self.mode = mode
+        # В общем реестре bounce_mgr (один инстанс на ВСЕ монеты, как и у
+        # VBottomManager) вотчеры разных монет ничем, кроме min/max, не
+        # разделены — coin нужен для рескана по монете, экспорта на дашборд
+        # и восстановления после рестарта (см. BounceManager.load_state).
+        self.coin = coin
 
         self.min = level_min
         self.max = level_max

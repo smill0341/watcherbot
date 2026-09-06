@@ -9,12 +9,16 @@ from modules.cryptano.utils.storage import load_json, save_json_atomic
 from modules.cryptano.strategy.vbottom_manager import VBottomManager
 from modules.cryptano.strategy.bounce_manager import BounceManager
 from modules.cryptano.strategy.bounce_parent import BounceParent
+# json-файлы теперь в jsonbank/, а не рядом с этим модулем — см. utils/paths.py
+from modules.cryptano.utils.paths import (
+    WATCHLIST_FILE, WATCHER_STATE_FILE, BOUNCE_STATE_FILE,
+    TRACKED_LONG_FILE, TRACKED_VRT_FILE, MACRO_LEVELS_FILE,
+)
 
 bounce_mgr = BounceManager(BounceParent())
 import json
 
 # ================= НАСТРОЙКИ WATCHER =================
-WATCHLIST_FILE = os.path.join(os.path.dirname(__file__), "watchlist.json")
 COOLDOWN_HOURS = 4     # Заморозка повторных сигналов по монете
 
 # 🆕 НОВЫЕ РУБИЛЬНИКИ АВТОМАТИЗАЦИИ
@@ -28,9 +32,6 @@ AUTO_REMOVE_AFTER_SIGNAL = True # Удалять монету из Watchlist п�
 # диск, а тут, при импорте модуля (то есть при старте бота), читается
 # обратно — если файлов ещё нет (первый запуск), просто начинаем с чистого
 # листа, ничего не падает.
-WATCHER_STATE_FILE = os.path.join(os.path.dirname(__file__), "watcher_state.json")
-TRACKED_LONG_FILE = os.path.join(os.path.dirname(__file__), "tracked_origin_levels.json")
-TRACKED_VRT_FILE = os.path.join(os.path.dirname(__file__), "tracked_origin_levels_vrt.json")
 
 watcher_cooldown_cache = {}
 v_bottom_mgr = VBottomManager()  # Менеджер V-BOTTOM/V-GREEN-BOTTOM/V-RED-TOP стратегий
@@ -48,6 +49,7 @@ tracked_origin_levels_vrt = {}
 
 # Восстанавливаем всё сохранённое в прошлую сессию (если было)
 v_bottom_mgr.load_state(WATCHER_STATE_FILE)
+bounce_mgr.load_state(BOUNCE_STATE_FILE)  # BOUNCE: вотчеры + graveyard + pierced_count
 _restored_long = load_json(TRACKED_LONG_FILE, default={})
 if isinstance(_restored_long, dict):
     tracked_origin_levels.update(_restored_long)
@@ -61,6 +63,7 @@ def save_watcher_state():
     background_tasks.py раз в скан-цикл — небольшая, дешёвая операция,
     не нужно дёргать чаще."""
     v_bottom_mgr.save_state(WATCHER_STATE_FILE)
+    bounce_mgr.save_state(BOUNCE_STATE_FILE)
     save_json_atomic(TRACKED_LONG_FILE, tracked_origin_levels)
     save_json_atomic(TRACKED_VRT_FILE, tracked_origin_levels_vrt)
 
@@ -80,8 +83,7 @@ def auto_add_to_watchlist(coin, direction, source="Critical"):
         
     wl = _load_watchlist()
     if coin not in wl:
-        macro_path = os.path.join(os.path.dirname(__file__), "macro_levels.json")
-        macro_levels = load_json(macro_path, default={})
+        macro_levels = load_json(MACRO_LEVELS_FILE, default={})
         if coin not in macro_levels:
             from modules.cryptano.swing_hunter import build_levels_for_single_coin
             build_levels_for_single_coin(coin)

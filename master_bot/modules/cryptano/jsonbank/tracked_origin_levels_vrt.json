@@ -124,5 +124,87 @@
         "date": "2026-08-26",
         "mitigated": false,
         "reaction_count": 0
+    },
+    "DASH_VRT_SHORT": {
+        "min": 53.001,
+        "max": 55.719,
+        "score": 4.5,
+        "type": "1d_extreme_peak",
+        "date": "2026-05-21",
+        "reaction_count": 0
+    },
+    "MNT_VRT_SHORT": {
+        "min": 0.5361525,
+        "max": 0.5636475000000001,
+        "score": 1.0,
+        "type": "1W_high_PWH",
+        "date": "2026-08-16",
+        "reaction_count": 2
+    },
+    "ONDO_VRT_SHORT": {
+        "min": 0.3638,
+        "max": 0.3752,
+        "score": 3.0,
+        "type": "4h_poc_standalone",
+        "date": "2026-08-26",
+        "mitigated": false,
+        "reaction_count": 0
+    },
+    "ARB_VRT_SHORT": {
+        "min": 0.10296975000000001,
+        "max": 0.10825025,
+        "score": 6.5,
+        "type": "1M_high_PMH + 1d_extreme_peak + 1W_high_PWH",
+        "date": "2026-06-30",
+        "reaction_count": 3
+    },
+    "NEAR_VRT_SHORT": {
+        "min": 2.0766037500000003,
+        "max": 2.18309625,
+        "score": 6.5,
+        "type": "1M_high_PMH + 1W_high_PWH + 1d_extreme_peak",
+        "date": "2026-06-30",
+        "reaction_count": 4
+    },
+    "LIT_VRT_SHORT": {
+        "min": 3.5212125000000003,
+        "max": 3.7017875000000005,
+        "score": 6.5,
+        "type": "1d_extreme_peak + 1W_high_PWH",
+        "date": "2026-01-09",
+        "reaction_count": 1
+    },
+    "CRCL_VRT_SHORT": {
+        "min": 90.69449999999999,
+        "max": 95.3455,
+        "score": 1.0,
+        "type": "1W_high_PWH",
+        "date": "2026-08-16",
+        "reaction_count": 2
+    },
+    "MSTR_VRT_SHORT": {
+        "min": 129.3163392857143,
+        "max": 135.94794642857144,
+        "score": 7.0,
+        "type": "1W_high_PWH + 1d_extreme_peak",
+        "date": "2026-08-16",
+        "reaction_count": 2
+    },
+    "BNB_VRT_SHORT": {
+        "min": 725.3768660714286,
+        "max": 747.4695624999999,
+        "score": 6.5,
+        "type": "1W_high_PWH + 1M_high_PMH + 1d_extreme_peak",
+        "date": "2026-08-16",
+        "reaction_count": 2
+    },
+    "LTC_VRT_SHORT": {
+        "min": 52.02178571428571,
+        "max": 53.183214285714286,
+        "score": 3.0,
+        "type": "4h_poc_standalone",
+        "date": "2026-08-26",
+        "mitigated": false,
+        "reaction_count": 0
     }
 }

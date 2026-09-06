@@ -13,6 +13,7 @@ from modules.cryptano.utils.indicators import pandas_get_local_structure, calcul
 from modules.cryptano.strategy.vbottom_manager import VBottomManager
 from modules.cryptano.strategy.bounce_manager import BounceManager
 from modules.cryptano.strategy.bounce_parent import BounceParent
+from modules.cryptano.utils.paths import MACRO_LEVELS_FILE
 
 # candle_store.py лежит в web/backend/ и не является пакетом (нет __init__.py) —
 # app.py подключает его тем же способом: добавляет свою папку в sys.path и
@@ -174,8 +175,7 @@ def check_v_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None):
             return False, fetch_err, 0
 
         # Загружаем макро-уровни
-        macro_path = os.path.join(os.path.dirname(__file__), "macro_levels.json")
-        macro_db = load_json(macro_path, default={})
+        macro_db = load_json(MACRO_LEVELS_FILE, default={})
         coin_macro = macro_db.get(coin) or macro_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
 
         if not coin_macro:
@@ -281,8 +281,7 @@ def check_v_green_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None)
         c_atr = float(atr_series.iloc[-1]) if not atr_series.empty and atr_series.iloc[-1] == atr_series.iloc[-1] else None
 
         # Загружаем макро-уровни
-        macro_path = os.path.join(os.path.dirname(__file__), "macro_levels.json")
-        macro_db = load_json(macro_path, default={})
+        macro_db = load_json(MACRO_LEVELS_FILE, default={})
         coin_macro = macro_db.get(coin) or macro_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
 
         if not coin_macro:
@@ -404,8 +403,7 @@ def check_v_red_top(coin, direction, vbottom_mgr=None, tracked_levels=None):
         rsi_series = calculate_rsi(df_rsi)
         c_rsi = float(rsi_series.iloc[-1]) if not rsi_series.empty and rsi_series.iloc[-1] == rsi_series.iloc[-1] else None
 
-        macro_path = os.path.join(os.path.dirname(__file__), "macro_levels.json")
-        macro_db = load_json(macro_path, default={})
+        macro_db = load_json(MACRO_LEVELS_FILE, default={})
         coin_macro = macro_db.get(coin) or macro_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
 
         if not coin_macro:
@@ -492,8 +490,7 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr):
         if df is None:
             return 0, [], 0
 
-        macro_path = os.path.join(os.path.dirname(__file__), "macro_levels.json")
-        macro_db = load_json(macro_path, default={})
+        macro_db = load_json(MACRO_LEVELS_FILE, default={})
         coin_macro = macro_db.get(coin) or macro_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
         if not coin_macro:
             return 0, [], 0
@@ -509,7 +506,7 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr):
 
         orders, draw_events = bounce_mgr.process_candle(
             c_low, c_high, c_close, supports, resistances, df,
-            allow_long=allow_long, allow_short=allow_short, c_atr=c_atr
+            allow_long=allow_long, allow_short=allow_short, c_atr=c_atr, coin=coin
         )
 
         reports = []

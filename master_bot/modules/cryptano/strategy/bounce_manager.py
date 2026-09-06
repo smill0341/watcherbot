@@ -10,6 +10,10 @@ evaluate_bounce_side, has_active_bounce_watchers) как тонкие обёрт
 test_simulator.py ничего не должен заметить.
 """
 
+import os
+import json
+import pandas as pd
+
 from .bounce_watcher import BounceWatcher
 
 # Два независимых "режима" SHORT, работающих ОДНОВРЕМЕННО на одну и ту же
@@ -361,7 +365,7 @@ class BounceManager:
         return result
 
     def process_candle(self, c_low, c_high, c_close, current_supports, current_resistances,
-                        df_slice, allow_long=True, allow_short=True, c_atr=0.0):
+                        df_slice, allow_long=True, allow_short=True, c_atr=0.0, coin="UNKNOWN"):
         self._update_graveyard(c_close)
 
         orders = []
@@ -391,7 +395,8 @@ class BounceManager:
                     'LONG', touched_long,
                     lambda lid, l: self.evaluate_bounce(
                         l, df_slice, 'LONG', current_resistances,
-                        is_focus=(focus_long_id is None or lid == focus_long_id), c_atr=c_atr)):
+                        is_focus=(focus_long_id is None or lid == focus_long_id), c_atr=c_atr,
+                        coin=coin)):
                 _collect_event(level_id, 'LONG')
                 if decision.get('allow'):
                     actual_lvl = next((s for s in current_supports if s['min'] == lvl['min'] and s['max'] == lvl['max']), lvl)
@@ -406,7 +411,7 @@ class BounceManager:
                         lambda lid, l, _mode=mode, _focus=focus_short_id: self.evaluate_bounce(
                             l, df_slice, 'SHORT', current_supports,
                             is_focus=(_focus is None or lid == _focus), c_atr=c_atr,
-                            same_side_levels=current_resistances, mode=_mode),
+                            same_side_levels=current_resistances, mode=_mode, coin=coin),
                         mode=mode):
                     _collect_event(level_id, 'SHORT')
                     if decision.get('allow'):
@@ -438,7 +443,7 @@ class BounceManager:
     # BOUNCE (Отбой от макро-уровня)
     # -------------------------------------------------------------------------
     def evaluate_bounce(self, level, df, trade_type, all_opposite_levels, is_focus=True,
-                        c_atr=0.0, same_side_levels=None, mode=None):
+                        c_atr=0.0, same_side_levels=None, mode=None, coin="UNKNOWN"):
         level_id = self._level_id(level, trade_type)
         if mode:
             level_id = f"{level_id}__{mode}"
@@ -453,7 +458,8 @@ class BounceManager:
                 # сейчас стоит в BounceWatcher.CONFIG по умолчанию.
                 config_overrides = {'SHORT_CLIMAX_MODE': (mode == 'CLIMAX')}
             self._watchers[level_id] = BounceWatcher(level['min'], level['max'], trade_type,
-                                                       config_overrides=config_overrides, mode=mode)
+                                                       config_overrides=config_overrides, mode=mode,
+                                                       coin=coin)
             self._watchers[level_id].level_type = level.get('type', 'UNKNOWN')
             self._watchers[level_id].level_score = level.get('score', 0)
             if level.get('_reborn'):
@@ -512,3 +518,116 @@ class BounceManager:
         signal['candles_in_sweep'] = 0
 
         return signal
+
+    # -------------------------------------------------------------------------
+    # Хозяйство: количество вотчеров / уборка мёртвых (шаг 5)
+    # -------------------------------------------------------------------------
+    def watcher_count(self):
+        return len(self._watchers)
+
+    def clear_dead_watchers(self, active_level_ids):
+        """Тонкая обёртка над parent.clear_dead_watchers — та же роль, что
+        VBottomManager.clear_dead_watchers: убирает уже DEAD/TRIGGERED
+        вотчеров, которых нет среди активных id этого скана. Не трогает
+        живые (SCANNING/searching) вотчеры независимо от active_level_ids —
+        см. BounceParent.clear_dead_watchers."""
+        return self.parent.clear_dead_watchers(active_level_ids)
+
+    # -------------------------------------------------------------------------
+    # Персистентность между рестартами бота (шаги 2-3). По той же схеме, что
+    # VBottomManager.to_state_dict/save_state/load_state — дамп __dict__
+    # каждого вотчера целиком + отдельно состояние самого менеджера
+    # (pierced_count/graveyard/_graveyard_recorded), которого у VBottomManager
+    # нет, потому что у него нет ни кладбища, ни счётчика пробоев.
+    # -------------------------------------------------------------------------
+
+    # Поля BounceWatcher, которые могут содержать pandas.Timestamp
+    # (json.dump их не переваривает) — переводим в ISO-строку туда-обратно.
+    _TIMESTAMP_FIELDS = ('_last_time', 'last_event_time', 'last_pierce_time')
+
+    def to_state_dict(self):
+        """Сериализует вотчеров BOUNCE + состояние самого менеджера
+        в JSON-совместимый словарь."""
+        watchers_out = {}
+        for level_id, watcher in self._watchers.items():
+            state = dict(watcher.__dict__)
+            for ts_field in self._TIMESTAMP_FIELDS:
+                val = state.get(ts_field)
+                if val is not None and hasattr(val, 'isoformat'):
+                    state[ts_field] = val.isoformat()
+            watchers_out[level_id] = {
+                'min': watcher.min,
+                'max': watcher.max,
+                'trade_type': watcher.trade_type,
+                'mode': getattr(watcher, 'mode', None),
+                'coin': getattr(watcher, 'coin', 'UNKNOWN'),
+                'state': state,
+            }
+        return {
+            'watchers': watchers_out,
+            'pierced_count': self.pierced_count,
+            'graveyard': self.graveyard,
+            'graveyard_recorded': list(self._graveyard_recorded),
+        }
+
+    def save_state(self, path):
+        """Атомарно сохраняет текущее состояние BOUNCE (вотчеры + кладбище +
+        счётчики) в файл. Вызывается из live_scan.py::save_watcher_state()
+        раз в скан-цикл, вместе с v_bottom_mgr."""
+        try:
+            data = self.to_state_dict()
+            tmp_path = f"{path}.tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+            os.replace(tmp_path, path)
+        except Exception as e:
+            print(f"[BounceManager] ⚠️ Не удалось сохранить состояние BOUNCE: {e}")
+
+    def load_state(self, path):
+        """Восстанавливает вотчеров BOUNCE + graveyard + pierced_count из
+        файла состояния при старте бота. Вызывается один раз при импорте
+        live_scan.py, сразу после создания bounce_mgr."""
+        if not os.path.exists(path):
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"[BounceManager] ⚠️ Не удалось прочитать состояние BOUNCE: {e}")
+            return
+
+        watchers_in = data.get('watchers', {})
+        restored = 0
+        for level_id, entry in watchers_in.items():
+            saved_coin = entry.get('coin')
+            if not saved_coin or saved_coin == 'UNKNOWN':
+                print(f"[BounceManager] 🗑️ Игнорируем зомби-вотчер без монеты: {level_id}")
+                continue
+            try:
+                mode = entry.get('mode')
+                saved_state = dict(entry.get('state', {}))
+                # config_overrides не хранится отдельно — он уже "запёкся"
+                # внутри сохранённого self.CONFIG (см. __dict__ дамп), поэтому
+                # конструктору передаём базовые аргументы, а CONFIG перезатрём
+                # ниже вместе со всем остальным состоянием.
+                watcher = BounceWatcher(entry['min'], entry['max'], entry['trade_type'],
+                                          mode=mode, coin=saved_coin)
+                for ts_field in self._TIMESTAMP_FIELDS:
+                    val = saved_state.get(ts_field)
+                    if val is not None:
+                        try:
+                            saved_state[ts_field] = pd.Timestamp(val)
+                        except Exception:
+                            saved_state[ts_field] = None
+                watcher.__dict__.update(saved_state)
+                self._watchers[level_id] = watcher
+                restored += 1
+            except Exception as e:
+                print(f"[BounceManager] ⚠️ Пропущен BOUNCE-вотчер {level_id} при восстановлении: {e}")
+
+        self.pierced_count = data.get('pierced_count', 0)
+        self.graveyard = data.get('graveyard', [])
+        self._graveyard_recorded = set(data.get('graveyard_recorded', []))
+
+        if restored:
+            print(f"[BounceManager] ✅ Восстановлено {restored} BOUNCE-вотчеров из {path}")
