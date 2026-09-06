@@ -10,7 +10,9 @@ import traceback
 from modules.cryptano.utils.common import calculate_rsi, exchange, format_price as fmt_p, price_precision_from_market, resolve_symbol, KNOWN_TICKER_ALIASES
 from modules.cryptano.utils.market_cache import load_markets_cached
 from modules.cryptano.utils.indicators import pandas_get_local_structure, calculate_atr, calculate_ema
-from modules.cryptano.utils.vbottom_manager import VBottomManager
+from modules.cryptano.strategy.vbottom_manager import VBottomManager
+from modules.cryptano.strategy.bounce_manager import BounceManager
+from modules.cryptano.strategy.bounce_parent import BounceParent
 
 # candle_store.py лежит в web/backend/ и не является пакетом (нет __init__.py) —
 # app.py подключает его тем же способом: добавляет свою папку в sys.path и
@@ -472,3 +474,61 @@ def check_v_red_top(coin, direction, vbottom_mgr=None, tracked_levels=None):
         print(f"\n[V_RED_TOP ERROR] ❌ ОШИБКА ПРИ ПРОВЕРКЕ V-RED-TOP ({coin}): {e}")
         traceback.print_exc()
         return False, f"❌ Ошибка V-RED-TOP анализа {coin}: {e}", 0
+    
+def check_bounce(coin, allow_long, allow_short, bounce_mgr):
+    """BOUNCE сам ведёт свои вотчеры внутри bounce_mgr — внешний
+    tracked_levels не нужен, process_candle() получает полный список
+    текущих уровней и сам решает, что уже отслеживается."""
+    try:
+        time.sleep(0.3)
+        coin = coin.upper().replace("USDT", "").replace("/", "").strip()
+
+        markets = load_markets_cached(exchange)
+        symbol = resolve_symbol(coin, markets)
+        if not symbol:
+            return 0, [], 0
+
+        df, fetch_err = _fetch_candles_df(symbol, coin, 52, "BOUNCE")
+        if df is None:
+            return 0, [], 0
+
+        macro_path = os.path.join(os.path.dirname(__file__), "macro_levels.json")
+        macro_db = load_json(macro_path, default={})
+        coin_macro = macro_db.get(coin) or macro_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
+        if not coin_macro:
+            return 0, [], 0
+
+        supports = coin_macro.get("supports", [])
+        resistances = coin_macro.get("resistances", [])
+        if not supports and not resistances:
+            return 0, [], 0
+
+        c = df.iloc[-1]
+        c_high, c_low, c_close = float(c['high']), float(c['low']), float(c['close'])
+        c_atr = float(calculate_atr(df).iloc[-1])
+
+        orders, draw_events = bounce_mgr.process_candle(
+            c_low, c_high, c_close, supports, resistances, df,
+            allow_long=allow_long, allow_short=allow_short, c_atr=c_atr
+        )
+
+        reports = []
+        for order in orders:
+            d = order['decision']
+            tt = order['trade_type']
+            entry, sl, tp = d.get('entry_price', 0.0), d.get('sl', 0.0), d.get('tp', 0.0)
+            rr = ((tp - entry) / (entry - sl)) if tt == 'LONG' and entry > sl else \
+                 ((entry - tp) / (sl - entry)) if tt == 'SHORT' and sl > entry else 0
+            emoji = "🟢" if tt == "LONG" else "🔴"
+            reports.append(
+                f"{emoji} *BOUNCE {tt}*{' 🪦' if d.get('reborn') else ''} _{coin}_\n\n"
+                f"Entry: `{entry:.8f}`\nSL: `{sl:.8f}`\nTP: `{tp:.8f}`\nR/R: `{rr:.2f}`\n\n"
+                f"{d.get('reason', '')}\nLevel: `{d.get('level_id', 'unknown')}`"
+            )
+
+        return len(orders), reports, len(supports) + len(resistances)
+
+    except Exception as e:
+        print(f"\n[BOUNCE ERROR] ❌ {coin}: {e}")
+        traceback.print_exc()
+        return 0, [], 0    

@@ -34,7 +34,7 @@ v_bottom_watcher.py
 """
 
 import os
-from .risk_calc import calc_tp_and_rr
+from ..utils.risk_calc import calc_tp_and_rr
 
 
 class VBottomWatcher:

@@ -32,10 +32,10 @@ from modules.cryptano.utils.common import exchange, calculate_rsi, resolve_symbo
 from modules.cryptano.utils.market_cache import load_markets_cached
 from modules.cryptano.utils.indicators import calculate_atr, calculate_ema
 from modules.cryptano.utils.levels_builder import build_levels
-from modules.cryptano.utils.vbottom_manager import VBottomManager
-from modules.cryptano.utils.v_bottom_watcher import VBottomWatcher
-from modules.cryptano.utils.v_green_bottom_watcher import VGreenBottomWatcher
-from modules.cryptano.utils.v_red_top_watcher import VRedTopWatcher
+from modules.cryptano.strategy.vbottom_manager import VBottomManager
+from modules.cryptano.strategy.v_bottom_watcher import VBottomWatcher
+from modules.cryptano.strategy.v_green_bottom_watcher import VGreenBottomWatcher
+from modules.cryptano.strategy.v_red_top_watcher import VRedTopWatcher
 from modules.cryptano.watcher_plan import (
     _find_fresh_breach,
     _find_fresh_breach_up,

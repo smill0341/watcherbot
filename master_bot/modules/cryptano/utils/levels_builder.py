@@ -69,6 +69,19 @@ POC_BONUS = 1.0  # дополнительный бонус если POC совп
 # полного пересмотра скоринга. См. merge_overlapping_zones().
 MIN_SCORE_MONTH_WEEK_CONFLUENCE = 9.0
 
+# Допуск для слияния БЛИЗКИХ (не обязательно физически пересекающихся)
+# зон СРЕДИ MACRO-зон (1M_MACRO/1W_MACRO). MACRO-зоны искусственно узкие
+# (см. _extract_macro_swings — 1.5% от цены, а не реальный ATR месяца),
+# поэтому два РАЗНЫХ исторических свинга, оказавшихся близко по цене,
+# физически не пересекаются и остаются двумя записями вместо одной.
+# Проверено на реальных данных (HYPE, июль) через count_levels.py:
+# у regular-зон (find_peaks/PMH/PML/PWH/PWL/POC) за месяц ни разу не
+# нашлось близкой пары — там свой скоринг с confluence-бонусами, трогать
+# не стали. Только для MACRO, где reaction_count всегда 0 (сигнала для
+# выбора "кто сильнее" нет) и score фиксированный — тут безопасно просто
+# СЛИТЬ геометрию (min/max), а не выбирать одну зону.
+MACRO_MERGE_DISTANCE_PCT = 4.0
+
 # find_peaks-слой (lookahead-фильтр - старый алгоритм)
 IMPULSE_ATR_MULTIPLIER = 2.5
 IMPULSE_LOOKAHEAD_DAYS = 10
@@ -310,17 +323,7 @@ def _extract_period_extremes(df_1d, freq, n_periods_back, current_price, atr_1d,
             date_str = period_start.strftime('%Y-%m-%d')
             base_score = SCORE_PMH_PML if freq == 'ME' else SCORE_PWH_PWL
 
-            # Ширина зоны — тот же принцип, что уже используется для MACRO-слоя
-            # (см. _extract_macro_swings): фиксированный % от цены САМОЙ ТОЧКИ
-            # (хай/лоу закрытого периода), а не от живого atr_1d. atr_1d каждый
-            # 12ч-пересчёт немного другой (скользящее окно), из-за чего границы
-            # PMH/PML/PWH/PWL слегка дрожали между снимками, даже когда сама
-            # точка (price) уже давно зафиксирована. reactions/mitigated ниже
-            # по-прежнему используют живой atr_1d — это другой расчёт (допуск
-            # на касание), его не трогаем.
-            zone_width_ref = price * 0.015
-
-            zone = _build_zone(price, zone_width_ref, base_score, label, date_str,
+            zone = _build_zone(price, atr_1d, base_score, label, date_str,
                                 mitigated=mitigated, reaction_count=reactions, 
                                 volume_bonus=vol_bonus)
             zone['_is_support'] = is_support
@@ -603,6 +606,55 @@ def merge_overlapping_zones(zones):
     return merged
 
 
+def _merge_nearby_macro_zones(zones, tolerance_pct=MACRO_MERGE_DISTANCE_PCT):
+    """Второй, более мягкий проход слияния — ТОЛЬКО для зон class == 'MACRO'.
+
+    Обычный merge_overlapping_zones выше сливает зоны только при физическом
+    пересечении. MACRO-зоны узкие (1.5% от цены, искусственно, см. коммент
+    к MACRO_MERGE_DISTANCE_PCT) — два разных исторических свинга, которые
+    по смыслу про один и тот же район графика, часто НЕ пересекаются чисто
+    из-за этой узости и остаются двумя отдельными записями. Тут условие
+    слияния ослаблено: не 'пересекается', а 'зазор между серединами меньше
+    tolerance_pct% от цены'.
+
+    Зоны других классов (regular) эта функция не трогает вообще — у них
+    свой, более тонкий скоринг (confluence-бонусы, MIN_SCORE_MONTH_WEEK_
+    CONFLUENCE), смешивать с этой упрощённой логикой не стали (см. NOTES).
+
+    В отличие от merge_overlapping_zones, тут НЕ считаем find_peaks/calendar
+    confluence-бонусы — они физически невозможны для MACRO-зон (тип всегда
+    '1M_MACRO_...'/'1W_MACRO_...', ни PMH/PML/PWH/PWL, ни extreme_peak).
+    Просто расширяем границы, score/reaction_count берём максимум из пары.
+    Ширину результата потом при необходимости обрежет compress_fat_zones
+    (эта функция вызывается ДО него в build_levels)."""
+    macro = [z for z in zones if z.get('class') == 'MACRO']
+    rest = [z for z in zones if z.get('class') != 'MACRO']
+
+    if not macro:
+        return zones
+
+    macro_sorted = sorted(macro, key=lambda z: z['min'])
+    merged = [macro_sorted[0]]
+
+    for current in macro_sorted[1:]:
+        last = merged[-1]
+        last_mid = (last['min'] + last['max']) / 2
+        gap_tolerance = last_mid * (tolerance_pct / 100.0)
+        # Зазор между концом last и началом current меньше допуска —
+        # считаем одной зоной (в т.ч. если пересекаются - gap отрицательный).
+        if current['min'] - last['max'] <= gap_tolerance:
+            last['max'] = max(last['max'], current['max'])
+            last['min'] = min(last['min'], current['min'])
+            last['score'] = max(last.get('score', 0), current.get('score', 0))
+            last['reaction_count'] = max(last.get('reaction_count', 0), current.get('reaction_count', 0))
+            if current.get('type') and last.get('type') and current['type'] not in last['type']:
+                last['type'] = f"{last['type']} + {current['type']}"
+        else:
+            merged.append(current)
+
+    return merged + rest
+
+
 def compress_fat_zones(zones, coin):
     """Сжимает слишком широкие зоны к их центру."""
     max_width_pct = 0.03 if coin in MAJORS else 0.05
@@ -769,6 +821,14 @@ def build_levels(df_1M, df_1W, df_1d, df_4h, coin, current_idx=None):
 
     supports = merge_overlapping_zones(supports)
     resistances = merge_overlapping_zones(resistances)
+
+    # Второй, более мягкий проход — ТОЛЬКО для MACRO-зон (см. докстринг
+    # _merge_nearby_macro_zones). Regular-зоны (find_peaks/PMH/PML/PWH/PWL/POC)
+    # не трогаем: измерено на реальных данных (count_levels.py, HYPE/июль) -
+    # там близких пар за месяц не нашлось ни разу, а трогать их скоринг
+    # (confluence-бонусы) без такой же проверки рискованно.
+    supports = _merge_nearby_macro_zones(supports)
+    resistances = _merge_nearby_macro_zones(resistances)
 
     # POC: ПОСЛЕ merge. Если совпал со слитой зоной - бонус один раз, иначе своя зона.
     if df_4h is not None and len(df_4h) >= 50:

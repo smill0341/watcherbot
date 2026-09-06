@@ -54,7 +54,7 @@ GLOBAL_SKIPPED_COINS = []
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "BTC"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ETH"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 4500
@@ -122,8 +122,14 @@ class SmartSniperUniversal(Strategy):
         if STRATEGY == "BOUNCE":
             self.draw_sup_max = self.I(lambda: self.data.df['sup_max'], name="Support (ближняя)", overlay=True, color='lime')
             self.draw_sup_min = self.I(lambda: self.data.df['sup_min'], name="Support (дальняя)", overlay=True, color='darkgreen')
-            self.draw_res_min = self.I(lambda: self.data.df['res_min'], name="Resist (ближняя)", overlay=True, color='red')
-            self.draw_res_max = self.I(lambda: self.data.df['res_max'], name="Resist (дальняя)", overlay=True, color='darkred')
+            self.draw_res_min = self.I(lambda: self.data.df['res_min'], name="Resist CLIMAX (ближняя)", overlay=True, color='red')
+            self.draw_res_max = self.I(lambda: self.data.df['res_max'], name="Resist CLIMAX (дальняя)", overlay=True, color='darkred')
+            # Вторая, независимая пара — MIRROR-режим SHORT (может смотреть на
+            # СОВСЕМ другую зону, чем CLIMAX, — оба режима работают параллельно,
+            # см. bounce_manager.py SHORT_MODES). Оранжевый, чтобы не путать с
+            # красным CLIMAX.
+            self.draw_res_min_mirror = self.I(lambda: self.data.df['res_min_mirror'], name="Resist MIRROR (ближняя)", overlay=True, color='orange')
+            self.draw_res_max_mirror = self.I(lambda: self.data.df['res_max_mirror'], name="Resist MIRROR (дальняя)", overlay=True, color='darkorange')
         else:
             self.draw_sup_max = self.I(lambda: self.data.df['sup_max'], name="Support (Ближняя)", overlay=True, color='lime')
             self.draw_sup_min = self.I(lambda: self.data.df['sup_min'], name="Support (Дальняя)", overlay=True, color='darkgreen')
@@ -233,13 +239,18 @@ class SmartSniperUniversal(Strategy):
             if self.original_df is not None and current_time in self.original_df.index:
                 if STRATEGY == "BOUNCE":
                     c_close_draw = float(self.data.Close[-1])
-                    sup_min, sup_max, res_min, res_max = self.manager.bounce.get_zone_drawing(
+                    zones = self.manager.bounce.get_zone_drawing_multi(
                         c_close_draw, allow_long=ALLOW_LONG_TRADES, allow_short=ALLOW_SHORT_TRADES
                     )
+                    sup_min, sup_max = zones['long']
+                    res_min, res_max = zones['short_climax']
+                    res_min_mirror, res_max_mirror = zones['short_mirror']
                     self.original_df.loc[current_time, 'sup_min'] = sup_min if sup_min is not None else np.nan
                     self.original_df.loc[current_time, 'sup_max'] = sup_max if sup_max is not None else np.nan
                     self.original_df.loc[current_time, 'res_min'] = res_min if res_min is not None else np.nan
                     self.original_df.loc[current_time, 'res_max'] = res_max if res_max is not None else np.nan
+                    self.original_df.loc[current_time, 'res_min_mirror'] = res_min_mirror if res_min_mirror is not None else np.nan
+                    self.original_df.loc[current_time, 'res_max_mirror'] = res_max_mirror if res_max_mirror is not None else np.nan
                 else:
                     # Отрисовка поддержки (зеленая) ТОЛЬКО если разрешены лонги
                     last_sup = getattr(self, 'last_breached_support', None)
@@ -953,6 +964,8 @@ if TARGET_COIN.upper() == "ALL":
         df['sup_buf'] = np.nan
         df['res_min'] = np.nan
         df['res_max'] = np.nan
+        df['res_min_mirror'] = np.nan
+        df['res_max_mirror'] = np.nan
         df['res_buf'] = np.nan
         df['vbottom_pit'] = np.nan
         df['vbottom_scan'] = np.nan
@@ -1187,6 +1200,8 @@ else:
             df['sup_min'] = np.nan
             df['res_min'] = np.nan
             df['res_max'] = np.nan
+            df['res_min_mirror'] = np.nan
+            df['res_max_mirror'] = np.nan
             df['vbottom_pit'] = np.nan
             df['vbottom_scan'] = np.nan
             df['vbottom_good'] = np.nan

@@ -45,7 +45,7 @@ from testswing.levels_builder import build_levels, compress_fat_zones, CONFLUENC
 # НАСТРОЙКИ
 # =====================================================================
 CONFIG = {
-    'COINS': ['UNI'],                     # список монет
+    'COINS': ['HYPE'],                     # список монет
     'DATE_START': "2026-07-01 00:00:00",  # начало периода
     'DATE_END': "2026-07-31 00:00:00",    # конец периода
     'STEP_HOURS': 12,                     # шаг пересчёта — 12ч = как у настоящего бота
@@ -59,7 +59,97 @@ CONFIG = {
     # чтобы на цифрах увидеть, насколько сильно это сократило бы число зон,
     # ничего не меняя в боевом levels_builder.py.
     'ZONE_MERGE_DISTANCE_PCT': 4.0,
+    # Допуск для ВТОРОГО варианта борьбы со спамом — не сливать близкие зоны,
+    # а оставлять только сильнейшую по reaction_count, остальные рядом с ней
+    # выбрасывать целиком (см. keep_strongest_zones). Тот же % от цены, что
+    # и ZONE_MERGE_DISTANCE_PCT, но смысл другой: тут не расширяем зону,
+    # а именно удаляем "лишние" соседние.
+    'ZONE_SUPPRESS_DISTANCE_PCT': 4.0,
 }
+
+# Иерархия таймфрейма-источника зоны, старше -> выше ранг. Используется только
+# как тай-брейк при РАВНОМ reaction_count в keep_strongest_zones — сам score
+# сюда сознательно не подмешиваем (см. обсуждение с пользователем: score
+# подгонялся руками и не годится как критерий "что выбросить навсегда").
+_TIMEFRAME_RANK = (
+    ("1M_", 4),
+    ("1W_", 3),
+    ("1d_", 2),
+    ("4h_", 1),
+)
+
+
+def _timeframe_rank(zone_type):
+    """Берёт САМЫЙ старший таймфрейм, встречающийся в строке type (зона может
+    быть составной после confluence, напр. '1M_low_PML + 1W_low_PWL')."""
+    zone_type = zone_type or ''
+    best = 0
+    for prefix, rank in _TIMEFRAME_RANK:
+        if prefix in zone_type:
+            best = max(best, rank)
+    return best
+
+
+def keep_strongest_zones(zones, tolerance_pct, verbose_label=None):
+    """Альтернатива merge_by_distance: НЕ сливает границы, а для каждой
+    группы близких зон (в пределах tolerance_pct% по расстоянию между
+    серединами) оставляет ровно одну — с наибольшим reaction_count
+    (тай-брейк — старший таймфрейм источника, см. _timeframe_rank), все
+    остальные рядом с ней выбрасывает целиком.
+
+    Специально сравнение идёт "каждый кандидат vs уже выбранный победитель",
+    а НЕ "сосед с соседом по цепочке" — иначе A и D могли бы попасть в одну
+    группу транзитивно через B и C, даже если A и D сами по себе далеко друг
+    от друга. Порядок: сортируем по силе (убывание), берём сильнейшую живую
+    зону как победителя, гасим всё, что в допуске ИМЕННО от неё, повторяем
+    для оставшихся.
+
+    zones — список зон ОДНОЙ стороны (только supports либо только
+    resistances). Возвращает новый список (не мутирует входные dict-ы).
+    """
+    if not zones:
+        return []
+
+    # Сортировка: reaction_count по убыванию, при равенстве — таймфрейм
+    # по убыванию (месяц раньше недели раньше дня раньше 4h).
+    remaining = sorted(
+        zones,
+        key=lambda z: (z.get('reaction_count', 0), _timeframe_rank(z.get('type', ''))),
+        reverse=True,
+    )
+
+    winners = []
+    suppressed_log = []  # [(winner, [проигравшие...])] — для отладочного вывода
+
+    while remaining:
+        winner = remaining.pop(0)
+        winner_mid = (winner['min'] + winner['max']) / 2
+        tolerance = winner_mid * (tolerance_pct / 100.0)
+
+        losers = []
+        still_remaining = []
+        for candidate in remaining:
+            cand_mid = (candidate['min'] + candidate['max']) / 2
+            if abs(cand_mid - winner_mid) <= tolerance:
+                losers.append(candidate)
+            else:
+                still_remaining.append(candidate)
+
+        winners.append(winner)
+        if losers:
+            suppressed_log.append((winner, losers))
+        remaining = still_remaining
+
+    if verbose_label and suppressed_log:
+        print(f"  [{verbose_label}] подавлено соседями:")
+        for winner, losers in suppressed_log:
+            w_desc = f"{winner['min']:.4f}-{winner['max']:.4f}[{winner.get('type','?')}, touches={winner.get('reaction_count',0)}]"
+            for l in losers:
+                l_desc = f"{l['min']:.4f}-{l['max']:.4f}[{l.get('type','?')}, touches={l.get('reaction_count',0)}]"
+                print(f"      {w_desc}  вытеснил  {l_desc}")
+
+    # Возвращаем в исходном порядке по цене — удобнее сравнивать с before/after.
+    return sorted(winners, key=lambda z: z['min'])
 
 
 def merge_by_distance(zones, tolerance_pct):
@@ -202,15 +292,31 @@ def run():
                 merge_by_distance([dict(z) for z in resistances_before], tolerance), coin
             )
 
+            # Третий вариант: не сливаем границы, а оставляем сильнейшую по
+            # reaction_count зону из каждой группы близких, остальные
+            # выбрасываем целиком (см. keep_strongest_zones). compress_fat_zones
+            # тут не нужен — победитель не расширялся, его ширина не менялась.
+            suppress_tolerance = CONFIG['ZONE_SUPPRESS_DISTANCE_PCT']
+            supports_strongest = keep_strongest_zones(
+                [dict(z) for z in supports_before], suppress_tolerance,
+                verbose_label=f"{coin} {dt} supports"
+            )
+            resistances_strongest = keep_strongest_zones(
+                [dict(z) for z in resistances_before], suppress_tolerance,
+                verbose_label=f"{coin} {dt} resistances"
+            )
+
             # Краткая консольная сводка — только цифры, отсортировано по цене,
-            # плюс было/стало после доп. слияния по расстоянию.
+            # плюс было/стало после доп. слияния по расстоянию и после
+            # "оставить сильнейшего".
             sup_str = ", ".join(f"{z['min']:.4f}-{z['max']:.4f}[{z.get('type','?')}]" for z in sorted(supports_before, key=lambda z: z['min']))
             res_str = ", ".join(f"{z['min']:.4f}-{z['max']:.4f}[{z.get('type','?')}]" for z in sorted(resistances_before, key=lambda z: z['min']))
-            print(f"  {dt} | supports({len(supports_before)}->{len(supports_after)}): {sup_str or '-'}")
-            print(f"  {' ' * len(str(dt))} | resistances({len(resistances_before)}->{len(resistances_after)}): {res_str or '-'}")
+            print(f"  {dt} | supports({len(supports_before)}->merge:{len(supports_after)}->strongest:{len(supports_strongest)}): {sup_str or '-'}")
+            print(f"  {' ' * len(str(dt))} | resistances({len(resistances_before)}->merge:{len(resistances_after)}->strongest:{len(resistances_strongest)}): {res_str or '-'}")
 
             for stage, supports, resistances in (('before', supports_before, resistances_before),
-                                                  ('after', supports_after, resistances_after)):
+                                                  ('after_merge', supports_after, resistances_after),
+                                                  ('after_strongest', supports_strongest, resistances_strongest)):
                 for z in supports:
                     rows.append({'date': dt, 'coin': coin, 'stage': stage, 'side': 'support',
                                  'min': z['min'], 'max': z['max'],
@@ -234,9 +340,12 @@ def run():
             writer.writerows(rows)
         print(f"\nСохранено: {out_path} ({len(rows)} строк)")
         print(f"Допуск слияния ZONE_MERGE_DISTANCE_PCT = {CONFIG['ZONE_MERGE_DISTANCE_PCT']}%")
-        print("Колонка 'stage': 'before' — как сейчас у бота, 'after' — с доп. слиянием близких зон.")
+        print(f"Допуск 'оставить сильнейшего' ZONE_SUPPRESS_DISTANCE_PCT = {CONFIG['ZONE_SUPPRESS_DISTANCE_PCT']}%")
+        print("Колонка 'stage': 'before' — как сейчас у бота, 'after_merge' — с доп. слиянием близких зон "
+              "(границы расширяются), 'after_strongest' — близкие зоны не сливаются, а лишние выбрасываются "
+              "целиком, остаётся только зона с наибольшим reaction_count.")
         print("Откройте в Excel, отсортируйте по 'coin' -> 'side' -> 'stage' -> 'mid' — "
-              "видно и дрожание между датами, и разницу before/after сразу.")
+              "видно и дрожание между датами, и разницу между всеми тремя вариантами сразу.")
 
     print("\nГотово.")
 

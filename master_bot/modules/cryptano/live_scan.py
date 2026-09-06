@@ -6,7 +6,11 @@ import threading
 import re
 
 from modules.cryptano.utils.storage import load_json, save_json_atomic
-from modules.cryptano.utils.vbottom_manager import VBottomManager
+from modules.cryptano.strategy.vbottom_manager import VBottomManager
+from modules.cryptano.strategy.bounce_manager import BounceManager
+from modules.cryptano.strategy.bounce_parent import BounceParent
+
+bounce_mgr = BounceManager(BounceParent())
 import json
 
 # ================= НАСТРОЙКИ WATCHER =================

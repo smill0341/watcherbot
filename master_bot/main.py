@@ -6,13 +6,13 @@ import keyboards
 from telebot import types
 from background_tasks import start_all_background_tasks
 from modules.cryptano.utils.storage import load_json, save_json_atomic
-from modules.cryptano.critical_filter import process_crypto_command
+from modules.cryptano.filters.critical_filter import process_crypto_command
 from modules.footballnogoal.football import check_live_matches
 from modules.playerpropsbasket.player_props import check_nba_injuries
 from modules.cryptano.history import check_and_update, format_history
 from modules.cryptano.market_overview import analyze_coin
-from modules.cryptano.utils.manual_sfp import check_manual_extreme
-from modules.cryptano.light_filter import run_manual_light_scan
+from modules.cryptano.strategy.manual_sfp import check_manual_extreme
+from modules.cryptano.filters.light_filter import run_manual_light_scan
 from modules.cryptano.live_scan import manage_watchlist, show_watchlist
 from modules.cryptano.history import check_and_update, format_history, generate_report_file
 import threading

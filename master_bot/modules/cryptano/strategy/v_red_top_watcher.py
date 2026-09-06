@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
-from .risk_calc import calc_tp_and_rr
+from ..utils.risk_calc import calc_tp_and_rr
 
 class VRedTopWatcher:
     CONFIG = {
