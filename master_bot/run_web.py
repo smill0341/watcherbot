@@ -79,6 +79,67 @@ def _rebuild_levels(notifier):
         print(f"[run_web] ❌ Ошибка при построении уровней: {e}")
 
 
+def _reset_all_watchers():
+    """
+    Полный сброс живых вотчеров в памяти — по запросу с веб-дашборда.
+    НЕ трогает macro_levels.json/watchlist.json — только состояние
+    отслеживания (кто что пробил, кто в фокусе, кулдауны), чтобы всё
+    начало отслеживаться заново с чистого листа по уже существующим
+    уровням.
+    """
+    print("[run_web] 🧹 Сброс всех вотчеров по запросу с дашборда...")
+    try:
+        from modules.cryptano.live_scan import (
+            v_bottom_mgr, bounce_mgr, tracked_origin_levels,
+            tracked_origin_levels_vrt, watcher_cooldown_cache, save_watcher_state,
+        )
+        from modules.cryptano.utils.paths import ACTIVE_WATCHERS_FILE
+        v_bottom_mgr._watchers.clear()
+        # bounce_mgr._watchers — property (parent._watchers), .clear() мутирует
+        # тот же словарь на месте, так и должно работать.
+        bounce_mgr._watchers.clear()
+        bounce_mgr.graveyard.clear()
+        bounce_mgr._graveyard_recorded.clear()
+        bounce_mgr.pierced_count = 0
+        tracked_origin_levels.clear()
+        tracked_origin_levels_vrt.clear()
+        watcher_cooldown_cache.clear()
+        save_watcher_state()  # сразу на диск, не дожидаясь обычного цикла сохранения
+        # active_watchers.json save_watcher_state() НЕ трогает вообще — этот файл
+        # обновляется только внутри 15-минутного скан-цикла в background_tasks.py.
+        # Без явной очистки тут дашборд ещё до 15 минут показывал бы старый список,
+        # хотя в памяти уже пусто.
+        save_json_atomic(ACTIVE_WATCHERS_FILE, {})
+        print("[run_web] ✅ Сброс завершён — watcher_state.json/bounce_state.json/active_watchers.json обнулены.")
+    except Exception as e:
+        print(f"[run_web] ❌ Ошибка при сбросе вотчеров: {e}")
+
+
+def _flag_listener(notifier):
+    """
+    Проверяет флаг-файлы от веб-дашборда КАЖДУЮ СЕКУНДУ — специально
+    отдельно от 15-минутного каскада скана в background_tasks.py, чтобы
+    команды с дашборда ("сбросить всё", "rebuild") применялись почти
+    мгновенно, а не ждали ближайшего цикла скана.
+    """
+    reset_flag_path = os.path.join(BASE_DIR, "modules", "cryptano", "reset_watchers.flag")
+    rebuild_flag_path = os.path.join(BASE_DIR, "modules", "cryptano", "rebuild_levels.flag")
+    while True:
+        time.sleep(1)
+        if os.path.exists(reset_flag_path):
+            try:
+                os.remove(reset_flag_path)
+            except Exception:
+                pass
+            _reset_all_watchers()
+        if os.path.exists(rebuild_flag_path):
+            try:
+                os.remove(rebuild_flag_path)
+            except Exception:
+                pass
+            threading.Thread(target=_rebuild_levels, args=(notifier,), daemon=True).start()
+
+
 def _console_listener(notifier):
     """
     Слушает консоль в отдельном потоке. Команды:
@@ -131,6 +192,7 @@ def main():
     start_swing_hunter(notifier, ADMIN_LABEL)
 
     threading.Thread(target=_console_listener, args=(notifier,), daemon=True).start()
+    threading.Thread(target=_flag_listener, args=(notifier,), daemon=True).start()
 
     try:
         while True:

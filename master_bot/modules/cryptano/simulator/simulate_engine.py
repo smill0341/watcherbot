@@ -60,15 +60,18 @@ CANDLE_WINDOW = 300
 
 def _levels_at(symbol, coin, target_ts_ms):
     """Уровни ровно на дату старта — тот же build_levels(), что в бою,
-    только свечи обрезаны по бирже через params={"endTime": ...}.
-    1M/1W добавлены сюда же (лимиты 60/150 — как в swing_hunter.py),
-    т.к. build_levels() теперь требует их первыми двумя аргументами."""
+    только 1d/4h свечи обрезаны по бирже через params={"endTime": ...}.
+    1M/1W — БЕЗ endTime: Bybit отдаёт "Invalid period!" на сочетание
+    endTime + месячный/недельный интервал (в отличие от 1d/4h, где всё
+    нормально). Берём последние доступные 1M/1W как есть — для зон такого
+    масштаба (месяц/неделя) разница в пару дней от даты старта симуляции
+    не критична, в отличие от 1d/4h, где обрезка по факту важна."""
     params = {"endTime": target_ts_ms}
     ohlcv_1d = exchange.fetch_ohlcv(symbol, timeframe="1d", limit=365, params=params)
     if len(ohlcv_1d) < 50:
         return {"supports": [], "resistances": []}
-    ohlcv_1M = exchange.fetch_ohlcv(symbol, timeframe="1M", limit=60, params=params)
-    ohlcv_1W = exchange.fetch_ohlcv(symbol, timeframe="1W", limit=150, params=params)
+    ohlcv_1M = exchange.fetch_ohlcv(symbol, timeframe="1M", limit=60)
+    ohlcv_1W = exchange.fetch_ohlcv(symbol, timeframe="1W", limit=150)
     ohlcv_4h = exchange.fetch_ohlcv(symbol, timeframe="4h", limit=200, params=params)
 
     cols = ["timestamp", "open", "high", "low", "close", "volume"]

@@ -54,11 +54,19 @@ class VBottomWatcher:
         'DEBUG': True,
     }
 
-    def __init__(self, level_min, level_max, trade_type, coin="UNKNOWN"):
+    def __init__(self, level_min, level_max, trade_type, coin="UNKNOWN", level_date=None):
         self.min = level_min
         self.max = level_max
         self.trade_type = trade_type
         self.coin = coin
+        # Дата ФОРМИРОВАНИЯ уровня (из macro_levels.json, lvl['date']) — не
+        # путать с моментом, когда вотчер начал следить (это происходит
+        # позже, при реальном касании). Замораживаем один раз при рождении,
+        # той же логикой, что min/max — не сверяем заново с текущим
+        # macro_levels.json (он мог пересчитаться и потерять точное
+        # совпадение). Нужно, чтобы на графике линия уровня начиналась там,
+        # где уровень реально появился, а не только с момента слежки.
+        self.level_date = level_date
         self.state = "SEARCHING"
 
         self.tracker_vol = 0.0

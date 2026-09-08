@@ -30,9 +30,8 @@ IMPULSE_LOOKAHEAD_DAYS = 10   # Даем цене 10 дней на то, что�
 # BASE_DIR указывает на modules/cryptano/ (json-файлы теперь в jsonbank/ — см. utils/paths.py)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-from modules.cryptano.utils.paths import MACRO_LEVELS_FILE, WATCHLIST_FILE
+from modules.cryptano.utils.paths import MACRO_LEVELS_FILE
 
-LIGHT_RADAR_INTERVAL_SEC = 60
 MIN_VOLUME_USD = 10_000_000
 
 _hunter_lock = threading.Lock()
@@ -208,65 +207,6 @@ def build_levels_for_single_coin(coin):
         print(f"[HUNTER ERROR] Ошибка при построении уровней для {coin}: {e}")
         return None
 
-def minute_radar(bot, admin_chat_id):
-    """
-    Радар, который сканирует рынок каждую минуту и ждет, 
-    пока цена зайдет ВНУТРЬ созданной зоны ликвидности.
-    """
-    while True:
-        time.sleep(LIGHT_RADAR_INTERVAL_SEC)
-        try:
-            macro_base = load_json(MACRO_LEVELS_FILE, default={})
-            if not macro_base: continue 
-                
-            watchlist = load_json(WATCHLIST_FILE, default={})
-            tickers = exchange.fetch_tickers()
-            added_coins = []
-            
-            for symbol, tick in tickers.items():
-                if not (symbol.endswith('/USDT') or symbol.endswith(':USDT')): continue
-                coin = symbol.split("/")[0].replace(":USDT", "")
-                if coin not in macro_base: continue
-                    
-                current_price = float(tick.get('last') or 0)
-                if current_price == 0: continue
-                if coin in watchlist: continue
-                    
-                levels = macro_base[coin]
-                is_triggered = False
-                trigger_direction = ""
-                
-                # Проверяем касание именно ЗОНЫ, а не точной линии
-                for sup in levels.get("supports", []):
-                    # Если цена внутри зоны или на 1% выше нее (на подходе)
-                    if sup['min'] <= current_price <= (sup['max'] * 1.01): 
-                        is_triggered = True
-                        trigger_direction = "LONG"
-                        break
-                        
-                if not is_triggered:
-                    for res in levels.get("resistances", []):
-                        # Если цена внутри зоны или на 1% ниже нее
-                        if (res['min'] * 0.99) <= current_price <= res['max']: 
-                            is_triggered = True
-                            trigger_direction = "SHORT"
-                            break
-                            
-                if is_triggered:
-                    watchlist[coin] = {
-                        "direction": trigger_direction,
-                        "added_at": datetime.datetime.now().isoformat(),
-                        "source": "Swing Hunter"
-                    }
-                    added_coins.append(coin)
-            
-            if added_coins:
-                save_json_atomic(WATCHLIST_FILE, watchlist)
-                print(f"🎯 [SWING HUNTER] Радар: В Watchlist залетело {len(added_coins)} монет.")
-
-        except Exception as e:
-            print(f"[RADAR ERROR] {e}")
-
 def run_heavy_generator(bot, admin_chat_id):
     """Фоновый поток для генерации уровней по расписанию."""
     schedule.every().day.at(TIME_ASIAN_CLOSE).do(build_macro_levels, bot, admin_chat_id)
@@ -278,8 +218,13 @@ def run_heavy_generator(bot, admin_chat_id):
 def start_swing_hunter(bot, admin_chat_id):
     """Инициализация Swing Hunter: запускает фоновые потоки, не блокируя старт бота."""
     threading.Thread(target=run_heavy_generator, args=(bot, admin_chat_id), daemon=True).start()
-    threading.Thread(target=minute_radar, args=(bot, admin_chat_id), daemon=True).start()
-    print("[SWING HUNTER] Инициализирован (heavy_generator + minute_radar запущены в фоне)")
+    # minute_radar удалён — второй, независимый писатель в watchlist.json
+    # (наравне с синхронизацией в background_tasks.py), не нужен: свою роль
+    # ("добавить монету в watchlist") с запасом перекрывает синхронизация в
+    # background_tasks.py (добавляет ВСЕ монеты из macro_levels.json, без
+    # условия "уже коснулась зоны"), а "ушла в работу" и так проверяется
+    # внутри самого 15-минутного скана, отдельно от watchlist.
+    print("[SWING HUNTER] Инициализирован (heavy_generator запущен в фоне)")
 
 # ТОЧКА ВХОДА ДЛЯ ПРЯМОГО ЗАПУСКА
 if __name__ == "__main__":

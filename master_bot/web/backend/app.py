@@ -63,11 +63,12 @@ def _write_json_atomic(path: str, data: Any) -> None:
     os.replace(tmp_path, path)
 
 CRYPTANO_DIR = os.path.join(BASE_DIR, "modules", "cryptano")
-WATCHLIST_PATH = os.path.join(CRYPTANO_DIR, "watchlist.json")
-MACRO_LEVELS_PATH = os.path.join(CRYPTANO_DIR, "macro_levels.json")
-SIGNALS_PATH = os.path.join(CRYPTANO_DIR, "signals.json")
-ACTIVE_WATCHERS_PATH = os.path.join(CRYPTANO_DIR, "active_watchers.json")
-WATCHER_HISTORY_PATH = os.path.join(CRYPTANO_DIR, "watcher_history.json")
+JSONBANK_DIR = os.path.join(CRYPTANO_DIR, "jsonbank")
+WATCHLIST_PATH = os.path.join(JSONBANK_DIR, "watchlist.json")
+MACRO_LEVELS_PATH = os.path.join(JSONBANK_DIR, "macro_levels.json")
+SIGNALS_PATH = os.path.join(JSONBANK_DIR, "signals.json")
+ACTIVE_WATCHERS_PATH = os.path.join(JSONBANK_DIR, "active_watchers.json")
+WATCHER_HISTORY_PATH = os.path.join(JSONBANK_DIR, "watcher_history.json")
 
 STATIC_DIR = os.path.join(WEB_DIR, "static")
 
@@ -88,7 +89,7 @@ async def no_cache_for_api(request, call_next):
 
 # Состояния, которые считаем "просто наблюдение, ничего не пробито":
 # у V_BOTTOM это SEARCHING, у V_GREEN_BOTTOM — WAIT_FIRST_DUMP (свои разные state-машины).
-IDLE_STATES = {"SEARCHING", "WAIT_FIRST_DUMP"}
+IDLE_STATES = {"SEARCHING", "WAIT_FIRST_DUMP", "WAIT_PUMP"}
 # Конечные состояния — вотчер уже отработал, ждёт удаления сборщиком мусора бота.
 TERMINAL_STATES = {"TRIGGERED", "DEAD"}
 
@@ -104,9 +105,10 @@ def _load_markets_on_startup():
 
     candle_store.init_db()
 
-    # Фоновая докачка истории по монетам из watchlist. Список читается заново
-    # на каждом проходе — если watchlist пополнился/сократился, воркер сам
-    # подхватит изменения на следующем цикле, без рестарта дашборда.
+    # Фоновая докачка истории по монетам из watchlist.json (сейчас пишет туда
+    # только minute_radar в swing_hunter.py — см. get_watchlist()). Список
+    # читается заново на каждом проходе — если watchlist пополнился, воркер
+    # сам подхватит изменения на следующем цикле, без рестарта дашборда.
     def _candle_backfill_worker():
         WATCHLIST_REFRESH_INTERVAL_SEC = 180
         while True:
@@ -144,10 +146,16 @@ def get_watchlist():
     """
     Watchlist, размеченный по наличию уровней в macro_levels.json:
     "with_levels" — монеты, по которым уровни уже построены (можно смотреть
-    осмысленно), "without_levels" — ещё нет (обычно временно, до ближайшего
-    построения уровней по расписанию/вручную через 'rebuild' в консоли).
-    Список каждый раз считается заново от watchlist.json — если он
-    поменялся (монета добавилась/ушла, уровни досчитались), это сразу видно.
+    осмысленно), "without_levels" — ещё нет. Каждый скан
+    (background_tasks.py::crypto_orchestrator) сам добавляет в watchlist.json
+    любую монету из macro_levels.json, которой там ещё нет — так что на
+    практике тут всегда все топ-70. Отдельно ещё minute_radar (swing_hunter.py)
+    и позже ручное добавление/фильтры могут добавлять монеты со своим "source".
+
+    "direction" в watchlist.json — история о том, откуда взялась запись
+    (кто её добавил и почему), НЕ то, что реально сканируется (скан всегда
+    проверяет обе стороны по факту наличия supports/resistances — см.
+    background_tasks.py). Тут показываем как есть, для информации.
     """
     wl = _read_json(WATCHLIST_PATH, default={})
     if not isinstance(wl, dict):
@@ -157,6 +165,8 @@ def get_watchlist():
     with_levels = []
     without_levels = []
     for coin, meta in wl.items():
+        if coin == "_meta":
+            continue  # служебный ключ (сюда попасть не должен, но на случай старых прогонов)
         has_levels = coin in macro or KNOWN_TICKER_ALIASES.get(coin) in macro
         entry = {"coin": coin, "has_levels": has_levels, **(meta or {})}
         (with_levels if has_levels else without_levels).append(entry)
@@ -165,6 +175,35 @@ def get_watchlist():
     without_levels.sort(key=lambda x: x.get("added_at") or "", reverse=True)
 
     return {"with_levels": with_levels, "without_levels": without_levels}
+
+
+CLIMAX_ACTIVE_STAGES = {"WAIT_BUFFER", "SEARCHING"}
+
+
+def _is_active_watcher(w: dict) -> bool:
+    """
+    Единое условие "в работе" — разное для BOUNCE и для остальных трёх
+    стратегий, потому что BOUNCE не отражает реальный прогресс в поле
+    "state" (там всегда "SCANNING" до входа/смерти или наоборот TRIGGERED/
+    DEAD в конце). Для BOUNCE смотрим на currently_pierced/climax_stage
+    (см. bounce_watcher.py) напрямую:
+      - LONG и SHORT-MIRROR: активен, когда цена реально прошла 50% зоны
+        (currently_pierced=True), не с первого касания края.
+      - SHORT-CLIMAX: активен, когда обе зоны (ближняя и дальняя) уже
+        подтверждены закрытием (climax_stage WAIT_BUFFER или дальше —
+        SEARCHING), но не раньше (WAIT_NEAR/WAIT_MAX — это ещё не "в работе").
+    Для V_BOTTOM/V_GREEN_BOTTOM/V_RED_TOP всё как раньше — по state,
+    не SEARCHING/WAIT_FIRST_DUMP (простой скан) и не TRIGGERED/DEAD (уже
+    закончил).
+    """
+    state = w.get("state")
+    if state in TERMINAL_STATES:
+        return False
+    if w.get("strategy") == "BOUNCE":
+        if w.get("mode") == "CLIMAX":
+            return w.get("climax_stage") in CLIMAX_ACTIVE_STAGES
+        return bool(w.get("currently_pierced"))
+    return state not in IDLE_STATES
 
 
 @app.get("/api/watchlist/active")
@@ -186,11 +225,11 @@ def get_active_watchers(all_states: bool = Query(default=False)):
         items.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
         return {"total": len(raw), "counts_by_state": counts, "watchers": items}
 
-    result = []
-    for level_id, w in raw.items():
-        state = w.get("state")
-        if state not in IDLE_STATES and state not in TERMINAL_STATES:
-            result.append({"level_id": level_id, **w})
+    result = [
+        {"level_id": level_id, **w}
+        for level_id, w in raw.items()
+        if _is_active_watcher(w)
+    ]
     result.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
     return result
 
@@ -204,6 +243,43 @@ def trigger_rescan(coin: str):
         with open(flag_path, "w", encoding="utf-8") as f:
             f.write("1")
         return {"status": "ok", "message": f"Rescan requested for {coin}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/reset_watchers")
+def trigger_reset_watchers():
+    """
+    Полный сброс живых вотчеров (не уровней!) — ставит флаг, который
+    run_web.py проверяет КАЖДУЮ СЕКУНДУ (не привязано к 15-минутному
+    каскаду скана, см. _flag_listener в run_web.py), поэтому применяется
+    почти сразу. Чистит v_bottom_mgr/bounce_mgr (вотчеры+кладбище),
+    tracked_origin_levels(_vrt), watcher_cooldown_cache. НЕ трогает
+    macro_levels.json/watchlist.json — для пересчёта самих уровней
+    отдельная кнопка (/api/rebuild_levels).
+    """
+    flag_path = os.path.join(CRYPTANO_DIR, "reset_watchers.flag")
+    try:
+        with open(flag_path, "w", encoding="utf-8") as f:
+            f.write("1")
+        return {"status": "ok", "message": "Reset requested — применится в течение секунды"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/rebuild_levels")
+def trigger_rebuild_levels():
+    """
+    Полный пересчёт уровней (macro_levels.json) с нуля — то же самое, что
+    команда 'rebuild' в консоли Scanner. Дольше, чем сброс вотчеров (фетчит
+    историю по ~70 монетам), поэтому отдельная кнопка, не совмещённая со
+    сбросом вотчеров.
+    """
+    flag_path = os.path.join(CRYPTANO_DIR, "rebuild_levels.flag")
+    try:
+        with open(flag_path, "w", encoding="utf-8") as f:
+            f.write("1")
+        return {"status": "ok", "message": "Rebuild requested — может занять пару минут"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -403,3 +479,13 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 @app.get("/")
 def index():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
+
+@app.get("/simulator")
+def simulator_page():
+    """Отдельная страница симулятора — тот же app.js, что на главной, но
+    своя разметка (только список монет с уровнями + график + управление
+    симуляцией, без watchlist/активных/сигналов). Все loadXxx()-функции в
+    app.js сами проверяют, есть ли на странице их элемент, прежде чем
+    что-то делать — на этой странице действуют только те, что реально нужны."""
+    return FileResponse(os.path.join(STATIC_DIR, "simulator.html"))

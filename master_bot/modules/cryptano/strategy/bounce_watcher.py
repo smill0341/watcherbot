@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from typing import Optional
+import os
 
 class BounceWatcher:
     """
@@ -18,7 +19,12 @@ class BounceWatcher:
     реально брался от противоположных уровней через _calc_tp_and_rr).
     """
 
-    _log_cleared = False
+    # Раньше — один общий флаг на весь процесс (весь лог в одном файле,
+    # все монеты вперемешку). Теперь — набор монет, для которых файл лога
+    # уже создан заново в ЭТОМ запуске процесса (первое обращение —
+    # перезаписывает файл, дальше — дописывает).
+    _initialized_log_coins = set()
+    _LOG_DIR = "bounce_logs"  # относительно рабочей директории процесса (master_bot/)
 
     CONFIG = {
         'IGNORE_POC_LEVELS': True,  # True = полностью игнорировать POC-уровни
@@ -57,7 +63,7 @@ class BounceWatcher:
 
     def __init__(self, level_min: float, level_max: float, trade_type: str,
                  config_overrides: Optional[dict] = None, mode: Optional[str] = None,
-                 coin: str = "UNKNOWN"):
+                 coin: str = "UNKNOWN", level_date=None):
         # Своя копия CONFIG на КАЖДЫЙ вотчер, а не общий класс-атрибут — иначе
         # два вотчера с разными режимами (climax/mirror) на одной и той же
         # монете в одном процессе читали бы ОДНО и то же значение
@@ -70,6 +76,11 @@ class BounceWatcher:
         # разделены — coin нужен для рескана по монете, экспорта на дашборд
         # и восстановления после рестарта (см. BounceManager.load_state).
         self.coin = coin
+        # Дата ФОРМИРОВАНИЯ уровня (из macro_levels.json, lvl['date']) — не
+        # момент начала слежки (это позже, при реальном касании). Заморожена
+        # один раз при рождении, той же логикой, что min/max — чтобы линия
+        # уровня на графике начиналась там, где уровень реально появился.
+        self.level_date = level_date
 
         self.min = level_min
         self.max = level_max
@@ -79,12 +90,19 @@ class BounceWatcher:
         self._last_time = None
         self.last_event_time = None
         self.last_event_type = None
+        # Путь вотчера для отрисовки на графике дашборда — та же идея, что
+        # у V_BOTTOM/VGB/VRT (event_log + _record_event), раньше у BOUNCE
+        # этого не было вообще, поэтому на графике не было ни одной точки.
+        self.event_log = []
+        self._started_logged = False
         self.trades_count = 0          # всего сделок за всю жизнь уровня (для лога/статистики)
         self.trades_since_pierce = 0   # сделок с момента ПОСЛЕДНЕГО пробоя — сбрасывается на новом пробое
         self.pierce_count = 0          # сколько раз этот уровень вообще был пробит
         self.last_pierce_time = None   # когда был последний пробой — для выбора "кто сейчас в фокусе"
         self._awaiting_recovery = False  # True = уровень появился уже пробитым (телепорт), ждём честного
                                           # реклейма (закрытие обратно за уровень), прежде чем считать пробои
+        self.edge_touched = False  # LONG/MIRROR/SHORT-MIRROR: коснулись ближнего края полосы (не середины) —
+                                     # первый, синий шаг; отдельно от currently_pierced (50%, оранжевый)
 
         # --- SHORT climax mode (см. CONFIG['SHORT_CLIMAX_MODE']) ---
         self.paired_level = None  # дальняя resistance-зона выше этой — задаётся менеджером при создании,
@@ -92,12 +110,6 @@ class BounceWatcher:
         self.climax_stage = None  # None -> 'WAIT_NEAR' -> 'WAIT_FAR' -> 'WAIT_BUFFER' -> 'SEARCHING'
         if self.trade_type == 'SHORT' and self.CONFIG.get('SHORT_CLIMAX_MODE'):
             self.climax_stage = 'WAIT_NEAR'
-    
-
-        if self.CONFIG.get('DEBUG') and not BounceWatcher._log_cleared:
-            with open("bounce_debug.log", "w", encoding="utf-8") as f:
-                f.write("=== НОВЫЙ ТЕСТ BOUNCE (v1, примитив) ЗАПУЩЕН ===\n")
-            BounceWatcher._log_cleared = True
 
     def on_breach_start(self):
         if self.state not in ("DEAD", "TRIGGERED"):
@@ -105,10 +117,26 @@ class BounceWatcher:
 
     def _dbg(self, msg):
         if self.CONFIG.get('DEBUG'):
-            time_str = f"{self._last_time} " if self._last_time else ""
+            os.makedirs(BounceWatcher._LOG_DIR, exist_ok=True)
+            log_path = os.path.join(BounceWatcher._LOG_DIR, f"{self.coin}.log")
+            write_mode = "a"
+            if self.coin not in BounceWatcher._initialized_log_coins:
+                write_mode = "w"  # первое обращение в этом запуске — файл свежий
+                BounceWatcher._initialized_log_coins.add(self.coin)
+            # Переводим в киевское время (то же, что показывает график —
+            # см. tickMarkFormatter в app.js) — раньше писали чистый UTC,
+            # приходилось пересчитывать в уме, чтобы сверить лог с графиком.
+            time_str = ""
+            if self._last_time is not None:
+                try:
+                    time_str = f"{self._last_time.tz_convert('Europe/Kyiv').strftime('%Y-%m-%d %H:%M:%S')} "
+                except Exception:
+                    time_str = f"{self._last_time} "  # на случай неожиданного формата — не роняем лог
             mode_tag = f" {self.mode}" if getattr(self, 'mode', None) else ""
             tag = " OD" if getattr(self, 'reborn', False) else ""
-            with open("bounce_debug.log", "a", encoding="utf-8") as f:
+            with open(log_path, write_mode, encoding="utf-8") as f:
+                if write_mode == "w":
+                    f.write(f"=== BOUNCE лог для {self.coin} — запуск процесса ===\n")
                 f.write(f"{time_str}[{self.trade_type} {self.min:.4f}-{self.max:.4f}{mode_tag}{tag}] {msg}\n")
 
     @staticmethod
@@ -118,11 +146,58 @@ class BounceWatcher:
         return str(int(v))
 
     def update(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, level_score=0, candle_time=None, vol_90=0.0, is_focus=True, c_atr=0.0):
+        """
+        Тонкая обёртка над _update_impl() — сама логика ниже НЕ менялась ни
+        строкой, только вынесена в отдельный метод. Обёртка нужна, чтобы
+        событие писалось РОВНО в одном месте, независимо от того, каким из
+        множества internal return-путей (телепорт/реклейм/climax-ветка/
+        обычный путь) закончился конкретный вызов — раньше пришлось бы
+        вставлять _record_event() в каждый return по отдельности.
+        """
+        is_first_call = not self._started_logged
+        result = self._update_impl(
+            c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels,
+            level_score, candle_time, vol_90, is_focus, c_atr
+        )
+        if is_first_call:
+            mode_label = self.mode if self.mode else "-"
+            self._dbg(f"🆕 Новый вотчер | режим: {mode_label}")
+            # START на график НЕ пишем (убрали по просьбе) — он не нёс
+            # самостоятельного смысла (просто "тронули зону фитилём") и на
+            # первой же свече жизни вотчера часто совпадал по времени с
+            # реальным первым событием (CLIMAX_NEAR_BREACH/SWEEP_BOTTOM),
+            # давая на графике задвоенную точку без дополнительного смысла.
+            # Текстовый лог (_dbg выше) — отдельно, туда факт рождения
+            # по-прежнему пишется, просто не превращается в точку на графике.
+            self._started_logged = True
+        if self.last_event_type:
+            event_price = self._last_event_price if self._last_event_price is not None else c_close
+            self._record_event(self.last_event_type, event_price)
+        return result
+
+    def _record_event(self, event_type, price):
+        """Копит точки пути вотчера для отрисовки на графике дашборда —
+        1-в-1 та же схема, что у VBottomWatcher._record_event (см.
+        v_bottom_watcher.py): время сразу конвертируем в unix-секунды,
+        иначе pandas.Timestamp тихо ломает json.dump при экспорте."""
+        t = self._last_time
+        if t is not None and hasattr(t, "timestamp"):
+            t = int(t.timestamp())
+        self.event_log.append({"time": t, "type": event_type, "price": price})
+        if len(self.event_log) > 100:
+            self.event_log = self.event_log[-100:]
+
+    def _update_impl(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, level_score=0, candle_time=None, vol_90=0.0, is_focus=True, c_atr=0.0):
         is_first_candle = (self._last_time is None)
         
         self._last_time = candle_time
         self.last_event_time = candle_time
         self.last_event_type = None
+        # Цена для точки на графике — по умолчанию None (обёртка update()
+        # тогда возьмёт c_close). Явно переопределяем ниже только там, где
+        # реальное условие завязано на фитиль (хай/лой), а не на закрытие —
+        # иначе точка рисуется на цене закрытия, хотя сработало не оно.
+        self._last_event_price = None
 
         if self.state in ("TRIGGERED", "DEAD"):
             return None
@@ -200,6 +275,27 @@ class BounceWatcher:
         trigger_long = self.min if is_poc else self.zone_mid
         trigger_short = self.max if is_poc else self.zone_mid
 
+        # --- НОВЫЙ ПЕРВЫЙ ШАГ: коснулись БЛИЖНЕГО КРАЯ полосы (не середины) ---
+        # Для LONG цена падает сверху вниз в зону — ближний край self.max.
+        # Для SHORT цена растёт снизу вверх в зону — ближний край self.min.
+        # Синяя точка, один раз на новый заход; сбрасывается, как только
+        # цена полностью выходит обратно за этот же край (симметрично
+        # currently_pierced ниже, просто на другом уровне зоны).
+        if self.trade_type == 'LONG':
+            edge_touched_now = c_low <= self.max
+        else:
+            edge_touched_now = c_high >= self.min
+        if edge_touched_now:
+            if not self.edge_touched:
+                self.edge_touched = True
+                self.last_event_type = "ZONE_TOUCH"
+                # Условие тут по фитилю (c_low/c_high), не по закрытию —
+                # точка на графике должна стоять на реальной цене касания.
+                self._last_event_price = c_low if self.trade_type == 'LONG' else c_high
+                self._dbg(f"🔵 КРАЙ ЗОНЫ | Коснулись ближнего края полосы ({self.max if self.trade_type == 'LONG' else self.min:.4f})")
+        else:
+            self.edge_touched = False
+
         if self.trade_type == 'LONG':
             if c_low <= trigger_long:
                 self.pierced_bottom = True  # Глобальный флаг для отчета (навсегда)
@@ -245,10 +341,11 @@ class BounceWatcher:
             self.trades_since_pierce = 0  # новый пробой — бюджет сделок на него свежий
             self.last_pierce_time = candle_time
             self.last_event_type = "SWEEP_BOTTOM"  # Рисуем точку только 1 раз на прокол
+            self._last_event_price = c_low if self.trade_type == 'LONG' else c_high
             if self.trade_type == 'LONG':
-                self._dbg(f"🔵 ПРОКОЛ ДНА (#{self.pierce_count}) | Лой свечи: {c_low:.4f} <= Уровень: {self.min:.4f}")
+                self._dbg(f"🟠 ПРОКОЛ ДНА (#{self.pierce_count}) | Лой свечи: {c_low:.4f} <= Порог: {trigger_long:.4f} (середина зоны, если не POC)")
             else:
-                self._dbg(f"🔵 ПРОКОЛ ХАЯ (#{self.pierce_count}) | Хай свечи: {c_high:.4f} >= Уровень: {self.max:.4f}")
+                self._dbg(f"🟠 ПРОКОЛ ХАЯ (#{self.pierce_count}) | Хай свечи: {c_high:.4f} >= Порог: {trigger_short:.4f} (середина зоны, если не POC)")
 
         if runaway_this_candle:
             if not self.currently_runaway:
@@ -472,6 +569,11 @@ class BounceWatcher:
 
         self.trades_count += 1
         self.trades_since_pierce += 1
+        # Реальный вход — самое важное событие для графика, перекрывает
+        # GOOD_GREEN/GOOD_RED, выставленный чуть раньше на этой же свече
+        # (тот был просто "нашли кандидата", это — "реально вошли").
+        self.last_event_type = "ENTRY"
+        self._last_event_price = actual_entry
 
         max_per_pierce = self.CONFIG.get('MAX_TRADES_PER_PIERCE', 1)
         max_trades_total = self.CONFIG.get('MAX_TRADES_PER_LEVEL', 1)

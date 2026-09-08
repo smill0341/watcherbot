@@ -152,7 +152,7 @@ def scan_market(scan_type="auto"):
                 elif isinstance(result, dict):
                     result["source"] = "CRITICAL"
                     results.append(result)
-                    save_signal(result)
+
                     
                     if scan_type == "auto":
                         critical_cooldown_cache[result["coin"]] = now

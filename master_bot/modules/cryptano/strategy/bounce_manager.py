@@ -78,12 +78,17 @@ class BounceManager:
                 return True
         return False
 
-    def _update_graveyard(self, c_close):
+    def _update_graveyard(self, c_close, coin="UNKNOWN"):
         """Вызывается раз в свечу. Отпускает мёртвую зону, как только цена
         реально ушла от неё дальше GRAVEYARD_ESCAPE_PCT — с этого момента
-        уровень на этом месте больше не считается автоматически клоном."""
+        уровень на этом месте больше не считается автоматически клоном.
+        Фильтр по coin обязателен — без него c_close монеты A сравнивался
+        бы с мёртвыми зонами вообще всех монет (кладбище общее на весь бот),
+        давая случайные ложные escaped на чужих ценах."""
         tolerance = self.CONFIG['GRAVEYARD_ESCAPE_PCT'] / 100.0
         for entry in self.graveyard:
+            if entry.get('coin') != coin:
+                continue
             if entry['escaped']:
                 continue
             escape_low = entry['min'] * (1 - tolerance)
@@ -97,6 +102,7 @@ class BounceManager:
             return
         self._graveyard_recorded.add(level_id)
         self.graveyard.append({
+            'coin': getattr(watcher, 'coin', None),
             'trade_type': trade_type,
             'mode': getattr(watcher, 'mode', None),  # CLIMAX/MIRROR/None — не путать семьи между собой
             'min': watcher.min,
@@ -104,14 +110,20 @@ class BounceManager:
             'escaped': False,
         })
 
-    def _find_graveyard_match(self, level, trade_type, mode=None):
+    def _find_graveyard_match(self, level, trade_type, mode=None, coin="UNKNOWN"):
         """'clone'  — совпал с ещё не отпущенной мёртвой зоной, блокировать.
         'reborn' — совпал с уже отпущенной (цена сбегала и вернулась), разрешить.
-        None     — совпадений в кладбище нет."""
+        None     — совпадений в кладбище нет.
+        Фильтр по coin обязателен — без него новый уровень монеты A мог
+        ложно блокироваться как "клон" мёртвой зоны совсем другой монеты B,
+        если их цены случайно оказались в одном диапазоне (частое дело для
+        мелких альткоинов)."""
         tolerance = self.CONFIG['LEVEL_DEDUP_TOLERANCE_PCT'] / 100.0
         lvl_mid = (level['min'] + level['max']) / 2
         matched_escaped = False
         for entry in self.graveyard:
+            if entry.get('coin') != coin:
+                continue
             if entry['trade_type'] != trade_type or entry.get('mode') != mode:
                 continue
             entry_mid = (entry['min'] + entry['max']) / 2
@@ -122,10 +134,11 @@ class BounceManager:
                     return 'clone'
         return 'reborn' if matched_escaped else None
 
-    def evaluate_bounce_side(self, trade_type, touched_levels, evaluator, mode=None):
+    def evaluate_bounce_side(self, trade_type, touched_levels, evaluator, mode=None, coin="UNKNOWN"):
         """
         Перебирает ВСЕ уровни BOUNCE этой стороны (LONG/SHORT) И ЭТОГО mode
-        (CLIMAX/MIRROR/None), которые нужно проверить на этой свече:
+        (CLIMAX/MIRROR/None) ЭТОЙ КОНКРЕТНОЙ МОНЕТЫ, которые нужно проверить
+        на этой свече:
           1. уже активные вотчеры (защита от того, что 12-часовое обновление
              CURRENT_SUPPORTS/RESISTANCES выкинет уровень, пока по нему ещё
              идёт сканирование)
@@ -138,6 +151,13 @@ class BounceManager:
              живут полностью независимо, каждый в своём собственном пространстве
              дублей (см. mode в level_id и в фильтре active_mids ниже).
 
+        КРИТИЧНО (найденный баг): self._watchers — ОДИН общий реестр на ВЕСЬ
+        бот, не один на монету, как было в testswing/симуляторе. Без фильтра
+        по coin здесь watcher.update() монеты A вызывался бы с ценой свечи
+        монеты B на каждом скане монеты B — event_log монеты A заполнялся
+        чужими ценами (RUNAWAY/SWEEP_BOTTOM с ценами десятков других монет
+        в одном вотчере). coin обязателен для корректной работы в бою.
+
         evaluator(level_id, level) -> decision dict — вызывающий код сам считает
         контекст (тренд, ATR и т.д.) и зовёт self.evaluate_bounce(...); менеджер
         этого не делает, у него нет доступа к индикаторам симулятора.
@@ -149,6 +169,8 @@ class BounceManager:
         levels_to_eval = {}
         active_mids = []  # середины уже живых вотчеров этой стороны+mode — для сверки на дубли
         for level_id, w in list(self._watchers.items()):
+            if getattr(w, 'coin', None) != coin:
+                continue
             if w.trade_type == trade_type and getattr(w, 'mode', None) == mode and w.state not in ("DEAD", "TRIGGERED"):
                 levels_to_eval[level_id] = {'min': w.min, 'max': w.max,
                                              'score': getattr(w, 'level_score', 0),
@@ -174,7 +196,7 @@ class BounceManager:
                 # координаты живого остаются замороженными как есть.
                 continue
 
-            grave_status = self._find_graveyard_match(lvl, trade_type, mode=mode)
+            grave_status = self._find_graveyard_match(lvl, trade_type, mode=mode, coin=coin)
             if grave_status == 'clone':
                 # Дрожание пересчёта на месте мёртвой зоны, цена никуда не уходила —
                 # не даём вотчеру родиться заново с нуля.
@@ -237,17 +259,21 @@ class BounceManager:
         return best.min, best.max, None, None
 
 
-    def _get_focus_level_id(self, trade_type, mode=None):
+    def _get_focus_level_id(self, trade_type, mode=None, coin="UNKNOWN"):
         """Единый центр принятия решений по фокусу — отдельно для каждой
-        комбинации trade_type+mode. CLIMAX и MIRROR на одной и той же
-        resistance-зоне никогда не конкурируют друг с другом за фокус —
-        это два независимых потока сигналов."""
+        комбинации trade_type+mode, И ОБЯЗАТЕЛЬНО в пределах одной монеты
+        (см. предупреждение в evaluate_bounce_side выше — тот же класс
+        бага: без фильтра по coin вотчер монеты A мог получить фокус или
+        отказ в фокусе из-за вотчера совершенно другой монеты B). CLIMAX
+        и MIRROR на одной и той же resistance-зоне никогда не конкурируют
+        друг с другом за фокус — это два независимых потока сигналов."""
         # Новая логика для шортов в режиме Climax
         if trade_type == 'SHORT' and mode == 'CLIMAX':
             STAGE_RANK = {'WAIT_MAX': 1, 'WAIT_BUFFER': 2, 'SEARCHING': 3}
             candidates = [
                 (lid, w) for lid, w in self._watchers.items()
-                if getattr(w, 'trade_type', None) == 'SHORT'
+                if getattr(w, 'coin', None) == coin
+                and getattr(w, 'trade_type', None) == 'SHORT'
                 and getattr(w, 'mode', None) == 'CLIMAX'
                 and getattr(w, 'climax_stage', None) in STAGE_RANK
                 and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED")
@@ -259,7 +285,8 @@ class BounceManager:
         # Старая логика — для LONG (mode=None) и для SHORT MIRROR (mode='MIRROR')
         candidates = [
             (lid, w) for lid, w in self._watchers.items()
-            if getattr(w, 'trade_type', None) == trade_type
+            if getattr(w, 'coin', None) == coin
+            and getattr(w, 'trade_type', None) == trade_type
             and getattr(w, 'mode', None) == mode
             and getattr(w, 'state', None) == "SCANNING"
             and getattr(w, 'pierced_bottom', False)
@@ -366,7 +393,7 @@ class BounceManager:
 
     def process_candle(self, c_low, c_high, c_close, current_supports, current_resistances,
                         df_slice, allow_long=True, allow_short=True, c_atr=0.0, coin="UNKNOWN"):
-        self._update_graveyard(c_close)
+        self._update_graveyard(c_close, coin=coin)
 
         orders = []
         draw_events = []
@@ -389,14 +416,15 @@ class BounceManager:
                 draw_events.append(('climax_breach', c_high))
 
         if allow_long:
-            focus_long_id = self._get_focus_level_id('LONG')
+            focus_long_id = self._get_focus_level_id('LONG', coin=coin)
             touched_long = [s for s in current_supports if c_low <= s['max']]
             for level_id, lvl, decision in self.evaluate_bounce_side(
                     'LONG', touched_long,
                     lambda lid, l: self.evaluate_bounce(
                         l, df_slice, 'LONG', current_resistances,
                         is_focus=(focus_long_id is None or lid == focus_long_id), c_atr=c_atr,
-                        coin=coin)):
+                        coin=coin),
+                    coin=coin):
                 _collect_event(level_id, 'LONG')
                 if decision.get('allow'):
                     actual_lvl = next((s for s in current_supports if s['min'] == lvl['min'] and s['max'] == lvl['max']), lvl)
@@ -405,26 +433,29 @@ class BounceManager:
         if allow_short:
             touched_short = [r for r in current_resistances if c_high >= r['min']]
             for mode in SHORT_MODES:
-                focus_short_id = self._get_focus_level_id('SHORT', mode=mode)
+                focus_short_id = self._get_focus_level_id('SHORT', mode=mode, coin=coin)
                 for level_id, lvl, decision in self.evaluate_bounce_side(
                         'SHORT', touched_short,
                         lambda lid, l, _mode=mode, _focus=focus_short_id: self.evaluate_bounce(
                             l, df_slice, 'SHORT', current_supports,
                             is_focus=(_focus is None or lid == _focus), c_atr=c_atr,
                             same_side_levels=current_resistances, mode=_mode, coin=coin),
-                        mode=mode):
+                        mode=mode, coin=coin):
                     _collect_event(level_id, 'SHORT')
                     if decision.get('allow'):
                         actual_lvl = next((r for r in current_resistances if r['min'] == lvl['min'] and r['max'] == lvl['max']), lvl)
                         orders.append({'trade_type': 'SHORT', 'level': actual_lvl, 'decision': decision})
 
-            # === ЖЕСТКОЕ УБИЙСТВО НИЖНИХ УРОВНЕЙ (только внутри семьи CLIMAX —
-            # это правило "побеждает самый верхний" родом из климакс-логики,
-            # MIRROR-вотчеров оно не касается вообще, у них своя, независимая
-            # линия сигналов) ===
+            # === ЖЕСТКОЕ УБИЙСТВО НИЖНИХ УРОВНЕЙ (только внутри семьи CLIMAX,
+            # только внутри ЭТОЙ монеты — это правило "побеждает самый верхний"
+            # родом из климакс-логики, MIRROR-вотчеров оно не касается вообще,
+            # у них своя, независимая линия сигналов). БЕЗ фильтра по coin тут
+            # был тот же баг, что и в evaluate_bounce_side — climax монеты A
+            # мог убить climax монеты B, если у него max оказался ниже. ===
             searching_shorts = [
                 w for w in self._watchers.values()
-                if getattr(w, 'trade_type', None) == 'SHORT'
+                if getattr(w, 'coin', None) == coin
+                and getattr(w, 'trade_type', None) == 'SHORT'
                 and getattr(w, 'mode', None) == 'CLIMAX'
                 and getattr(w, 'climax_stage', None) == 'SEARCHING'
                 and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED")
@@ -432,7 +463,7 @@ class BounceManager:
             if searching_shorts:
                 highest_max = max(w.max for w in searching_shorts)
                 for w in self._watchers.values():
-                    if getattr(w, 'trade_type', None) == 'SHORT' and getattr(w, 'mode', None) == 'CLIMAX' and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED"):
+                    if getattr(w, 'coin', None) == coin and getattr(w, 'trade_type', None) == 'SHORT' and getattr(w, 'mode', None) == 'CLIMAX' and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED"):
                         if w.max < highest_max:
                             w.state = "DEAD"
                             w.last_event_type = "RUNAWAY"
@@ -461,6 +492,7 @@ class BounceManager:
                                                        config_overrides=config_overrides, mode=mode,
                                                        coin=coin)
             self._watchers[level_id].level_type = level.get('type', 'UNKNOWN')
+            self._watchers[level_id].level_date = level.get('date')
             self._watchers[level_id].level_score = level.get('score', 0)
             if level.get('_reborn'):
                 self._watchers[level_id].reborn = True

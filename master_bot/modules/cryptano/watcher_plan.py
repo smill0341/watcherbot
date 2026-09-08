@@ -14,6 +14,7 @@ from modules.cryptano.strategy.vbottom_manager import VBottomManager
 from modules.cryptano.strategy.bounce_manager import BounceManager
 from modules.cryptano.strategy.bounce_parent import BounceParent
 from modules.cryptano.utils.paths import MACRO_LEVELS_FILE
+from modules.cryptano.history import save_signal
 
 # candle_store.py лежит в web/backend/ и не является пакетом (нет __init__.py) —
 # app.py подключает его тем же способом: добавляет свою папку в sys.path и
@@ -230,6 +231,17 @@ def check_v_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None):
         history_log = result.get('history_log', '')
         level_id = result.get('level_id', 'unknown')
 
+        # save_signal() кладёт запись в signals.json (общий список "Результаты") —
+        # раньше вотчерные входы туда вообще не попадали, только шли сообщением.
+        save_signal({
+            "type": "WATCHER_LONG",
+            "coin": coin,
+            "source": "V_BOTTOM",
+            "price": entry_price,
+            "take_profit": tp,
+            "stop_loss": sl,
+        })
+
         report = (
             f"🟢 *V-BOTTOM LONG* _{coin}_\n\n"
             f"Entry: `{entry_price:.8f}`\n"
@@ -331,6 +343,15 @@ def check_v_green_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None)
         tp = result.get('tp', 0.0)
         history_log = result.get('history_log', '')
         level_id = result.get('level_id', 'unknown')
+
+        save_signal({
+            "type": "WATCHER_LONG",
+            "coin": coin,
+            "source": "V_GREEN_BOTTOM",
+            "price": entry_price,
+            "take_profit": tp,
+            "stop_loss": sl,
+        })
 
         report = (
             f"🟢 *V-GREEN-BOTTOM LONG* _{coin}_\n\n"
@@ -456,6 +477,16 @@ def check_v_red_top(coin, direction, vbottom_mgr=None, tracked_levels=None):
         history_log = result.get('history_log', '')
         level_id = result.get('level_id', 'unknown')
 
+        # "type": "SHORT_PUMP" -> save_signal() трактует именно как SHORT-запись
+        save_signal({
+            "type": "SHORT_PUMP",
+            "coin": coin,
+            "source": "V_RED_TOP",
+            "price": entry_price,
+            "take_profit": tp,
+            "stop_loss": sl,
+        })
+
         report = (
             f"🔴 *V-RED-TOP SHORT* _{coin}_\n\n"
             f"Entry: `{entry_price:.8f}`\n"
@@ -517,6 +548,21 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr):
             rr = ((tp - entry) / (entry - sl)) if tt == 'LONG' and entry > sl else \
                  ((entry - tp) / (sl - entry)) if tt == 'SHORT' and sl > entry else 0
             emoji = "🟢" if tt == "LONG" else "🔴"
+
+            # level_id для SHORT всегда вида "BC_SHORT_min_max__CLIMAX"/"...__MIRROR"
+            # (см. evaluate_bounce() в bounce_manager.py) — берём режим прямо оттуда.
+            level_id_val = d.get('level_id', '') or ''
+            mode = level_id_val.split('__')[-1] if '__' in level_id_val else None
+            source_label = f"BOUNCE_{tt}" + (f"_{mode}" if tt == "SHORT" and mode else "")
+            save_signal({
+                "type": "SHORT_PUMP" if tt == "SHORT" else "WATCHER_LONG",
+                "coin": coin,
+                "source": source_label,
+                "price": entry,
+                "take_profit": tp,
+                "stop_loss": sl,
+            })
+
             reports.append(
                 f"{emoji} *BOUNCE {tt}*{' 🪦' if d.get('reborn') else ''} _{coin}_\n\n"
                 f"Entry: `{entry:.8f}`\nSL: `{sl:.8f}`\nTP: `{tp:.8f}`\nR/R: `{rr:.2f}`\n\n"
@@ -528,4 +574,4 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr):
     except Exception as e:
         print(f"\n[BOUNCE ERROR] ❌ {coin}: {e}")
         traceback.print_exc()
-        return 0, [], 0    
+        return 0, [], 0

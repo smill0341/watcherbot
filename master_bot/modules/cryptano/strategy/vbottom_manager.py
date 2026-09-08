@@ -199,7 +199,7 @@ class VBottomManager:
         # Если это новый уровень — создаём вотчер
         is_new_watcher = False
         if level_id not in self._watchers:
-            self._watchers[level_id] = VBottomWatcher(level['min'], level['max'], trade_type, coin=coin)
+            self._watchers[level_id] = VBottomWatcher(level['min'], level['max'], trade_type, coin=coin, level_date=level.get('date'))
             is_new_watcher = True
 
         watcher = self._watchers[level_id]
