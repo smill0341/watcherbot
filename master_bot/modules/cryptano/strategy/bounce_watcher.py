@@ -3,6 +3,7 @@
 from typing import Optional
 import os
 
+
 class BounceWatcher:
     """
     v1 — ПРИМИТИВ. Задача не "точная стратегия", а быстро увидеть на графике,
@@ -19,12 +20,16 @@ class BounceWatcher:
     реально брался от противоположных уровней через _calc_tp_and_rr).
     """
 
-    # Раньше — один общий флаг на весь процесс (весь лог в одном файле,
-    # все монеты вперемешку). Теперь — набор монет, для которых файл лога
-    # уже создан заново в ЭТОМ запуске процесса (первое обращение —
-    # перезаписывает файл, дальше — дописывает).
+    # Набор (папка, монета), для которых в ЭТОМ запуске процесса уже была
+    # первая запись в лог — используется только для маркера "процесс
+    # перезапущен" и для ротации (см. _dbg), НЕ для стирания файла: бот
+    # перезапускается много раз в день, лог должен переживать рестарт целиком.
+    # Ключ включает папку (не просто монету), чтобы симулятор (своя папка,
+    # см. log_dir_override) не путался с боевым логом той же монеты.
     _initialized_log_coins = set()
+    _created_log_dirs = set()  # какие папки уже точно существуют на диске (os.makedirs один раз на папку)
     _LOG_DIR = "bounce_logs"  # относительно рабочей директории процесса (master_bot/)
+    _MAX_LOG_LINES = 5000     # потолок на файл — при частых рестартах не даём ему расти бесконечно
 
     CONFIG = {
         'IGNORE_POC_LEVELS': True,  # True = полностью игнорировать POC-уровни
@@ -34,8 +39,10 @@ class BounceWatcher:
         'MAX_RUNAWAY_PCT': 5.0,       # После пробоя: если цена ушла дальше этого % от уровня — отбой, вотчер умирает сам
         'MIN_BODY_PCT': 20.0,         # Плотность свечи: тело должно занимать минимум 40% от всего размаха
         'MAX_WICKS_PCT': 60.0,        # Защита от отвержения: верхняя тень (для лонга) не больше 30%
-        'FIXED_TP_PCT': 7.0,       
-        'SL_PCT': 50.0,            
+        'FIXED_TP_PCT': 7.0,
+        'SL_PCT': 50.0,  # держим для отображения/справки — НЕ закрывает сделку (см. history.py::update_open_signals,
+                          # на тестах реального стоп-лосса не было, закрытие только по TP или по MAX_HOLD_DAYS).
+        'MAX_HOLD_DAYS': 14,  # закрыть по текущей цене, если TP так и не дошёл за это время (см. history.py::update_open_signals)
         'MAX_TRADES_PER_PIERCE': 1,   # сколько сделок разрешено на ОДИН пробой, пока не случится новый
         'MAX_TRADES_PER_LEVEL': 1,    # сколько сделок разрешено за всю жизнь уровня (0 = без лимита). Пробоев может
                                         # быть сколько угодно — сами по себе они бесплатны, считаются только сделки.
@@ -63,7 +70,7 @@ class BounceWatcher:
 
     def __init__(self, level_min: float, level_max: float, trade_type: str,
                  config_overrides: Optional[dict] = None, mode: Optional[str] = None,
-                 coin: str = "UNKNOWN", level_date=None):
+                 coin: str = "UNKNOWN", level_date=None, log_dir_override: Optional[str] = None):
         # Своя копия CONFIG на КАЖДЫЙ вотчер, а не общий класс-атрибут — иначе
         # два вотчера с разными режимами (climax/mirror) на одной и той же
         # монете в одном процессе читали бы ОДНО и то же значение
@@ -81,6 +88,12 @@ class BounceWatcher:
         # один раз при рождении, той же логикой, что min/max — чтобы линия
         # уровня на графике начиналась там, где уровень реально появился.
         self.level_date = level_date
+        # Своя папка логов — ТОЛЬКО для этого вотчера, не трогает
+        # BounceWatcher._LOG_DIR (общий атрибут класса, используемый боевыми
+        # вотчерами). Нужно симулятору (modules/cryptano/simulator/) — иначе
+        # его прогоны писали бы в те же bounce_logs/*.log, что и живой бот,
+        # смешивая боевые и тестовые записи в одном файле.
+        self._log_dir_override = log_dir_override
 
         self.min = level_min
         self.max = level_max
@@ -94,6 +107,11 @@ class BounceWatcher:
         # у V_BOTTOM/VGB/VRT (event_log + _record_event), раньше у BOUNCE
         # этого не было вообще, поэтому на графике не было ни одной точки.
         self.event_log = []
+        # Причина смерти для панели "ПОСЛЕДНИЙ СКАН" (watcher_history.json) —
+        # раньше у BounceWatcher такого поля не было вообще, поэтому карточка
+        # DEAD всегда показывала "нет лога", какой бы ни была причина.
+        # Записывается ровно в тех же местах, что и _dbg() при убийстве.
+        self.history_log = ""
         self._started_logged = False
         self.trades_count = 0          # всего сделок за всю жизнь уровня (для лога/статистики)
         self.trades_since_pierce = 0   # сделок с момента ПОСЛЕДНЕГО пробоя — сбрасывается на новом пробое
@@ -103,6 +121,8 @@ class BounceWatcher:
                                           # реклейма (закрытие обратно за уровень), прежде чем считать пробои
         self.edge_touched = False  # LONG/MIRROR/SHORT-MIRROR: коснулись ближнего края полосы (не середины) —
                                      # первый, синий шаг; отдельно от currently_pierced (50%, оранжевый)
+        self._edge_touch_logged = False  # точку/лог КРАЙ ЗОНЫ пишем только 1 раз за всю жизнь вотчера —
+                                          # см. комментарий у места использования ниже
 
         # --- SHORT climax mode (см. CONFIG['SHORT_CLIMAX_MODE']) ---
         self.paired_level = None  # дальняя resistance-зона выше этой — задаётся менеджером при создании,
@@ -110,6 +130,50 @@ class BounceWatcher:
         self.climax_stage = None  # None -> 'WAIT_NEAR' -> 'WAIT_FAR' -> 'WAIT_BUFFER' -> 'SEARCHING'
         if self.trade_type == 'SHORT' and self.CONFIG.get('SHORT_CLIMAX_MODE'):
             self.climax_stage = 'WAIT_NEAR'
+        self._step1_logged = False  # ШАГ 1 (climax_stage WAIT_NEAR->WAIT_MAX) — точку/лог пишем
+                                     # только 1 раз за жизнь вотчера, см. место использования ниже
+        self._step2_logged = False  # то же самое для ШАГ 2 (WAIT_MAX->WAIT_BUFFER)
+        self._step3_logged = False  # то же самое для ШАГ 3 (WAIT_BUFFER->SEARCHING, "старт поиска")
+
+    def reset_for_rescan(self):
+        """Откатывает вотчера к состоянию 'только родился' — ТОТ ЖЕ объект,
+        тот же level_id/coin/min/max/trade_type/mode (identity не трогаем),
+        но весь накопленный за жизнь прогресс — с нуля.
+
+        Раньше ручной рескан убивал вотчера и создавал нового — а level_id
+        строится от точных float min/max, которые слегка дрожат между
+        пересчётами macro_levels.json. Итог: два почти одинаковых уровня
+        рядом, оба "живые", кружки на графике задваивались. Теперь рескан
+        просто отматывает ПАМЯТЬ этого же объекта назад — дальше реплей
+        (см. watcher_plan.py::check_bounce) кормит его старыми свечами как
+        обычно, никакого нового id, никакого дубля зоны.
+
+        Список полей — 1-в-1 то же самое, что выставляется в __init__ для
+        всего, что накапливается за жизнь (не identity)."""
+        self.state = "SCANNING"
+        self.last_event_time = None
+        self.last_event_type = None
+        self.event_log = []
+        self.history_log = ""
+        self._started_logged = False
+        self.trades_count = 0
+        self.trades_since_pierce = 0
+        self.pierce_count = 0
+        self.last_pierce_time = None
+        self._awaiting_recovery = False
+        self.edge_touched = False
+        self._edge_touch_logged = False
+        self.climax_stage = None
+        if self.trade_type == 'SHORT' and self.CONFIG.get('SHORT_CLIMAX_MODE'):
+            self.climax_stage = 'WAIT_NEAR'
+        self._step1_logged = False
+        self._step2_logged = False
+        self._step3_logged = False
+        self._last_event_price = None
+        self.pierced_bottom = False
+        self.currently_pierced = False
+        self.currently_runaway = False
+        self._last_time = None
 
     def on_breach_start(self):
         if self.state not in ("DEAD", "TRIGGERED"):
@@ -117,12 +181,36 @@ class BounceWatcher:
 
     def _dbg(self, msg):
         if self.CONFIG.get('DEBUG'):
-            os.makedirs(BounceWatcher._LOG_DIR, exist_ok=True)
-            log_path = os.path.join(BounceWatcher._LOG_DIR, f"{self.coin}.log")
-            write_mode = "a"
-            if self.coin not in BounceWatcher._initialized_log_coins:
-                write_mode = "w"  # первое обращение в этом запуске — файл свежий
-                BounceWatcher._initialized_log_coins.add(self.coin)
+            # Симулятор передаёт свою папку (см. __init__/log_dir_override) —
+            # чтобы его прогоны не писали в те же bounce_logs/*.log, что и
+            # живой бот. Ключ "первого касания"/ротации — по (папка, монета),
+            # не просто по монете, иначе симулятор и бой в одном процессе
+            # путали бы друг друга.
+            log_dir = self._log_dir_override or BounceWatcher._LOG_DIR
+            log_dir_key = (log_dir, self.coin)
+
+            if log_dir not in BounceWatcher._created_log_dirs:
+                os.makedirs(log_dir, exist_ok=True)
+                BounceWatcher._created_log_dirs.add(log_dir)
+            log_path = os.path.join(log_dir, f"{self.coin}.log")
+
+            first_touch_this_run = log_dir_key not in BounceWatcher._initialized_log_coins
+            if first_touch_this_run:
+                BounceWatcher._initialized_log_coins.add(log_dir_key)
+                # Ротация ВМЕСТО стирания: бот перезапускается много раз в день,
+                # лог должен пережить рестарт целиком, но не расти бесконечно —
+                # при первом обращении в новом запуске подрезаем файл до
+                # последних _MAX_LOG_LINES строк, если он уже существует.
+                if os.path.exists(log_path):
+                    try:
+                        with open(log_path, "r", encoding="utf-8") as f:
+                            lines = f.readlines()
+                        if len(lines) > BounceWatcher._MAX_LOG_LINES:
+                            with open(log_path, "w", encoding="utf-8") as f:
+                                f.writelines(lines[-BounceWatcher._MAX_LOG_LINES:])
+                    except Exception:
+                        pass  # ротация не должна ронять сам лог
+
             # Переводим в киевское время (то же, что показывает график —
             # см. tickMarkFormatter в app.js) — раньше писали чистый UTC,
             # приходилось пересчитывать в уме, чтобы сверить лог с графиком.
@@ -134,9 +222,9 @@ class BounceWatcher:
                     time_str = f"{self._last_time} "  # на случай неожиданного формата — не роняем лог
             mode_tag = f" {self.mode}" if getattr(self, 'mode', None) else ""
             tag = " OD" if getattr(self, 'reborn', False) else ""
-            with open(log_path, write_mode, encoding="utf-8") as f:
-                if write_mode == "w":
-                    f.write(f"=== BOUNCE лог для {self.coin} — запуск процесса ===\n")
+            with open(log_path, "a", encoding="utf-8") as f:
+                if first_touch_this_run:
+                    f.write(f"=== BOUNCE лог для {self.coin} — процесс перезапущен, история сохранена ===\n")
                 f.write(f"{time_str}[{self.trade_type} {self.min:.4f}-{self.max:.4f}{mode_tag}{tag}] {msg}\n")
 
     @staticmethod
@@ -237,9 +325,11 @@ class BounceWatcher:
                     self.state = "DEAD"
                     self.last_event_type = "RUNAWAY"
                     if self.trade_type == 'LONG':
-                        self._dbg(f"🔴 ОТМЕНА | Уровень появился УЖЕ пробитым (Open {c_open:.4f} < Min {self.min:.4f}).")
+                        self.history_log = f"Уровень появился УЖЕ пробитым (Open {c_open:.4f} < Min {self.min:.4f})."
+                        self._dbg(f"🔴 ОТМЕНА | {self.history_log}")
                     else:
-                        self._dbg(f"🔴 ОТМЕНА | Уровень появился УЖЕ пробитым (Open {c_open:.4f} > Max {self.max:.4f}).")
+                        self.history_log = f"Уровень появился УЖЕ пробитым (Open {c_open:.4f} > Max {self.max:.4f})."
+                        self._dbg(f"🔴 ОТМЕНА | {self.history_log}")
                     return None
                 else:
                     self._awaiting_recovery = True
@@ -269,6 +359,7 @@ class BounceWatcher:
             self.currently_runaway = False
 
         new_pierce_this_candle = False  # только что случился НОВЫЙ пробой именно на этой свече
+        was_pierced_bottom_before = self.pierced_bottom  # до проверки ниже — уже искали вход по этому уровню?
 
         # ВИЛКА: POC торгуется от края, всё остальное — от середины зоны
         is_poc = '4h_poc_standalone' in getattr(self, 'level_type', '')
@@ -278,9 +369,13 @@ class BounceWatcher:
         # --- НОВЫЙ ПЕРВЫЙ ШАГ: коснулись БЛИЖНЕГО КРАЯ полосы (не середины) ---
         # Для LONG цена падает сверху вниз в зону — ближний край self.max.
         # Для SHORT цена растёт снизу вверх в зону — ближний край self.min.
-        # Синяя точка, один раз на новый заход; сбрасывается, как только
-        # цена полностью выходит обратно за этот же край (симметрично
-        # currently_pierced ниже, просто на другом уровне зоны).
+        # edge_touched сам по себе — мигающий флаг (сбрасывается, как только
+        # цена выходит обратно за край), это нормально и нужно ниже для
+        # других целей. А вот ТОЧКУ/ЛОГ пишем только на первое касание за
+        # всю жизнь вотчера (_edge_touch_logged) — если цена долго топчется
+        # прямо у края зоны (обычное дело для support/resistance), без этого
+        # каждый повторный заход рисовал бы новую синюю точку и новую строку
+        # в логе — та же болезнь, что чинили для оранжевого пробоя.
         if self.trade_type == 'LONG':
             edge_touched_now = c_low <= self.max
         else:
@@ -288,11 +383,13 @@ class BounceWatcher:
         if edge_touched_now:
             if not self.edge_touched:
                 self.edge_touched = True
-                self.last_event_type = "ZONE_TOUCH"
-                # Условие тут по фитилю (c_low/c_high), не по закрытию —
-                # точка на графике должна стоять на реальной цене касания.
-                self._last_event_price = c_low if self.trade_type == 'LONG' else c_high
-                self._dbg(f"🔵 КРАЙ ЗОНЫ | Коснулись ближнего края полосы ({self.max if self.trade_type == 'LONG' else self.min:.4f})")
+                if not self._edge_touch_logged:
+                    self._edge_touch_logged = True
+                    self.last_event_type = "ZONE_TOUCH"
+                    # Условие тут по фитилю (c_low/c_high), не по закрытию —
+                    # точка на графике должна стоять на реальной цене касания.
+                    self._last_event_price = c_low if self.trade_type == 'LONG' else c_high
+                    self._dbg(f"🔵 КРАЙ ЗОНЫ | Коснулись ближнего края полосы ({self.max if self.trade_type == 'LONG' else self.min:.4f})")
         else:
             self.edge_touched = False
 
@@ -336,16 +433,30 @@ class BounceWatcher:
             # pierced_bottom остаётся True — честный будущий реклейм всё ещё разрешён.
             self.currently_pierced = False  # эта "попытка" пробоя отменена, ждём следующую как новую
             self._dbg(f"⚪ ШУМ | Пробой и отбой в одной свече (Лой:{c_low:.4f} / Хай:{c_high:.4f} vs Закрытие:{c_close:.4f}) — не считаем")
-        elif new_pierce_this_candle:
+        elif new_pierce_this_candle and not was_pierced_bottom_before:
+            # not was_pierced_bottom_before — точку/лог/номер пишем только на
+            # НАСТОЯЩИЙ первый пробой этого сетапа. Раньше это условие не
+            # стояло — new_pierce_this_candle взводится на КАЖДОМ повторном
+            # заходе цены при пиле вокруг середины зоны (currently_pierced
+            # мигает), и каждый такой заход рисовал новую точку и писал новую
+            # строку "ПРОКОЛ #N" — при живой пиле получалась куча точек
+            # вплотную друг к другу и нечитаемый лог, хотя по факту это всё
+            # ещё один и тот же, первый и единственный пробой.
             self.pierce_count += 1  # только для лога/нумерации, ничего не ограничивает
             self.trades_since_pierce = 0  # новый пробой — бюджет сделок на него свежий
             self.last_pierce_time = candle_time
             self.last_event_type = "SWEEP_BOTTOM"  # Рисуем точку только 1 раз на прокол
             self._last_event_price = c_low if self.trade_type == 'LONG' else c_high
+            # Порог, который реально был пробит именно СЕЙЧАС: для POC-уровней
+            # это край зоны (self.min/self.max), для всех остальных — всегда
+            # середина зоны (zone_mid), край тут вообще не участвует. Раньше
+            # лог всегда писал "ПРОКОЛ ДНА/ХАЯ" с приписком "(середина зоны,
+            # если не POC)" — двусмысленно и читалось как "пробит край уровня".
+            threshold_label = "край зоны (POC)" if is_poc else "50% зоны"
             if self.trade_type == 'LONG':
-                self._dbg(f"🟠 ПРОКОЛ ДНА (#{self.pierce_count}) | Лой свечи: {c_low:.4f} <= Порог: {trigger_long:.4f} (середина зоны, если не POC)")
+                self._dbg(f"🟠 ПРОКОЛ {threshold_label} (#{self.pierce_count}) | Лой свечи: {c_low:.4f} <= Порог: {trigger_long:.4f}")
             else:
-                self._dbg(f"🟠 ПРОКОЛ ХАЯ (#{self.pierce_count}) | Хай свечи: {c_high:.4f} >= Порог: {trigger_short:.4f} (середина зоны, если не POC)")
+                self._dbg(f"🟠 ПРОКОЛ {threshold_label} (#{self.pierce_count}) | Хай свечи: {c_high:.4f} >= Порог: {trigger_short:.4f}")
 
         if runaway_this_candle:
             if not self.currently_runaway:
@@ -367,6 +478,18 @@ class BounceWatcher:
         else:
             self.currently_runaway = False
         # -------------------------------------------
+
+        # Свеча, которую нельзя засчитывать как вход, — ТОЛЬКО самая первая
+        # свеча этого сетапа (та, что реально впервые пробила уровень).
+        # Раньше тут использовался new_pierce_this_candle, который заново
+        # взводится КАЖДЫЙ РАЗ, когда currently_pierced переключается
+        # False -> True — а это происходит на любом повторном заходе цены
+        # обратно за середину зоны при пиле, даже если pierced_bottom уже
+        # был True и вход всё это время искался честно. Из-за этого при
+        # пиле вокруг середины зоны каждая свеча-заход ошибочно считалась
+        # "свечой пробоя" и целиком выпадала из поиска входа — вход не
+        # находился НИКОГДА, сколько бы красных/зелёных свечей ни прошло.
+        first_pierce_this_candle = new_pierce_this_candle and not was_pierced_bottom_before
 
         
         # Для математики входа используем 90-й перцентиль (vol_90)
@@ -392,10 +515,13 @@ class BounceWatcher:
             max_per_pierce = self.CONFIG.get('MAX_TRADES_PER_PIERCE', 1)
             is_pierce_budget_ok = (max_per_pierce <= 0) or (self.trades_since_pierce < max_per_pierce)
 
-            if self.pierced_bottom and is_green and not new_pierce_this_candle:
-                # not new_pierce_this_candle — свеча самого пробоя не может быть
-                # свечой входа: пробой только открывает поиск, отбойная свеча
-                # ищется НАЧИНАЯ со следующей свечи после пробоя.
+            if self.pierced_bottom and is_green and not first_pierce_this_candle:
+                # not first_pierce_this_candle — свеча САМОГО ПЕРВОГО пробоя не
+                # может быть свечой входа: пробой только открывает поиск,
+                # отбойная свеча ищется НАЧИНАЯ со следующей свечи после
+                # пробоя. Любой повторный заход цены за середину зоны при
+                # пиле (currently_pierced True->False->True) НЕ считается
+                # новым пробоем для этой проверки — вход по-прежнему ищется.
                 # Фильтр мусора: игнорим всё, что ниже MIN_VOL_MULT_TO_LOG
                 if vol_mult >= self.CONFIG['MIN_VOL_MULT_TO_LOG']:
                     self.last_event_type = "SCAN"
@@ -422,10 +548,12 @@ class BounceWatcher:
             max_per_pierce = self.CONFIG.get('MAX_TRADES_PER_PIERCE', 1)
             is_pierce_budget_ok = (max_per_pierce <= 0) or (self.trades_since_pierce < max_per_pierce)
 
-            if self.pierced_bottom and is_red and not new_pierce_this_candle:
-                # not new_pierce_this_candle — свеча самого пробоя (хай коснулся
-                # верха зоны) не может быть свечой входа: пробой только
-                # открывает поиск, отбойная свеча ищется со следующей свечи.
+            if self.pierced_bottom and is_red and not first_pierce_this_candle:
+                # not first_pierce_this_candle — свеча САМОГО ПЕРВОГО пробоя
+                # (хай впервые коснулся середины/края зоны) не может быть
+                # свечой входа: пробой только открывает поиск, отбойная свеча
+                # ищется со следующей свечи. Повторные заходы при пиле вокруг
+                # середины зоны (currently_pierced мигает) вход не блокируют.
                 if vol_mult >= self.CONFIG['MIN_VOL_MULT_TO_LOG']:
                     self.last_event_type = "SCAN"
                     
@@ -464,9 +592,10 @@ class BounceWatcher:
                 max_drop_limit = self.min - (c_atr * self.CONFIG.get('MAX_DROP_ATR_UNDER_LEVEL', 3.0))
                 if c_close < max_drop_limit:
                     self.state = "DEAD"
+                    self.history_log = "Уровень прошёл всю зону, сделки не было, цена ушла глубоко вниз (>3 ATR). Сетап убит."
                     if is_focus:
                         self.last_event_type = "RUNAWAY"
-                        self._dbg(f"🔴 ОТМЕНА | Уровень прошёл всю зону, сделки не было, цена ушла глубоко вниз (>3 ATR). Сетап убит.")
+                        self._dbg(f"🔴 ОТМЕНА | {self.history_log}")
                     return None
 
             # 2. МЯГКИЙ СБРОС (Для 2-й сделки или отката)
@@ -478,25 +607,44 @@ class BounceWatcher:
             # 3. ШАГ 1: закрытие выше нижней границы зоны (не касание фитилем —
             # иначе эта точка выполнялась бы мгновенно, тем же самым условием,
             # что уже проверил внешний фильтр touched_short в process_candle).
+            # Цена может много раз откатываться под self.min и возвращаться
+            # (мягкий сброс выше — это нормально, часть формирования сетапа),
+            # поэтому climax_stage честно переключается WAIT_NEAR->WAIT_MAX
+            # каждый раз — а вот точку/лог пишем только на самый первый раз
+            # за всю жизнь вотчера (_step1_logged), иначе цена, топчущаяся
+            # у нижней границы много часов подряд, рисовала бы новую точку
+            # на каждом возврате — та же болезнь, что чинили для ZONE_TOUCH/
+            # SWEEP_BOTTOM.
             if self.climax_stage == 'WAIT_NEAR':
                 if c_close >= self.min:
                     self.climax_stage = 'WAIT_MAX'
-                    self.last_event_type = "CLIMAX_NEAR_BREACH"
-                    self._dbg(f"🔵 ШАГ 1 | Закрытие выше нижней границы ({self.min:.4f})")
+                    if not self._step1_logged:
+                        self._step1_logged = True
+                        self.last_event_type = "CLIMAX_NEAR_BREACH"
+                        self._dbg(f"🔵 ШАГ 1 | Закрытие выше нижней границы ({self.min:.4f})")
                 return None
 
             # 4. ШАГ 2: закрытие выше верхней границы зоны (тоже не фитиль —
             # иначе одна свеча с длинной тенью могла бы пробить сразу и это,
             # и буфер ATR ниже, без реального удержания цены наверху).
+            # Тот же мягкий сброс выше может откатить climax_stage обратно в
+            # WAIT_NEAR с ЛЮБОЙ более поздней стадии (в том числе с WAIT_MAX
+            # и дальше) — значит эта проверка тоже может отработать не один
+            # раз за жизнь вотчера. Точку/лог — только на первый раз.
             if self.climax_stage == 'WAIT_MAX':
                 if c_close >= self.max:
                     self.climax_stage = 'WAIT_BUFFER'
-                    self.last_event_type = "CLIMAX_FAR_BREACH"
-                    self._dbg(f"🔵 ШАГ 2 | Закрытие выше верхней границы ({self.max:.4f})")
+                    if not self._step2_logged:
+                        self._step2_logged = True
+                        self.last_event_type = "CLIMAX_FAR_BREACH"
+                        self._dbg(f"🔵 ШАГ 2 | Закрытие выше верхней границы ({self.max:.4f})")
                 return None
 
             # 5. ШАГ 3 (Уход на ATR) — тоже закрытием, не фитилём.
-            # Фиксация нового лидера
+            # Фиксация нового лидера. Счётчик пробоев/бюджет сделок обновляем
+            # КАЖДЫЙ раз (это реальный повторный заход в поиск после отката —
+            # справедливо считать его новой попыткой), а точку/лог — только
+            # на первый раз за жизнь вотчера, по той же причине, что и выше.
             if self.climax_stage == 'WAIT_BUFFER':
                 buffer_limit = self.max + (c_atr * self.CONFIG.get('CLIMAX_ATR_BUFFER', 2.0))
                 if c_close >= buffer_limit:
@@ -504,8 +652,10 @@ class BounceWatcher:
                     self.pierce_count += 1
                     self.trades_since_pierce = 0
                     self.last_pierce_time = candle_time
-                    self.last_event_type = "SWEEP_BOTTOM"
-                    self._dbg(f"🔵 ШАГ 3 | Закрытие выше буфера ({buffer_limit:.4f}). Старт поиска.")
+                    if not self._step3_logged:
+                        self._step3_logged = True
+                        self.last_event_type = "SWEEP_BOTTOM"
+                        self._dbg(f"🔵 ШАГ 3 | Закрытие выше буфера ({buffer_limit:.4f}). Старт поиска.")
                 return None
 
             # 6. ПОИСК ВХОДА

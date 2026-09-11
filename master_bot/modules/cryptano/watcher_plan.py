@@ -14,6 +14,7 @@ from modules.cryptano.strategy.vbottom_manager import VBottomManager
 from modules.cryptano.strategy.bounce_manager import BounceManager
 from modules.cryptano.strategy.bounce_parent import BounceParent
 from modules.cryptano.utils.paths import MACRO_LEVELS_FILE
+from modules.cryptano.levels_history import get_levels_snapshot
 from modules.cryptano.history import save_signal
 
 # candle_store.py лежит в web/backend/ и не является пакетом (нет __init__.py) —
@@ -40,6 +41,15 @@ SCAN_COINS_LIMIT = 150
 # на 15м (см. candle_store.BACKFILL_DAYS), берём с запасом, чтобы реплей мог
 # найти реальный момент пробоя уровня, а не упираться в старое окно 120 свечей.
 DEEP_LOOKBACK_LIMIT = 5760  # ~60 дней на 15м
+
+# Потолок на реплей BOUNCE за один скан (см. check_bounce): раньше был
+# урезан до ~200 свечей (2 дня) как защита от непредвиденного простоя, но
+# рескан (см. bounce_mgr.last_processed_time + /api/rescan) — это НАМЕРЕННАЯ
+# перемотка, часто дальше 2 дней (дефолт кнопки — неделя назад, можно и
+# больше). С низким потолком рескан молча прыгал к последней свече вместо
+# честного повтора всего пути. Поднимаем до глубины, которая и так уже
+# качается (DEEP_LOOKBACK_LIMIT) — дальше реплеить всё равно нечем.
+BOUNCE_REPLAY_MAX_CANDLES = DEEP_LOOKBACK_LIMIT
 
 
 def _fetch_candles_df(symbol, coin, min_candles, strategy_tag):
@@ -507,7 +517,18 @@ def check_v_red_top(coin, direction, vbottom_mgr=None, tracked_levels=None):
 def check_bounce(coin, allow_long, allow_short, bounce_mgr):
     """BOUNCE сам ведёт свои вотчеры внутри bounce_mgr — внешний
     tracked_levels не нужен, process_candle() получает полный список
-    текущих уровней и сам решает, что уже отслеживается."""
+    текущих уровней и сам решает, что уже отслеживается.
+
+    РЕПЛЕЙ (см. bounce_mgr.last_processed_time, персистится в bounce_state.json):
+    бот перезапускается много раз в день, и раньше сюда всегда шла только ОДНА
+    последняя свеча (df.iloc[-1]) — все свечи, пропущенные за время простоя,
+    вотчер вообще никогда не видел. Событие, реально случившееся во время
+    простоя, при следующем скане приписывалось текущей (более поздней) свече —
+    отсюда точки на графике "не на своей свече". Теперь вместо одной свечи
+    прогоняем через process_candle ПО ОЧЕРЕДИ все свечи от последней
+    обработанной до текущей — каждое событие ложится на ту свечу, где оно
+    реально произошло, независимо от того, сколько раз бот успел упасть и
+    подняться между сканами."""
     try:
         time.sleep(0.3)
         coin = coin.upper().replace("USDT", "").replace("/", "").strip()
@@ -523,53 +544,134 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr):
 
         macro_db = load_json(MACRO_LEVELS_FILE, default={})
         coin_macro = macro_db.get(coin) or macro_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
-        if not coin_macro:
-            return 0, [], 0
-
         supports = coin_macro.get("supports", [])
         resistances = coin_macro.get("resistances", [])
-        if not supports and not resistances:
+
+        # Уровней сейчас может не быть (монета выпала из macro_levels.json —
+        # например, ушла ниже порога объёма в swing_hunter). Это НЕ причина
+        # переставать сканировать уже отслеживаемый вотчер — по правилам
+        # проекта он остаётся "в работе", пока не случится сделка ИЛИ цена не
+        # уйдёт далеко от зоны (см. RUNAWAY/climax hard-kill в bounce_watcher.py/
+        # bounce_manager.py) — оба условия отслеживает сам вотчер, не список
+        # текущих уровней. Поэтому только реально пустой случай (ни текущих
+        # уровней, ни уже живого вотчера) даёт скипнуть монету целиком.
+        has_active_watcher = any(
+            getattr(w, "coin", None) == coin and getattr(w, "state", None) not in ("DEAD", "TRIGGERED")
+            for w in bounce_mgr._watchers.values()
+        )
+        if not supports and not resistances and not has_active_watcher:
             return 0, [], 0
 
-        c = df.iloc[-1]
-        c_high, c_low, c_close = float(c['high']), float(c['low']), float(c['close'])
-        c_atr = float(calculate_atr(df).iloc[-1])
+        atr_series = calculate_atr(df)
 
-        orders, draw_events = bounce_mgr.process_candle(
-            c_low, c_high, c_close, supports, resistances, df,
-            allow_long=allow_long, allow_short=allow_short, c_atr=c_atr, coin=coin
-        )
+        last_t = bounce_mgr.last_processed_time.get(coin)
+        if last_t is None:
+            # Первый скан этой монеты с тех пор, как появилась персистентность
+            # (или вообще первый скан монеты) — ведём себя как раньше: только
+            # текущая свеча, не гоняем всю глубину истории задним числом.
+            replay_df = df.iloc[[-1]]
+        else:
+            last_ts = pd.Timestamp(int(last_t), unit="s", tz="UTC")
+            replay_df = df[df.index > last_ts]
+            if replay_df.empty:
+                # Новых свечей с прошлого раза не появилось — сканить нечего.
+                return 0, [], len(supports) + len(resistances)
+            if len(replay_df) > BOUNCE_REPLAY_MAX_CANDLES:
+                # Аномально долгий простой — не реплеим каждую свечу отдельно,
+                # догоняем сразу до текущей (см. константу выше).
+                replay_df = replay_df.iloc[[-1]]
 
         reports = []
-        for order in orders:
-            d = order['decision']
-            tt = order['trade_type']
-            entry, sl, tp = d.get('entry_price', 0.0), d.get('sl', 0.0), d.get('tp', 0.0)
-            rr = ((tp - entry) / (entry - sl)) if tt == 'LONG' and entry > sl else \
-                 ((entry - tp) / (sl - entry)) if tt == 'SHORT' and sl > entry else 0
-            emoji = "🟢" if tt == "LONG" else "🔴"
+        total_orders = 0
+        replay_started_at = time.time()
+        # evaluate_bounce читает максимум последние 52 строки df_slice
+        # (df['volume'].iloc[-52:-2] + df.iloc[-1]) — раньше тут был
+        # df.loc[:ts] (ВСЯ история от начала до текущей точки), на поздних
+        # свечах это тысячи строк, копируемых заново на каждой из ~1000+
+        # свечей реплея — окно в 60 (с небольшим запасом) даёт тот же
+        # результат без лишнего копирования.
+        WINDOW = 60
+        df_index = df.index
+        for ts, row in replay_df.iterrows():
+            pos = df_index.searchsorted(ts, side="right")  # позиция сразу ПОСЛЕ этой свечи
+            df_slice = df.iloc[max(0, pos - WINDOW):pos]
+            if len(df_slice) < 52:
+                continue  # недостаточно истории ДО этой свечи для индикаторов — пропускаем честно
 
-            # level_id для SHORT всегда вида "BC_SHORT_min_max__CLIMAX"/"...__MIRROR"
-            # (см. evaluate_bounce() в bounce_manager.py) — берём режим прямо оттуда.
-            level_id_val = d.get('level_id', '') or ''
-            mode = level_id_val.split('__')[-1] if '__' in level_id_val else None
-            source_label = f"BOUNCE_{tt}" + (f"_{mode}" if tt == "SHORT" and mode else "")
-            save_signal({
-                "type": "SHORT_PUMP" if tt == "SHORT" else "WATCHER_LONG",
-                "coin": coin,
-                "source": source_label,
-                "price": entry,
-                "take_profit": tp,
-                "stop_loss": sl,
-            })
+            c_high, c_low, c_close = float(row['high']), float(row['low']), float(row['close'])
+            c_atr = float(atr_series.loc[ts]) if ts in atr_series.index else 0.0
 
-            reports.append(
-                f"{emoji} *BOUNCE {tt}*{' 🪦' if d.get('reborn') else ''} _{coin}_\n\n"
-                f"Entry: `{entry:.8f}`\nSL: `{sl:.8f}`\nTP: `{tp:.8f}`\nR/R: `{rr:.2f}`\n\n"
-                f"{d.get('reason', '')}\nLevel: `{d.get('level_id', 'unknown')}`"
+            # Уровни НА МОМЕНТ ЭТОЙ СВЕЧИ, не сегодняшние (см. levels_history.py) —
+            # иначе прошлая свеча проверяется против зоны, которая тогда могла
+            # ещё не появиться / уже пропасть, и "найденная" реплеем сделка на
+            # самом деле в тот момент была бы невозможна. ts уже в UTC (tz-aware,
+            # см. _fetch_candles_df/candle_store) — снимки хранятся наивным UTC,
+            # поэтому tzinfo снимаем перед сравнением.
+            ts_naive = ts.tz_localize(None) if ts.tzinfo is not None else ts
+            hist_snapshot = get_levels_snapshot(ts_naive.to_pydatetime())
+            if hist_snapshot is not None:
+                hist_coin_macro = hist_snapshot.get(coin) or hist_snapshot.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
+                candle_supports = hist_coin_macro.get("supports", [])
+                candle_resistances = hist_coin_macro.get("resistances", [])
+            else:
+                # Снимка на этот момент нет вообще (ни у бота, ни подложенного
+                # вручную) — честно НЕ подставляем сегодняшние уровни, значит
+                # новый вотчер тут родиться не может. Уже живые вотчеры (после
+                # reset_for_rescan) при этом всё равно кормятся этой свечой —
+                # process_candle сам подхватывает их из levels_to_eval
+                # независимо от переданного списка supports/resistances.
+                candle_supports = []
+                candle_resistances = []
+
+            orders, draw_events = bounce_mgr.process_candle(
+                c_low, c_high, c_close, candle_supports, candle_resistances, df_slice,
+                allow_long=allow_long, allow_short=allow_short, c_atr=c_atr, coin=coin
             )
+            total_orders += len(orders)
 
-        return len(orders), reports, len(supports) + len(resistances)
+            for order in orders:
+                d = order['decision']
+                tt = order['trade_type']
+                entry, sl, tp = d.get('entry_price', 0.0), d.get('sl', 0.0), d.get('tp', 0.0)
+                rr = ((tp - entry) / (entry - sl)) if tt == 'LONG' and entry > sl else \
+                     ((entry - tp) / (sl - entry)) if tt == 'SHORT' and sl > entry else 0
+                emoji = "🟢" if tt == "LONG" else "🔴"
+
+                # level_id для SHORT всегда вида "BC_SHORT_min_max__CLIMAX"/"...__MIRROR"
+                # (см. evaluate_bounce() в bounce_manager.py) — берём режим прямо оттуда.
+                level_id_val = d.get('level_id', '') or ''
+                mode = level_id_val.split('__')[-1] if '__' in level_id_val else None
+                source_label = f"BOUNCE_{tt}" + (f"_{mode}" if tt == "SHORT" and mode else "")
+                save_signal({
+                    "type": "SHORT_PUMP" if tt == "SHORT" else "WATCHER_LONG",
+                    "coin": coin,
+                    "source": source_label,
+                    "price": entry,
+                    "take_profit": tp,
+                    "stop_loss": sl,
+                    # unix-секунды РЕАЛЬНОЙ свечи входа (ts — свеча из реплей-цикла
+                    # выше, не "сейчас") + level_id зоны — нужны дашборду для клика
+                    # по сигналу (переход на график в этот момент + отрисовка зоны).
+                    "time": int(ts.timestamp()),
+                    "level_id": level_id_val or None,
+                })
+
+                reports.append(
+                    f"{emoji} *BOUNCE {tt}*{' 🪦' if d.get('reborn') else ''} _{coin}_\n\n"
+                    f"Entry: `{entry:.8f}`\nSL: `{sl:.8f}`\nTP: `{tp:.8f}`\nR/R: `{rr:.2f}`\n\n"
+                    f"{d.get('reason', '')}\nLevel: `{d.get('level_id', 'unknown')}`"
+                )
+
+        bounce_mgr.last_processed_time[coin] = int(replay_df.index[-1].timestamp())
+
+        replay_elapsed = time.time() - replay_started_at
+        if len(replay_df) > 10:
+            # Только для заметных реплеев (рескан/долгий простой) — на обычный
+            # тик (1 свеча) печатать время незачем, шум в консоли.
+            print(f"[BOUNCE REPLAY] {coin}: {len(replay_df)} свечей за {replay_elapsed:.1f} сек "
+                  f"({replay_elapsed / len(replay_df) * 1000:.1f} мс/свеча)")
+
+        return total_orders, reports, len(supports) + len(resistances)
 
     except Exception as e:
         print(f"\n[BOUNCE ERROR] ❌ {coin}: {e}")

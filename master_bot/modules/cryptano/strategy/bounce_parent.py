@@ -15,7 +15,23 @@ class BounceParent:
                 'level_id': None, 'entry_price': None, 'history_log': ''}
 
     def clear_dead_watchers(self, active_level_ids):
+        """Архивирует все TRIGGERED/DEAD вотчеры — безусловно, каждый скан.
+
+        Раньше тут ещё стояло условие "k not in active_level_ids" (не архивить,
+        пока зона ещё считается активной). Для BOUNCE это была ловушка: level_id
+        строится от самой зоны (min/max), один и тот же для CLIMAX и MIRROR —
+        active_level_ids на каждом скане кладёт ОБА id для любой зоны, которая
+        всё ещё актуальна хоть для какого-то режима (см. background_tasks.py,
+        bc_active_level_ids). Если, скажем, MIRROR уже TRIGGERED (сделка
+        случилась, "уровень закрыт насовсем"), а CLIMAX на той же зоне ещё жив
+        и продолжает её трогать — зона никогда не "выпадает" из active_level_ids,
+        и TRIGGERED-вотчер MIRROR застревал в памяти навсегда, никогда не попадая
+        в watcher_history.json (пропадал из "в работе", но и не появлялся в
+        "ПОСЛЕДНИЙ СКАН" — просто исчезал бесследно).
+
+        Вотчер в состоянии TRIGGERED/DEAD по определению больше никогда ничего
+        не сделает — архивировать его можно и нужно сразу же, независимо от
+        того, что там с зоной у его соседей."""
         dead_keys = [k for k, w in self._watchers.items()
-                     if k not in active_level_ids
-                     and getattr(w, 'state', None) in ("TRIGGERED", "DEAD")]
+                     if getattr(w, 'state', None) in ("TRIGGERED", "DEAD")]
         return {k: self._watchers.pop(k) for k in dead_keys}

@@ -31,8 +31,17 @@ IMPULSE_LOOKAHEAD_DAYS = 10   # Даем цене 10 дней на то, что�
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 from modules.cryptano.utils.paths import MACRO_LEVELS_FILE
+from modules.cryptano.levels_history import save_levels_snapshot
 
 MIN_VOLUME_USD = 10_000_000
+
+# Потолок числа монет — вернули после того, как без него список вырос
+# настолько, что скан-цикл начал занимать многие минуты. Настраивается в
+# config.json (ключ crypto.max_coins), чтобы не лезть в код ради смены
+# числа — если ключа там нет, по умолчанию 80.
+_CONFIG_FILE = os.path.normpath(os.path.join(BASE_DIR, "..", "..", "config.json"))
+_config = load_json(_CONFIG_FILE, default={})
+MAX_COINS = _config.get("crypto", {}).get("max_coins", 80)
 
 _hunter_lock = threading.Lock()
 
@@ -71,11 +80,15 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                 if vol >= MIN_VOLUME_USD:
                     symbols_with_volume.append((sym, vol))
                     
-        # Сортируем по убыванию объема торгов и берем ТОП-70
+        # Сортируем по убыванию объёма и берём топ-MAX_COINS самых
+        # ликвидных (см. MAX_COINS выше, настраивается в config.json) —
+        # без потолка список разросся настолько, что скан-цикл стал
+        # занимать многие минуты на одном только чистом ожидании между
+        # монетами.
         symbols_with_volume.sort(key=lambda x: x[1], reverse=True)
-        valid_symbols = [sym for sym, vol in symbols_with_volume[:70]]
-        
-        print(f"🔥 Найдено {len(symbols_with_volume)} монет. Фильтруем до ТОП-70 самых ликвидных.")
+        valid_symbols = [sym for sym, vol in symbols_with_volume[:MAX_COINS]]
+
+        print(f"🔥 Найдено {len(symbols_with_volume)} монет с объёмом ≥ ${MIN_VOLUME_USD:,.0f}. Берём топ-{MAX_COINS}.")
 
         # МЕРДЖ вместо полной перезаписи: если монета в этот раз не попала
         # в топ-70 (или биржа моргнула ошибкой на fetch_tickers) — её старая
@@ -156,6 +169,16 @@ def build_macro_levels(bot=None, admin_chat_id=None):
 
         save_json_atomic(MACRO_LEVELS_FILE, macro_base)
         print(f"✅ [SWING HUNTER] Сбор завершен! Зоны сохранены: {MACRO_LEVELS_FILE}")
+
+        # История уровней — отдельно от живого macro_levels.json (см.
+        # modules/cryptano/levels_history.py). Нужна реплею/рескану, чтобы
+        # честно проверять прошлые свечи против уровней, актуальных В ТОТ
+        # МОМЕНТ, а не против сегодняшних.
+        try:
+            save_levels_snapshot(macro_base)
+        except Exception as e:
+            print(f"⚠️ [SWING HUNTER] Не удалось сохранить снимок в историю уровней: {e}")
+
         return macro_base
             
     except Exception as e:
@@ -201,7 +224,11 @@ def build_levels_for_single_coin(coin):
             "updated_at": datetime.datetime.now().isoformat()
         }
         save_json_atomic(MACRO_LEVELS_FILE, macro_base)
-        
+        try:
+            save_levels_snapshot(macro_base)
+        except Exception as e:
+            print(f"⚠️ [SWING HUNTER] Не удалось сохранить снимок в историю уровней: {e}")
+
         return levels
     except Exception as e:
         print(f"[HUNTER ERROR] Ошибка при построении уровней для {coin}: {e}")

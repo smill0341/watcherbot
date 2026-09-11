@@ -12,7 +12,9 @@ let chart = null;
 let candleSeries = null;
 let volumeSeries = null;
 let ema20Series = null;
-let ema50Series = null;let rsiSeries = null; 
+let ema50Series = null;
+let emaMacroSeries = null; // EMA200 на 4H (span 3200) — макро-тренд поверх текущего таймфрейма
+let rsiSeries = null; 
 let levelLines = []; 
 let selectedCoin = null;
 // Если задан — loadLevels() рисует ТОЛЬКО этот один уровень (одна стратегия,
@@ -20,6 +22,14 @@ let selectedCoin = null;
 // клике по строке в списке "активных" (loadActiveWatchers), сбрасывается при
 // обычном выборе монеты из watchlist/поиска.
 let focusedLevel = null;
+
+// True, когда график открыт по клику на сигнал ("Последние сигналы") —
+// см. loadChart(coin, focus, signal). Нужен отдельно от focusedLevel: если
+// зону сигнала не удалось найти (buildFocusFromLevelId вернул null — старый
+// сигнал без level_id, или вотчер уже нигде не числится), loadLevels всё
+// равно не должен скатываться в "показать все текущие уровни монеты" — это
+// и была причина "дна" (кучи левых линий поверх Entry/Target/Stop).
+let isSignalView = false;
 
 // Единый цвет на каждую стратегию — чтобы куча уровней читалась с одного
 // взгляда, а не сливалась в одинаковые зелёные/красные линии.
@@ -63,6 +73,7 @@ function stopSimPlayback() {
 
 const ema20ValueEl = document.getElementById("ema20-value");
 const ema50ValueEl = document.getElementById("ema50-value");
+const ema200ValueEl = document.getElementById("ema200-value");
 
 const TF_LIMITS = {
   "15m": 5760,
@@ -93,9 +104,9 @@ function ensureOhlcvLegend() {
     marksLegend.innerHTML = `
       <b>Маркеры:</b> 
       <span style="color:#8a8f98">⚪️ Старт</span> | 
-      <span style="color:#f2c14e">🟡 Пик (Структура)</span> | 
-      <span style="color:#4dd0e1">🔵 Поиск</span> | 
-      <span style="color:#ff8a65">🟠 Кандидат</span> | 
+      <span style="color:#f2c14e">🟡 Кандидат</span> | 
+      <span style="color:#5aa9e6">🔵 Структура</span> | 
+      <span style="color:#9c27b0">🟣 Старт поиска</span> | 
       <span style="color:#4caf7d">🟢 Вход</span> | 
       <span style="color:#e5654f">🔴 Сброс/Стоп</span>
     `;
@@ -197,8 +208,27 @@ function renderHistoryPanel(historyArr) {
     const dir = w.direction ? `<span class="dir-${w.direction}">${w.direction}</span>` : "";
     
     // Добавили w.coin и onclick для перехода на график
+    // Клик по карточке истории — фокус на СВОИ собственные данные (min/max,
+    // events, направление, режим), а не поиск по level_id среди текущих
+    // активных вотчеров: этого вотчера там уже нет, он мёртв и вычищен
+    // (clear_dead_watchers). fromHistory:true говорит loadLevels рисовать
+    // напрямую по объекту ниже, не пытаясь ничего искать заново.
+    const focusPayload = {
+      fromHistory: true,
+      min: w.level_min,
+      max: w.level_max,
+      level_min: w.level_min,
+      level_max: w.level_max,
+      level_date: w.level_date,
+      level_type: w.level_type,
+      level_score: w.level_score,
+      direction: w.direction,
+      strategy: w.strategy,
+      mode: w.mode,
+      events: w.events || [],
+    };
     return `
-      <div class="history-card" onclick="loadChart('${w.coin}')" style="cursor: pointer;" title="Кликни, чтобы открыть график">
+      <div class="history-card" onclick='loadChart(${JSON.stringify(w.coin)}, ${JSON.stringify(focusPayload)})' style="cursor: pointer;" title="Кликни, чтобы открыть график на этом уровне">
         <div class="history-card-head">
           <span><b>${w.coin || "?"}</b> | ${w.strategy || "?"} ${dir}</span>
           <span class="history-state ${stateClass}">${state}</span>
@@ -222,10 +252,20 @@ function initChart() {
       }),
     },
     localization: {
-      timeFormatter: (time) => new Date(time * 1000).toLocaleString("ru-RU", {
-        timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit",
-        hour: "2-digit", minute: "2-digit",
-      }),
+      // Дата/время под курсором — плюс объём той самой свечи (ищем по
+      // времени в уже загруженных данных). Верхняя легенда (Open/High/Low/
+      // Close/Vol) не трогается — это отдельная подсказка, снизу у оси.
+      timeFormatter: (time) => {
+        const dateStr = new Date(time * 1000).toLocaleString("ru-RU", {
+          timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit",
+          hour: "2-digit", minute: "2-digit",
+        });
+        const c = globalCandles.find((c) => c.time === time);
+        if (c && c.volume !== undefined && c.volume !== null) {
+          return `${dateStr} · Vol: ${formatVolume(c.volume)}`;
+        }
+        return dateStr;
+      },
     },
   });
 
@@ -245,12 +285,19 @@ function initChart() {
 
   ema20Series = chart.addLineSeries({ color: "#f2c14e", lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false });
   ema50Series = chart.addLineSeries({ color: "#5aa9e6", lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false });
+  // EMA200 на 4H (span 3200 свечей) — считается на отдельно загруженных
+  // 4H-свечах (см. loadMacroEma200), не на текущем таймфрейме графика,
+  // иначе на 15m это была бы совсем другая (намного более дёрганая) линия.
+  // Точки редкие (раз в 4 часа) — chart сам соединяет их плавной линией
+  // поверх более мелких свечей, интерполяция не нужна.
+  emaMacroSeries = chart.addLineSeries({ color: "#7e57c2", lineWidth: 2, priceLineVisible: false, crosshairMarkerVisible: false });
   rsiSeries = chart.addLineSeries({ visible: false, crosshairMarkerVisible: false }); 
 
   chart.subscribeCrosshairMove((param) => {
     if (!param || !param.time) {
       ema20ValueEl.textContent = "—";
       ema50ValueEl.textContent = "—";
+      if (ema200ValueEl) ema200ValueEl.textContent = "—";
       setOhlcvLegend(null, null, null);
       return;
     }
@@ -258,6 +305,14 @@ function initChart() {
     const e50 = param.seriesData.get(ema50Series);
     ema20ValueEl.textContent = e20 ? e20.value.toFixed(currentPrecision) : "—";
     ema50ValueEl.textContent = e50 ? e50.value.toFixed(currentPrecision) : "—";
+    if (ema200ValueEl) {
+      // seriesData.get отдаёт значение, только если у линии есть точка
+      // РОВНО на этом времени — а у 4H-линии точки раз в 4 часа, так что
+      // между ними тут будет "—", даже когда линия на графике видна (она
+      // отрисована плавной интерполяцией между соседними точками).
+      const eMacro = param.seriesData.get(emaMacroSeries);
+      ema200ValueEl.textContent = eMacro ? eMacro.value.toFixed(currentPrecision) : "—";
+    }
 
     const candle = param.seriesData.get(candleSeries);
     const vol = param.seriesData.get(volumeSeries);
@@ -343,6 +398,37 @@ function updateSimUI() {
   }
 }
 
+// Подтягивает окно свечей, реально покрывающее диапазон [fromSec, toSec] —
+// нужно перед показом маркеров симуляции: playSimulation() ставит их поверх
+// УЖЕ загруженных на график свечей, а обычная загрузка (loadChart) обычно
+// держит только последние пару дней. /api/ohlcv поддерживает только
+// "around" (окно ВОКРУГ точки), не произвольный диапазон — берём середину
+// периода и не более 6000 свечей (потолок бэкенда, см. app.py::get_ohlcv).
+async function loadCandlesAroundRange(coin, fromSec, toSec) {
+  const spanCandles = Math.ceil((toSec - fromSec) / 900) + 20; // +запас с обеих сторон
+  const limit = Math.min(6000, Math.max(200, spanCandles));
+  const aroundSec = Math.floor((fromSec + toSec) / 2);
+  try {
+    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}&limit=${limit}&around=${aroundSec}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const formattedCandles = (data.candles || [])
+      .map((c) => ({ ...c, time: c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time }))
+      .sort((a, b) => a.time - b.time);
+    if (!formattedCandles.length) return;
+    globalCandles = formattedCandles;
+    candleSeries.setData(formattedCandles);
+    volumeSeries.setData(formattedCandles.map((c) => ({
+      time: c.time, value: c.volume, color: c.close >= c.open ? "rgba(76,175,125,0.5)" : "rgba(229,101,79,0.5)",
+    })));
+    ema20Series.setData(computeEMA(formattedCandles, 20));
+    ema50Series.setData(computeEMA(formattedCandles, 50));
+    chart.timeScale().fitContent();
+  } catch (e) {
+    console.error("loadCandlesAroundRange failed", e);
+  }
+}
+
 async function runSimulation() {
   if (!selectedCoin || !simStartTime || simRunning) return;
   simRunning = true;
@@ -350,25 +436,67 @@ async function runSimulation() {
 
   const status = document.getElementById("sim-status");
   const runBtn = document.getElementById("sim-run-btn");
+  const strategySelect = document.getElementById("sim-strategy-select");
+  const isBounce = !strategySelect || strategySelect.value === "bounce";
+  const tradesBody = document.getElementById("sim-trades-body");
   runBtn.disabled = true;
   status.textContent = "Считаю...";
+  if (tradesBody) tradesBody.innerHTML = "<tr><td colspan='8'>Считаю...</td></tr>";
 
-  // Бэкенд ждёт 'YYYY-MM-DD HH:MM' в UTC (см. simulate_engine.run_simulation)
+  // Бэкенд ждёт 'YYYY-MM-DD HH:MM' в UTC (см. simulate_engine.run_simulation /
+  // bounce_simulate.run_bounce_simulation — формат одинаковый у обоих)
   const iso = new Date(simStartTime * 1000).toISOString(); // "2026-07-01T12:00:00.000Z"
   const startParam = iso.slice(0, 16).replace("T", " ");
+  const endpoint = isBounce
+    ? `/api/simulate_bounce/${encodeURIComponent(selectedCoin)}?start=${encodeURIComponent(startParam)}`
+    : `/api/simulate/${encodeURIComponent(selectedCoin)}?start=${encodeURIComponent(startParam)}`;
 
   try {
-    const res = await fetch(`/api/simulate/${encodeURIComponent(selectedCoin)}?start=${encodeURIComponent(startParam)}`, { method: "POST" });
+    const res = await fetch(endpoint, { method: "POST" });
     const data = await res.json();
     if (!res.ok) {
       status.textContent = data.detail || "ошибка симуляции";
+      if (tradesBody) tradesBody.innerHTML = "<tr><td colspan='8'>" + (data.detail || "ошибка") + "</td></tr>";
       return;
     }
 
-    const episodes = [...(data.active || []), ...(data.history || [])];
+    // Для BOUNCE — только состоявшиеся сделки (TRIGGERED), и линии, и точки.
+    // Несостоявшиеся попытки (SCANNING/DEAD) на графике вообще не показываем —
+    // так и просили: только там, где реально была сделка.
+    const episodes = isBounce
+      ? (data.history || []).filter((ep) => ep.state === "TRIGGERED")
+      : [...(data.active || []), ...(data.history || [])];
+
+    // Точки рисуются поверх УЖЕ ЗАГРУЖЕННЫХ на график свечей (globalCandles/
+    // candleSeries) — период симуляции обычно шире того, что уже на экране
+    // (там обычно последние пару дней), иначе метки на старых датах просто
+    // некуда ставить и они не появляются. Подтягиваем окно, реально
+    // покрывающее весь период симуляции, ПЕРЕД показом маркеров.
+    const endTimeSec = data.end_time ? Math.floor(new Date(data.end_time + "Z").getTime() / 1000) : Math.floor(Date.now() / 1000);
+    await loadCandlesAroundRange(selectedCoin, simStartTime, endTimeSec);
 
     drawSimLevels(data.levels || []);
     playSimulation(episodes);
+
+    if (tradesBody) {
+      const trades = data.trades || [];
+      if (!trades.length) {
+        tradesBody.innerHTML = "<tr><td colspan='8'>сделок не найдено</td></tr>";
+      } else {
+        tradesBody.innerHTML = trades.map((t) => `
+          <tr>
+            <td>${t.date ?? ""}</td>
+            <td>${t.coin ?? ""}</td>
+            <td class="dir-${t.type}">${t.type ?? ""}</td>
+            <td>${t.source ?? ""}</td>
+            <td>${formatPrice(t.entry)}</td>
+            <td>${formatPrice(t.target)}</td>
+            <td>${formatPrice(t.stop)}</td>
+            <td>${t.rr ?? ""}</td>
+          </tr>
+        `).join("");
+      }
+    }
 
     if (episodes.length === 0) {
       status.textContent = "Старт: " + startParam + " · пробоев не найдено (уровней проверено: " + (data.levels || []).length + ")";
@@ -379,6 +507,7 @@ async function runSimulation() {
   } catch (e) {
     console.error("simulate failed", e);
     status.textContent = "ошибка запроса";
+    if (tradesBody) tradesBody.innerHTML = "<tr><td colspan='8'>ошибка запроса</td></tr>";
   } finally {
     runBtn.disabled = false;
     simRunning = false;
@@ -405,7 +534,11 @@ function drawSimLevels(levels) {
       crosshairMarkerVisible: false,
       priceLineVisible: false,
       lastValueVisible: false,
-      title: `🧪 ${friendlyLevelType(lvl.type)} (${lvl.type ?? "?"}) ${lvl.score ?? ""}`,
+      title: `🧪 ${friendlyLevelType(lvl.type)}${lvl.score != null ? ' ' + lvl.score : ''}`,
+      // Тот же фикс, что и везде на боевом графике — за месяц симуляции
+      // зоны BOUNCE могут раскидываться в широком диапазоне цены, без этого
+      // все линии разом тянут автомасштаб на себя, сжимая свечи.
+      autoscaleInfoProvider: () => null,
     });
     series.setData(relevant.map((c) => ({ time: c.time, value: midPrice })));
     simLevelLines.push(series);
@@ -462,6 +595,45 @@ function clearLevelLines() {
     try { chart.removeSeries(series); } catch(e) {}
   });
   levelLines = [];
+}
+
+let signalLines = []; // Entry/Target/Stop линии текущего открытого сигнала
+function clearSignalLines() {
+  signalLines.forEach((series) => {
+    try { chart.removeSeries(series); } catch(e) {}
+  });
+  signalLines = [];
+}
+
+// Рисует Entry/Target/Stop сплошными горизонтальными линиями через весь
+// загруженный диапазон свечей — данные берутся прямо из записи сигнала
+// (signals.json), поэтому работает всегда, даже если зону/точки найти
+// не удалось (см. buildFocusFromSignal).
+function drawSignalTradeLines(signal) {
+  clearSignalLines();
+  if (!globalCandles.length) return;
+  const lineTimes = globalCandles.map((c) => c.time);
+  const addLine = (price, color, label) => {
+    if (price === null || price === undefined || Number.isNaN(Number(price))) return;
+    const series = chart.addLineSeries({
+      color,
+      lineWidth: 2,
+      lineStyle: LightweightCharts.LineStyle.Solid,
+      crosshairMarkerVisible: false,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      title: label,
+      // Stop у этой стратегии может лежать далеко от Entry (десятки
+      // процентов) — без этого такая линия одна тянула автомасштаб на
+      // себя и сжимала все свечи в узкую полоску.
+      autoscaleInfoProvider: () => null,
+    });
+    series.setData(lineTimes.map((t) => ({ time: t, value: Number(price) })));
+    signalLines.push(series);
+  };
+  addLine(signal.entry, "#5aa9e6", "🔵 Entry");
+  addLine(signal.target, "#4caf7d", "🟢 Target");
+  addLine(signal.stop, "#e5654f", "🔴 Stop");
 }
 
 // === ЧЕЛОВЕЧЕСКИЕ ПОДПИСИ ВМЕСТО "sup1"/"АКТИВНО" ===
@@ -530,9 +702,19 @@ async function loadLevels(coin) {
       // по наличию mode (он бывает только у SHORT climax/mirror).
       const direction = w.direction ?? (w.mode ? "SHORT" : "LONG");
       const isSupport = direction === "LONG";
-      const activeColor = STRATEGY_COLORS[w.strategy] || (isSupport ? "#00c853" : "#ff3d3d");
+      // Цвет линии — всегда по направлению (зелёный = поддержка/LONG,
+      // красный = сопротивление/SHORT), а не по стратегии. Раньше тут был
+      // STRATEGY_COLORS[w.strategy] в приоритете — у BOUNCE это давало
+      // ОДИН и тот же синий цвет что для LONG, что для SHORT, хотя эмодзи
+      // в подписи (🟢/🔴) честно показывал направление — несовпадение.
+      const activeColor = isSupport ? "#00c853" : "#ff3d3d";
       const label = friendlyStrategyWithMode(w.strategy, w.mode);
-      const title = `${isSupport ? '🟢' : '🔴'} ${label} · уровень вотчера`;
+      // Тип уровня из базы (месячный хай/лоу, недельный, дневной, POC и т.д.) —
+      // то же самое, что уже показывает addLevel() в обычном виде монеты,
+      // просто раньше у вотчера не было доступа к level_type вообще (не
+      // экспортировался в active_watchers.json/watcher_history.json).
+      const scoreSuffix = w.level_score != null ? ` ${w.level_score}` : "";
+      const title = `${isSupport ? '🟢' : '🔴'} ${label} · ${friendlyLevelType(w.level_type)}${scoreSuffix}`;
       // Линия начинается с даты ФОРМИРОВАНИЯ уровня (w.level_date — заморожена
       // на вотчере в момент его рождения, из macro_levels.json), а не с
       // момента начала слежки — уровень обычно появляется раньше, чем цена
@@ -558,6 +740,11 @@ async function loadLevels(coin) {
           priceLineVisible: false,
           lastValueVisible: false,
           title: idx === 0 ? title : "",
+          // Линии уровня/зоны не должны участвовать в автомасштабе цены —
+          // иначе далёкая линия (старый уровень, давно оставленный ценой)
+          // сжимает все свечи в узкую полоску. Свечи — единственный
+          // ориентир масштаба, линии просто рисуются там, где положено.
+          autoscaleInfoProvider: () => null,
         });
         series.setData(lineTimes.map(t => ({ time: t, value: priceValue })));
         levelLines.push(series);
@@ -573,11 +760,26 @@ async function loadLevels(coin) {
     // (activeLevels), никогда история (watcher_history.json) — история
     // тут вообще не участвует, это отдельная, ещё не сделанная фича.
     if (focusedLevel) {
+      // Клик по карточке ИСТОРИИ (DEAD/TRIGGERED) — вотчер уже удалён из
+      // активных (clear_dead_watchers), искать его там бессмысленно.
+      // focusedLevel в этом случае УЖЕ содержит все нужные данные (min/max/
+      // events/direction/mode) — рисуем прямо по ним.
+      if (focusedLevel.fromHistory) {
+        drawOrphanActiveLevel(focusedLevel);
+        return;
+      }
       const w = activeLevels.find((x) => x.level_id === focusedLevel.level_id);
       if (!w) return; // вотчер уже не активен (умер/сработал) — рисовать нечего
       drawOrphanActiveLevel(w);
       return;
     }
+
+    // Открыт по клику на сигнал, а зону найти не удалось (старый сигнал без
+    // level_id, или вотчер уже нигде не числится) — НЕ скатываемся в показ
+    // всех текущих уровней монеты. Entry/Target/Stop (см. drawSignalTradeLines)
+    // уже нарисованы отдельно, добавлять сюда ещё и все чужие уровни — та
+    // самая "свалка", от которой график становится нечитаемым.
+    if (isSignalView) return;
 
     // === ОБЫЧНЫЙ ПРОСМОТР МОНЕТЫ (без фокуса) ===
     // Тут по-прежнему рисуем все текущие supports/resistances монеты,
@@ -593,19 +795,21 @@ async function loadLevels(coin) {
     const addLevel = (lvl, isSupport) => {
       const active = findActive(lvl);
       if (active) matchedActiveKeys.add(activeKey(active));
-      const levelLabel = `${friendlyLevelType(lvl.type)} (${lvl.type ?? "?"})`;
+      const levelLabel = friendlyLevelType(lvl.type);
       let startTime = lvl.date ? new Date(lvl.date).getTime() / 1000 : firstTime;
       const lineTimes = globalCandles.filter(c => c.time >= startTime).map(c => c.time);
       if (lineTimes.length === 0) return;
 
       if (active) {
         // Активный уровень — широкая зона: две линии по границам (min/max),
-        // а не одна посередине. Пунктир + свой цвет СТРАТЕГИИ (не просто
-        // support/resistance) — чтобы разные стратегии на одном уровне
-        // (BOUNCE и V_RED_TOP одновременно) визуально не путались.
-        const activeColor = STRATEGY_COLORS[active.strategy] || (isSupport ? "#00c853" : "#ff3d3d");
+        // а не одна посередине. Цвет — по направлению (см. drawOrphanActiveLevel
+        // выше): зелёный support/LONG, красный resistance/SHORT. Раньше тут
+        // побеждал цвет СТРАТЕГИИ (STRATEGY_COLORS) — у BOUNCE это давало один
+        // и тот же синий и для LONG, и для SHORT, хотя эмодзи в подписи (🟢/🔴)
+        // честно показывал направление — несовпадение путало.
+        const activeColor = isSupport ? "#00c853" : "#ff3d3d";
         const label = friendlyStrategyWithMode(active.strategy, active.mode);
-        const title = `${isSupport ? '🟢' : '🔴'} ${label} · ${levelLabel}`;
+        const title = `${isSupport ? '🟢' : '🔴'} ${label} · ${levelLabel}${lvl.score != null ? ' ' + lvl.score : ''}`;
         [lvl.max, lvl.min].forEach((priceValue, idx) => {
           const series = chart.addLineSeries({
             color: activeColor,
@@ -615,6 +819,7 @@ async function loadLevels(coin) {
             priceLineVisible: false,
             lastValueVisible: false,
             title: idx === 0 ? title : "",
+            autoscaleInfoProvider: () => null,
           });
           series.setData(lineTimes.map(t => ({ time: t, value: priceValue })));
           levelLines.push(series);
@@ -631,7 +836,8 @@ async function loadLevels(coin) {
         crosshairMarkerVisible: false,
         priceLineVisible: false,
         lastValueVisible: false,
-        title: `${levelLabel} ${lvl.score ?? ""}`,
+        title: `${levelLabel}${lvl.score != null ? ' ' + lvl.score : ''}`,
+        autoscaleInfoProvider: () => null,
       });
       series.setData(lineTimes.map(t => ({ time: t, value: midPrice })));
       levelLines.push(series);
@@ -667,11 +873,11 @@ const EVENT_MARKER_STYLE = {
   CANCEL:      { color: "#5c6370", shape: "square" },   
   DEAD:        { color: "#e5654f", shape: "square" },   
   // BOUNCE — упрощённая палитра: синий = всё "до старта скана" (касание +
-  // climax шаг1/шаг2), оранжевый = момент старта скана (пробой LONG/MIRROR
+  // climax шаг1/шаг2), фиолетовый = момент старта скана (пробой LONG/MIRROR
   // ИЛИ уход на ATR climax — в bounce_watcher.py оба уже пишутся как
   // SWEEP_BOTTOM, один и тот же смысл), жёлтый = сама свеча скана (кандидат
   // на вход, неважно подошла или нет), красный = отмена (RUNAWAY).
-  SWEEP_BOTTOM:       { color: "#ff9800", shape: "circle" },
+  SWEEP_BOTTOM:       { color: "#9c27b0", shape: "circle" },
   RUNAWAY:            { color: "#e5654f", shape: "circle" },
   CLIMAX_NEAR_BREACH: { color: "#5aa9e6", shape: "circle" },
   CLIMAX_FAR_BREACH:  { color: "#5aa9e6", shape: "circle" },
@@ -705,7 +911,21 @@ async function loadEvents(coin) {
 
     const seen = new Set(); // дедуп на случай повторной записи того же (time,type)
     const markers = [];
-    (data.active || []).forEach((w) => {
+
+    // Клик по карточке ИСТОРИИ — вотчер уже мёртв, в data.active (текущие
+    // живые) его нет и не будет. Все его события уже приехали вместе с
+    // focusedLevel (см. renderHistoryPanel) — рисуем прямо по ним, а не по
+    // /api/events, который для мёртвого вотчера ничего не вернёт.
+    // Открыт по сигналу, а зону найти не удалось — не подмешиваем точки
+    // ВСЕХ активных вотчеров монеты (matchesFocus без focusedLevel пропускает
+    // всех); честно ничего не рисуем, чем создавать ту же "свалку".
+    const sourceWatchers = isSignalView && !focusedLevel
+      ? []
+      : (focusedLevel && focusedLevel.fromHistory)
+        ? [focusedLevel]
+        : (data.active || []);
+
+    sourceWatchers.forEach((w) => {
       if (!matchesFocus(w)) return;
       (w.events || []).forEach((ev) => {
         if (!ev.time || !inRange(ev.time)) return;
@@ -730,7 +950,33 @@ async function loadEvents(coin) {
   }
 }
 
-async function loadChart(coin, focus = null) {
+// EMA200 на 4H, span 3200 свечей (~530 дней) — независимая от текущего
+// таймфрейма графика макро-линия тренда. Тянется отдельным запросом,
+// не await'ится в loadChart (медленно двигается, не нужно ждать её ради
+// остального графика). Точки редкие (раз в 4 часа) — chart сам рисует
+// плавную линию между ними поверх более мелких свечей.
+async function loadMacroEma200(coin) {
+  if (!emaMacroSeries) return;
+  try {
+    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=4h&limit=3200`);
+    if (!res.ok) { emaMacroSeries.setData([]); return; }
+    const data = await res.json();
+    const candles = (data.candles || [])
+      .map((c) => {
+        const unixSeconds = c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time;
+        return { ...c, time: unixSeconds };
+      })
+      .sort((a, b) => a.time - b.time);
+    // Монета сменилась, пока запрос летал — не затираем уже актуальные данные чужой EMA
+    if (coin !== selectedCoin) return;
+    emaMacroSeries.setData(computeEMA(candles, 200));
+  } catch (e) {
+    console.error("macro EMA200(4H) load failed", e);
+  }
+}
+
+async function loadChart(coin, focus = null, signal = null, opts = {}) {
+  const skipLiveOverlay = !!opts.skipLiveOverlay;
   // --- ЗАЩИТА ОТ 404 ОШИБКИ И ПУСТЫХ КЛИКОВ ---
   if (!coin || coin === "null" || coin === "undefined") return;
   // ---------------------------------------------
@@ -739,6 +985,7 @@ async function loadChart(coin, focus = null) {
   // (см. loadActiveWatchers) — обычный выбор монеты сбрасывает фокус,
   // тогда рисуются все уровни монеты, как раньше.
   focusedLevel = focus;
+  isSignalView = !!signal;
 
   selectedCoin = coin;
   currentCoinEl.textContent = coin;
@@ -750,7 +997,13 @@ async function loadChart(coin, focus = null) {
   stopSimPlayback();
   clearSimLevelLines();
   updateSimUI();
-  
+  clearSignalLines();
+  clearLevelLines(); // на случай, если тут раньше были боевые уровни — не оставляем их висеть под симуляцией
+
+  // Раньше сигнал открывался в узком окне (96 свечей вокруг входа) — из-за
+  // этого график выглядел обрубком. Теперь то же самое окно, что и везде
+  // (как открывает история) — просто широкий обычный график с зоной и
+  // Entry/Target/Stop поверх.
   const limit = TF_LIMITS[currentTimeframe] ?? 200;
 
   try {
@@ -763,6 +1016,7 @@ async function loadChart(coin, focus = null) {
       volumeSeries.setData([]);
       ema20Series.setData([]);
       ema50Series.setData([]);
+      emaMacroSeries.setData([]);
       rsiSeries.setData([]);
       clearLevelLines();
       return;
@@ -775,6 +1029,7 @@ async function loadChart(coin, focus = null) {
     candleSeries.applyOptions({ priceFormat });
     ema20Series.applyOptions({ priceFormat });
     ema50Series.applyOptions({ priceFormat });
+    emaMacroSeries.applyOptions({ priceFormat });
 
     const formattedCandles = data.candles.map(c => {
       const unixSeconds = c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time;
@@ -798,8 +1053,18 @@ async function loadChart(coin, focus = null) {
     // отпускает сам, даже когда данные меняются на совершенно другую монету
     // с другим диапазоном цен. Форсим обратно при каждой загрузке.
     candleSeries.priceScale().applyOptions({ autoScale: true });
-    loadLevels(coin);
-    loadEvents(coin);
+    if (!skipLiveOverlay) {
+      // Живые уровни/точки/EMA200 — только для обычного просмотра монеты.
+      // Для симулятора это боевое состояние монеты, не имеющее отношения
+      // к результату симуляции, — раньше оно рисовалось поверх/вперемешку
+      // с результатом (та самая "куча всего" и "точки на секунду мелькают,
+      // потом исчезают"), потому что loadChart вызывался одинаково и с
+      // главной страницы, и с симулятора.
+      loadLevels(coin);
+      loadEvents(coin);
+      loadMacroEma200(coin); // не await — медленный индикатор, не должен тормозить остальной график
+    }
+    if (signal) drawSignalTradeLines(signal);
   } catch (e) {
     currentSymbolEl.textContent = "ошибка загрузки графика";
     console.error(e);
@@ -816,22 +1081,23 @@ async function loadWatchlist() {
   // Страница может не иметь этой панели (например, отдельная страница
   // симулятора) — тихо ничего не делаем, а не падаем на null.innerHTML.
   if (!watchlistListEl) return;
-  const [res, activeRes] = await Promise.all([
-    fetch("/api/watchlist"),
-    fetch("/api/watchlist/active")
-  ]);
+  const res = await fetch("/api/watchlist");
   const data = await res.json();
-  const activeData = await activeRes.json();
-  
-  const activeCoins = activeData.map(w => (w.coin || "").toUpperCase());
-  const withLevels = (data.with_levels || []).filter(c => !activeCoins.includes((c.coin || "").toUpperCase()));
-  const withoutLevels = (data.without_levels || []).filter(c => !activeCoins.includes((c.coin || "").toUpperCase()));
-  
+
+  // Раньше тут ещё вычитались монеты, у которых есть активный вотчер
+  // ("в работе") — список монет и список "в работе" считались двумя
+  // взаимоисключающими вещами. По факту это не так: монета остаётся
+  // в watchlist, пока проходит порог объёма, НЕЗАВИСИМО от того, есть
+  // ли у неё сейчас активный вотчер — это не повод прятать её из общего
+  // списка.
+  const withLevels = data.with_levels || [];
+  const withoutLevels = data.without_levels || [];
+
   const total = withLevels.length + withoutLevels.length;
   watchlistCountEl.textContent = total;
 
   if (total === 0) {
-    watchlistListEl.innerHTML = "<div class='muted'>все монеты в работе (или пусто)</div>";
+    watchlistListEl.innerHTML = "<div class='muted'>список пуст</div>";
     return;
   }
 
@@ -842,7 +1108,7 @@ async function loadWatchlist() {
       .map(
         (info) => `
         <div class="list-item" data-coin="${info.coin}">
-          <span>${info.coin}</span><span class="dir-${info.direction}">${info.direction || ""}</span>
+          <span>${info.coin}</span>
         </div>`
       )
       .join("");
@@ -885,13 +1151,32 @@ async function loadSimCoins() {
       .join("");
 
     simListEl.querySelectorAll(".list-item").forEach((div) => {
-      div.onclick = () => loadChart(div.dataset.coin);
+      div.onclick = () => loadChart(div.dataset.coin, null, null, { skipLiveOverlay: true });
     });
   } catch (e) {
     console.error("sim coins load failed", e);
     simListEl.innerHTML = "<div class='muted'>ошибка загрузки</div>";
   }
 }
+
+// Статус рескана по монетам ({status: running|done, ...}) — опрашивается
+// отдельно и чаще, чем общий refreshAll (раз в минуту), не через
+// telegram-заглушку/notifications.json, а напрямую (см. /api/rescan_status).
+// Файл маленький, частый опрос ничего не нагружает. Перерисовываем список
+// "в работе" только когда статус реально поменялся, а не на каждый тик.
+let rescanStatusCache = {};
+async function loadRescanStatus() {
+  try {
+    const res = await fetch("/api/rescan_status");
+    const data = await res.json();
+    const changed = JSON.stringify(data) !== JSON.stringify(rescanStatusCache);
+    rescanStatusCache = data;
+    if (changed) loadActiveWatchers();
+  } catch (e) {
+    console.error("rescan status load failed", e);
+  }
+}
+setInterval(loadRescanStatus, 4000);
 
 async function loadActiveWatchers() {
   if (!activeListEl) return;
@@ -911,13 +1196,22 @@ async function loadActiveWatchers() {
     div.dataset.coin = w.coin;
     const label = friendlyStrategyWithMode(w.strategy, w.mode);
     const dotColor = STRATEGY_COLORS[w.strategy] || "#8a8f98";
+    // Статус рескана этой монеты — виснет постоянно (не пропадает само),
+    // чтобы было видно, что рескан вообще нажимали, и что с ним стало.
+    const rescanInfo = rescanStatusCache[w.coin];
+    let rescanBadge = "";
+    if (rescanInfo && rescanInfo.status === "running") {
+      rescanBadge = `<span title="Рескан идёт — с ${rescanInfo.since ?? ""}" style="margin-left:4px;">⏳</span>`;
+    } else if (rescanInfo && rescanInfo.status === "done") {
+      rescanBadge = `<span title="Рескан завершён — с ${rescanInfo.since ?? ""}, найдено сигналов: ${rescanInfo.found ?? 0}" style="margin-left:4px;">✅</span>`;
+    }
     div.innerHTML = `
       <span style="flex-grow: 1;">
         <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};margin-right:6px;"></span>
         ${w.coin ?? "?"} <span class="dir-${w.direction}">${w.direction ?? ""}</span> <span class="muted">${label}</span>
       </span>
       <span class="state-tag">${w.state}</span>
-      <button title="Пересчитать структуру" onclick="triggerRescan(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 8px;">🔄</button>
+      <button title="Пересчитать структуру" onclick="triggerRescan(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 8px;">🔄</button>${rescanBadge}
     `;
     div.title = w.history_log || "";
     // Клик по конкретному активному вотчеру — фокус ТОЛЬКО на его уровень
@@ -936,6 +1230,54 @@ async function loadActiveWatchers() {
   });
 }
 
+// Ищет зону вотчера по level_id — сначала среди живых (active_watchers.json),
+// потом среди истории (watcher_history.json) — для клика по сигналу: сам
+// вотчер к этому моменту мог уже сработать/умереть, это нормально. Отдаёт
+// объект в формате fromHistory (см. renderHistoryPanel) — та же отрисовка,
+// что уже работает для "ПОСЛЕДНИЙ СКАН", просто источник данных другой.
+async function buildFocusFromLevelId(coin, levelId) {
+  if (!levelId) return null;
+  try {
+    const res = await fetch(`/api/events/${encodeURIComponent(coin)}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    let w = (data.active || []).find((x) => x.level_id === levelId);
+    if (!w) {
+      // История хранит ключ "{coin}_BOUNCE_{level_id}" (см. bc_removed_watchers
+      // в background_tasks.py), самого level_id отдельным полем там нет.
+      const histKey = `${coin}_BOUNCE_${levelId}`;
+      w = (data.history || []).find((x) => x.key === histKey);
+    }
+    if (!w) return null;
+    return {
+      fromHistory: true,
+      min: w.level_min, max: w.level_max,
+      level_min: w.level_min, level_max: w.level_max,
+      level_date: w.level_date, level_type: w.level_type, level_score: w.level_score, direction: w.direction,
+      strategy: w.strategy, mode: w.mode,
+      events: w.events || [],
+    };
+  } catch (e) {
+    console.error("signal level lookup failed", e);
+    return null;
+  }
+}
+
+// Округление цены под масштаб числа — 799.7180000000001 -> 799.72,
+// а для мелких монет (0.0000123...) оставляет больше знаков, чтобы не
+// обнулить цену. Тот же принцип, что price_precision на самом графике,
+// только без похода на биржу — тут просто по порядку величины числа.
+function formatPrice(v) {
+  if (v === null || v === undefined || v === "") return "";
+  const num = Number(v);
+  if (Number.isNaN(num)) return String(v);
+  const abs = Math.abs(num);
+  const decimals = abs >= 100 ? 2 : abs >= 1 ? 4 : abs >= 0.01 ? 6 : 8;
+  let str = num.toFixed(decimals);
+  str = str.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+  return str;
+}
+
 async function loadSignals() {
   if (!signalsBody) return;
   const res = await fetch("/api/signals?limit=50");
@@ -949,17 +1291,31 @@ async function loadSignals() {
   signalsBody.innerHTML = "";
   data.forEach((s) => {
     const tr = document.createElement("tr");
+    const pct = s.result_percent;
+    const pctText = pct === null || pct === undefined ? "" : `${pct > 0 ? "+" : ""}${pct}%`;
     tr.innerHTML = `
       <td>${s.date ?? ""}</td>
       <td>${s.coin ?? ""}</td>
       <td class="dir-${s.type}">${s.type ?? ""}</td>
       <td>${s.source ?? ""}</td>
-      <td>${s.entry ?? ""}</td>
-      <td>${s.target ?? ""}</td>
-      <td>${s.stop ?? ""}</td>
+      <td>${formatPrice(s.entry)}</td>
+      <td>${formatPrice(s.target)}</td>
+      <td>${formatPrice(s.stop)}</td>
       <td>${s.status ?? ""}</td>
-      <td>${s.result_percent ?? ""}</td>
+      <td style="color:${pct > 0 ? '#4caf7d' : pct < 0 ? '#e5654f' : 'inherit'}">${pctText}</td>
     `;
+    // Кликабельны только сигналы с unix-временем входа (сохранены после
+    // этого фикса, пока только BOUNCE — см. watcher_plan.py::check_bounce).
+    // У старых записей time нет и взять его неоткуда — оставляем как есть,
+    // без курсора-указателя, чтобы не обещать то, что не сработает.
+    if (s.coin && s.time) {
+      tr.style.cursor = "pointer";
+      tr.title = "Открыть график в момент сигнала";
+      tr.onclick = async () => {
+        const focus = s.level_id ? await buildFocusFromLevelId(s.coin, s.level_id) : null;
+        loadChart(s.coin, focus, { time: s.time, entry: s.entry, target: s.target, stop: s.stop });
+      };
+    }
     signalsBody.appendChild(tr);
   });
 }
@@ -979,8 +1335,69 @@ async function refreshAll() {
   await Promise.all([loadWatchlist(), loadActiveWatchers(), loadSignals(), loadGlobalHistory(), loadSimCoins()]);
 }
 
+// Восстанавливает последний результат BOUNCE-симуляции после F5 — только
+// на странице симулятора (sim-trades-body есть только там). Результат
+// хранится на сервере (см. bounce_simulate.py::LAST_RUN_FILE), переживает
+// перезагрузку страницы.
+async function restoreLastBounceSimIfAny() {
+  const tradesBody = document.getElementById("sim-trades-body");
+  if (!tradesBody) return; // не страница симулятора
+  try {
+    const res = await fetch("/api/simulate_bounce/last");
+    const data = await res.json();
+    if (!data || !data.coin) return; // ещё ни разу не запускали
+
+    await new Promise((resolve) => {
+      const check = () => (chart && candleSeries ? resolve() : setTimeout(check, 50));
+      check();
+    });
+
+    await loadChart(data.coin, null, null, { skipLiveOverlay: true });
+    simMode = true;
+    updateSimUI();
+
+    const startSec = data.start_time
+      ? Math.floor(new Date(data.start_time.replace(" ", "T") + "Z").getTime() / 1000)
+      : null;
+    const endSec = data.end_time
+      ? Math.floor(new Date(data.end_time.replace(" ", "T") + "Z").getTime() / 1000)
+      : Math.floor(Date.now() / 1000);
+    if (startSec) {
+      simStartTime = startSec;
+      await loadCandlesAroundRange(data.coin, startSec, endSec);
+    }
+
+    drawSimLevels(data.levels || []);
+    const episodes = (data.history || []).filter((ep) => ep.state === "TRIGGERED");
+    playSimulation(episodes);
+
+    const trades = data.trades || [];
+    tradesBody.innerHTML = trades.length
+      ? trades.map((t) => `
+          <tr>
+            <td>${t.date ?? ""}</td>
+            <td>${t.coin ?? ""}</td>
+            <td class="dir-${t.type}">${t.type ?? ""}</td>
+            <td>${t.source ?? ""}</td>
+            <td>${formatPrice(t.entry)}</td>
+            <td>${formatPrice(t.target)}</td>
+            <td>${formatPrice(t.stop)}</td>
+            <td>${t.rr ?? ""}</td>
+          </tr>
+        `).join("")
+      : "<tr><td colspan='8'>сделок не найдено</td></tr>";
+
+    const status = document.getElementById("sim-status");
+    if (status) status.textContent = `Восстановлено: старт ${data.start_time ?? ""}`;
+  } catch (e) {
+    console.error("restoreLastBounceSimIfAny failed", e);
+  }
+}
+
 initChart();
 refreshAll();
+loadRescanStatus();
+restoreLastBounceSimIfAny();
 
 // === АВТООБНОВЛЕНИЕ РАЗ В МИНУТУ ===
 setInterval(async () => {
@@ -1060,16 +1477,111 @@ if (rebuildLevelsBtnEl) {
     }
   };
 }
+
+// === КНОПКИ "ОЧИСТИТЬ СИГНАЛЫ" / "ОЧИСТИТЬ ПОСЛЕДНИЙ СКАН" ===
+// В отличие от reset-watchers/rebuild — без флага и без ожидания:
+// signals.json/watcher_history.json не живут в памяти сканера, backend
+// дашборда пишет файл сам и сразу же, поэтому просто перезагружаем
+// соответствующую панель сразу после ответа, без setTimeout.
+const clearSignalsBtnEl = document.getElementById("clear-signals-btn");
+if (clearSignalsBtnEl) {
+  clearSignalsBtnEl.onclick = async () => {
+    if (!confirm("Точно очистить список сигналов? Отменить нельзя.")) return;
+    clearSignalsBtnEl.disabled = true;
+    try {
+      const res = await fetch("/api/signals/clear", { method: "POST" });
+      const data = await res.json();
+      alert(data.message || "Готово");
+      loadSignals();
+    } catch (e) {
+      alert("Ошибка: " + e);
+    } finally {
+      clearSignalsBtnEl.disabled = false;
+    }
+  };
+}
+
+const clearHistoryBtnEl = document.getElementById("clear-history-btn");
+if (clearHistoryBtnEl) {
+  clearHistoryBtnEl.onclick = async () => {
+    if (!confirm("Точно очистить \"Последний скан\" (историю смертей/срабатываний)? Отменить нельзя.")) return;
+    clearHistoryBtnEl.disabled = true;
+    try {
+      const res = await fetch("/api/history/clear", { method: "POST" });
+      const data = await res.json();
+      alert(data.message || "Готово");
+      loadGlobalHistory();
+    } catch (e) {
+      alert("Ошибка: " + e);
+    } finally {
+      clearHistoryBtnEl.disabled = false;
+    }
+  };
+}
+// Маленькое модальное окошко с датой вместо голого confirm() — предзаполнено
+// "неделя назад" (просто жми "Рескан"), можно поменять на свою дату. Собрано
+// прямо в JS без правки index.html (тот же приём, что и панель стратегий ниже).
+function formatDatetimeLocal(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function showRescanDialog(coin) {
+  return new Promise((resolve) => {
+    const defaultDate = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; z-index:9999;";
+    overlay.innerHTML = `
+      <div style="background:#fff; border-radius:8px; padding:20px; min-width:280px; font-size:14px; color:#1b1d24; box-shadow:0 4px 20px rgba(0,0,0,0.2);">
+        <div style="font-weight:600; margin-bottom:10px;">🔄 Рескан ${coin}</div>
+        <div style="margin-bottom:10px; color:#555b66;">
+          Честно повторить путь монеты (BOUNCE) от даты до сейчас — текущие
+          вотчеры будут заархивированы, реплей пересоберёт всё заново.
+        </div>
+        <label style="display:block; margin-bottom:14px;">
+          Дата начала:
+          <input type="datetime-local" id="rescan-since-input" value="${formatDatetimeLocal(defaultDate)}"
+                 style="display:block; margin-top:4px; width:100%; box-sizing:border-box; padding:4px;">
+        </label>
+        <div style="text-align:right;">
+          <button id="rescan-cancel-btn" class="sim-btn" style="margin-right:8px;">Отмена</button>
+          <button id="rescan-confirm-btn" class="sim-btn">Рескан</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const cleanup = (result) => { document.body.removeChild(overlay); resolve(result); };
+    overlay.querySelector("#rescan-cancel-btn").onclick = () => cleanup(null);
+    overlay.querySelector("#rescan-confirm-btn").onclick = () => {
+      const val = overlay.querySelector("#rescan-since-input").value;
+      const since = val ? Math.floor(new Date(val).getTime() / 1000) : null;
+      cleanup(since);
+    };
+  });
+}
+
 window.triggerRescan = async function(event, coin) {
-  event.stopPropagation(); 
+  event.stopPropagation();
+  const since = await showRescanDialog(coin);
+  if (since === null) return; // отмена
+  // Запоминаем, что именно было открыто ДО рескана (конкретный вотчер,
+  // если смотрели через фокус) — иначе перезагрузка после рескана падает
+  // на loadChart(coin) без фокуса, то есть на общий вид "все текущие
+  // уровни + обе стратегии разом", а не на то, что реально смотрели.
+  const focusBeforeRescan = focusedLevel;
   try {
-      const res = await fetch(`/api/rescan/${encodeURIComponent(coin)}`, { method: "POST" });
+      const res = await fetch(`/api/rescan/${encodeURIComponent(coin)}?since=${since}`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
           console.log(`[RESCAN] Заявка отправлена для ${coin}. Ждем тик сканера...`);
-          setTimeout(() => { if (selectedCoin === coin) loadChart(coin); }, 2000);
+          alert(data.message || "Рескан запрошен");
+          setTimeout(() => { if (selectedCoin === coin) loadChart(coin, focusBeforeRescan); }, 2000);
+      } else {
+          alert(data.detail || "Ошибка рескана");
       }
   } catch (e) {
       console.error("Ошибка рескана", e);
+      alert("Ошибка: " + e);
   }
 };
 // === ПАНЕЛЬ ВКЛ/ВЫКЛ СТРАТЕГИЙ ===

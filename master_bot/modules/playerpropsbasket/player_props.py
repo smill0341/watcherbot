@@ -7,6 +7,7 @@ import pandas as pd
 from modules.playerpropsbasket.update_base import run_auto_update
 from dotenv import load_dotenv
 from modules.cryptano.utils.storage import load_json, save_json_atomic
+from modules.cryptano.utils.paths import NBA_SIGNALS_FILE, NBA_STATUS_FILE
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
@@ -73,6 +74,20 @@ def analyze_star_absence_live(df, star_name, team_abc):
         }
     return None
 
+def _save_nba_signal(record: dict):
+    """Дописывает найденный сигнал в nba_signals.json — для страницы
+    дашборда, отдельно от отправки в Telegram (вызывается рядом, не вместо)."""
+    try:
+        signals = load_json(NBA_SIGNALS_FILE, default=[])
+        if not isinstance(signals, list):
+            signals = []
+        signals.append(record)
+        signals = signals[-200:]  # не даём файлу расти бесконечно
+        save_json_atomic(NBA_SIGNALS_FILE, signals, indent=2)
+    except Exception as e:
+        print(f"⚠️ [NBA] Не удалось сохранить сигнал в nba_signals.json: {e}")
+
+
 def check_nba_injuries(bot, chat_id, silent=False):
     current_time = datetime.now().strftime("%H:%M:%S")
     print(f"[{current_time}] 🏀 NBA: Сканирование составов Rotowire...")
@@ -93,6 +108,8 @@ def check_nba_injuries(bot, chat_id, silent=False):
         lineup_boxes = soup.find_all('div', class_='lineup__box')
         
         any_signals = False
+        injuries_found = 0
+        signals_found = 0
         
         # Очищаем кэш сигналов раз в сутки, чтобы он не раздувался
         if len(sent_signals) > 100:
@@ -112,6 +129,7 @@ def check_nba_injuries(bot, chat_id, silent=False):
                         p_name, status = name_node.text.strip(), status_node.text.strip()
                         
                         if status in ["Out", "GTD"]:
+                            injuries_found += 1
                             trend = None
                             if away_abc: trend = analyze_star_absence_live(df, p_name, away_abc)
                             if not trend and home_abc: trend = analyze_star_absence_live(df, p_name, home_abc)
@@ -122,6 +140,7 @@ def check_nba_injuries(bot, chat_id, silent=False):
                                 
                                 if signal_id not in sent_signals:
                                     any_signals = True
+                                    signals_found += 1
                                     
                                     # Формируем сообщение для Телеграма
                                     msg = (
@@ -136,7 +155,32 @@ def check_nba_injuries(bot, chat_id, silent=False):
                                     bot.send_message(chat_id, msg, parse_mode="Markdown")
                                     sent_signals.add(signal_id)
                                     print(f"🔥 Отправлен сигнал в ТГ: {trend['player']} (Травма: {p_name})")
+
+                                    _save_nba_signal({
+                                        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                        "matchup": f"{teams[1].text.strip()} @ {teams[0].text.strip()}",
+                                        "injured_player": p_name,
+                                        "status": status,
+                                        "beneficiary": trend["player"],
+                                        "pts_in": trend["pts_in"],
+                                        "pts_out": trend["pts_out"],
+                                        "diff": trend["diff"],
+                                        "games_out": trend["games_count"],
+                                    })
                                     
+        # Срез "что сейчас происходит" — та же идея, что и у футбола, чтобы
+        # на странице было видно, что монитор реально смотрит составы, а не
+        # просто молчит.
+        try:
+            save_json_atomic(NBA_STATUS_FILE, {
+                "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "matches_scanned": len(lineup_boxes),
+                "injuries_found": injuries_found,
+                "signals_found": signals_found,
+            }, indent=2)
+        except Exception as e:
+            print(f"⚠️ [NBA] Не удалось сохранить статус: {e}")
+
         if not silent:
             if any_signals:
                 bot.send_message(chat_id, "✅ [NBA]: Сканирование завершено. Сигналы отправлены выше.")

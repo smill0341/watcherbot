@@ -36,12 +36,19 @@ class BounceManager:
         'GRAVEYARD_ESCAPE_PCT': 5.0,
     }
 
-    def __init__(self, parent):
+    def __init__(self, parent, log_dir_override=None):
         """parent — это WatcherManager. Общая инфраструктура (_watchers,
         burned_levels, _level_id, _deny) пока остаётся там, чтобы её
         продолжали видеть и остальные стратегии — здесь только читаем её
-        через parent, не дублируем."""
+        через parent, не дублируем.
+
+        log_dir_override — своя папка логов для ВСЕХ вотчеров, созданных
+        через этот менеджер (см. BounceWatcher.log_dir_override). None у
+        боевого bounce_mgr (пишет в стандартный bounce_logs/), задаётся
+        только симулятором (modules/cryptano/simulator/) — свой изолированный
+        BounceManager(BounceParent(), log_dir_override=...) на каждый прогон."""
         self.parent = parent
+        self.log_dir_override = log_dir_override
         # Счётчик реальных пробоев — источник для "конверсии" (пробитые уровни -> сделки).
         # Считается по событию SWEEP_BOTTOM, не по старому tracked_support (его для
         # BOUNCE больше нет — см. шаг 3 изоляции).
@@ -52,6 +59,12 @@ class BounceManager:
         # считается клоном, а не честным новым сетапом. См. _find_graveyard_match.
         self.graveyard = []
         self._graveyard_recorded = set()  # level_id, уже занесённые в кладбище
+        # Время (unix-секунды) последней СВЕЧИ, которую BOUNCE реально обработал,
+        # отдельно по каждой монете. Персистится (см. to_state_dict/load_state) —
+        # нужно watcher_plan.py::check_bounce(), чтобы после рестарта бота
+        # "догнать" (реплеить) все свечи, пропущенные за время простоя, а не
+        # видеть только текущую и терять/сдвигать события во времени.
+        self.last_processed_time = {}
 
     @property
     def _watchers(self):
@@ -467,7 +480,8 @@ class BounceManager:
                         if w.max < highest_max:
                             w.state = "DEAD"
                             w.last_event_type = "RUNAWAY"
-                            w._dbg(f"🔴 ОТМЕНА | Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.")
+                            w.history_log = "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда."
+                            w._dbg(f"🔴 ОТМЕНА | {w.history_log}")
 
         return orders, draw_events
     # -------------------------------------------------------------------------
@@ -490,7 +504,7 @@ class BounceManager:
                 config_overrides = {'SHORT_CLIMAX_MODE': (mode == 'CLIMAX')}
             self._watchers[level_id] = BounceWatcher(level['min'], level['max'], trade_type,
                                                        config_overrides=config_overrides, mode=mode,
-                                                       coin=coin)
+                                                       coin=coin, log_dir_override=self.log_dir_override)
             self._watchers[level_id].level_type = level.get('type', 'UNKNOWN')
             self._watchers[level_id].level_date = level.get('date')
             self._watchers[level_id].level_score = level.get('score', 0)
@@ -565,6 +579,44 @@ class BounceManager:
         см. BounceParent.clear_dead_watchers."""
         return self.parent.clear_dead_watchers(active_level_ids)
 
+    def clear_graveyard_by_coin(self, coin):
+        """Чистит кладбище (graveyard) для конкретной монеты — используется
+        ручным ресканом (см. background_tasks.py). Кладбище — защита для
+        ЖИВОГО сканирования: не даёт зоне, которая только что умерла,
+        мгновенно "ожить" из ничего (клон/воскрешение, тег OD). Во время
+        реплея прошлого пути монеты эта защита не нужна и только мешает —
+        она создаёт нового вотчера-клона вместо того, чтобы обычным
+        механизмом (level_id уже в _watchers) продолжить работу С ТЕМ ЖЕ
+        объектом, которого мы только что сбросили через reset_for_rescan."""
+        removed_ids = set()
+        kept = []
+        for entry in self.graveyard:
+            if entry.get('coin') == coin:
+                base_id = self._level_id({'min': entry['min'], 'max': entry['max']}, entry['trade_type'])
+                level_id = f"{base_id}__{entry['mode']}" if entry.get('mode') else base_id
+                removed_ids.add(level_id)
+            else:
+                kept.append(entry)
+        self.graveyard = kept
+        self._graveyard_recorded -= removed_ids
+
+    def remove_watchers_by_coin(self, coin):
+        """Удаляет ВСЕХ вотчеров конкретной монеты (живых и мёртвых) —
+        используется ручным ресканом (см. background_tasks.py, флаг
+        rescan_{coin}.flag): раз рескан честно пересобирает путь монеты
+        заново от выбранной даты, старых вотчеров нужно убрать полностью,
+        иначе реплей будет накладывать прошлые свечи на вотчер, который уже
+        успел уйти вперёд по своему реальному состоянию — получится каша, а
+        не честный повтор. В отличие от VBottomManager.remove_watchers_by_coin
+        (просто del, без возврата) — тут ВОЗВРАЩАЕМ удалённых, чтобы
+        background_tasks.py успел заархивировать их в watcher_history.json
+        (иначе их точки просто исчезли бы бесследно, ничем не отличаясь от
+        обычного стирания памяти)."""
+        removed = {}
+        for level_id in [k for k, w in self._watchers.items() if getattr(w, 'coin', None) == coin]:
+            removed[level_id] = self._watchers.pop(level_id)
+        return removed
+
     # -------------------------------------------------------------------------
     # Персистентность между рестартами бота (шаги 2-3). По той же схеме, что
     # VBottomManager.to_state_dict/save_state/load_state — дамп __dict__
@@ -600,6 +652,7 @@ class BounceManager:
             'pierced_count': self.pierced_count,
             'graveyard': self.graveyard,
             'graveyard_recorded': list(self._graveyard_recorded),
+            'last_processed_time': self.last_processed_time,
         }
 
     def save_state(self, path):
@@ -643,7 +696,7 @@ class BounceManager:
                 # конструктору передаём базовые аргументы, а CONFIG перезатрём
                 # ниже вместе со всем остальным состоянием.
                 watcher = BounceWatcher(entry['min'], entry['max'], entry['trade_type'],
-                                          mode=mode, coin=saved_coin)
+                                          mode=mode, coin=saved_coin, log_dir_override=self.log_dir_override)
                 for ts_field in self._TIMESTAMP_FIELDS:
                     val = saved_state.get(ts_field)
                     if val is not None:
@@ -660,6 +713,7 @@ class BounceManager:
         self.pierced_count = data.get('pierced_count', 0)
         self.graveyard = data.get('graveyard', [])
         self._graveyard_recorded = set(data.get('graveyard_recorded', []))
+        self.last_processed_time = data.get('last_processed_time', {})
 
         if restored:
             print(f"[BounceManager] ✅ Восстановлено {restored} BOUNCE-вотчеров из {path}")

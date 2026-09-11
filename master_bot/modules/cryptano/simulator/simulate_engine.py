@@ -71,7 +71,7 @@ def _levels_at(symbol, coin, target_ts_ms):
     if len(ohlcv_1d) < 50:
         return {"supports": [], "resistances": []}
     ohlcv_1M = exchange.fetch_ohlcv(symbol, timeframe="1M", limit=60)
-    ohlcv_1W = exchange.fetch_ohlcv(symbol, timeframe="1W", limit=150)
+    ohlcv_1W = exchange.fetch_ohlcv(symbol, timeframe="1w", limit=150)
     ohlcv_4h = exchange.fetch_ohlcv(symbol, timeframe="4h", limit=200, params=params)
 
     cols = ["timestamp", "open", "high", "low", "close", "volume"]

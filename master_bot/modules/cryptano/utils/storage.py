@@ -2,7 +2,7 @@ import json
 import os
 import tempfile
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union, overload
 
 
 _locks_guard = threading.Lock()
@@ -17,7 +17,12 @@ def _get_lock(path):
         return _path_locks[abs_path]
 
 
-def load_json(file_path, default: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+@overload
+def load_json(file_path, default: Optional[Dict[str, Any]] = None) -> Dict[str, Any]: ...
+@overload
+def load_json(file_path, default: List[Any]) -> List[Any]: ...
+
+def load_json(file_path, default: Optional[Union[Dict[str, Any], List[Any]]] = None) -> Union[Dict[str, Any], List[Any]]:
     """Безопасная загрузка JSON. Не крашится при пустых или битых файлах."""
     if default is None:
         default = {}

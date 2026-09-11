@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 from dotenv import load_dotenv
 from modules.cryptano.utils.storage import load_json, save_json_atomic
+from modules.cryptano.utils.paths import FOOTBALL_SIGNALS_FILE, FOOTBALL_STATUS_FILE
 
 # Явно указываем путь к .env
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -63,6 +64,21 @@ def parse_stat_value(stat_list, type_name):
                 val = val.replace('%', '').strip()
             return float(val) if '.' in str(val) else int(val)
     return 0
+
+def _save_football_signal(record: dict):
+    """Дописывает найденный сигнал в football_signals.json — для страницы
+    дашборда, отдельно от отправки в Telegram (см. send_telegram_signal_advanced,
+    вызывается рядом, не вместо)."""
+    try:
+        signals = load_json(FOOTBALL_SIGNALS_FILE, default=[])
+        if not isinstance(signals, list):
+            signals = []
+        signals.append(record)
+        signals = signals[-200:]  # не даём файлу расти бесконечно
+        save_json_atomic(FOOTBALL_SIGNALS_FILE, signals, indent=2)
+    except Exception as e:
+        print(f"⚠️ [FOOTBALL] Не удалось сохранить сигнал в football_signals.json: {e}")
+
 
 def send_telegram_signal_advanced(bot, chat_id, match_data, minute, ht_home, ht_away, total_xg, total_chances, 
                                   home_team, away_team, home_touches, away_touches, 
@@ -205,6 +221,21 @@ def check_live_matches(bot, chat_id, silent=False):
                                         
                                         print(f"🔥 НАЙДЕН ЖИРНЫЙ МАТЧ ({TOP_LEAGUES[league_id]}): {home_team} {current_home}:{current_away} {away_team} ({elapsed}') -> В Telegram!")
                                         
+                                        _save_football_signal({
+                                            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                            "league": TOP_LEAGUES[league_id],
+                                            "minute": elapsed,
+                                            "home_team": home_team,
+                                            "away_team": away_team,
+                                            "score": f"{current_home}:{current_away}",
+                                            "halftime_score": f"{halftime_home}:{halftime_away}",
+                                            "total_xg": round(total_xg, 2),
+                                            "total_chances": int(total_chances),
+                                            "home_shots": int(home_shots),
+                                            "away_shots": int(away_shots),
+                                            "prediction": additional_pred,
+                                        })
+
                                         send_telegram_signal_advanced(
                                             bot, chat_id, item, elapsed, halftime_home, halftime_away, 
                                             total_xg, total_chances, home_team, away_team, 
@@ -214,6 +245,20 @@ def check_live_matches(bot, chat_id, silent=False):
                                         sent_matches.add(fixture_id)
                                         
         print(f"📊 Итог проверки: Всего в лайве: {total_live} | Из них ТОП-лиг: {top_leagues_live} | Подходят под критерии: {matches_found}")
+
+        # Срез "что сейчас происходит", отдельно от самих сигналов — чтобы
+        # на странице было видно, что монитор реально смотрит матчи, а не
+        # просто молчит (молчание и "молчит, потому что выключен" сейчас
+        # неотличимы без этого).
+        try:
+            save_json_atomic(FOOTBALL_STATUS_FILE, {
+                "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "total_live": total_live,
+                "top_leagues_live": top_leagues_live,
+                "matches_found": matches_found,
+            }, indent=2)
+        except Exception as e:
+            print(f"⚠️ [FOOTBALL] Не удалось сохранить статус: {e}")
     
         if not silent:
             bot.send_message(chat_id, f"📊 Лайв: {total_live} | ТОП-лиг: {top_leagues_live} | Сигналов: {matches_found}")
@@ -259,4 +304,4 @@ def run_football_monitor(bot, chat_id):
             except:
                 pass
 
-        time.sleep(SLEEP_TIME)     
+        time.sleep(SLEEP_TIME)

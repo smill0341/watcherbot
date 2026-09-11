@@ -6,7 +6,7 @@ import os
 # Импорт базовых инструментов
 from modules.cryptano.utils.storage import load_json, save_json_atomic
 from modules.cryptano.utils.common import KNOWN_TICKER_ALIASES
-from modules.cryptano.utils.paths import MACRO_LEVELS_FILE, WATCHER_HISTORY_FILE, ACTIVE_WATCHERS_FILE
+from modules.cryptano.utils.paths import MACRO_LEVELS_FILE, WATCHER_HISTORY_FILE, ACTIVE_WATCHERS_FILE, RESCAN_STATUS_FILE
 from modules.cryptano.strategy.bounce_manager import SHORT_MODES
 from modules.cryptano.filters.critical_filter import scan_market, format_results
 # from modules.cryptano.filters.light_filter import _execute_scan_cycle  # ОТКЛЮЧЕНО: light-фильтр выключен из пайплайна
@@ -38,6 +38,99 @@ def _resolve_watcher_meta(level_id, watcher, level_id_meta):
     direction = meta.get("direction") or getattr(watcher, "trade_type", None)
     strategy = meta.get("strategy") or _STRATEGY_BY_TAG.get(level_id.split("_", 1)[0])
     return coin, direction, strategy
+
+
+def export_dashboard_state(v_bottom_mgr, bounce_mgr):
+    """
+    Архивирует TRIGGERED/DEAD вотчеров BOUNCE в watcher_history.json и
+    перезаписывает active_watchers.json (обе стратегии — файл общий,
+    поэтому пересобираем целиком, а не только BOUNCE-часть, иначе
+    затёрли бы записи V_BOTTOM/VGB/VRT, которые сюда не передавали).
+
+    Та же самая логика, что раньше жила только внутри 15-минутного цикла
+    (crypto_orchestrator) — вынесена сюда отдельной функцией, чтобы её же
+    мог вызвать и рескан (run_web.py::_handle_rescan_flags) сразу после
+    себя. Без этого результат рескана (точки на графике, архивная запись
+    сработавшей сделки, статус TRIGGERED) был бы не виден на дашборде до
+    следующего планового 15-минутного цикла — реплей отрабатывал честно,
+    а дашборд просто не успевал об этом узнать.
+    """
+    from modules.cryptano.live_scan import save_watcher_state
+
+    now_dt = datetime.datetime.now()
+
+    try:
+        bc_removed = bounce_mgr.clear_dead_watchers(set())
+        if bc_removed:
+            history_db = load_json(WATCHER_HISTORY_FILE, default={})
+            for level_id, watcher in bc_removed.items():
+                w_coin = getattr(watcher, "coin", None)
+                if not w_coin:
+                    continue
+                hist_key = f"{w_coin}_BOUNCE_{level_id}"
+                history_db[hist_key] = {
+                    "coin": w_coin,
+                    "direction": getattr(watcher, "trade_type", None),
+                    "strategy": "BOUNCE",
+                    "mode": getattr(watcher, "mode", None),
+                    "final_state": getattr(watcher, "state", None),
+                    "history_log": getattr(watcher, "history_log", ""),
+                    "level_min": getattr(watcher, "min", None),
+                    "level_max": getattr(watcher, "max", None),
+                    "level_date": getattr(watcher, "level_date", None),
+                    "level_type": getattr(watcher, "level_type", None),
+                    "level_score": getattr(watcher, "level_score", None),
+                    "events": getattr(watcher, "event_log", []),
+                    "died_at": now_dt.isoformat(),
+                }
+            save_json_atomic(WATCHER_HISTORY_FILE, history_db)
+    except Exception as e:
+        print(f"⚠️ [DASHBOARD EXPORT] Не удалось заархивировать BOUNCE в watcher_history.json: {e}")
+
+    try:
+        export = {}
+        for level_id, watcher in v_bottom_mgr._watchers.items():
+            coin, direction, strategy = _resolve_watcher_meta(level_id, watcher, {})
+            export[level_id] = {
+                "coin": coin,
+                "direction": direction,
+                "strategy": strategy,
+                "state": getattr(watcher, "state", None),
+                "breach_count": getattr(watcher, "breach_count", 0),
+                "history_log": getattr(watcher, "history_log", ""),
+                "level_min": getattr(watcher, "min", None),
+                "level_max": getattr(watcher, "max", None),
+                "level_date": getattr(watcher, "level_date", None),
+                "level_type": getattr(watcher, "level_type", None),
+                "level_score": getattr(watcher, "level_score", None),
+                "events": getattr(watcher, "event_log", []),
+                "updated_at": now_dt.isoformat(),
+            }
+        for level_id, watcher in bounce_mgr._watchers.items():
+            coin, direction, strategy = _resolve_watcher_meta(level_id, watcher, {})
+            export[level_id] = {
+                "coin": coin,
+                "direction": direction,
+                "strategy": strategy,
+                "mode": getattr(watcher, "mode", None),
+                "state": getattr(watcher, "state", None),
+                "currently_pierced": getattr(watcher, "currently_pierced", False),
+                "climax_stage": getattr(watcher, "climax_stage", None),
+                "breach_count": getattr(watcher, "pierce_count", 0),
+                "history_log": getattr(watcher, "history_log", ""),
+                "level_min": getattr(watcher, "min", None),
+                "level_max": getattr(watcher, "max", None),
+                "level_date": getattr(watcher, "level_date", None),
+                "level_type": getattr(watcher, "level_type", None),
+                "level_score": getattr(watcher, "level_score", None),
+                "events": getattr(watcher, "event_log", []),
+                "updated_at": now_dt.isoformat(),
+            }
+        save_json_atomic(ACTIVE_WATCHERS_FILE, export)
+        save_watcher_state()
+    except Exception as e:
+        print(f"⚠️ [DASHBOARD EXPORT] Не удалось сохранить active_watchers.json: {e}")
+
 
 def crypto_orchestrator(bot, admin_chat_id):
     """
@@ -152,7 +245,16 @@ def crypto_orchestrator(bot, admin_chat_id):
             if elapsed >= 300 and _now_ts >= _next_watcher_boundary and (last_watcher < _next_watcher_boundary or last_watcher == 0):
                 print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [DISPATCHER] ⏱ Начало анализа Watcher списка...")
                 last_watcher = time.time()
-                
+
+                # Живой результат открытых сигналов (см. history.py::update_open_signals) —
+                # та же 15-минутная граница, что и весь остальной скан. Отдельный
+                # try/except — сбой тут не должен ронять остальной watcher-цикл.
+                try:
+                    from modules.cryptano.history import update_open_signals
+                    update_open_signals()
+                except Exception as e:
+                    print(f"[DISPATCHER ERROR] Не удалось обновить открытые сигналы: {e}")
+
                 try:
                     from modules.cryptano.live_scan import _load_watchlist, _save_watchlist, watcher_cooldown_cache, _watcher_lock, COOLDOWN_HOURS, v_bottom_mgr, bounce_mgr, tracked_origin_levels, tracked_origin_levels_vrt, save_watcher_state
                     from modules.cryptano.watcher_plan import check_v_bottom, check_v_green_bottom, check_v_red_top, check_bounce
@@ -224,20 +326,31 @@ def crypto_orchestrator(bot, admin_chat_id):
                                 bc_active_level_ids = set()  # то же самое, но для BOUNCE (шаг 5)
                                 level_id_meta = {}  # level_id -> {"coin":..., "direction":...} для экспорта дашборду
 
-                                for coin in list(wl.keys()):
+                                # Сканим не только watchlist, а ОБЪЕДИНЕНИЕ watchlist + монеты,
+                                # у которых уже есть живой (не DEAD/TRIGGERED) BOUNCE-вотчер.
+                                # Монета корректно выпадает из watchlist, когда падает ниже
+                                # порога объёма в swing_hunter (это единственная причина —
+                                # см. ghost-coin чистку выше) — но по правилам проекта её
+                                # активный вотчер это не касается: он остаётся "в работе",
+                                # пока не случится сделка или цена не уйдёт далеко от зоны.
+                                # Без этого объединения такой вотчер замирал бы навсегда —
+                                # монеты для скана уже нет, а вотчер продолжает висеть
+                                # "живым" на дашборде, просто больше никогда не обновляясь.
+                                _orphan_bounce_coins = {
+                                    getattr(w, "coin", None) for w in bounce_mgr._watchers.values()
+                                    if getattr(w, "state", None) not in ("DEAD", "TRIGGERED") and getattr(w, "coin", None)
+                                }
+                                _scan_coins = list(wl.keys()) + [c for c in _orphan_bounce_coins if c not in wl]
+
+                                for coin in _scan_coins:
                                     if coin == "_meta":
                                         continue  # защита от старых прогонов, где _meta уже мог попасть в watchlist.json
                                     total_scanned += 1
 
-                                    # --- Проверка флага ручного рескана --- (не зависит от источника списка)
-                                    flag_path = os.path.join(os.path.dirname(__file__), "modules", "cryptano", f"rescan_{coin}.flag")
-                                    if os.path.exists(flag_path):
-                                        print(f"[DISPATCHER] 🔄 Запрошен ручной рескан для {coin}. Сбрасываем память...")
-                                        v_bottom_mgr.remove_watchers_by_coin(coin)
-                                        try:
-                                            os.remove(flag_path)
-                                        except:
-                                            pass
+                                    # Рескан монеты обрабатывается ОТДЕЛЬНО, в run_web.py::_handle_rescan_flags
+                                    # (быстрый 1-секундный опрос, тот же, что уже был у "Сбросить"/"Rebuild") —
+                                    # не здесь. Раньше рескан ждал, пока основной цикл дойдёт до watcher-секции
+                                    # (не чаще раза в 15 минут) — теперь применяется почти сразу после клика.
 
                                     # Направление не читаем из watchlist — смотрим напрямую на зоны
                                     # монеты в macro_levels.json. Один пробитый уровень -> одна
@@ -248,7 +361,23 @@ def crypto_orchestrator(bot, admin_chat_id):
                                     dirs = []
                                     if has_supports: dirs.append("LONG")
                                     if has_resistances: dirs.append("SHORT")
-                                    if not dirs:
+
+                                    # Живые BOUNCE-вотчеры этой монеты по стороне — используются
+                                    # ниже, чтобы не потерять скан стороны, если её уровни уже
+                                    # пропали из macro_levels.json, а вотчер ещё не закрылся
+                                    # (см. комментарий у _orphan_bounce_coins выше).
+                                    bc_has_active_long = any(
+                                        getattr(w, "coin", None) == coin and getattr(w, "trade_type", None) == "LONG"
+                                        and getattr(w, "state", None) not in ("DEAD", "TRIGGERED")
+                                        for w in bounce_mgr._watchers.values()
+                                    )
+                                    bc_has_active_short = any(
+                                        getattr(w, "coin", None) == coin and getattr(w, "trade_type", None) == "SHORT"
+                                        and getattr(w, "state", None) not in ("DEAD", "TRIGGERED")
+                                        for w in bounce_mgr._watchers.values()
+                                    )
+
+                                    if not dirs and not bc_has_active_long and not bc_has_active_short:
                                         continue
 
                                     # Собираем актуальные level_id этой монеты (не зависит от кулдауна —
@@ -289,7 +418,7 @@ def crypto_orchestrator(bot, admin_chat_id):
                                     # BounceWatcher.
                                     if bounce_enabled and (f"{coin}_LONG" not in watcher_cooldown_cache or f"{coin}_SHORT" not in watcher_cooldown_cache):
                                         bc_count, bc_reports, bc_levels = check_bounce(
-                                            coin, "LONG" in dirs, "SHORT" in dirs, bounce_mgr
+                                            coin, "LONG" in dirs or bc_has_active_long, "SHORT" in dirs or bc_has_active_short, bounce_mgr
                                         )
                                         bounce_levels_checked += bc_levels
                                         for bc_report in bc_reports:
@@ -347,7 +476,7 @@ def crypto_orchestrator(bot, admin_chat_id):
                                             # (разных сторон/стратегий) — снятие монеты целиком убило бы
                                             # ещё живые вотчеры по другим уровням/направлениям.
                                             break
-                                    time.sleep(1.2) # Защитная пауза между монетами
+                                    time.sleep(0.5) # Защитная пауза между монетами (было 1.2 — с ростом числа монет стало заметным тормозом)
 
                                 # Чистим вотчеров мёртвых/отработавших уровней, которых больше нет
                                 # в актуальном macro_levels.json — иначе память растёт бесконечно.
@@ -385,6 +514,8 @@ def crypto_orchestrator(bot, admin_chat_id):
                                                 "level_min": getattr(watcher, "min", None),
                                                 "level_max": getattr(watcher, "max", None),
                                                 "level_date": getattr(watcher, "level_date", None),
+                                                "level_type": getattr(watcher, "level_type", None),
+                                                "level_score": getattr(watcher, "level_score", None),
                                                 "events": getattr(watcher, "event_log", []),
                                                 "died_at": now_dt.isoformat(),
                                             }
@@ -410,9 +541,12 @@ def crypto_orchestrator(bot, admin_chat_id):
                                                 "strategy": "BOUNCE",
                                                 "mode": getattr(watcher, "mode", None),
                                                 "final_state": getattr(watcher, "state", None),
+                                                "history_log": getattr(watcher, "history_log", ""),
                                                 "level_min": getattr(watcher, "min", None),
                                                 "level_max": getattr(watcher, "max", None),
                                                 "level_date": getattr(watcher, "level_date", None),
+                                                "level_type": getattr(watcher, "level_type", None),
+                                                "level_score": getattr(watcher, "level_score", None),
                                                 "events": getattr(watcher, "event_log", []),
                                                 "died_at": now_dt.isoformat(),
                                             }
@@ -441,6 +575,8 @@ def crypto_orchestrator(bot, admin_chat_id):
                                             "level_min": getattr(watcher, "min", None),
                                             "level_max": getattr(watcher, "max", None),
                                                 "level_date": getattr(watcher, "level_date", None),
+                                                "level_type": getattr(watcher, "level_type", None),
+                                                "level_score": getattr(watcher, "level_score", None),
                                             "events": getattr(watcher, "event_log", []),
                                             "updated_at": now_dt.isoformat(),
                                         }
@@ -468,6 +604,8 @@ def crypto_orchestrator(bot, admin_chat_id):
                                             "level_min": getattr(watcher, "min", None),
                                             "level_max": getattr(watcher, "max", None),
                                                 "level_date": getattr(watcher, "level_date", None),
+                                                "level_type": getattr(watcher, "level_type", None),
+                                                "level_score": getattr(watcher, "level_score", None),
                                             "events": getattr(watcher, "event_log", []),
                                             "updated_at": now_dt.isoformat(),
                                         }

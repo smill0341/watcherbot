@@ -18,8 +18,17 @@ import os
 import sqlite3
 import threading
 import time
+import bisect
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "candles.db")
+# candles.db переехал в общую накопительную папку (modules/cryptano/database/),
+# вместе с levels_timeline_*.json — путь считаем напрямую (без импорта
+# modules.cryptano.*), этот файл остаётся самодостаточным для дашборда,
+# как и было.
+DB_PATH = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..",
+    "modules", "cryptano", "database", "candles.db",
+))
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 BACKFILL_DAYS = 60           # ~2 месяца — примерно как глубина в симуляторе
 RETENTION_DAYS = 90          # чистка старше этого
@@ -134,11 +143,17 @@ def top_up_tail(exchange, symbol, timeframe):
         print(f"⚠️ [candle_store] top_up {symbol} {timeframe}: {e}")
         return
     _insert_candles(symbol, timeframe, batch)
-    print(f"📥 Докачано {len(batch)} свежих свечей для {symbol} ({timeframe})")
 
 
-def get_candles(symbol, timeframe, limit=None):
-    """Возвращает список dict {time, open, high, low, close, volume}, time — unix-секунды."""
+def get_candles(symbol, timeframe, limit=None, around=None):
+    """Возвращает список dict {time, open, high, low, close, volume}, time — unix-секунды.
+
+    limit без around — последние `limit` свечей (как раньше, живой график).
+    around (unix-секунды) — окно ВОКРУГ конкретного момента в прошлом:
+    примерно half=limit/2 свечей до и after этой точки. Нужно для перехода
+    по клику на сигнал/сделку из истории — там время может быть недели
+    назад, "последние N" его физически не покажут.
+    """
     conn = _get_conn()
     try:
         rows = conn.execute(
@@ -148,8 +163,17 @@ def get_candles(symbol, timeframe, limit=None):
         ).fetchall()
     finally:
         conn.close()
-    if limit:
+
+    if around is not None and rows:
+        timestamps = [r[0] for r in rows]
+        idx = bisect.bisect_left(timestamps, around)
+        half = (limit or 200) // 2
+        start = max(0, idx - half)
+        end = min(len(rows), idx + half)
+        rows = rows[start:end]
+    elif limit:
         rows = rows[-limit:]
+
     return [
         {"time": r[0], "open": r[1], "high": r[2], "low": r[3], "close": r[4], "volume": r[5]}
         for r in rows

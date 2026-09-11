@@ -1,7 +1,7 @@
 import os
 import datetime
 from signal import signal
-from modules.cryptano.utils.common import exchange
+from modules.cryptano.utils.common import exchange, resolve_symbol
 from modules.cryptano.utils.market_cache import load_markets_cached
 from modules.cryptano.utils.storage import load_json, save_json_atomic
 
@@ -38,7 +38,15 @@ def save_signal(signal: dict):
         "target_3": signal.get("target_3"), # 👈 Сохраняем TP3
         "stop": stop,
         "status": "⏳",
-        "result_percent": None
+        "result_percent": None,
+        # unix-секунды реальной свечи входа + level_id вотчера, если
+        # переданы (пока только BOUNCE, см. watcher_plan.py::check_bounce) —
+        # нужны дашборду, чтобы по клику на сигнал перейти на график именно
+        # в этот момент и найти его зону среди активных/истории. У сигналов,
+        # сохранённых до этого фикса, будет None — клик по ним просто не
+        # сможет перейти на конкретное место, это ожидаемо для старых записей.
+        "time": signal.get("time"),
+        "level_id": signal.get("level_id"),
     }
 
     signals.append(record)
@@ -319,9 +327,105 @@ def generate_report_file(period: str) -> str | None:
     return REPORT_FILE
 
 
+# ================= ЖИВОЙ РЕЗУЛЬТАТ ОТКРЫТЫХ СИГНАЛОВ =================
+def update_open_signals():
+    """
+    Обновляет текущий результат ещё не закрытых сигналов (status == "⏳") —
+    вызывать периодически (см. background_tasks.py, ~раз в 15 минут, на той
+    же границе, что и watcher-скан).
+
+    Закрытие сделки — ровно по тому, что реально тестировалось и давало
+    профит (без настоящего стоп-лосса, сделки держались до ~2 недель):
+      - TP (Target) достигнут — закрывает ✅ с реальным результатом;
+      - MAX_HOLD_DAYS дней прошло с входа, TP так и не достигнут —
+        закрывает по ТЕКУЩЕЙ цене на этот момент (не обязательно в плюс),
+        статус ✅/❌ по знаку итогового результата.
+    Stop (SL) в записи остаётся только для справки/отображения — сделку
+    НЕ закрывает (см. BounceWatcher.CONFIG['FIXED_TP_PCT']/['MAX_HOLD_DAYS']
+    и BounceWatcher.CONFIG['SL_PCT']).
+
+    Честное ограничение: проверка раз в 15 минут, не по каждой свече — если
+    цена пробила TP и вернулась обратно ДО следующей проверки, это не будет
+    замечено (для точного отслеживания нужна была бы история свечей с
+    момента входа, а не разовая текущая цена — этого тут нет).
+    """
+    from modules.cryptano.strategy.bounce_watcher import BounceWatcher
+    max_hold_days = BounceWatcher.CONFIG.get("MAX_HOLD_DAYS", 14)
+
+    signals = _load_signals()
+    if not signals:
+        return
+
+    changed = False
+    try:
+        markets = load_markets_cached(exchange)
+    except Exception as e:
+        print(f"[SIGNALS UPDATE] ⚠️ Не удалось загрузить markets: {e}")
+        return
+
+    now = datetime.datetime.now()
+
+    for record in signals:
+        if record.get("status") != "⏳":
+            continue
+        coin = record.get("coin")
+        entry = record.get("entry")
+        direction = record.get("type")
+        if not coin or entry is None or direction not in ("LONG", "SHORT"):
+            continue
+
+        try:
+            symbol = resolve_symbol(coin, markets)
+            if not symbol:
+                continue
+            ticker = exchange.fetch_ticker(symbol)
+            last_val = ticker.get("last") or ticker.get("close")
+            if last_val is None:
+                continue
+            last_price = float(last_val)
+        except Exception as e:
+            print(f"[SIGNALS UPDATE] ⚠️ {coin}: не удалось получить текущую цену: {e}")
+            continue
+
+        entry = float(entry)
+        target = record.get("target")
+
+        if direction == "LONG":
+            pct = (last_price - entry) / entry * 100.0
+            hit_tp = target is not None and last_price >= float(target)
+        else:
+            pct = (entry - last_price) / entry * 100.0
+            hit_tp = target is not None and last_price <= float(target)
+
+        # Сколько дней сделка уже открыта — по unix-времени входа, если оно
+        # есть (новые сигналы, см. watcher_plan.py::check_bounce), иначе по
+        # текстовой дате входа (старые сигналы, грубее, но лучше, чем никак).
+        entry_time = record.get("time")
+        if entry_time:
+            entry_dt = datetime.datetime.utcfromtimestamp(int(entry_time))
+        else:
+            try:
+                entry_dt = datetime.datetime.strptime(record.get("date", ""), "%Y-%m-%d %H:%M")
+            except (ValueError, TypeError):
+                entry_dt = None
+        days_open = (now - entry_dt).days if entry_dt else 0
+        time_expired = days_open >= max_hold_days
+
+        record["result_percent"] = round(pct, 2)
+        if hit_tp:
+            record["status"] = "✅"
+        elif time_expired:
+            record["status"] = "✅" if pct > 0 else "❌"
+        changed = True
+
+    if changed:
+        _save_signals(signals)
+
+
 # ================= ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =================
 def _load_signals() -> list:
-    return load_json(SIGNALS_FILE, default=[]) or []
+    data = load_json(SIGNALS_FILE, default=[])
+    return data if isinstance(data, list) else []
 
 def _save_signals(signals: list):
     save_json_atomic(SIGNALS_FILE, signals, indent=2)

@@ -1,14 +1,810 @@
 {
-    "VELVET_V_GREEN_BOTTOM": {
-        "coin": "VELVET",
-        "direction": "LONG",
-        "strategy": "V_GREEN_BOTTOM",
-        "final_state": "DEAD",
+    "APT_BOUNCE_BC_SHORT_0.635115_0.667685__MIRROR": {
+        "coin": "APT",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "final_state": "TRIGGERED",
         "history_log": "",
-        "level_min": 0.16904550000000002,
-        "level_max": 0.1777145,
-        "level_date": null,
+        "level_min": 0.635115,
+        "level_max": 0.667685,
+        "level_date": "2026-06-30",
+        "events": [
+            {
+                "time": 1788958800,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.6637
+            },
+            {
+                "time": 1788965100,
+                "type": "ENTRY",
+                "price": 0.6762
+            }
+        ],
+        "died_at": "2026-09-09T17:50:16.911275"
+    },
+    "APT_BOUNCE_BC_LONG_0.49597553571428576_0.5214101785714286": {
+        "coin": "APT",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.49597553571428576,
+        "level_max": 0.5214101785714286,
+        "level_date": "2026-08-30",
+        "events": [
+            {
+                "time": 1788131700,
+                "type": "ZONE_TOUCH",
+                "price": 0.5186
+            },
+            {
+                "time": 1788133500,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.508
+            },
+            {
+                "time": 1788134400,
+                "type": "ENTRY",
+                "price": 0.5197
+            }
+        ],
+        "died_at": "2026-09-09T14:05:06.104909"
+    },
+    "APT_BOUNCE_BC_LONG_0.495909375_0.521340625": {
+        "coin": "APT",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.495909375,
+        "level_max": 0.521340625,
+        "level_date": "2026-08-30",
+        "events": [
+            {
+                "time": 1788131700,
+                "type": "ZONE_TOUCH",
+                "price": 0.5186
+            },
+            {
+                "time": 1788133500,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.508
+            },
+            {
+                "time": 1788134400,
+                "type": "ENTRY",
+                "price": 0.5197
+            }
+        ],
+        "died_at": "2026-09-09T15:46:21.606261"
+    },
+    "SPCX_BOUNCE_BC_SHORT_146.62035714285716_152.50964285714284__MIRROR": {
+        "coin": "SPCX",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 146.62035714285716,
+        "level_max": 152.50964285714284,
+        "level_date": "2026-08-09",
+        "events": [
+            {
+                "time": 1788807600,
+                "type": "SWEEP_BOTTOM",
+                "price": 150.02
+            },
+            {
+                "time": 1788832800,
+                "type": "SWEEP_BOTTOM",
+                "price": 149.71
+            },
+            {
+                "time": 1788843600,
+                "type": "SWEEP_BOTTOM",
+                "price": 149.7
+            },
+            {
+                "time": 1788859800,
+                "type": "SWEEP_BOTTOM",
+                "price": 149.53
+            },
+            {
+                "time": 1788874200,
+                "type": "SWEEP_BOTTOM",
+                "price": 149.73
+            },
+            {
+                "time": 1788881400,
+                "type": "SWEEP_BOTTOM",
+                "price": 151.97
+            },
+            {
+                "time": 1788948900,
+                "type": "SCAN",
+                "price": 152.55
+            },
+            {
+                "time": 1788960600,
+                "type": "ENTRY",
+                "price": 151.13
+            }
+        ],
+        "died_at": "2026-09-09T16:31:00.525075"
+    },
+    "LIT_BOUNCE_BC_SHORT_3.996525_4.201475__CLIMAX": {
+        "coin": "LIT",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "DEAD",
+        "history_log": "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.",
+        "level_min": 3.996525,
+        "level_max": 4.201475,
+        "level_date": "2026-08-23",
+        "events": [
+            {
+                "time": 1788962400,
+                "type": "CLIMAX_NEAR_BREACH",
+                "price": 5.042
+            }
+        ],
+        "died_at": "2026-09-09T17:14:52.894573"
+    },
+    "RAYDIUM_BOUNCE_BC_SHORT_0.850785_0.8944150000000001__CLIMAX": {
+        "coin": "RAYDIUM",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "DEAD",
+        "history_log": "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.",
+        "level_min": 0.850785,
+        "level_max": 0.8944150000000001,
+        "level_date": "2026-08-23",
+        "events": [
+            {
+                "time": 1788962400,
+                "type": "CLIMAX_NEAR_BREACH",
+                "price": 1.3345
+            }
+        ],
+        "died_at": "2026-09-09T17:14:52.894573"
+    },
+    "DASH_BOUNCE_BC_SHORT_44.942625_47.247375__CLIMAX": {
+        "coin": "DASH",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "DEAD",
+        "history_log": "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.",
+        "level_min": 44.942625,
+        "level_max": 47.247375,
+        "level_date": "2026-08-23",
+        "events": [
+            {
+                "time": 1788962400,
+                "type": "CLIMAX_NEAR_BREACH",
+                "price": 64.31
+            },
+            {
+                "time": 1788963300,
+                "type": "CLIMAX_FAR_BREACH",
+                "price": 64.34
+            },
+            {
+                "time": 1788964200,
+                "type": "SWEEP_BOTTOM",
+                "price": 64.38
+            }
+        ],
+        "died_at": "2026-09-09T17:31:00.896757"
+    },
+    "SNDK_BOUNCE_BC_SHORT_1480.5172857142857_1491.6737142857141__CLIMAX": {
+        "coin": "SNDK",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "DEAD",
+        "history_log": "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.",
+        "level_min": 1480.5172857142857,
+        "level_max": 1491.6737142857141,
+        "level_date": "2026-08-30",
         "events": [],
-        "died_at": "2026-09-07T21:16:00.466139"
+        "died_at": "2026-09-09T17:31:00.896757"
+    },
+    "ARB_BOUNCE_BC_SHORT_0.10296975000000001_0.10825025__CLIMAX": {
+        "coin": "ARB",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "DEAD",
+        "history_log": "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.",
+        "level_min": 0.10296975000000001,
+        "level_max": 0.10825025,
+        "level_date": "2026-06-30",
+        "events": [
+            {
+                "time": 1788962400,
+                "type": "CLIMAX_NEAR_BREACH",
+                "price": 0.16338
+            },
+            {
+                "time": 1788963300,
+                "type": "CLIMAX_FAR_BREACH",
+                "price": 0.16292
+            },
+            {
+                "time": 1788964200,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.16249
+            }
+        ],
+        "died_at": "2026-09-09T17:31:00.896757"
+    },
+    "USELESS_BOUNCE_BC_SHORT_0.072681375_0.076408625__CLIMAX": {
+        "coin": "USELESS",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "DEAD",
+        "history_log": "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.",
+        "level_min": 0.072681375,
+        "level_max": 0.076408625,
+        "level_date": "2026-08-23",
+        "events": [
+            {
+                "time": 1788962400,
+                "type": "CLIMAX_NEAR_BREACH",
+                "price": 0.306
+            },
+            {
+                "time": 1788963300,
+                "type": "CLIMAX_FAR_BREACH",
+                "price": 0.30474
+            },
+            {
+                "time": 1788964200,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.30308
+            }
+        ],
+        "died_at": "2026-09-09T17:31:00.896757"
+    },
+    "FLOCK_BOUNCE_BC_SHORT_0.03588_0.03772__CLIMAX": {
+        "coin": "FLOCK",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "DEAD",
+        "history_log": "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.",
+        "level_min": 0.03588,
+        "level_max": 0.03772,
+        "level_date": "2026-08-16",
+        "events": [
+            {
+                "time": 1788962400,
+                "type": "CLIMAX_NEAR_BREACH",
+                "price": 0.0691
+            },
+            {
+                "time": 1788963300,
+                "type": "CLIMAX_FAR_BREACH",
+                "price": 0.07022
+            },
+            {
+                "time": 1788964200,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.06938
+            }
+        ],
+        "died_at": "2026-09-09T17:31:00.896757"
+    },
+    "FLOCK_BOUNCE_BC_SHORT_0.041925_0.044074999999999996__CLIMAX": {
+        "coin": "FLOCK",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "DEAD",
+        "history_log": "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.",
+        "level_min": 0.041925,
+        "level_max": 0.044074999999999996,
+        "level_date": "2026-06-30",
+        "events": [
+            {
+                "time": 1788962400,
+                "type": "CLIMAX_NEAR_BREACH",
+                "price": 0.0691
+            },
+            {
+                "time": 1788963300,
+                "type": "CLIMAX_FAR_BREACH",
+                "price": 0.07022
+            },
+            {
+                "time": 1788964200,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.06938
+            }
+        ],
+        "died_at": "2026-09-09T17:31:00.896757"
+    },
+    "SUSHI_BOUNCE_BC_SHORT_0.19499642857142857_0.20100357142857145__CLIMAX": {
+        "coin": "SUSHI",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "DEAD",
+        "history_log": "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.",
+        "level_min": 0.19499642857142857,
+        "level_max": 0.20100357142857145,
+        "level_date": "2026-08-30",
+        "events": [],
+        "died_at": "2026-09-09T17:31:00.896757"
+    },
+    "DOT_BOUNCE_BC_SHORT_0.905775_0.9522250000000001__CLIMAX": {
+        "coin": "DOT",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "DEAD",
+        "history_log": "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.",
+        "level_min": 0.905775,
+        "level_max": 0.9522250000000001,
+        "level_date": "2026-08-23",
+        "events": [
+            {
+                "time": 1788962400,
+                "type": "CLIMAX_NEAR_BREACH",
+                "price": 1.1431
+            },
+            {
+                "time": 1788963300,
+                "type": "CLIMAX_FAR_BREACH",
+                "price": 1.1411
+            },
+            {
+                "time": 1788964200,
+                "type": "SWEEP_BOTTOM",
+                "price": 1.1366
+            }
+        ],
+        "died_at": "2026-09-09T17:31:00.896757"
+    },
+    "ZEN_BOUNCE_BC_SHORT_5.765175_6.060825__CLIMAX": {
+        "coin": "ZEN",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "DEAD",
+        "history_log": "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.",
+        "level_min": 5.765175,
+        "level_max": 6.060825,
+        "level_date": "2026-08-23",
+        "events": [
+            {
+                "time": 1788962400,
+                "type": "CLIMAX_NEAR_BREACH",
+                "price": 7.457
+            },
+            {
+                "time": 1788963300,
+                "type": "CLIMAX_FAR_BREACH",
+                "price": 7.5
+            },
+            {
+                "time": 1788964200,
+                "type": "SWEEP_BOTTOM",
+                "price": 7.579
+            }
+        ],
+        "died_at": "2026-09-09T17:31:00.896757"
+    },
+    "ZEN_BOUNCE_BC_SHORT_5.250785714285714_5.4172142857142855__CLIMAX": {
+        "coin": "ZEN",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "DEAD",
+        "history_log": "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.",
+        "level_min": 5.250785714285714,
+        "level_max": 5.4172142857142855,
+        "level_date": "2026-08-30",
+        "events": [],
+        "died_at": "2026-09-09T17:31:00.896757"
+    },
+    "DASH_BOUNCE_BC_SHORT_54.8413125_57.653687500000004__CLIMAX": {
+        "coin": "DASH",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "DEAD",
+        "history_log": "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.",
+        "level_min": 54.8413125,
+        "level_max": 57.653687500000004,
+        "level_date": "2026-05-21",
+        "events": [
+            {
+                "time": 1788541200,
+                "type": "CLIMAX_NEAR_BREACH",
+                "price": 55.32
+            },
+            {
+                "time": 1788556500,
+                "type": "CLIMAX_FAR_BREACH",
+                "price": 58.7
+            },
+            {
+                "time": 1788561900,
+                "type": "SWEEP_BOTTOM",
+                "price": 60.3
+            },
+            {
+                "time": 1788577200,
+                "type": "SCAN",
+                "price": 64.95
+            }
+        ],
+        "died_at": "2026-09-09T17:50:16.911275"
+    },
+    "DASH_BOUNCE_BC_SHORT_44.942625_47.247375__MIRROR": {
+        "coin": "DASH",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 44.942625,
+        "level_max": 47.247375,
+        "level_date": "2026-08-23",
+        "events": [
+            {
+                "time": 1788448500,
+                "type": "ZONE_TOUCH",
+                "price": 45.82
+            },
+            {
+                "time": 1788449400,
+                "type": "SWEEP_BOTTOM",
+                "price": 46.95
+            },
+            {
+                "time": 1788451200,
+                "type": "ENTRY",
+                "price": 46.03
+            }
+        ],
+        "died_at": "2026-09-09T17:50:16.911275"
+    },
+    "NEAR_BOUNCE_BC_SHORT_2.05788375_2.1634162499999996__CLIMAX": {
+        "coin": "NEAR",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "DEAD",
+        "history_log": "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.",
+        "level_min": 2.05788375,
+        "level_max": 2.1634162499999996,
+        "level_date": "2026-08-23",
+        "events": [
+            {
+                "time": 1788962400,
+                "type": "CLIMAX_NEAR_BREACH",
+                "price": 2.578
+            },
+            {
+                "time": 1788963300,
+                "type": "CLIMAX_FAR_BREACH",
+                "price": 2.592
+            },
+            {
+                "time": 1788964200,
+                "type": "SWEEP_BOTTOM",
+                "price": 2.627
+            }
+        ],
+        "died_at": "2026-09-09T17:50:16.911275"
+    },
+    "DASH_BOUNCE_BC_SHORT_46.848749999999995_49.25125__CLIMAX": {
+        "coin": "DASH",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 46.848749999999995,
+        "level_max": 49.25125,
+        "level_date": "2026-08-16",
+        "events": [
+            {
+                "time": 1788450300,
+                "type": "CLIMAX_NEAR_BREACH",
+                "price": 47.32
+            },
+            {
+                "time": 1788489900,
+                "type": "CLIMAX_FAR_BREACH",
+                "price": 49.96
+            },
+            {
+                "time": 1788492600,
+                "type": "SWEEP_BOTTOM",
+                "price": 51.07
+            },
+            {
+                "time": 1788495300,
+                "type": "ENTRY",
+                "price": 51.28
+            }
+        ],
+        "died_at": "2026-09-09T19:52:30.124689"
+    },
+    "DASH_BOUNCE_BC_SHORT_46.848749999999995_49.25125__MIRROR": {
+        "coin": "DASH",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 46.848749999999995,
+        "level_max": 49.25125,
+        "level_date": "2026-08-16",
+        "events": [
+            {
+                "time": 1788449400,
+                "type": "ZONE_TOUCH",
+                "price": 46.95
+            },
+            {
+                "time": 1788488100,
+                "type": "SWEEP_BOTTOM",
+                "price": 48.43
+            },
+            {
+                "time": 1788495300,
+                "type": "ENTRY",
+                "price": 51.28
+            }
+        ],
+        "died_at": "2026-09-09T19:52:30.124689"
+    },
+    "IOST_BOUNCE_BC_SHORT_0.00101556_0.00106764__CLIMAX": {
+        "coin": "IOST",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "DEAD",
+        "history_log": "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.",
+        "level_min": 0.00101556,
+        "level_max": 0.00106764,
+        "level_date": "2026-05-31",
+        "events": [
+            {
+                "time": 1788972300,
+                "type": "CLIMAX_NEAR_BREACH",
+                "price": 0.0018571
+            }
+        ],
+        "died_at": "2026-09-09T19:52:30.124689"
+    },
+    "DASH_BOUNCE_BC_SHORT_66.4545375_69.8624625__CLIMAX": {
+        "coin": "DASH",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "DEAD",
+        "history_log": "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.",
+        "level_min": 66.4545375,
+        "level_max": 69.8624625,
+        "level_date": "2026-09-07",
+        "events": [],
+        "died_at": "2026-09-09T18:19:46.149367"
+    },
+    "BZ_BOUNCE_BC_SHORT_96.72642857142857_101.29357142857144__MIRROR": {
+        "coin": "BZ",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 96.72642857142857,
+        "level_max": 101.29357142857144,
+        "level_date": "2026-06-03",
+        "level_type": "1d_extreme_peak + 1M_high_PMH+4h_poc",
+        "level_score": 9.0,
+        "events": [
+            {
+                "time": 1788428700,
+                "type": "ZONE_TOUCH",
+                "price": 96.93
+            },
+            {
+                "time": 1788856200,
+                "type": "SWEEP_BOTTOM",
+                "price": 99.01
+            },
+            {
+                "time": 1788895800,
+                "type": "SCAN",
+                "price": 97.44
+            },
+            {
+                "time": 1788969600,
+                "type": "ENTRY",
+                "price": 99.64
+            }
+        ],
+        "died_at": "2026-09-09T21:04:29.510265"
+    },
+    "BCH_BOUNCE_BC_SHORT_258.2857142857143_271.5142857142857__MIRROR": {
+        "coin": "BCH",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 258.2857142857143,
+        "level_max": 271.5142857142857,
+        "level_date": "2026-08-30",
+        "level_type": "1W_high_PWH",
+        "level_score": 5.5,
+        "events": [
+            {
+                "time": 1788447600,
+                "type": "ZONE_TOUCH",
+                "price": 258.9
+            },
+            {
+                "time": 1788663600,
+                "type": "SWEEP_BOTTOM",
+                "price": 265.1
+            },
+            {
+                "time": 1788704100,
+                "type": "SCAN",
+                "price": 256.2
+            },
+            {
+                "time": 1788766200,
+                "type": "SCAN",
+                "price": 253.9
+            },
+            {
+                "time": 1788795000,
+                "type": "SCAN",
+                "price": 258.2
+            },
+            {
+                "time": 1788797700,
+                "type": "SCAN",
+                "price": 265.5
+            },
+            {
+                "time": 1788819300,
+                "type": "SCAN",
+                "price": 257.4
+            },
+            {
+                "time": 1788854400,
+                "type": "ENTRY",
+                "price": 255.6
+            }
+        ],
+        "died_at": "2026-09-09T20:38:34.242062"
+    },
+    "BNB_BOUNCE_BC_LONG_740.405_751.595": {
+        "coin": "BNB",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 740.405,
+        "level_max": 751.595,
+        "level_date": "2026-05-01",
+        "level_type": "1M_MACRO_Resistance",
+        "level_score": 5.0,
+        "events": [
+            {
+                "time": 1788609600,
+                "type": "ZONE_TOUCH",
+                "price": 748.0
+            },
+            {
+                "time": 1788704100,
+                "type": "SWEEP_BOTTOM",
+                "price": 744.1
+            },
+            {
+                "time": 1788727500,
+                "type": "SCAN",
+                "price": 751.4
+            },
+            {
+                "time": 1788794100,
+                "type": "SCAN",
+                "price": 741.0
+            },
+            {
+                "time": 1788843600,
+                "type": "ENTRY",
+                "price": 747.4
+            }
+        ],
+        "died_at": "2026-09-09T21:28:46.785784"
+    },
+    "DOGE_BOUNCE_BC_SHORT_0.09135750000000001_0.0960425__MIRROR": {
+        "coin": "DOGE",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.09135750000000001,
+        "level_max": 0.0960425,
+        "level_date": "2026-08-23",
+        "level_type": "1W_high_PWH",
+        "level_score": 6.0,
+        "events": [
+            {
+                "time": 1788630300,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.09508
+            },
+            {
+                "time": 1788631200,
+                "type": "ENTRY",
+                "price": 0.09313
+            }
+        ],
+        "died_at": "2026-09-09T22:40:42.081026"
+    },
+    "KAT_BOUNCE_BC_SHORT_0.006125925000000001_0.006440075__MIRROR": {
+        "coin": "KAT",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.006125925000000001,
+        "level_max": 0.006440075,
+        "level_date": "2026-07-10",
+        "level_type": "1d_extreme_peak + 1M_high_PMH",
+        "level_score": 8.0,
+        "events": [
+            {
+                "time": 1788975000,
+                "type": "ZONE_TOUCH",
+                "price": 0.006146
+            },
+            {
+                "time": 1788980400,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.006591
+            },
+            {
+                "time": 1788998400,
+                "type": "ENTRY",
+                "price": 0.005943
+            }
+        ],
+        "died_at": "2026-09-10T03:10:46.317414"
+    },
+    "RAYDIUM_BOUNCE_BC_SHORT_1.2587249999999999_1.323275__CLIMAX": {
+        "coin": "RAYDIUM",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "CLIMAX",
+        "final_state": "DEAD",
+        "history_log": "Приоритет отдан более высокому уровню. Нижний сетап убит навсегда.",
+        "level_min": 1.2587249999999999,
+        "level_max": 1.323275,
+        "level_date": "2026-09-10",
+        "level_type": "4h_poc_standalone",
+        "level_score": 3.0,
+        "events": [],
+        "died_at": "2026-09-11T12:16:03.428889"
     }
 }

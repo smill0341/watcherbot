@@ -11,8 +11,9 @@ import os
 import sys
 import json
 import time
+import datetime
 import threading
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.staticfiles import StaticFiles
@@ -67,6 +68,11 @@ JSONBANK_DIR = os.path.join(CRYPTANO_DIR, "jsonbank")
 WATCHLIST_PATH = os.path.join(JSONBANK_DIR, "watchlist.json")
 MACRO_LEVELS_PATH = os.path.join(JSONBANK_DIR, "macro_levels.json")
 SIGNALS_PATH = os.path.join(JSONBANK_DIR, "signals.json")
+FOOTBALL_SIGNALS_PATH = os.path.join(JSONBANK_DIR, "football_signals.json")
+FOOTBALL_STATUS_PATH = os.path.join(JSONBANK_DIR, "football_status.json")
+NBA_SIGNALS_PATH = os.path.join(JSONBANK_DIR, "nba_signals.json")
+NBA_STATUS_PATH = os.path.join(JSONBANK_DIR, "nba_status.json")
+RESCAN_STATUS_PATH = os.path.join(JSONBANK_DIR, "rescan_status.json")
 ACTIVE_WATCHERS_PATH = os.path.join(JSONBANK_DIR, "active_watchers.json")
 WATCHER_HISTORY_PATH = os.path.join(JSONBANK_DIR, "watcher_history.json")
 
@@ -96,12 +102,26 @@ TERMINAL_STATES = {"TRIGGERED", "DEAD"}
 
 @app.on_event("startup")
 def _load_markets_on_startup():
-    """Загружаем список рынков один раз при старте, чтобы resolve_symbol работал."""
-    try:
-        exchange.load_markets()
-        print(f"[DASHBOARD] Markets loaded: {len(exchange.markets or {})}")
-    except Exception as e:
-        print(f"[DASHBOARD] ⚠️ Не удалось загрузить markets при старте: {e}")
+    """
+    Загружаем список рынков при старте, чтобы resolve_symbol работал.
+    Раньше при неудаче (сеть/биржа моргнула) ошибка тихо проглатывалась,
+    а дашборд всё равно продолжал запускаться — с пустым списком рынков
+    НАВСЕГДА (следующей попытки не было), из-за чего resolve_symbol падал
+    на каждой монете до следующего ручного рестарта дашборда. Теперь —
+    несколько попыток с паузой, один сетевой сбой не должен ронять всё.
+    """
+    attempts = 3
+    for attempt in range(1, attempts + 1):
+        try:
+            exchange.load_markets()
+            print(f"[DASHBOARD] Markets loaded: {len(exchange.markets or {})}")
+            break
+        except Exception as e:
+            print(f"[DASHBOARD] ⚠️ Попытка {attempt}/{attempts} загрузить markets не удалась: {e}")
+            if attempt < attempts:
+                time.sleep(3)
+            else:
+                print("[DASHBOARD] ❌ Markets не загрузились после всех попыток — график/resolve_symbol не будут работать, пока не перезапустишь дашборд.")
 
     candle_store.init_db()
 
@@ -152,10 +172,12 @@ def get_watchlist():
     практике тут всегда все топ-70. Отдельно ещё minute_radar (swing_hunter.py)
     и позже ручное добавление/фильтры могут добавлять монеты со своим "source".
 
-    "direction" в watchlist.json — история о том, откуда взялась запись
-    (кто её добавил и почему), НЕ то, что реально сканируется (скан всегда
-    проверяет обе стороны по факту наличия supports/resistances — см.
-    background_tasks.py). Тут показываем как есть, для информации.
+    "direction" в watchlist.json — старое поле, оставшееся у записей,
+    добавленных ДО того, как синхронизация перестала его писать (скан
+    всегда проверяет обе стороны по факту наличия supports/resistances,
+    direction на это никогда не влиял). Явно вырезаем его тут, чтобы
+    старые залежавшиеся записи не показывали на дашборде то, чего больше
+    нет ни в одной новой записи и что реально ни на что не влияет.
     """
     wl = _read_json(WATCHLIST_PATH, default={})
     if not isinstance(wl, dict):
@@ -168,7 +190,8 @@ def get_watchlist():
         if coin == "_meta":
             continue  # служебный ключ (сюда попасть не должен, но на случай старых прогонов)
         has_levels = coin in macro or KNOWN_TICKER_ALIASES.get(coin) in macro
-        entry = {"coin": coin, "has_levels": has_levels, **(meta or {})}
+        clean_meta = {k: v for k, v in (meta or {}).items() if k != "direction"}
+        entry = {"coin": coin, "has_levels": has_levels, **clean_meta}
         (with_levels if has_levels else without_levels).append(entry)
 
     with_levels.sort(key=lambda x: x.get("added_at") or "", reverse=True)
@@ -177,32 +200,23 @@ def get_watchlist():
     return {"with_levels": with_levels, "without_levels": without_levels}
 
 
-CLIMAX_ACTIVE_STAGES = {"WAIT_BUFFER", "SEARCHING"}
-
-
 def _is_active_watcher(w: dict) -> bool:
     """
-    Единое условие "в работе" — разное для BOUNCE и для остальных трёх
-    стратегий, потому что BOUNCE не отражает реальный прогресс в поле
-    "state" (там всегда "SCANNING" до входа/смерти или наоборот TRIGGERED/
-    DEAD в конце). Для BOUNCE смотрим на currently_pierced/climax_stage
-    (см. bounce_watcher.py) напрямую:
-      - LONG и SHORT-MIRROR: активен, когда цена реально прошла 50% зоны
-        (currently_pierced=True), не с первого касания края.
-      - SHORT-CLIMAX: активен, когда обе зоны (ближняя и дальняя) уже
-        подтверждены закрытием (climax_stage WAIT_BUFFER или дальше —
-        SEARCHING), но не раньше (WAIT_NEAR/WAIT_MAX — это ещё не "в работе").
-    Для V_BOTTOM/V_GREEN_BOTTOM/V_RED_TOP всё как раньше — по state,
-    не SEARCHING/WAIT_FIRST_DUMP (простой скан) и не TRIGGERED/DEAD (уже
-    закончил).
+    Единое условие "в работе": не в терминальном состоянии (не было сделки,
+    не умер по дальнему уходу цены). Раньше для BOUNCE было отдельное более
+    узкое условие (currently_pierced для MIRROR, climax_stage для CLIMAX) —
+    это заставляло вотчер мигать туда-сюда в списке "в работе" при каждом
+    откате цены через середину зоны, хотя по правилам проекта вотчер должен
+    считаться "в работе" непрерывно, пока не случится сделка ИЛИ цена не
+    уйдёт далеко от зоны слежения — то же самое условие, что и у остальных
+    трёх стратегий (V_BOTTOM/V_GREEN_BOTTOM/V_RED_TOP), никакого отдельного
+    случая для BOUNCE больше не требуется.
     """
     state = w.get("state")
     if state in TERMINAL_STATES:
         return False
     if w.get("strategy") == "BOUNCE":
-        if w.get("mode") == "CLIMAX":
-            return w.get("climax_stage") in CLIMAX_ACTIVE_STAGES
-        return bool(w.get("currently_pierced"))
+        return True
     return state not in IDLE_STATES
 
 
@@ -235,14 +249,24 @@ def get_active_watchers(all_states: bool = Query(default=False)):
 
 
 @app.post("/api/rescan/{coin}")
-def trigger_rescan(coin: str):
-    """Ставит флаг-заявку на сброс памяти монеты для боевого сканера."""
+def trigger_rescan(coin: str, since: Optional[int] = Query(default=None, description="unix-секунды — честно повторить путь монеты (BOUNCE) от этой даты до сейчас. Без даты — дефолт неделя назад (см. background_tasks.py).")):
+    """Ставит флаг-заявку на рескан для боевого сканера.
+
+    Раньше флаг был просто маркером "сбрось память V_BOTTOM/VGB/VRT по
+    этой монете". Теперь несёт JSON с `since` — для BOUNCE это не "забудь
+    и сканируй заново вслепую", а "убей текущих живых вотчеров (заархивируй
+    их) и честно пересобери реальный путь монеты от этой даты через уже
+    готовый механизм реплея (bounce_mgr.last_processed_time), как будто
+    бот сканировал её всё это время."""
     coin = coin.upper().strip()
     flag_path = os.path.join(CRYPTANO_DIR, f"rescan_{coin}.flag")
     try:
         with open(flag_path, "w", encoding="utf-8") as f:
-            f.write("1")
-        return {"status": "ok", "message": f"Rescan requested for {coin}"}
+            json.dump({"since": since}, f)
+        msg = f"Rescan requested for {coin}"
+        if since is not None:
+            msg += f" (с {datetime.datetime.utcfromtimestamp(since).strftime('%Y-%m-%d %H:%M')} UTC)"
+        return {"status": "ok", "message": msg}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -280,6 +304,37 @@ def trigger_rebuild_levels():
         with open(flag_path, "w", encoding="utf-8") as f:
             f.write("1")
         return {"status": "ok", "message": "Rebuild requested — может занять пару минут"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/signals/clear")
+def clear_signals():
+    """
+    Очистка списка сигналов (signals.json). В отличие от reset_watchers/
+    rebuild_levels — без флага, пишем сразу: signals.json нигде не живёт
+    в памяти сканера (save_signal только дописывает файл, никто не читает
+    его обратно для торговых решений), поэтому прямая перезапись безопасна
+    и применяется мгновенно, без ожидания скан-цикла.
+    """
+    try:
+        _write_json_atomic(SIGNALS_PATH, [])
+        return {"status": "ok", "message": "Список сигналов очищен"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/history/clear")
+def clear_history():
+    """
+    Очистка "ПОСЛЕДНИЙ СКАН" (watcher_history.json) — снимков последней
+    смерти/срабатывания по каждому вотчеру. Как и signals.json, этот файл
+    только пишется сканером (load-merge-save при каждой смерти), не читается
+    обратно для торговой логики — прямая перезапись безопасна.
+    """
+    try:
+        _write_json_atomic(WATCHER_HISTORY_PATH, {})
+        return {"status": "ok", "message": "История очищена"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -384,6 +439,37 @@ def simulate_watcher(coin: str, start: str = Query(..., description="Дата/в
         raise HTTPException(status_code=500, detail=f"Ошибка симуляции: {e}")
 
 
+@app.post("/api/simulate_bounce/{coin}")
+def simulate_bounce(
+    coin: str,
+    start: str = Query(..., description="Дата/время старта симуляции, UTC. 'YYYY-MM-DD' или 'YYYY-MM-DD HH:MM'"),
+    end: Optional[str] = Query(default=None, description="Конец периода, по умолчанию — самая свежая доступная свеча"),
+):
+    """
+    То же самое, что /api/simulate/{coin}, только для BOUNCE — прогоняет
+    настоящие BounceManager/BounceWatcher (см. modules.cryptano.strategy),
+    на КАЖДУЮ свечу честно беря уровни из levels_history.py (снимки раз в
+    ~12ч), а не замороженные на дату старта. Свой изолированный менеджер —
+    ничего боевого не трогает, свои логи (modules/cryptano/simulator/logs/).
+    """
+    from modules.cryptano.simulator.bounce_simulate import run_bounce_simulation
+    try:
+        return run_bounce_simulation(coin, start, end)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка симуляции BOUNCE: {e}")
+
+
+@app.get("/api/simulate_bounce/last")
+def simulate_bounce_last():
+    """Последний сохранённый результат BOUNCE-симуляции — фронт дёргает это
+    при открытии /simulator, чтобы результат пережил F5 (см.
+    bounce_simulate.get_last_run/save_json_atomic(LAST_RUN_FILE, ...))."""
+    from modules.cryptano.simulator.bounce_simulate import get_last_run
+    return get_last_run() or {}
+
+
 @app.get("/api/signals")
 def get_signals(limit: int = Query(default=50, ge=1, le=500)):
     """Последние сработавшие сигналы, свежие сверху."""
@@ -393,6 +479,81 @@ def get_signals(limit: int = Query(default=50, ge=1, le=500)):
     # date хранится как "YYYY-MM-DD HH:MM" — сортируется лексикографически верно
     signals_sorted = sorted(signals, key=lambda s: s.get("date") or "", reverse=True)
     return signals_sorted[:limit]
+
+
+@app.get("/api/sports/football")
+def get_football_signals(limit: int = Query(default=50, ge=1, le=500)):
+    """Последние футбольные сигналы (см. modules/footballnogoal/football.py), свежие сверху."""
+    signals = _read_json(FOOTBALL_SIGNALS_PATH, default=[])
+    if not isinstance(signals, list):
+        signals = []
+    signals_sorted = sorted(signals, key=lambda s: s.get("date") or "", reverse=True)
+    return signals_sorted[:limit]
+
+
+@app.get("/api/sports/nba")
+def get_nba_signals(limit: int = Query(default=50, ge=1, le=500)):
+    """Последние NBA-сигналы (см. modules/playerpropsbasket/player_props.py), свежие сверху."""
+    signals = _read_json(NBA_SIGNALS_PATH, default=[])
+    if not isinstance(signals, list):
+        signals = []
+    signals_sorted = sorted(signals, key=lambda s: s.get("date") or "", reverse=True)
+    return signals_sorted[:limit]
+
+
+def _sports_status(sport: str, status_path: str):
+    """status ("RUNNING"/"STOPPED") — из того же config.json, что и остальные
+    переключатели, снимок последнего скана — из отдельного status-файла
+    (пишут football.py/player_props.py после каждой проверки)."""
+    config = _read_json(CONFIG_FILE, default={})
+    running = config.get(sport, {}).get("status", "STOPPED") == "RUNNING"
+    last_scan = _read_json(status_path, default={})
+    if not isinstance(last_scan, dict):
+        last_scan = {}
+    return {"running": running, "last_scan": last_scan}
+
+
+@app.get("/api/sports/football/status")
+def get_football_status():
+    return _sports_status("football", FOOTBALL_STATUS_PATH)
+
+
+@app.get("/api/sports/nba/status")
+def get_nba_status():
+    return _sports_status("nba", NBA_STATUS_PATH)
+
+
+@app.post("/api/sports/{sport}/toggle")
+def toggle_sport(sport: str):
+    """Включает/выключает football/nba-монитор — та же логика, что и
+    /api/strategies/{tag}/toggle: пишет в config.json, монитор перечитывает
+    его каждый цикл сам (см. run_football_monitor/run_nba_monitor), поэтому
+    применяется без рестарта дашборда/сканера."""
+    sport = sport.lower().strip()
+    if sport not in ("football", "nba"):
+        raise HTTPException(status_code=400, detail=f"Неизвестный спорт: {sport}")
+    try:
+        config = _read_json(CONFIG_FILE, default={})
+        if sport not in config:
+            config[sport] = {}
+        current = config[sport].get("status", "STOPPED")
+        new_status = "STOPPED" if current == "RUNNING" else "RUNNING"
+        config[sport]["status"] = new_status
+        _write_json_atomic(CONFIG_FILE, config)
+        return {"status": "ok", "sport": sport, "running": new_status == "RUNNING"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/rescan_status")
+def get_rescan_status():
+    """Статус ручного рескана по монетам — {coin: {status: running|done, ...}}.
+    Пишется напрямую сканером (background_tasks.py), не через
+    telegram-заглушку — файл маленький, безопасно опрашивать часто."""
+    status = _read_json(RESCAN_STATUS_PATH, default={})
+    if not isinstance(status, dict):
+        status = {}
+    return status
 
 
 @app.get("/api/events/{coin}")
@@ -427,7 +588,12 @@ def get_watcher_events(coin: str):
 
 
 @app.get("/api/ohlcv/{coin}")
-def get_ohlcv(coin: str, timeframe: str = "15m", limit: int = Query(default=200, ge=10, le=6000)):
+def get_ohlcv(
+    coin: str,
+    timeframe: str = "15m",
+    limit: int = Query(default=200, ge=10, le=6000),
+    around: Optional[int] = Query(default=None, description="unix-секунды — окно вокруг этого момента вместо последних `limit` свечей (переход по клику на старый сигнал/сделку)"),
+):
     """
     Свечи по монете — из локальной SQLite-истории (candle_store), а не
     напрямую с биржи каждый раз. Для монет из watchlist история уже
@@ -435,6 +601,10 @@ def get_ohlcv(coin: str, timeframe: str = "15m", limit: int = Query(default=200,
     Если монеты в базе ещё нет вообще (открыли не-watchlist монету
     напрямую) — докачиваем её здесь же, синхронно: это разовая пауза
     в несколько секунд на первое открытие, дальше она уже в базе.
+
+    `around` — unix-секунды: вернуть окно СВЕЧЕЙ вокруг этого момента
+    (примерно limit/2 до и после), а не последние `limit`. Нужно для
+    клика по старому сигналу — "последние свечи" его физически не покажут.
     """
     coin = coin.upper().strip()
     try:
@@ -459,7 +629,7 @@ def get_ohlcv(coin: str, timeframe: str = "15m", limit: int = Query(default=200,
         # ПРИНУДИТЕЛЬНАЯ ДОКАЧКА: всегда стягиваем хвост до текущей секунды при открытии графика
         candle_store.top_up_tail(exchange, symbol, timeframe)
 
-    candles = candle_store.get_candles(symbol, timeframe, limit=limit)
+    candles = candle_store.get_candles(symbol, timeframe, limit=limit, around=around)
 
     return {
         "symbol": symbol,
@@ -489,3 +659,11 @@ def simulator_page():
     app.js сами проверяют, есть ли на странице их элемент, прежде чем
     что-то делать — на этой странице действуют только те, что реально нужны."""
     return FileResponse(os.path.join(STATIC_DIR, "simulator.html"))
+
+
+@app.get("/sports")
+def sports_page():
+    """Футбол/NBA — отдельная страница со своим лёгким JS (sports.js), не
+    имеет отношения к крипто-графику/app.js вообще, поэтому не переиспользует
+    его — своя простая разметка, свои два запроса к /api/sports/*."""
+    return FileResponse(os.path.join(STATIC_DIR, "sports.html"))
