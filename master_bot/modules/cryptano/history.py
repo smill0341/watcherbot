@@ -47,6 +47,15 @@ def save_signal(signal: dict):
         # сможет перейти на конкретное место, это ожидаемо для старых записей.
         "time": signal.get("time"),
         "level_id": signal.get("level_id"),
+        # Метод реакции на уровень, которым нашёлся вход — пока только
+        # "volume" (объём/множитель от среднего), на будущее появятся
+        # другие методы, каждый со своим value/mult (см. watcher_plan.py::check_bounce).
+        "method": signal.get("method"),
+        "method_value": signal.get("method_value"),
+        "method_mult": signal.get("method_mult"),
+        # Момент закрытия (✅/❌) — заполняется в check_and_update(), когда
+        # реально проверили цену. До первой ручной проверки — None.
+        "closed_at": None,
     }
 
     signals.append(record)
@@ -101,20 +110,24 @@ def check_and_update(bot, chat_id):
                 if current_price >= target:
                     signal["status"] = "✅"
                     signal["result_percent"] = round(((target - entry) / entry) * 100, 2)
+                    signal["closed_at"] = datetime.datetime.now().isoformat()
                     updated += 1
                 elif stop > 0 and current_price <= stop:
                     signal["status"] = "❌"
                     signal["result_percent"] = round(((stop - entry) / entry) * 100, 2)
+                    signal["closed_at"] = datetime.datetime.now().isoformat()
                     updated += 1
 
             elif signal["type"] == "SHORT":
                 if current_price <= target:
                     signal["status"] = "✅"
                     signal["result_percent"] = round(((entry - target) / entry) * 100, 2)
+                    signal["closed_at"] = datetime.datetime.now().isoformat()
                     updated += 1
                 elif stop > 0 and current_price >= stop:
                     signal["status"] = "❌"
                     signal["result_percent"] = round(((entry - stop) / entry) * 100, 2)
+                    signal["closed_at"] = datetime.datetime.now().isoformat()
                     updated += 1
 
         except Exception as e:

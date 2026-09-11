@@ -1,9 +1,7 @@
 const activeListEl = document.getElementById("active-list");
 const watchlistListEl = document.getElementById("watchlist-list");
-const simListEl = document.getElementById("sim-list");
 const activeCountEl = document.getElementById("active-count");
 const watchlistCountEl = document.getElementById("watchlist-count");
-const simCountEl = document.getElementById("sim-count");
 const currentCoinEl = document.getElementById("current-coin");
 const currentSymbolEl = document.getElementById("current-symbol");
 const signalsBody = document.getElementById("signals-body");
@@ -52,24 +50,6 @@ function friendlyStrategyWithMode(strategy, mode) {
 let currentPrecision = 4;
 let globalCandles = []; // Храним историю свечей для привязки линий к датам
 
-// === СИМУЛЯЦИЯ ===
-let simMode = false;
-let simStartTime = null; // unix seconds клика по свече
-let simRunning = false;
-let simLevelLines = []; // линии уровней симуляции (жёлтый/фиолетовый), отдельно от боевых levelLines
-let simPlaybackTimer = null; // таймер анимации плейбека
-
-function clearSimLevelLines() {
-  simLevelLines.forEach((series) => { try { chart.removeSeries(series); } catch (e) {} });
-  simLevelLines = [];
-}
-
-function stopSimPlayback() {
-  if (simPlaybackTimer) {
-    clearInterval(simPlaybackTimer);
-    simPlaybackTimer = null;
-  }
-}
 
 const ema20ValueEl = document.getElementById("ema20-value");
 const ema50ValueEl = document.getElementById("ema50-value");
@@ -91,6 +71,24 @@ function formatVolume(v) {
   return String(Math.round(v));
 }
 
+// "Время в сделке" — от unix-секунд входа (s.time) до момента закрытия
+// (s.closed_at, ISO-строка) для ✅/❌, либо до "сейчас" для ещё открытых
+// (⏳). closed_at заполняется только начиная с этого фикса (см.
+// history.py::check_and_update) — у сигналов, закрытых ДО него, поля нет,
+// точное время закрытия неизвестно, честно показываем "—", не выдумываем.
+function formatDuration(fromUnixSec, toDate) {
+  if (fromUnixSec === null || fromUnixSec === undefined) return "—";
+  const fromMs = fromUnixSec * 1000;
+  const toMs = toDate.getTime();
+  const totalMin = Math.max(0, Math.floor((toMs - fromMs) / 60000));
+  const days = Math.floor(totalMin / 1440);
+  const hours = Math.floor((totalMin % 1440) / 60);
+  const mins = totalMin % 60;
+  if (days > 0) return `${days}д ${hours}ч`;
+  if (hours > 0) return `${hours}ч ${mins}м`;
+  return `${mins}м`;
+}
+
 // === ЛЕГЕНДА: OHLCV СВЕРХУ, ЦВЕТА СНИЗУ ===
 let ohlcvLegendTextEl = null;
 let bottomMarksLegendCreated = false;
@@ -100,15 +98,28 @@ function ensureOhlcvLegend() {
   if (!bottomMarksLegendCreated) {
     const chartBox = document.getElementById("chart");
     const marksLegend = document.createElement("div");
-    marksLegend.style.cssText = "padding: 10px 15px; font-size:12px; color:#555b66; background: #ffffff; border-top: 1px solid #e6e8eb;";
+    marksLegend.style.cssText = "padding: 10px 15px; font-size:12px; color:#555b66; background: #ffffff; border-top: 1px solid #e6e8eb; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;";
+    // Полоска-образец цвета линии, а не эмодзи-кружок — просили отличать
+    // от кружков маркеров слева, эти справа — про ЛИНИИ (Entry/Target/
+    // Stop/уровень), не про точки пути вотчера.
+    const bar = (color) => `<span style="display:inline-block;width:14px;height:3px;background:${color};margin-right:4px;vertical-align:middle;border-radius:1px;"></span>`;
     marksLegend.innerHTML = `
-      <b>Маркеры:</b> 
-      <span style="color:#8a8f98">⚪️ Старт</span> | 
-      <span style="color:#f2c14e">🟡 Кандидат</span> | 
-      <span style="color:#5aa9e6">🔵 Структура</span> | 
-      <span style="color:#9c27b0">🟣 Старт поиска</span> | 
-      <span style="color:#4caf7d">🟢 Вход</span> | 
-      <span style="color:#e5654f">🔴 Сброс/Стоп</span>
+      <span>
+        <b>Маркеры:</b>
+        <span style="color:#8a8f98">⚪️ Старт</span> |
+        <span style="color:#f2c14e">🟡 Кандидат</span> |
+        <span style="color:#5aa9e6">🔵 Структура</span> |
+        <span style="color:#9c27b0">🟣 Старт поиска</span> |
+        <span style="color:#4caf7d">🟢 Вход</span> |
+        <span style="color:#e5654f">🔴 Сброс/Стоп</span>
+      </span>
+      <span>
+        ${bar("#5aa9e6")}Entry &nbsp;
+        ${bar("#4caf7d")}Target &nbsp;
+        ${bar("#e5654f")}Stop &nbsp;
+        ${bar("#00c853")}Уровень (LONG) &nbsp;
+        ${bar("#ff3d3d")}Уровень (SHORT)
+      </span>
     `;
     chartBox.parentElement.insertBefore(marksLegend, chartBox.nextSibling);
     bottomMarksLegendCreated = true;
@@ -322,12 +333,6 @@ function initChart() {
     setOhlcvLegend(candle, vol, rsiVal);
   });
 
-  chart.subscribeClick((param) => {
-    if (!simMode || !param || !param.time) return;
-    simStartTime = param.time;
-    updateSimUI();
-  });
-
   new ResizeObserver(() => {
     chart.applyOptions({ width: box.clientWidth, height: box.clientHeight });
   }).observe(box);
@@ -340,254 +345,6 @@ function initChart() {
       if (selectedCoin) loadChart(selectedCoin, focusedLevel);
     };
   });
-
-  const simModeBtnEl = document.getElementById("sim-mode-btn");
-  if (simModeBtnEl) {
-    simModeBtnEl.onclick = () => {
-      simMode = !simMode;
-      if (!simMode) {
-        simStartTime = null;
-        stopSimPlayback();
-        clearSimLevelLines();
-        candleSeries.setMarkers([]);
-        if (selectedCoin) loadEvents(selectedCoin); // возвращаем боевые маркеры
-      }
-      updateSimUI();
-    };
-  }
-  const simCancelBtnEl = document.getElementById("sim-cancel-btn");
-  if (simCancelBtnEl) {
-    simCancelBtnEl.onclick = () => {
-      simStartTime = null;
-      stopSimPlayback();
-      clearSimLevelLines();
-      candleSeries.setMarkers([]);
-      if (selectedCoin) loadEvents(selectedCoin);
-      updateSimUI();
-    };
-  }
-  const simRunBtnEl = document.getElementById("sim-run-btn");
-  if (simRunBtnEl) simRunBtnEl.onclick = runSimulation;
-}
-
-function updateSimUI() {
-  const modeBtn = document.getElementById("sim-mode-btn");
-  const status = document.getElementById("sim-status");
-  const runBtn = document.getElementById("sim-run-btn");
-  const cancelBtn = document.getElementById("sim-cancel-btn");
-  if (!modeBtn || !status || !runBtn || !cancelBtn) return;
-
-  modeBtn.classList.toggle("active", simMode);
-
-  if (!simMode) {
-    status.textContent = "";
-    runBtn.style.display = "none";
-    cancelBtn.style.display = "none";
-    return;
-  }
-
-  if (simStartTime) {
-    const d = new Date(simStartTime * 1000);
-    status.textContent = "Старт: " + d.toLocaleString("ru-RU", { timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-    runBtn.style.display = "";
-    cancelBtn.style.display = "";
-  } else {
-    status.textContent = "Кликни свечу на графике — точка старта";
-    runBtn.style.display = "none";
-    cancelBtn.style.display = "none";
-  }
-}
-
-// Подтягивает окно свечей, реально покрывающее диапазон [fromSec, toSec] —
-// нужно перед показом маркеров симуляции: playSimulation() ставит их поверх
-// УЖЕ загруженных на график свечей, а обычная загрузка (loadChart) обычно
-// держит только последние пару дней. /api/ohlcv поддерживает только
-// "around" (окно ВОКРУГ точки), не произвольный диапазон — берём середину
-// периода и не более 6000 свечей (потолок бэкенда, см. app.py::get_ohlcv).
-async function loadCandlesAroundRange(coin, fromSec, toSec) {
-  const spanCandles = Math.ceil((toSec - fromSec) / 900) + 20; // +запас с обеих сторон
-  const limit = Math.min(6000, Math.max(200, spanCandles));
-  const aroundSec = Math.floor((fromSec + toSec) / 2);
-  try {
-    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}&limit=${limit}&around=${aroundSec}`);
-    if (!res.ok) return;
-    const data = await res.json();
-    const formattedCandles = (data.candles || [])
-      .map((c) => ({ ...c, time: c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time }))
-      .sort((a, b) => a.time - b.time);
-    if (!formattedCandles.length) return;
-    globalCandles = formattedCandles;
-    candleSeries.setData(formattedCandles);
-    volumeSeries.setData(formattedCandles.map((c) => ({
-      time: c.time, value: c.volume, color: c.close >= c.open ? "rgba(76,175,125,0.5)" : "rgba(229,101,79,0.5)",
-    })));
-    ema20Series.setData(computeEMA(formattedCandles, 20));
-    ema50Series.setData(computeEMA(formattedCandles, 50));
-    chart.timeScale().fitContent();
-  } catch (e) {
-    console.error("loadCandlesAroundRange failed", e);
-  }
-}
-
-async function runSimulation() {
-  if (!selectedCoin || !simStartTime || simRunning) return;
-  simRunning = true;
-  stopSimPlayback();
-
-  const status = document.getElementById("sim-status");
-  const runBtn = document.getElementById("sim-run-btn");
-  const strategySelect = document.getElementById("sim-strategy-select");
-  const isBounce = !strategySelect || strategySelect.value === "bounce";
-  const tradesBody = document.getElementById("sim-trades-body");
-  runBtn.disabled = true;
-  status.textContent = "Считаю...";
-  if (tradesBody) tradesBody.innerHTML = "<tr><td colspan='8'>Считаю...</td></tr>";
-
-  // Бэкенд ждёт 'YYYY-MM-DD HH:MM' в UTC (см. simulate_engine.run_simulation /
-  // bounce_simulate.run_bounce_simulation — формат одинаковый у обоих)
-  const iso = new Date(simStartTime * 1000).toISOString(); // "2026-07-01T12:00:00.000Z"
-  const startParam = iso.slice(0, 16).replace("T", " ");
-  const endpoint = isBounce
-    ? `/api/simulate_bounce/${encodeURIComponent(selectedCoin)}?start=${encodeURIComponent(startParam)}`
-    : `/api/simulate/${encodeURIComponent(selectedCoin)}?start=${encodeURIComponent(startParam)}`;
-
-  try {
-    const res = await fetch(endpoint, { method: "POST" });
-    const data = await res.json();
-    if (!res.ok) {
-      status.textContent = data.detail || "ошибка симуляции";
-      if (tradesBody) tradesBody.innerHTML = "<tr><td colspan='8'>" + (data.detail || "ошибка") + "</td></tr>";
-      return;
-    }
-
-    // Для BOUNCE — только состоявшиеся сделки (TRIGGERED), и линии, и точки.
-    // Несостоявшиеся попытки (SCANNING/DEAD) на графике вообще не показываем —
-    // так и просили: только там, где реально была сделка.
-    const episodes = isBounce
-      ? (data.history || []).filter((ep) => ep.state === "TRIGGERED")
-      : [...(data.active || []), ...(data.history || [])];
-
-    // Точки рисуются поверх УЖЕ ЗАГРУЖЕННЫХ на график свечей (globalCandles/
-    // candleSeries) — период симуляции обычно шире того, что уже на экране
-    // (там обычно последние пару дней), иначе метки на старых датах просто
-    // некуда ставить и они не появляются. Подтягиваем окно, реально
-    // покрывающее весь период симуляции, ПЕРЕД показом маркеров.
-    const endTimeSec = data.end_time ? Math.floor(new Date(data.end_time + "Z").getTime() / 1000) : Math.floor(Date.now() / 1000);
-    await loadCandlesAroundRange(selectedCoin, simStartTime, endTimeSec);
-
-    drawSimLevels(data.levels || []);
-    playSimulation(episodes);
-
-    if (tradesBody) {
-      const trades = data.trades || [];
-      if (!trades.length) {
-        tradesBody.innerHTML = "<tr><td colspan='8'>сделок не найдено</td></tr>";
-      } else {
-        tradesBody.innerHTML = trades.map((t) => `
-          <tr>
-            <td>${t.date ?? ""}</td>
-            <td>${t.coin ?? ""}</td>
-            <td class="dir-${t.type}">${t.type ?? ""}</td>
-            <td>${t.source ?? ""}</td>
-            <td>${formatPrice(t.entry)}</td>
-            <td>${formatPrice(t.target)}</td>
-            <td>${formatPrice(t.stop)}</td>
-            <td>${t.rr ?? ""}</td>
-          </tr>
-        `).join("");
-      }
-    }
-
-    if (episodes.length === 0) {
-      status.textContent = "Старт: " + startParam + " · пробоев не найдено (уровней проверено: " + (data.levels || []).length + ")";
-    } else {
-      const summary = episodes.map((ep) => `${friendlyStrategy(ep.strategy)}:${ep.state}`).join(", ");
-      status.textContent = `Найдено: ${summary}`;
-    }
-  } catch (e) {
-    console.error("simulate failed", e);
-    status.textContent = "ошибка запроса";
-    if (tradesBody) tradesBody.innerHTML = "<tr><td colspan='8'>ошибка запроса</td></tr>";
-  } finally {
-    runBtn.disabled = false;
-    simRunning = false;
-  }
-}
-
-// === УРОВНИ СИМУЛЯЦИИ — жёлтый (support) / фиолетовый (resistance),
-// отдельным цветом от боевых (зелёный/красный из loadLevels), чтобы не путать
-// "что сейчас реально висит в боте" с "что проверялось в этом прогоне" ===
-function drawSimLevels(levels) {
-  clearSimLevelLines();
-  if (!levels.length || !simStartTime || !globalCandles.length) return;
-
-  const relevant = globalCandles.filter((c) => c.time >= simStartTime);
-  if (relevant.length === 0) return;
-
-  levels.forEach((lvl) => {
-    const midPrice = (lvl.min + lvl.max) / 2;
-    const color = lvl.is_support ? "#f2c14e" : "#b46ee0"; // жёлтый / фиолетовый
-    const series = chart.addLineSeries({
-      color,
-      lineWidth: 2,
-      lineStyle: LightweightCharts.LineStyle.Dashed,
-      crosshairMarkerVisible: false,
-      priceLineVisible: false,
-      lastValueVisible: false,
-      title: `🧪 ${friendlyLevelType(lvl.type)}${lvl.score != null ? ' ' + lvl.score : ''}`,
-      // Тот же фикс, что и везде на боевом графике — за месяц симуляции
-      // зоны BOUNCE могут раскидываться в широком диапазоне цены, без этого
-      // все линии разом тянут автомасштаб на себя, сжимая свечи.
-      autoscaleInfoProvider: () => null,
-    });
-    series.setData(relevant.map((c) => ({ time: c.time, value: midPrice })));
-    simLevelLines.push(series);
-  });
-}
-
-// === ПЛЕЙБЕК: "проигрываем" сканирование свечей от точки старта до сейчас,
-// с бегущим курсором и постепенным появлением маркеров — наглядно видно,
-// что реально идёт скан, а не просто мгновенно нарисовался готовый результат ===
-function playSimulation(episodes) {
-  stopSimPlayback();
-
-  const allMarkers = [];
-  episodes.forEach((ep) => {
-    (ep.events || []).forEach((ev) => {
-      if (!ev.time) return;
-      const style = EVENT_MARKER_STYLE[ev.type] || { color: "#cfd3da", shape: "circle" };
-      allMarkers.push({ time: ev.time, position: "aboveBar", color: style.color, shape: style.shape, text: "" });
-    });
-  });
-  allMarkers.sort((a, b) => a.time - b.time);
-
-  const playCandles = globalCandles.filter((c) => c.time >= simStartTime).sort((a, b) => a.time - b.time);
-  if (playCandles.length === 0) {
-    candleSeries.setMarkers(allMarkers);
-    return;
-  }
-
-  const TOTAL_MS = 3000;
-  const STEP_MS = 20;
-  const steps = Math.max(1, Math.floor(TOTAL_MS / STEP_MS));
-  const candlesPerStep = Math.max(1, Math.ceil(playCandles.length / steps));
-
-  let idx = 0;
-  simPlaybackTimer = setInterval(() => {
-    idx += candlesPerStep;
-    const done = idx >= playCandles.length - 1;
-    if (done) idx = playCandles.length - 1;
-
-    const cursorTime = playCandles[idx].time;
-    const revealed = allMarkers.filter((m) => m.time <= cursorTime);
-    const cursorMarker = { time: cursorTime, position: "inBar", color: "#5aa9e6", shape: "circle", text: "" };
-    candleSeries.setMarkers([...revealed, cursorMarker]);
-
-    if (done) {
-      stopSimPlayback();
-      candleSeries.setMarkers(allMarkers); // финально — без курсора, все маркеры на местах
-    }
-  }, STEP_MS);
 }
 
 function clearLevelLines() {
@@ -613,7 +370,7 @@ function drawSignalTradeLines(signal) {
   clearSignalLines();
   if (!globalCandles.length) return;
   const lineTimes = globalCandles.map((c) => c.time);
-  const addLine = (price, color, label) => {
+  const addLine = (price, color) => {
     if (price === null || price === undefined || Number.isNaN(Number(price))) return;
     const series = chart.addLineSeries({
       color,
@@ -622,18 +379,21 @@ function drawSignalTradeLines(signal) {
       crosshairMarkerVisible: false,
       priceLineVisible: false,
       lastValueVisible: false,
-      title: label,
-      // Stop у этой стратегии может лежать далеко от Entry (десятки
-      // процентов) — без этого такая линия одна тянула автомасштаб на
-      // себя и сжимала все свечи в узкую полоску.
+      // Подпись справа у шкалы убрали совсем — цвет линии расшифровывает
+      // легенда снизу графика (см. ensureOhlcvLegend). Раньше пробовали
+      // включить эти линии в автомасштаб, чтобы подпись вставала точно
+      // напротив линии — оказалось хуже: далёкий Stop растягивал/сжимал
+      // весь график. Возвращено как было — линии не участвуют в
+      // автомасштабе, свечи остаются единственным ориентиром масштаба.
+      title: "",
       autoscaleInfoProvider: () => null,
     });
     series.setData(lineTimes.map((t) => ({ time: t, value: Number(price) })));
     signalLines.push(series);
   };
-  addLine(signal.entry, "#5aa9e6", "🔵 Entry");
-  addLine(signal.target, "#4caf7d", "🟢 Target");
-  addLine(signal.stop, "#e5654f", "🔴 Stop");
+  addLine(signal.entry, "#5aa9e6");
+  addLine(signal.target, "#4caf7d");
+  addLine(signal.stop, "#e5654f");
 }
 
 // === ЧЕЛОВЕЧЕСКИЕ ПОДПИСИ ВМЕСТО "sup1"/"АКТИВНО" ===
@@ -659,7 +419,7 @@ function friendlyLevelType(type) {
 }
 
 // === РИСУЕМ УРОВНИ СТРОГО ОТ ДАТЫ ВОЗНИКНОВЕНИЯ ===
-async function loadLevels(coin) {
+async function loadLevels(coin, token = chartLoadToken) {
   clearLevelLines();
   if (globalCandles.length === 0) return;
 
@@ -675,12 +435,18 @@ async function loadLevels(coin) {
       fetch(`/api/levels/${encodeURIComponent(coin)}`),
       fetch(`/api/events/${encodeURIComponent(coin)}`).catch(() => null),
     ]);
+    // Пока ждали ответ, успел стартовать более новый loadChart (например,
+    // клик по сигналу поверх ещё не доехавшего обычного вида монеты) —
+    // не рисуем то, что уже не актуально поверх того, что актуально.
+    if (token !== chartLoadToken) return;
     if (!levelsRes.ok) return; 
     const data = await levelsRes.json();
+    if (token !== chartLoadToken) return;
 
     let activeLevels = [];
     if (eventsRes && eventsRes.ok) {
       const eventsData = await eventsRes.json();
+      if (token !== chartLoadToken) return;
       activeLevels = Array.isArray(eventsData.active) ? eventsData.active : [];
     }
 
@@ -708,13 +474,13 @@ async function loadLevels(coin) {
       // ОДИН и тот же синий цвет что для LONG, что для SHORT, хотя эмодзи
       // в подписи (🟢/🔴) честно показывал направление — несовпадение.
       const activeColor = isSupport ? "#00c853" : "#ff3d3d";
+      // Название уровня — уникальное для КАЖДОГО конкретного уровня
+      // (тип+скор+стратегия), в отличие от Entry/Target/Stop это нельзя
+      // обобщить в статичную легенду снизу — там всегда разный текст.
+      // Оставляем прямо на линии, как и было.
       const label = friendlyStrategyWithMode(w.strategy, w.mode);
-      // Тип уровня из базы (месячный хай/лоу, недельный, дневной, POC и т.д.) —
-      // то же самое, что уже показывает addLevel() в обычном виде монеты,
-      // просто раньше у вотчера не было доступа к level_type вообще (не
-      // экспортировался в active_watchers.json/watcher_history.json).
       const scoreSuffix = w.level_score != null ? ` ${w.level_score}` : "";
-      const title = `${isSupport ? '🟢' : '🔴'} ${label} · ${friendlyLevelType(w.level_type)}${scoreSuffix}`;
+      const levelTitle = `${isSupport ? '🟢' : '🔴'} ${label} · ${friendlyLevelType(w.level_type)}${scoreSuffix}`;
       // Линия начинается с даты ФОРМИРОВАНИЯ уровня (w.level_date — заморожена
       // на вотчере в момент его рождения, из macro_levels.json), а не с
       // момента начала слежки — уровень обычно появляется раньше, чем цена
@@ -739,11 +505,11 @@ async function loadLevels(coin) {
           crosshairMarkerVisible: false,
           priceLineVisible: false,
           lastValueVisible: false,
-          title: idx === 0 ? title : "",
-          // Линии уровня/зоны не должны участвовать в автомасштабе цены —
-          // иначе далёкая линия (старый уровень, давно оставленный ценой)
-          // сжимает все свечи в узкую полоску. Свечи — единственный
-          // ориентир масштаба, линии просто рисуются там, где положено.
+          // Название уровня — на линии (levelTitle выше), это единственное
+          // разумное место для уникального текста. Entry/Target/Stop убрали
+          // в легенду, а это — нет, там всегда разный текст на разных
+          // уровнях, обобщить некуда.
+          title: idx === 0 ? levelTitle : "",
           autoscaleInfoProvider: () => null,
         });
         series.setData(lineTimes.map(t => ({ time: t, value: priceValue })));
@@ -869,7 +635,8 @@ const EVENT_MARKER_STYLE = {
   TRACK_START: { color: "#8a8f98", shape: "circle" },   
   NEW_PEAK:    { color: "#f2c14e", shape: "circle" },   
   GOOD_RED:    { color: "#f2c14e", shape: "circle" },   
-  ENTRY:       { color: "#4caf7d", shape: "arrowUp" },  
+  // ENTRY стиль задаётся отдельно (зависит от LONG/SHORT) — см. место
+  // применения ниже (loadEvents), тут не нужен.
   CANCEL:      { color: "#5c6370", shape: "square" },   
   DEAD:        { color: "#e5654f", shape: "square" },   
   // BOUNCE — упрощённая палитра: синий = всё "до старта скана" (касание +
@@ -886,11 +653,13 @@ const EVENT_MARKER_STYLE = {
   ZONE_TOUCH:         { color: "#5aa9e6", shape: "circle" },
 };
 
-async function loadEvents(coin) {
+async function loadEvents(coin, token = chartLoadToken) {
   try {
     const res = await fetch(`/api/events/${encodeURIComponent(coin)}`);
+    if (token !== chartLoadToken) return; // устарело — более новый loadChart уже победил
     if (!res.ok) { candleSeries.setMarkers([]); return; }
     const data = await res.json();
+    if (token !== chartLoadToken) return;
 
     // "В работе" = только активные вотчеры (data.active), НИКОГДА история
     // (data.history) — история это отдельная, ещё не сделанная фича
@@ -927,15 +696,17 @@ async function loadEvents(coin) {
 
     sourceWatchers.forEach((w) => {
       if (!matchesFocus(w)) return;
+      const isShort = w.direction === "SHORT";
+      const entryStyle = isShort ? { color: "#e5654f", shape: "arrowDown" } : { color: "#4caf7d", shape: "arrowUp" };
       (w.events || []).forEach((ev) => {
         if (!ev.time || !inRange(ev.time)) return;
         const key = `${ev.time}_${ev.type}`;
         if (seen.has(key)) return;
         seen.add(key);
-        const style = EVENT_MARKER_STYLE[ev.type] || { color: "#cfd3da", shape: "circle" };
+        const style = ev.type === "ENTRY" ? entryStyle : (EVENT_MARKER_STYLE[ev.type] || { color: "#cfd3da", shape: "circle" });
         markers.push({
           time: ev.time,
-          position: "aboveBar",
+          position: ev.type === "ENTRY" && isShort ? "belowBar" : "aboveBar",
           color: style.color,
           shape: style.shape,
           text: "",
@@ -975,11 +746,23 @@ async function loadMacroEma200(coin) {
   }
 }
 
+// Токен текущего "актуального" вызова loadChart — растёт на каждый вызов.
+// loadEvents/loadLevels — асинхронные, не await'ятся из loadChart, и могут
+// завершиться в ЛЮБОМ порядке (например, старый вызов для обычного вида
+// монеты доедет ПОСЛЕ нового вызова с фокусом на сигнал — Network в
+// DevTools как раз показывал несколько параллельных /api/events/{coin} с
+// разных функций). Без этой защиты поздний, но более старый по смыслу
+// результат может переписать поверх уже правильно отрисованный —
+// возможная причина "точки то есть, то нет" на сигналах.
+let chartLoadToken = 0;
+
 async function loadChart(coin, focus = null, signal = null, opts = {}) {
   const skipLiveOverlay = !!opts.skipLiveOverlay;
   // --- ЗАЩИТА ОТ 404 ОШИБКИ И ПУСТЫХ КЛИКОВ ---
   if (!coin || coin === "null" || coin === "undefined") return;
   // ---------------------------------------------
+
+  const myToken = ++chartLoadToken;
 
   // focus задаётся только при клике по конкретному активному вотчеру
   // (см. loadActiveWatchers) — обычный выбор монеты сбрасывает фокус,
@@ -992,13 +775,8 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
   currentSymbolEl.textContent = "загрузка графика...";
   highlightSelection();
 
-  // При смене монеты старая точка старта симуляции теряет смысл
-  simStartTime = null;
-  stopSimPlayback();
-  clearSimLevelLines();
-  updateSimUI();
   clearSignalLines();
-  clearLevelLines(); // на случай, если тут раньше были боевые уровни — не оставляем их висеть под симуляцией
+  clearLevelLines();
 
   // Раньше сигнал открывался в узком окне (96 свечей вокруг входа) — из-за
   // этого график выглядел обрубком. Теперь то же самое окно, что и везде
@@ -1060,8 +838,8 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
       // с результатом (та самая "куча всего" и "точки на секунду мелькают,
       // потом исчезают"), потому что loadChart вызывался одинаково и с
       // главной страницы, и с симулятора.
-      loadLevels(coin);
-      loadEvents(coin);
+      loadLevels(coin, myToken);
+      loadEvents(coin, myToken);
       loadMacroEma200(coin); // не await — медленный индикатор, не должен тормозить остальной график
     }
     if (signal) drawSignalTradeLines(signal);
@@ -1127,36 +905,6 @@ async function loadWatchlist() {
   watchlistListEl.querySelectorAll(".list-item").forEach((div) => {
     div.onclick = () => loadChart(div.dataset.coin);
   });
-}
-
-// === ПАНЕЛЬ "СИМУЛЯЦИЯ" ===
-// Пока просто список монет (те же, что прошли фильтр по обороту в
-// macro_levels.json) + клик открывает график. Без расчётов — это делаем
-// следующим шагом.
-async function loadSimCoins() {
-  if (!simListEl) return;
-  try {
-    const res = await fetch("/api/macro/coins");
-    const data = await res.json();
-    const coins = data.coins || [];
-    simCountEl.textContent = coins.length;
-
-    if (coins.length === 0) {
-      simListEl.innerHTML = "<div class='muted'>нет монет с уровнями</div>";
-      return;
-    }
-
-    simListEl.innerHTML = coins
-      .map((coin) => `<div class="list-item" data-coin="${coin}"><span>${coin}</span></div>`)
-      .join("");
-
-    simListEl.querySelectorAll(".list-item").forEach((div) => {
-      div.onclick = () => loadChart(div.dataset.coin, null, null, { skipLiveOverlay: true });
-    });
-  } catch (e) {
-    console.error("sim coins load failed", e);
-    simListEl.innerHTML = "<div class='muted'>ошибка загрузки</div>";
-  }
 }
 
 // Статус рескана по монетам ({status: running|done, ...}) — опрашивается
@@ -1241,12 +989,19 @@ async function buildFocusFromLevelId(coin, levelId) {
     const res = await fetch(`/api/events/${encodeURIComponent(coin)}`);
     if (!res.ok) return null;
     const data = await res.json();
-    let w = (data.active || []).find((x) => x.level_id === levelId);
+    // Сигнал — это ВСЕГДА прошедшее, уже случившееся событие. Ищем сначала
+    // в истории (там лежит ЗАПИСЬ ИМЕННО ЭТОЙ сработавшей сделки, с полным
+    // event_log включая ENTRY). Раньше сначала проверяли "active" — если
+    // та же зона (тот же level_id) успела переродиться в новый, свежий
+    // вотчер (SCANNING, events: []) — совпадение находилось ТАМ и поиск
+    // останавливался, даже не заглянув в history: сигнал открывался с
+    // пустыми events нового вотчера вместо истории старого, сработавшего.
+    // История хранит ключ "{coin}_BOUNCE_{level_id}" (см. bc_removed_watchers
+    // в background_tasks.py), самого level_id отдельным полем там нет.
+    const histKey = `${coin}_BOUNCE_${levelId}`;
+    let w = (data.history || []).find((x) => x.key === histKey);
     if (!w) {
-      // История хранит ключ "{coin}_BOUNCE_{level_id}" (см. bc_removed_watchers
-      // в background_tasks.py), самого level_id отдельным полем там нет.
-      const histKey = `${coin}_BOUNCE_${levelId}`;
-      w = (data.history || []).find((x) => x.key === histKey);
+      w = (data.active || []).find((x) => x.level_id === levelId);
     }
     if (!w) return null;
     return {
@@ -1284,7 +1039,7 @@ async function loadSignals() {
   const data = await res.json();
 
   if (data.length === 0) {
-    signalsBody.innerHTML = "<tr><td colspan='9'>нет сигналов</td></tr>";
+    signalsBody.innerHTML = "<tr><td colspan='11'>нет сигналов</td></tr>";
     return;
   }
 
@@ -1293,6 +1048,20 @@ async function loadSignals() {
     const tr = document.createElement("tr");
     const pct = s.result_percent;
     const pctText = pct === null || pct === undefined ? "" : `${pct > 0 ? "+" : ""}${pct}%`;
+    // "Время в сделке" — открытая (⏳) считается до "сейчас" (живой счётчик,
+    // обновляется каждую минуту вместе с остальным refreshAll()). Закрытая
+    // (✅/❌) — до closed_at, если он есть (см. history.py::check_and_update).
+    // У сигналов, закрытых ДО этого фикса, closed_at нет — честно "—",
+    // а не придуманное число.
+    const durationText = s.status === "⏳"
+      ? formatDuration(s.time, new Date())
+      : (s.closed_at ? formatDuration(s.time, new Date(s.closed_at)) : "—");
+    // "Метод" — чем нашёлся вход. Пока единственный метод — объём (см.
+    // watcher_plan.py::check_bounce, method/method_value/method_mult) —
+    // на будущее появятся другие методы, тут просто добавится ветка.
+    const methodText = s.method === "volume" && s.method_value != null
+      ? formatVolume(s.method_value) + (s.method_mult != null ? " / x" + s.method_mult.toFixed(1) : "")
+      : "—";
     tr.innerHTML = `
       <td>${s.date ?? ""}</td>
       <td>${s.coin ?? ""}</td>
@@ -1303,6 +1072,8 @@ async function loadSignals() {
       <td>${formatPrice(s.stop)}</td>
       <td>${s.status ?? ""}</td>
       <td style="color:${pct > 0 ? '#4caf7d' : pct < 0 ? '#e5654f' : 'inherit'}">${pctText}</td>
+      <td>${durationText}</td>
+      <td>${methodText}</td>
     `;
     // Кликабельны только сигналы с unix-временем входа (сохранены после
     // этого фикса, пока только BOUNCE — см. watcher_plan.py::check_bounce).
@@ -1332,72 +1103,12 @@ async function loadGlobalHistory() {
 }
 
 async function refreshAll() {
-  await Promise.all([loadWatchlist(), loadActiveWatchers(), loadSignals(), loadGlobalHistory(), loadSimCoins()]);
-}
-
-// Восстанавливает последний результат BOUNCE-симуляции после F5 — только
-// на странице симулятора (sim-trades-body есть только там). Результат
-// хранится на сервере (см. bounce_simulate.py::LAST_RUN_FILE), переживает
-// перезагрузку страницы.
-async function restoreLastBounceSimIfAny() {
-  const tradesBody = document.getElementById("sim-trades-body");
-  if (!tradesBody) return; // не страница симулятора
-  try {
-    const res = await fetch("/api/simulate_bounce/last");
-    const data = await res.json();
-    if (!data || !data.coin) return; // ещё ни разу не запускали
-
-    await new Promise((resolve) => {
-      const check = () => (chart && candleSeries ? resolve() : setTimeout(check, 50));
-      check();
-    });
-
-    await loadChart(data.coin, null, null, { skipLiveOverlay: true });
-    simMode = true;
-    updateSimUI();
-
-    const startSec = data.start_time
-      ? Math.floor(new Date(data.start_time.replace(" ", "T") + "Z").getTime() / 1000)
-      : null;
-    const endSec = data.end_time
-      ? Math.floor(new Date(data.end_time.replace(" ", "T") + "Z").getTime() / 1000)
-      : Math.floor(Date.now() / 1000);
-    if (startSec) {
-      simStartTime = startSec;
-      await loadCandlesAroundRange(data.coin, startSec, endSec);
-    }
-
-    drawSimLevels(data.levels || []);
-    const episodes = (data.history || []).filter((ep) => ep.state === "TRIGGERED");
-    playSimulation(episodes);
-
-    const trades = data.trades || [];
-    tradesBody.innerHTML = trades.length
-      ? trades.map((t) => `
-          <tr>
-            <td>${t.date ?? ""}</td>
-            <td>${t.coin ?? ""}</td>
-            <td class="dir-${t.type}">${t.type ?? ""}</td>
-            <td>${t.source ?? ""}</td>
-            <td>${formatPrice(t.entry)}</td>
-            <td>${formatPrice(t.target)}</td>
-            <td>${formatPrice(t.stop)}</td>
-            <td>${t.rr ?? ""}</td>
-          </tr>
-        `).join("")
-      : "<tr><td colspan='8'>сделок не найдено</td></tr>";
-
-    const status = document.getElementById("sim-status");
-    if (status) status.textContent = `Восстановлено: старт ${data.start_time ?? ""}`;
-  } catch (e) {
-    console.error("restoreLastBounceSimIfAny failed", e);
-  }
+  await Promise.all([loadWatchlist(), loadActiveWatchers(), loadSignals(), loadGlobalHistory()]);
 }
 
 initChart();
 refreshAll();
 loadRescanStatus();
-restoreLastBounceSimIfAny();
 
 // === АВТООБНОВЛЕНИЕ РАЗ В МИНУТУ ===
 setInterval(async () => {
@@ -1599,19 +1310,15 @@ const STRATEGY_TOGGLE_LABELS = {
 };
 
 function buildStrategiesPanel() {
-  // Вставляем СРАЗУ ПОСЛЕ кнопки "sim-mode-btn" (переключатель режима
-  // симуляции), если она есть на этой странице (страница симулятора) —
-  // тот же тулбар, что таймфреймы (.tf-btn). На главной странице (после
-  // выноса симулятора отдельно) sim-mode-btn больше нет вообще — тогда
-  // цепляемся за последнюю кнопку таймфрейма (.tf-switch), тот же принцип:
-  // обычный сосед в существующем ряду, не fixed-позиционирование поверх
-  // графика (пробовал раньше — либо перекрывало таймфреймы, либо блок
-  // симуляции).
-  const anchor = document.getElementById("sim-mode-btn")
-    || document.querySelector(".tf-switch .tf-btn:last-child")
+  // Вставляем СРАЗУ ПОСЛЕ последней кнопки таймфрейма (.tf-switch) — тот
+  // же тулбар. Раньше тут ещё был fallback на "sim-mode-btn" (кнопка
+  // режима симуляции на главной странице) — с тех пор как симулятор стал
+  // отдельной страницей на своём sim.js, кнопки sim-mode-btn на дашборде
+  // больше нет вообще, оставлен только актуальный якорь.
+  const anchor = document.querySelector(".tf-switch .tf-btn:last-child")
     || document.querySelector(".tf-switch");
   if (!anchor) {
-    console.warn("[strategies-panel] не нашлось ни sim-mode-btn, ни .tf-switch — панель стратегий не вставлена");
+    console.warn("[strategies-panel] не нашлось .tf-switch — панель стратегий не вставлена");
     return;
   }
 

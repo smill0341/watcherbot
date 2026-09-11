@@ -32,7 +32,7 @@ class BounceWatcher:
     _MAX_LOG_LINES = 5000     # потолок на файл — при частых рестартах не даём ему расти бесконечно
 
     CONFIG = {
-        'IGNORE_POC_LEVELS': True,  # True = полностью игнорировать POC-уровни
+        'IGNORE_POC_LEVELS': False,  # True = полностью игнорировать POC-уровни
         'MIN_SCORE': 1.0,          
         'VOL_SPIKE_MULT': 3.0,     
         'MIN_VOL_MULT_TO_LOG': 1.5,   # Фильтр мусора: не рисовать SCAN и не писать лог, если объем ниже х1.5
@@ -756,4 +756,9 @@ class BounceWatcher:
             "candles_in_sweep": 0,
             "pierced_bottom": getattr(self, 'pierced_bottom', False),
             "reborn": getattr(self, 'reborn', False),
+            # Отдельными полями — раньше были зашиты только текстом внутри
+            # reason ("V:5.6M (x10.5)"), парсить строку регуляркой ради
+            # отчёта симулятора не нужно, когда можно отдать сразу.
+            "volume": c_vol,
+            "volume_mult": vol_mult,
         }

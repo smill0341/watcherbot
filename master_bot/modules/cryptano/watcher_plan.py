@@ -654,6 +654,14 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr):
                     # по сигналу (переход на график в этот момент + отрисовка зоны).
                     "time": int(ts.timestamp()),
                     "level_id": level_id_val or None,
+                    # Столбец "Метод" на дашборде — пока единственный метод
+                    # реакции на уровень это объём (см. bounce_watcher.py::_enter,
+                    # поля volume/volume_mult). На будущее заложено как
+                    # method/method_value/method_mult — появятся другие методы,
+                    # просто передавай их сюда тем же способом.
+                    "method": "volume" if d.get("volume") is not None else None,
+                    "method_value": d.get("volume"),
+                    "method_mult": d.get("volume_mult"),
                 })
 
                 reports.append(

@@ -445,7 +445,14 @@ class BounceManager:
 
         if allow_short:
             touched_short = [r for r in current_resistances if c_high >= r['min']]
-            for mode in SHORT_MODES:
+            # SHORT_CLIMAX_MODE (см. BounceWatcher.CONFIG) — ЕДИНЫЙ переключатель:
+            # False -> CLIMAX-вотчер вообще не создаётся и не ищет вход, работает
+            # только MIRROR. True -> оба, как раньше. Раньше это значение читалось
+            # только ПОСЛЕ создания вотчера (как override конкретному инстансу) —
+            # сам список режимов для поиска был жёстко ('CLIMAX', 'MIRROR')
+            # всегда, поэтому выключение в конфиге ничего не отключало.
+            active_short_modes = SHORT_MODES if BounceWatcher.CONFIG.get('SHORT_CLIMAX_MODE') else ('MIRROR',)
+            for mode in active_short_modes:
                 focus_short_id = self._get_focus_level_id('SHORT', mode=mode, coin=coin)
                 for level_id, lvl, decision in self.evaluate_bounce_side(
                         'SHORT', touched_short,

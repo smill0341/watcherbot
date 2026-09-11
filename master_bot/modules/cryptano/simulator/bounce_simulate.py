@@ -35,6 +35,26 @@ WINDOW = 60  # то же окно, что и в боевом реплее (watch
              # читает максимум последние ~52 строки, окно с запасом, не вся история разом.
 
 
+def _reset_sim_log(coin):
+    """Чистит лог этой монеты в SIM_LOG_DIR перед КАЖДЫМ новым прогоном
+    симуляции — не ждём рестарта процесса. BounceWatcher._dbg() сам
+    ротирует/обрезает лог, но только один раз за жизнь процесса (по
+    (log_dir, coin) в BounceWatcher._initialized_log_coins) — сервер
+    симулятора не перезапускается между прогонами, поэтому без этой
+    функции каждый новый "Старт" молча дописывался бы в тот же файл
+    поверх предыдущего прогона. Специфично для симулятора: боевой лог
+    (bounce_logs/) эта функция не трогает и трогать не должна — там
+    история между рестартами бота нужна.
+    """
+    log_path = os.path.join(SIM_LOG_DIR, f"{coin}.log")
+    try:
+        os.makedirs(SIM_LOG_DIR, exist_ok=True)
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(f"=== Новый прогон симуляции {coin} — {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC ===\n")
+    except Exception as e:
+        print(f"⚠️ [BOUNCE SIM] Не удалось очистить лог {coin}: {e}")
+
+
 def _candles_df(symbol):
     """Вся доступная 15m-история из candle_store (та же база, что у дашборда
     и боевого watcher_plan.py) — никакого похода на биржу за свечами."""
@@ -102,6 +122,7 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None):
     # bounce_mgr (модуль modules.cryptano.live_scan), ничего не пишет в
     # боевые jsonbank/*.json. Своя папка логов, не bounce_logs/.
     os.makedirs(SIM_LOG_DIR, exist_ok=True)
+    _reset_sim_log(coin)  # новый прогон — старый лог этой монеты не тащим
     bounce_mgr = BounceManager(BounceParent(), log_dir_override=SIM_LOG_DIR)
 
     messages = []
@@ -153,6 +174,10 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None):
                 "stop": sl,
                 "rr": round(rr, 2),
                 "level_id": level_id_val or None,
+                "level_min": order.get("level", {}).get("min"),
+                "level_max": order.get("level", {}).get("max"),
+                "volume": d.get("volume", float(row["volume"])),
+                "volume_mult": d.get("volume_mult"),
                 "reason": d.get("reason", ""),
             })
 
@@ -185,7 +210,7 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None):
     result = {
         "coin": coin,
         "start_time": start_time_str,
-        "end_time": end_time_str or str(df_full.index[-1]),
+        "end_time": end_time_str or df_full.index[-1].strftime("%Y-%m-%d %H:%M:%S"),
         "active": active,
         "history": history,
         "levels": levels_out,

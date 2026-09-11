@@ -804,7 +804,151 @@
         "level_date": "2026-09-10",
         "level_type": "4h_poc_standalone",
         "level_score": 3.0,
-        "events": [],
-        "died_at": "2026-09-11T12:16:03.428889"
+        "events": [
+            {
+                "time": 1789128000,
+                "type": "CLIMAX_NEAR_BREACH",
+                "price": 1.5252
+            }
+        ],
+        "died_at": "2026-09-11T15:01:03.643678"
+    },
+    "ETC_BOUNCE_BC_LONG_7.575607142857143_7.903392857142856": {
+        "coin": "ETC",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 7.575607142857143,
+        "level_max": 7.903392857142856,
+        "level_date": "2026-09-09",
+        "level_type": "4h_poc_standalone",
+        "level_score": 3.0,
+        "events": [
+            {
+                "time": 1788577200,
+                "type": "SWEEP_BOTTOM",
+                "price": 7.563
+            },
+            {
+                "time": 1788587100,
+                "type": "ENTRY",
+                "price": 7.577
+            }
+        ],
+        "died_at": "2026-09-11T17:27:04.564499"
+    },
+    "ETC_BOUNCE_BC_SHORT_7.779525_8.178474999999999__MIRROR": {
+        "coin": "ETC",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 7.779525,
+        "level_max": 8.178474999999999,
+        "level_date": "2026-08-30",
+        "level_type": "1W_high_PWH",
+        "level_score": 6.0,
+        "events": [
+            {
+                "time": 1788727500,
+                "type": "ZONE_TOUCH",
+                "price": 7.782
+            },
+            {
+                "time": 1788785100,
+                "type": "SWEEP_BOTTOM",
+                "price": 8.07
+            },
+            {
+                "time": 1788786000,
+                "type": "SCAN",
+                "price": 7.975
+            },
+            {
+                "time": 1788789600,
+                "type": "SCAN",
+                "price": 7.906
+            },
+            {
+                "time": 1788793200,
+                "type": "SCAN",
+                "price": 7.883
+            },
+            {
+                "time": 1788834600,
+                "type": "SCAN",
+                "price": 8.125
+            },
+            {
+                "time": 1788846300,
+                "type": "SCAN",
+                "price": 8.019
+            },
+            {
+                "time": 1788991200,
+                "type": "SCAN",
+                "price": 7.954
+            },
+            {
+                "time": 1789002900,
+                "type": "SCAN",
+                "price": 7.938
+            },
+            {
+                "time": 1789025400,
+                "type": "ENTRY",
+                "price": 7.835
+            }
+        ],
+        "died_at": "2026-09-11T17:27:04.564499"
+    },
+    "NEAR_BOUNCE_BC_SHORT_2.43555_2.5604500000000003__MIRROR": {
+        "coin": "NEAR",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 2.43555,
+        "level_max": 2.5604500000000003,
+        "level_date": "2026-08-30",
+        "level_type": "1W_high_PWH",
+        "level_score": 5.5,
+        "events": [
+            {
+                "time": 1788711300,
+                "type": "ZONE_TOUCH",
+                "price": 2.445
+            },
+            {
+                "time": 1788732000,
+                "type": "SWEEP_BOTTOM",
+                "price": 2.498
+            },
+            {
+                "time": 1788766200,
+                "type": "RUNAWAY",
+                "price": 2.313
+            },
+            {
+                "time": 1788948900,
+                "type": "SWEEP_BOTTOM",
+                "price": 2.538
+            },
+            {
+                "time": 1788966900,
+                "type": "SCAN",
+                "price": 2.554
+            },
+            {
+                "time": 1788976800,
+                "type": "ENTRY",
+                "price": 2.592
+            }
+        ],
+        "died_at": "2026-09-11T18:50:15.776504"
     }
 }

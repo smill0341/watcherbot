@@ -278,3 +278,14 @@ th {
   font-size: 11px;
   text-transform: uppercase;
 }
+
+#sim-trades-body tr {
+  cursor: pointer;
+}
+#sim-trades-body tr:hover {
+  background: #1b1d24;
+}
+#sim-trades-body tr.selected {
+  background: #1f2e22;
+  outline: 1px solid #3a5c3f;
+}
