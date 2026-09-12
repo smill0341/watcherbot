@@ -30,16 +30,26 @@ DB_PATH = os.path.normpath(os.path.join(
 ))
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
-BACKFILL_DAYS = 60           # ~2 месяца — примерно как глубина в симуляторе
-RETENTION_DAYS = 90          # чистка старше этого
-EXCHANGE_MAX_LIMIT = 999     # Bybit отдаёт максимум ~999 свечей за один запрос
-REQUEST_DELAY_SEC = 0.3      # пауза между запросами к бирже (норма как в остальном боте)
+BACKFILL_DAYS = 60           # Базовое значение (чтобы не сломать принты в app.py)
+BACKFILL_DAYS_MAP = {        # Динамическая глубина скачивания для каждого таймфрейма
+    "15m": 60,
+    "1h": 180,
+    "4h": 180,
+    "1d": 365,
+    "1w": 730,               # 2 года
+    "1M": 1095               # 3 года
+}
+RETENTION_DAYS = 1200        # Чистка старше самой глубокой истории
+EXCHANGE_MAX_LIMIT = 999     
+REQUEST_DELAY_SEC = 0.3      
 
 TIMEFRAME_MS = {
     "15m": 15 * 60 * 1000,
     "1h": 60 * 60 * 1000,
     "4h": 4 * 60 * 60 * 1000,
     "1d": 24 * 60 * 60 * 1000,
+    "1w": 7 * 24 * 60 * 60 * 1000,
+    "1M": 30 * 24 * 60 * 60 * 1000,
 }
 
 _lock = threading.RLock()
@@ -104,12 +114,13 @@ def _insert_candles(symbol, timeframe, rows):
             conn.close()
 
 
-def backfill_symbol(exchange, symbol, timeframe, days=BACKFILL_DAYS):
+def backfill_symbol(exchange, symbol, timeframe, days=None):
     """
-    Полная докачка истории на `days` назад, пачками по EXCHANGE_MAX_LIMIT.
-    Синхронная и потенциально не быстрая (несколько секунд на монету) —
-    вызывать либо из фонового потока, либо один раз лениво по запросу.
+    Полная докачка истории назад, пачками по EXCHANGE_MAX_LIMIT.
     """
+    if days is None:
+        days = BACKFILL_DAYS_MAP.get(timeframe, BACKFILL_DAYS)
+        
     since_ms = int((time.time() - days * 86400) * 1000)
     tf_ms = TIMEFRAME_MS.get(timeframe, 15 * 60 * 1000)
 
@@ -131,18 +142,35 @@ def backfill_symbol(exchange, symbol, timeframe, days=BACKFILL_DAYS):
 
 
 def top_up_tail(exchange, symbol, timeframe):
-    """Докачивает только то, что новее последней сохранённой свечи (1 запрос)."""
+    """Докачивает всё, что новее последней сохранённой свечи, циклом до текущего момента."""
     last_ts = _last_timestamp(symbol, timeframe)
     if last_ts is None:
         backfill_symbol(exchange, symbol, timeframe)
         return
+        
     since_ms = last_ts * 1000
-    try:
-        batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since_ms, limit=EXCHANGE_MAX_LIMIT)
-    except Exception as e:
-        print(f"⚠️ [candle_store] top_up {symbol} {timeframe}: {e}")
-        return
-    _insert_candles(symbol, timeframe, batch)
+    tf_ms = TIMEFRAME_MS.get(timeframe, 15 * 60 * 1000)
+
+    while True:
+        try:
+            batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since_ms, limit=EXCHANGE_MAX_LIMIT)
+        except Exception as e:
+            print(f"⚠️ [candle_store] top_up {symbol} {timeframe}: {e}")
+            break
+            
+        if not batch:
+            break
+            
+        _insert_candles(symbol, timeframe, batch)
+        last_fetched_ts = batch[-1][0]
+        
+        # Если скачали меньше максимума или упёрлись в текущее время — всё докачано
+        if len(batch) < EXCHANGE_MAX_LIMIT or last_fetched_ts + tf_ms > time.time() * 1000:
+            break
+            
+        since_ms = last_fetched_ts + tf_ms
+        import time
+        time.sleep(REQUEST_DELAY_SEC)
 
 
 def get_candles(symbol, timeframe, limit=None, around=None):

@@ -358,5 +358,25 @@
         "timestamp": "2026-09-11T18:50:15.745781",
         "chat_id": "web-dashboard",
         "text": "🔴 *BOUNCE SHORT* _NEAR_\n\nEntry: `2.59200000`\nSL: `3.88800000`\nTP: `2.41056000`\nR/R: `0.14`\n\nBOUNCE (пробой #2, сделка 1/1) | V:631.9k (x3.9)\nLevel: `BC_SHORT_2.43555_2.5604500000000003__MIRROR`"
+    },
+    {
+        "timestamp": "2026-09-12T05:39:22.404974",
+        "chat_id": "web-dashboard",
+        "text": "🔴 *BOUNCE SHORT* _AAPL_\n\nEntry: `332.72000000`\nSL: `499.08000000`\nTP: `309.42960000`\nR/R: `0.14`\n\nBOUNCE (пробой #1, сделка 1/1) | V:48.1k (x17.3)\nLevel: `BC_SHORT_328.00607142857143_333.87392857142856__MIRROR`"
+    },
+    {
+        "timestamp": "2026-09-12T05:40:31.255978",
+        "chat_id": "web-dashboard",
+        "text": "🔴 *BOUNCE SHORT* _LSK_\n\nEntry: `0.15610000`\nSL: `0.23415000`\nTP: `0.14517300`\nR/R: `0.14`\n\nBOUNCE (пробой #1, сделка 1/1) | V:5.6M (x3.9)\nLevel: `BC_SHORT_0.14023821428571429_0.14568535714285716__MIRROR`"
+    },
+    {
+        "timestamp": "2026-09-12T11:18:22.122905",
+        "chat_id": "web-dashboard",
+        "text": "🔴 *BOUNCE SHORT* _NVDA_\n\nEntry: `220.26000000`\nSL: `330.39000000`\nTP: `204.84180000`\nR/R: `0.14`\n\nBOUNCE (пробой #1, сделка 1/1) | V:10.9k (x7.2)\nLevel: `BC_SHORT_217.95371428571428_219.62728571428573__MIRROR`"
+    },
+    {
+        "timestamp": "2026-09-12T11:18:22.136292",
+        "chat_id": "web-dashboard",
+        "text": "🟢 *BOUNCE LONG* _NVDA_\n\nEntry: `221.73000000`\nSL: `110.86500000`\nTP: `237.25110000`\nR/R: `0.14`\n\nBOUNCE (пробой #1, сделка 1/1) | V:5.6k (x3.6)\nLevel: `BC_LONG_217.93978571428573_219.64121428571428`"
     }
 ]

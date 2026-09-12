@@ -950,5 +950,164 @@
             }
         ],
         "died_at": "2026-09-11T18:50:15.776504"
+    },
+    "AAPL_BOUNCE_BC_SHORT_328.00607142857143_333.87392857142856__MIRROR": {
+        "coin": "AAPL",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 328.00607142857143,
+        "level_max": 333.87392857142856,
+        "level_date": "2026-08-30",
+        "level_type": "1W_high_PWH + 1d_extreme_peak+4h_poc",
+        "level_score": 8.5,
+        "events": [
+            {
+                "time": 1789136100,
+                "type": "SWEEP_BOTTOM",
+                "price": 332.29
+            },
+            {
+                "time": 1789178400,
+                "type": "ENTRY",
+                "price": 332.72
+            }
+        ],
+        "died_at": "2026-09-12T05:37:40.110943"
+    },
+    "LSK_BOUNCE_BC_SHORT_0.14023821428571429_0.14568535714285716__MIRROR": {
+        "coin": "LSK",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.14023821428571429,
+        "level_max": 0.14568535714285716,
+        "level_date": "2026-05-10",
+        "level_type": "1d_extreme_peak",
+        "level_score": 5.0,
+        "events": [
+            {
+                "time": 1789172100,
+                "type": "ZONE_TOUCH",
+                "price": 0.14224
+            },
+            {
+                "time": 1789173000,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.14604
+            },
+            {
+                "time": 1789173900,
+                "type": "ENTRY",
+                "price": 0.1561
+            }
+        ],
+        "died_at": "2026-09-12T05:37:40.110943"
+    },
+    "NVDA_BOUNCE_BC_LONG_217.93978571428573_219.64121428571428": {
+        "coin": "NVDA",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 217.93978571428573,
+        "level_max": 219.64121428571428,
+        "level_date": "2026-09-11",
+        "level_type": "4h_poc_standalone",
+        "level_score": 3.0,
+        "events": [
+            {
+                "time": 1789047000,
+                "type": "ZONE_TOUCH",
+                "price": 218.51
+            },
+            {
+                "time": 1789047900,
+                "type": "SWEEP_BOTTOM",
+                "price": 217.36
+            },
+            {
+                "time": 1789113600,
+                "type": "SCAN",
+                "price": 219.82
+            },
+            {
+                "time": 1789114500,
+                "type": "SCAN",
+                "price": 220.29
+            },
+            {
+                "time": 1789128900,
+                "type": "SCAN",
+                "price": 219.97
+            },
+            {
+                "time": 1789129800,
+                "type": "SCAN",
+                "price": 220.09
+            },
+            {
+                "time": 1789130700,
+                "type": "SCAN",
+                "price": 221.59
+            },
+            {
+                "time": 1789132500,
+                "type": "SCAN",
+                "price": 221.45
+            },
+            {
+                "time": 1789134300,
+                "type": "ENTRY",
+                "price": 221.73
+            }
+        ],
+        "died_at": "2026-09-12T11:18:22.147209"
+    },
+    "NVDA_BOUNCE_BC_SHORT_217.95371428571428_219.62728571428573__MIRROR": {
+        "coin": "NVDA",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 217.95371428571428,
+        "level_max": 219.62728571428573,
+        "level_date": "2026-09-12",
+        "level_type": "4h_poc_standalone",
+        "level_score": 3.0,
+        "events": [
+            {
+                "time": 1789047900,
+                "type": "ZONE_TOUCH",
+                "price": 219.04
+            },
+            {
+                "time": 1789074000,
+                "type": "SWEEP_BOTTOM",
+                "price": 220.09
+            },
+            {
+                "time": 1789128000,
+                "type": "SCAN",
+                "price": 219.42
+            },
+            {
+                "time": 1789131600,
+                "type": "SCAN",
+                "price": 221.21
+            },
+            {
+                "time": 1789133400,
+                "type": "ENTRY",
+                "price": 220.26
+            }
+        ],
+        "died_at": "2026-09-12T11:18:22.147209"
     }
 }

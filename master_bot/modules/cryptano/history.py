@@ -402,13 +402,16 @@ def update_open_signals():
 
         entry = float(entry)
         target = record.get("target")
+        stop = record.get("stop")
 
         if direction == "LONG":
             pct = (last_price - entry) / entry * 100.0
             hit_tp = target is not None and last_price >= float(target)
+            hit_sl = stop is not None and last_price <= float(stop)
         else:
             pct = (entry - last_price) / entry * 100.0
             hit_tp = target is not None and last_price <= float(target)
+            hit_sl = stop is not None and last_price >= float(stop)
 
         # Сколько дней сделка уже открыта — по unix-времени входа, если оно
         # есть (новые сигналы, см. watcher_plan.py::check_bounce), иначе по
@@ -427,8 +430,15 @@ def update_open_signals():
         record["result_percent"] = round(pct, 2)
         if hit_tp:
             record["status"] = "✅"
+        elif hit_sl:
+            record["status"] = "❌"
         elif time_expired:
             record["status"] = "✅" if pct > 0 else "❌"
+            
+        # Фиксируем время закрытия для сайта, если статус изменился
+        if record.get("status") in ("✅", "❌"):
+            record["closed_at"] = now.isoformat()
+            
         changed = True
 
     if changed:
