@@ -11,26 +11,13 @@ let candleSeries = null;
 let volumeSeries = null;
 let ema20Series = null;
 let ema50Series = null;
-let emaMacroSeries = null; // EMA200 на 4H (span 3200) — макро-тренд поверх текущего таймфрейма
+let emaMacroSeries = null; 
 let rsiSeries = null; 
 let levelLines = []; 
 let selectedCoin = null;
-// Если задан — loadLevels() рисует ТОЛЬКО этот один уровень (одна стратегия,
-// один график, без общей свалки всех активных уровней монеты). Ставится при
-// клике по строке в списке "активных" (loadActiveWatchers), сбрасывается при
-// обычном выборе монеты из watchlist/поиска.
 let focusedLevel = null;
-
-// True, когда график открыт по клику на сигнал ("Последние сигналы") —
-// см. loadChart(coin, focus, signal). Нужен отдельно от focusedLevel: если
-// зону сигнала не удалось найти (buildFocusFromLevelId вернул null — старый
-// сигнал без level_id, или вотчер уже нигде не числится), loadLevels всё
-// равно не должен скатываться в "показать все текущие уровни монеты" — это
-// и была причина "дна" (кучи левых линий поверх Entry/Target/Stop).
 let isSignalView = false;
 
-// Единый цвет на каждую стратегию — чтобы куча уровней читалась с одного
-// взгляда, а не сливалась в одинаковые зелёные/красные линии.
 const STRATEGY_COLORS = {
   V_BOTTOM: "#4caf7d",
   V_GREEN_BOTTOM: "#26a69a",
@@ -38,8 +25,6 @@ const STRATEGY_COLORS = {
   BOUNCE: "#29b6f6",
 };
 
-// "Bounce M"/"Bounce C" — короткая подпись с режимом для BOUNCE SHORT;
-// остальные стратегии — как раньше, без изменений.
 function friendlyStrategyWithMode(strategy, mode) {
   const base = friendlyStrategy(strategy);
   if (strategy !== "BOUNCE" || !mode) return base;
@@ -48,8 +33,7 @@ function friendlyStrategyWithMode(strategy, mode) {
   return base;
 }
 let currentPrecision = 4;
-let globalCandles = []; // Храним историю свечей для привязки линий к датам
-
+let globalCandles = []; 
 
 const ema20ValueEl = document.getElementById("ema20-value");
 const ema50ValueEl = document.getElementById("ema50-value");
@@ -59,11 +43,34 @@ const TF_LIMITS = {
   "15m": 5760, // ~60 дней
   "1h": 4320,  // ~180 дней
   "4h": 1080,  // ~180 дней
-  "1d": 365,   // ~1 год
-  "1w": 104,   // ~2 года (104 недели)
-  "1M": 36,    // ~3 года (36 месяцев)
+  "1d": 365,   // ~1 год (как в базе)
+  "1w": 105,   // ~2 года
+  "1M": 36,    // ~3 года
 };
 let currentTimeframe = "15m";
+
+// Фильтр-выравниватель: жестко сажает время любой свечи на сетку, чтобы хвост графика не отрывался
+function alignTime(t, tf) {
+  const d = new Date(t * 1000);
+  if (tf === "15m") {
+    d.setUTCMinutes(Math.floor(d.getUTCMinutes() / 15) * 15, 0, 0);
+  } else if (tf === "1h") {
+    d.setUTCMinutes(0, 0, 0);
+  } else if (tf === "4h") {
+    d.setUTCHours(Math.floor(d.getUTCHours() / 4) * 4, 0, 0, 0);
+  } else if (tf === "1d") {
+    d.setUTCHours(0, 0, 0, 0);
+  } else if (tf === "1w") {
+    const day = d.getUTCDay();
+    const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
+    d.setUTCDate(diff);
+    d.setUTCHours(0, 0, 0, 0);
+  } else if (tf === "1M") {
+    d.setUTCDate(1);
+    d.setUTCHours(0, 0, 0, 0);
+  }
+  return Math.floor(d.getTime() / 1000);
+}
 
 function formatVolume(v) {
   if (v === null || v === undefined) return "—";
@@ -73,35 +80,54 @@ function formatVolume(v) {
   return String(Math.round(v));
 }
 
-// === ЛЕГЕНДА: OHLCV СВЕРХУ, ЦВЕТА СНИЗУ ===
+function formatDuration(fromUnixSec, toDate) {
+  if (fromUnixSec === null || fromUnixSec === undefined) return "—";
+  const fromMs = fromUnixSec * 1000;
+  const toMs = toDate.getTime();
+  const totalMin = Math.max(0, Math.floor((toMs - fromMs) / 60000));
+  const days = Math.floor(totalMin / 1440);
+  const hours = Math.floor((totalMin % 1440) / 60);
+  const mins = totalMin % 60;
+  if (days > 0) return `${days}д ${hours}ч`;
+  if (hours > 0) return `${hours}ч ${mins}м`;
+  return `${mins}м`;
+}
+
 let ohlcvLegendTextEl = null;
 let bottomMarksLegendCreated = false;
 
 function ensureOhlcvLegend() {
-  // 1. Создаем текстовую шпаргалку по цветам снизу (один раз)
   if (!bottomMarksLegendCreated) {
     const chartBox = document.getElementById("chart");
     const marksLegend = document.createElement("div");
-    marksLegend.style.cssText = "padding: 10px 15px; font-size:12px; color:#555b66; background: #ffffff; border-top: 1px solid #e6e8eb;";
+    marksLegend.style.cssText = "padding: 10px 15px; font-size:12px; color:#555b66; background: #ffffff; border-top: 1px solid #e6e8eb; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;";
+    const bar = (color) => `<span style="display:inline-block;width:14px;height:3px;background:${color};margin-right:4px;vertical-align:middle;border-radius:1px;"></span>`;
     marksLegend.innerHTML = `
-      <b>Маркеры:</b> 
-      <span style="color:#8a8f98">⚪️ Старт</span> | 
-      <span style="color:#f2c14e">🟡 Кандидат</span> | 
-      <span style="color:#5aa9e6">🔵 Структура</span> | 
-      <span style="color:#9c27b0">🟣 Старт поиска</span> | 
-      <span style="color:#4caf7d">🟢 Вход</span> | 
-      <span style="color:#e5654f">🔴 Сброс/Стоп</span>
+      <span>
+        <b>Маркеры:</b>
+        <span style="color:#8a8f98">⚪️ Старт</span> |
+        <span style="color:#f2c14e">🟡 Кандидат</span> |
+        <span style="color:#5aa9e6">🔵 Структура</span> |
+        <span style="color:#9c27b0">🟣 Старт поиска</span> |
+        <span style="color:#4caf7d">🟢 Вход</span> |
+        <span style="color:#e5654f">🔴 Сброс/Стоп</span>
+      </span>
+      <span>
+        ${bar("#5aa9e6")}Entry &nbsp;
+        ${bar("#4caf7d")}Target &nbsp;
+        ${bar("#e5654f")}Stop &nbsp;
+        ${bar("#00c853")}Уровень (LONG) &nbsp;
+        ${bar("#ff3d3d")}Уровень (SHORT)
+      </span>
     `;
     chartBox.parentElement.insertBefore(marksLegend, chartBox.nextSibling);
     bottomMarksLegendCreated = true;
   }
 
-  // 2. Создаем контейнер для OHLCV сверху графика (внутри .chart-legend)
   if (ohlcvLegendTextEl) return ohlcvLegendTextEl;
   const container = document.querySelector(".chart-legend");
   if (!container) return null;
   
-  // Включаем отображение контейнера (на случай, если прошлая версия его скрыла)
   container.style.display = "block";
   
   const item = document.createElement("div");
@@ -130,7 +156,7 @@ function setOhlcvLegend(candle, vol, rsiVal) {
   
   el.innerHTML = `O ${o} &nbsp; H ${h} &nbsp; L ${l} &nbsp; C ${c} &nbsp; Vol ${volTxt} &nbsp; <b style="color:#555b66;">RSI: ${rsiTxt}</b>`;
 }
-// === РАСЧЕТ ИНДИКАТОРОВ ===
+
 function computeEMA(candles, period) {
   const k = 2 / (period + 1);
   let emaPrev = null;
@@ -189,12 +215,6 @@ function renderHistoryPanel(historyArr) {
     const diedAt = w.died_at ? new Date(w.died_at).toLocaleString('ru-RU', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'}) : "—";
     const dir = w.direction ? `<span class="dir-${w.direction}">${w.direction}</span>` : "";
     
-    // Добавили w.coin и onclick для перехода на график
-    // Клик по карточке истории — фокус на СВОИ собственные данные (min/max,
-    // events, направление, режим), а не поиск по level_id среди текущих
-    // активных вотчеров: этого вотчера там уже нет, он мёртв и вычищен
-    // (clear_dead_watchers). fromHistory:true говорит loadLevels рисовать
-    // напрямую по объекту ниже, не пытаясь ничего искать заново.
     const focusPayload = {
       fromHistory: true,
       min: w.level_min,
@@ -229,18 +249,20 @@ function initChart() {
     timeScale: {
       timeVisible: true,
       secondsVisible: false,
-      uniformDistribution: true, // <-- Добавь вот эту строчку
-      tickMarkFormatter: (time) => new Date(time * 1000).toLocaleTimeString("ru-RU", {
-        timeZone: "Europe/Kyiv", hour: "2-digit", minute: "2-digit",
-      }),
+      uniformDistribution: true,
+      tickMarkFormatter: (time) => {
+        const d = new Date(time * 1000);
+        // Выводит нормальную дату на старших графиках, убирает "02:00" на шкале месяцев/недель
+        if (currentTimeframe === "1d" || currentTimeframe === "1w" || currentTimeframe === "1M") {
+          return d.toLocaleDateString("ru-RU", { timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", year: "2-digit" });
+        }
+        return d.toLocaleTimeString("ru-RU", { timeZone: "Europe/Kyiv", hour: "2-digit", minute: "2-digit" });
+      },
     },
     localization: {
-      // Дата/время под курсором — плюс объём той самой свечи (ищем по
-      // времени в уже загруженных данных). Верхняя легенда (Open/High/Low/
-      // Close/Vol) не трогается — это отдельная подсказка, снизу у оси.
       timeFormatter: (time) => {
         const dateStr = new Date(time * 1000).toLocaleString("ru-RU", {
-          timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit",
+          timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", year: "2-digit",
           hour: "2-digit", minute: "2-digit",
         });
         const c = globalCandles.find((c) => c.time === time);
@@ -268,11 +290,6 @@ function initChart() {
 
   ema20Series = chart.addLineSeries({ color: "#f2c14e", lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false });
   ema50Series = chart.addLineSeries({ color: "#5aa9e6", lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false });
-  // EMA200 на 4H (span 3200 свечей) — считается на отдельно загруженных
-  // 4H-свечах (см. loadMacroEma200), не на текущем таймфрейме графика,
-  // иначе на 15m это была бы совсем другая (намного более дёрганая) линия.
-  // Точки редкие (раз в 4 часа) — chart сам соединяет их плавной линией
-  // поверх более мелких свечей, интерполяция не нужна.
   emaMacroSeries = chart.addLineSeries({ color: "#7e57c2", lineWidth: 2, priceLineVisible: false, crosshairMarkerVisible: false });
   rsiSeries = chart.addLineSeries({ visible: false, crosshairMarkerVisible: false }); 
 
@@ -289,10 +306,6 @@ function initChart() {
     ema20ValueEl.textContent = e20 ? e20.value.toFixed(currentPrecision) : "—";
     ema50ValueEl.textContent = e50 ? e50.value.toFixed(currentPrecision) : "—";
     if (ema200ValueEl) {
-      // seriesData.get отдаёт значение, только если у линии есть точка
-      // РОВНО на этом времени — а у 4H-линии точки раз в 4 часа, так что
-      // между ними тут будет "—", даже когда линия на графике видна (она
-      // отрисована плавной интерполяцией между соседними точками).
       const eMacro = param.seriesData.get(emaMacroSeries);
       ema200ValueEl.textContent = eMacro ? eMacro.value.toFixed(currentPrecision) : "—";
     }
@@ -326,7 +339,7 @@ function clearLevelLines() {
   levelLines = [];
 }
 
-let signalLines = []; // Entry/Target/Stop линии текущего открытого сигнала
+let signalLines = []; 
 function clearSignalLines() {
   signalLines.forEach((series) => {
     try { chart.removeSeries(series); } catch(e) {}
@@ -334,15 +347,11 @@ function clearSignalLines() {
   signalLines = [];
 }
 
-// Рисует Entry/Target/Stop сплошными горизонтальными линиями через весь
-// загруженный диапазон свечей — данные берутся прямо из записи сигнала
-// (signals.json), поэтому работает всегда, даже если зону/точки найти
-// не удалось (см. buildFocusFromSignal).
 function drawSignalTradeLines(signal) {
   clearSignalLines();
   if (!globalCandles.length) return;
   const lineTimes = globalCandles.map((c) => c.time);
-  const addLine = (price, color, label) => {
+  const addLine = (price, color) => {
     if (price === null || price === undefined || Number.isNaN(Number(price))) return;
     const series = chart.addLineSeries({
       color,
@@ -351,21 +360,17 @@ function drawSignalTradeLines(signal) {
       crosshairMarkerVisible: false,
       priceLineVisible: false,
       lastValueVisible: false,
-      title: label,
-      // Stop у этой стратегии может лежать далеко от Entry (десятки
-      // процентов) — без этого такая линия одна тянула автомасштаб на
-      // себя и сжимала все свечи в узкую полоску.
+      title: "",
       autoscaleInfoProvider: () => null,
     });
     series.setData(lineTimes.map((t) => ({ time: t, value: Number(price) })));
     signalLines.push(series);
   };
-  addLine(signal.entry, "#5aa9e6", "🔵 Entry");
-  addLine(signal.target, "#4caf7d", "🟢 Target");
-  addLine(signal.stop, "#e5654f", "🔴 Stop");
+  addLine(signal.entry, "#5aa9e6");
+  addLine(signal.target, "#4caf7d");
+  addLine(signal.stop, "#e5654f");
 }
 
-// === ЧЕЛОВЕЧЕСКИЕ ПОДПИСИ ВМЕСТО "sup1"/"АКТИВНО" ===
 const STRATEGY_LABELS = {
   V_BOTTOM: "V-Bottom",
   V_GREEN_BOTTOM: "V-Green",
@@ -387,69 +392,38 @@ function friendlyLevelType(type) {
   return type;
 }
 
-// === РИСУЕМ УРОВНИ СТРОГО ОТ ДАТЫ ВОЗНИКНОВЕНИЯ ===
-async function loadLevels(coin) {
+async function loadLevels(coin, token = chartLoadToken) {
   clearLevelLines();
   if (globalCandles.length === 0) return;
 
   try {
-    // ВАЖНО: берём активных вотчеров из /api/events/{coin} (data.active),
-    // НЕ из /api/watchlist/active — тот фильтрует строго (currently_pierced/
-    // climax_stage для BOUNCE), и вотчер может на конкретный момент не
-    // проходить этот фильтр, оставаясь при этом в active_watchers.json.
-    // Точки (loadEvents) берутся из того же /api/events без этой строгой
-    // фильтрации — если брать уровень из другого источника, линия и точки
-    // расходятся: точки есть, линии нет (или наоборот).
     const [levelsRes, eventsRes] = await Promise.all([
       fetch(`/api/levels/${encodeURIComponent(coin)}`),
       fetch(`/api/events/${encodeURIComponent(coin)}`).catch(() => null),
     ]);
+    if (token !== chartLoadToken) return;
     if (!levelsRes.ok) return; 
     const data = await levelsRes.json();
+    if (token !== chartLoadToken) return;
 
     let activeLevels = [];
     if (eventsRes && eventsRes.ok) {
       const eventsData = await eventsRes.json();
+      if (token !== chartLoadToken) return;
       activeLevels = Array.isArray(eventsData.active) ? eventsData.active : [];
     }
 
     const firstTime = globalCandles[0].time;
 
-    // Рисует активный уровень НАПРЯМУЮ по данным самого вотчера — либо
-    // потому что мы в фокус-режиме (уровень вотчера всегда рисуется его
-    // собственными данными, без сверки с текущим macro_levels.json), либо
-    // потому что в обычном просмотре его исходный уровень не нашёлся среди
-    // текущих supports/resistances (пересчитался/пропал), но вотчер всё
-    // ещё жив. Объявлена ДО фокус-режима ниже — иначе ReferenceError
-    // (temporal dead zone): const-функция недоступна до своего объявления
-    // по коду, даже если вызов физически ниже в файле при чтении.
     const drawOrphanActiveLevel = (w) => {
       const wMin = w.level_min ?? w.min;
       const wMax = w.level_max ?? w.max;
-      // focusedLevel (клик по строке) не несёт direction — если пришлось
-      // упасть именно на него (редкий случай, см. вызов ниже), угадываем
-      // по наличию mode (он бывает только у SHORT climax/mirror).
       const direction = w.direction ?? (w.mode ? "SHORT" : "LONG");
       const isSupport = direction === "LONG";
-      // Цвет линии — всегда по направлению (зелёный = поддержка/LONG,
-      // красный = сопротивление/SHORT), а не по стратегии. Раньше тут был
-      // STRATEGY_COLORS[w.strategy] в приоритете — у BOUNCE это давало
-      // ОДИН и тот же синий цвет что для LONG, что для SHORT, хотя эмодзи
-      // в подписи (🟢/🔴) честно показывал направление — несовпадение.
       const activeColor = isSupport ? "#00c853" : "#ff3d3d";
       const label = friendlyStrategyWithMode(w.strategy, w.mode);
-      // Тип уровня из базы (месячный хай/лоу, недельный, дневной, POC и т.д.) —
-      // то же самое, что уже показывает addLevel() в обычном виде монеты,
-      // просто раньше у вотчера не было доступа к level_type вообще (не
-      // экспортировался в active_watchers.json/watcher_history.json).
       const scoreSuffix = w.level_score != null ? ` ${w.level_score}` : "";
-      const title = `${isSupport ? '🟢' : '🔴'} ${label} · ${friendlyLevelType(w.level_type)}${scoreSuffix}`;
-      // Линия начинается с даты ФОРМИРОВАНИЯ уровня (w.level_date — заморожена
-      // на вотчере в момент его рождения, из macro_levels.json), а не с
-      // момента начала слежки — уровень обычно появляется раньше, чем цена
-      // его реально касается. Если level_date почему-то нет (старый вотчер,
-      // созданный до этого поля) — откатываемся на самое раннее событие,
-      // как было раньше, лучше это, чем совсем без линии.
+      const levelTitle = `${isSupport ? '🟢' : '🔴'} ${label} · ${friendlyLevelType(w.level_type)}${scoreSuffix}`;
       let startTime = globalCandles[0].time;
       if (w.level_date) {
         const parsed = new Date(w.level_date).getTime() / 1000;
@@ -468,11 +442,7 @@ async function loadLevels(coin) {
           crosshairMarkerVisible: false,
           priceLineVisible: false,
           lastValueVisible: false,
-          title: idx === 0 ? title : "",
-          // Линии уровня/зоны не должны участвовать в автомасштабе цены —
-          // иначе далёкая линия (старый уровень, давно оставленный ценой)
-          // сжимает все свечи в узкую полоску. Свечи — единственный
-          // ориентир масштаба, линии просто рисуются там, где положено.
+          title: idx === 0 ? levelTitle : "",
           autoscaleInfoProvider: () => null,
         });
         series.setData(lineTimes.map(t => ({ time: t, value: priceValue })));
@@ -480,41 +450,19 @@ async function loadLevels(coin) {
       });
     };
 
-    // === ФОКУС-РЕЖИМ (клик по конкретной строке в "активных") ===
-    // Правило: уровень активного вотчера — ВСЕГДА его собственные
-    // level_min/level_max, замороженные на момент пробития. Никогда не
-    // сверяем заново с текущим macro_levels.json (он мог пересчитаться
-    // с тех пор) — это не "тот же уровень, просто пересчитанный", это
-    // просто "уровень вотчера, как есть". И только "в работе"
-    // (activeLevels), никогда история (watcher_history.json) — история
-    // тут вообще не участвует, это отдельная, ещё не сделанная фича.
     if (focusedLevel) {
-      // Клик по карточке ИСТОРИИ (DEAD/TRIGGERED) — вотчер уже удалён из
-      // активных (clear_dead_watchers), искать его там бессмысленно.
-      // focusedLevel в этом случае УЖЕ содержит все нужные данные (min/max/
-      // events/direction/mode) — рисуем прямо по ним.
       if (focusedLevel.fromHistory) {
         drawOrphanActiveLevel(focusedLevel);
         return;
       }
       const w = activeLevels.find((x) => x.level_id === focusedLevel.level_id);
-      if (!w) return; // вотчер уже не активен (умер/сработал) — рисовать нечего
+      if (!w) return;
       drawOrphanActiveLevel(w);
       return;
     }
 
-    // Открыт по клику на сигнал, а зону найти не удалось (старый сигнал без
-    // level_id, или вотчер уже нигде не числится) — НЕ скатываемся в показ
-    // всех текущих уровней монеты. Entry/Target/Stop (см. drawSignalTradeLines)
-    // уже нарисованы отдельно, добавлять сюда ещё и все чужие уровни — та
-    // самая "свалка", от которой график становится нечитаемым.
     if (isSignalView) return;
 
-    // === ОБЫЧНЫЙ ПРОСМОТР МОНЕТЫ (без фокуса) ===
-    // Тут по-прежнему рисуем все текущие supports/resistances монеты,
-    // подсвечивая те, что сейчас активны (сверка по level_id, если он
-    // есть у обеих сторон, иначе по min/max как раньше — у "сырых"
-    // macro_levels.json записей своего level_id нет).
     const findActive = (lvl) => activeLevels.find(
       (w) => Math.abs((w.level_min ?? NaN) - lvl.min) < 1e-9 && Math.abs((w.level_max ?? NaN) - lvl.max) < 1e-9
     );
@@ -530,12 +478,6 @@ async function loadLevels(coin) {
       if (lineTimes.length === 0) return;
 
       if (active) {
-        // Активный уровень — широкая зона: две линии по границам (min/max),
-        // а не одна посередине. Цвет — по направлению (см. drawOrphanActiveLevel
-        // выше): зелёный support/LONG, красный resistance/SHORT. Раньше тут
-        // побеждал цвет СТРАТЕГИИ (STRATEGY_COLORS) — у BOUNCE это давало один
-        // и тот же синий и для LONG, и для SHORT, хотя эмодзи в подписи (🟢/🔴)
-        // честно показывал направление — несовпадение путало.
         const activeColor = isSupport ? "#00c853" : "#ff3d3d";
         const label = friendlyStrategyWithMode(active.strategy, active.mode);
         const title = `${isSupport ? '🟢' : '🔴'} ${label} · ${levelLabel}${lvl.score != null ? ' ' + lvl.score : ''}`;
@@ -575,11 +517,6 @@ async function loadLevels(coin) {
     (data.supports || []).forEach((lvl) => addLevel(lvl, true));
     (data.resistances || []).forEach((lvl) => addLevel(lvl, false));
 
-    // Осиротевшие активные вотчеры (общий просмотр монеты, без фокуса) —
-    // их исходный уровень не нашёлся среди текущих supports/resistances
-    // (пересчитался/пропал), но сам вотчер всё ещё жив и отслеживается.
-    // Рисуем напрямую по его собственным level_min/level_max, чтобы он не
-    // пропадал с графика молча.
     activeLevels
       .filter((w) => !matchedActiveKeys.has(activeKey(w)))
       .forEach((w) => drawOrphanActiveLevel(w));
@@ -598,56 +535,34 @@ const EVENT_MARKER_STYLE = {
   TRACK_START: { color: "#8a8f98", shape: "circle" },   
   NEW_PEAK:    { color: "#f2c14e", shape: "circle" },   
   GOOD_RED:    { color: "#f2c14e", shape: "circle" },   
-  ENTRY:       { color: "#4caf7d", shape: "arrowUp" },  
   CANCEL:      { color: "#5c6370", shape: "square" },   
   DEAD:        { color: "#e5654f", shape: "square" },   
-  // BOUNCE — упрощённая палитра: синий = всё "до старта скана" (касание +
-  // climax шаг1/шаг2), фиолетовый = момент старта скана (пробой LONG/MIRROR
-  // ИЛИ уход на ATR climax — в bounce_watcher.py оба уже пишутся как
-  // SWEEP_BOTTOM, один и тот же смысл), жёлтый = сама свеча скана (кандидат
-  // на вход, неважно подошла или нет), красный = отмена (RUNAWAY).
   SWEEP_BOTTOM:       { color: "#9c27b0", shape: "circle" },
   RUNAWAY:            { color: "#e5654f", shape: "circle" },
   CLIMAX_NEAR_BREACH: { color: "#5aa9e6", shape: "circle" },
   CLIMAX_FAR_BREACH:  { color: "#5aa9e6", shape: "circle" },
-  // LONG/MIRROR/SHORT-MIRROR: коснулись края полосы (не середины) — тот же
-  // синий, что и climax-шаги, тот же смысл ("первый подтверждённый шаг").
   ZONE_TOUCH:         { color: "#5aa9e6", shape: "circle" },
 };
 
-async function loadEvents(coin) {
+async function loadEvents(coin, token = chartLoadToken) {
   try {
     const res = await fetch(`/api/events/${encodeURIComponent(coin)}`);
+    if (token !== chartLoadToken) return; 
     if (!res.ok) { candleSeries.setMarkers([]); return; }
     const data = await res.json();
+    if (token !== chartLoadToken) return;
 
-    // "В работе" = только активные вотчеры (data.active), НИКОГДА история
-    // (data.history) — история это отдельная, ещё не сделанная фича
-    // (рескан). Раньше подмешивали историю сюда же, и на графике всплывали
-    // точки от уже мёртвых, закрытых эпизодов того же уровня.
     const matchesFocus = (w) => !focusedLevel
       || (focusedLevel.level_id ? w.level_id === focusedLevel.level_id
           : (Math.abs((w.level_min ?? NaN) - focusedLevel.min) < 1e-9 && Math.abs((w.level_max ?? NaN) - focusedLevel.max) < 1e-9));
 
-    // lightweight-charts требует точное совпадение времени маркера с одной
-    // из свечей загруженной серии — событие со временем вне загруженного
-    // диапазона библиотека не может корректно разместить (визуально
-    // "слипается" в кучу у края). Отсекаем такие здесь явно, а не отдаём
-    // библиотеке на откуп.
     const minCandleTime = globalCandles.length ? globalCandles[0].time : null;
     const maxCandleTime = globalCandles.length ? globalCandles[globalCandles.length - 1].time : null;
     const inRange = (t) => minCandleTime !== null && t >= minCandleTime && t <= maxCandleTime;
 
-    const seen = new Set(); // дедуп на случай повторной записи того же (time,type)
+    const seen = new Set(); 
     const markers = [];
 
-    // Клик по карточке ИСТОРИИ — вотчер уже мёртв, в data.active (текущие
-    // живые) его нет и не будет. Все его события уже приехали вместе с
-    // focusedLevel (см. renderHistoryPanel) — рисуем прямо по ним, а не по
-    // /api/events, который для мёртвого вотчера ничего не вернёт.
-    // Открыт по сигналу, а зону найти не удалось — не подмешиваем точки
-    // ВСЕХ активных вотчеров монеты (matchesFocus без focusedLevel пропускает
-    // всех); честно ничего не рисуем, чем создавать ту же "свалку".
     const sourceWatchers = isSignalView && !focusedLevel
       ? []
       : (focusedLevel && focusedLevel.fromHistory)
@@ -656,15 +571,17 @@ async function loadEvents(coin) {
 
     sourceWatchers.forEach((w) => {
       if (!matchesFocus(w)) return;
+      const isShort = w.direction === "SHORT";
+      const entryStyle = isShort ? { color: "#e5654f", shape: "arrowDown" } : { color: "#4caf7d", shape: "arrowUp" };
       (w.events || []).forEach((ev) => {
         if (!ev.time || !inRange(ev.time)) return;
         const key = `${ev.time}_${ev.type}`;
         if (seen.has(key)) return;
         seen.add(key);
-        const style = EVENT_MARKER_STYLE[ev.type] || { color: "#cfd3da", shape: "circle" };
+        const style = ev.type === "ENTRY" ? entryStyle : (EVENT_MARKER_STYLE[ev.type] || { color: "#cfd3da", shape: "circle" });
         markers.push({
           time: ev.time,
-          position: "aboveBar",
+          position: ev.type === "ENTRY" && isShort ? "belowBar" : "aboveBar",
           color: style.color,
           shape: style.shape,
           text: "",
@@ -679,15 +596,11 @@ async function loadEvents(coin) {
   }
 }
 
-// EMA200 на 4H, span 3200 свечей (~530 дней) — независимая от текущего
-// таймфрейма графика макро-линия тренда. Тянется отдельным запросом,
-// не await'ится в loadChart (медленно двигается, не нужно ждать её ради
-// остального графика). Точки редкие (раз в 4 часа) — chart сам рисует
-// плавную линию между ними поверх более мелких свечей.
 async function loadMacroEma200(coin) {
   if (!emaMacroSeries) return;
   try {
-    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=4h&limit=3200`);
+    // Лимит строго 999, как и заложено в бэкенде
+    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=4h&limit=999`);
     if (!res.ok) { emaMacroSeries.setData([]); return; }
     const data = await res.json();
     const candles = (data.candles || [])
@@ -696,23 +609,31 @@ async function loadMacroEma200(coin) {
         return { ...c, time: unixSeconds };
       })
       .sort((a, b) => a.time - b.time);
-    // Монета сменилась, пока запрос летал — не затираем уже актуальные данные чужой EMA
+      
     if (coin !== selectedCoin) return;
-    emaMacroSeries.setData(computeEMA(candles, 200));
+    
+    let emaData = computeEMA(candles, 200);
+    
+    // ФИЛЬТР ДЫР: на старших таймфреймах оставляем только те точки EMA, 
+    // которые идеально ложатся на существующие бары, чтобы не создавать пустых слотов
+    if (currentTimeframe === "1d" || currentTimeframe === "1w" || currentTimeframe === "1M") {
+      const mainTimes = new Set(globalCandles.map(c => c.time));
+      emaData = emaData.filter(d => mainTimes.has(d.time));
+    }
+
+    emaMacroSeries.setData(emaData);
   } catch (e) {
     console.error("macro EMA200(4H) load failed", e);
   }
 }
 
+let chartLoadToken = 0;
+
 async function loadChart(coin, focus = null, signal = null, opts = {}) {
   const skipLiveOverlay = !!opts.skipLiveOverlay;
-  // --- ЗАЩИТА ОТ 404 ОШИБКИ И ПУСТЫХ КЛИКОВ ---
   if (!coin || coin === "null" || coin === "undefined") return;
-  // ---------------------------------------------
 
-  // focus задаётся только при клике по конкретному активному вотчеру
-  // (см. loadActiveWatchers) — обычный выбор монеты сбрасывает фокус,
-  // тогда рисуются все уровни монеты, как раньше.
+  const myToken = ++chartLoadToken;
   focusedLevel = focus;
   isSignalView = !!signal;
 
@@ -724,10 +645,6 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
   clearSignalLines();
   clearLevelLines();
 
-  // Раньше сигнал открывался в узком окне (96 свечей вокруг входа) — из-за
-  // этого график выглядел обрубком. Теперь то же самое окно, что и везде
-  // (как открывает история) — просто широкий обычный график с зоной и
-  // Entry/Target/Stop поверх.
   const limit = TF_LIMITS[currentTimeframe] ?? 200;
 
   try {
@@ -761,7 +678,7 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
     });
 
     formattedCandles.sort((a, b) => a.time - b.time);
-    globalCandles = formattedCandles; // Сохраняем историю для привязки линий
+    globalCandles = formattedCandles;
 
     candleSeries.setData(formattedCandles);
     volumeSeries.setData(formattedCandles.map((c) => ({
@@ -772,21 +689,11 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
     rsiSeries.setData(computeRSI(formattedCandles, 14)); 
 
     chart.timeScale().fitContent();
-    // Автомасштаб по цене — если на предыдущей монете потаскать ценовую ось
-    // мышкой, lightweight-charts запоминает это как "ручной масштаб" и не
-    // отпускает сам, даже когда данные меняются на совершенно другую монету
-    // с другим диапазоном цен. Форсим обратно при каждой загрузке.
     candleSeries.priceScale().applyOptions({ autoScale: true });
     if (!skipLiveOverlay) {
-      // Живые уровни/точки/EMA200 — только для обычного просмотра монеты.
-      // Для симулятора это боевое состояние монеты, не имеющее отношения
-      // к результату симуляции, — раньше оно рисовалось поверх/вперемешку
-      // с результатом (та самая "куча всего" и "точки на секунду мелькают,
-      // потом исчезают"), потому что loadChart вызывался одинаково и с
-      // главной страницы, и с симулятора.
-      loadLevels(coin);
-      loadEvents(coin);
-      loadMacroEma200(coin); // не await — медленный индикатор, не должен тормозить остальной график
+      loadLevels(coin, myToken);
+      loadEvents(coin, myToken);
+      loadMacroEma200(coin); 
     }
     if (signal) drawSignalTradeLines(signal);
   } catch (e) {
@@ -802,18 +709,10 @@ function highlightSelection() {
 }
 
 async function loadWatchlist() {
-  // Страница может не иметь этой панели (например, отдельная страница
-  // симулятора) — тихо ничего не делаем, а не падаем на null.innerHTML.
   if (!watchlistListEl) return;
   const res = await fetch("/api/watchlist");
   const data = await res.json();
 
-  // Раньше тут ещё вычитались монеты, у которых есть активный вотчер
-  // ("в работе") — список монет и список "в работе" считались двумя
-  // взаимоисключающими вещами. По факту это не так: монета остаётся
-  // в watchlist, пока проходит порог объёма, НЕЗАВИСИМО от того, есть
-  // ли у неё сейчас активный вотчер — это не повод прятать её из общего
-  // списка.
   const withLevels = data.with_levels || [];
   const withoutLevels = data.without_levels || [];
 
@@ -853,11 +752,6 @@ async function loadWatchlist() {
   });
 }
 
-// Статус рескана по монетам ({status: running|done, ...}) — опрашивается
-// отдельно и чаще, чем общий refreshAll (раз в минуту), не через
-// telegram-заглушку/notifications.json, а напрямую (см. /api/rescan_status).
-// Файл маленький, частый опрос ничего не нагружает. Перерисовываем список
-// "в работе" только когда статус реально поменялся, а не на каждый тик.
 let rescanStatusCache = {};
 async function loadRescanStatus() {
   try {
@@ -890,8 +784,6 @@ async function loadActiveWatchers() {
     div.dataset.coin = w.coin;
     const label = friendlyStrategyWithMode(w.strategy, w.mode);
     const dotColor = STRATEGY_COLORS[w.strategy] || "#8a8f98";
-    // Статус рескана этой монеты — виснет постоянно (не пропадает само),
-    // чтобы было видно, что рескан вообще нажимали, и что с ним стало.
     const rescanInfo = rescanStatusCache[w.coin];
     let rescanBadge = "";
     if (rescanInfo && rescanInfo.status === "running") {
@@ -908,11 +800,6 @@ async function loadActiveWatchers() {
       <button title="Пересчитать структуру" onclick="triggerRescan(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 8px;">🔄</button>${rescanBadge}
     `;
     div.title = w.history_log || "";
-    // Клик по конкретному активному вотчеру — фокус ТОЛЬКО на его уровень
-    // (одна строка -> один график -> одна стратегия), без остальных
-    // активных уровней монеты, даже если их несколько. level_id — реальный
-    // ключ вотчера (min/max могут случайно совпасть у двух разных
-    // вотчеров/стратегий, level_id — никогда).
     div.onclick = () => loadChart(w.coin, {
       level_id: w.level_id,
       min: w.level_min,
@@ -924,23 +811,16 @@ async function loadActiveWatchers() {
   });
 }
 
-// Ищет зону вотчера по level_id — сначала среди живых (active_watchers.json),
-// потом среди истории (watcher_history.json) — для клика по сигналу: сам
-// вотчер к этому моменту мог уже сработать/умереть, это нормально. Отдаёт
-// объект в формате fromHistory (см. renderHistoryPanel) — та же отрисовка,
-// что уже работает для "ПОСЛЕДНИЙ СКАН", просто источник данных другой.
 async function buildFocusFromLevelId(coin, levelId) {
   if (!levelId) return null;
   try {
     const res = await fetch(`/api/events/${encodeURIComponent(coin)}`);
     if (!res.ok) return null;
     const data = await res.json();
-    let w = (data.active || []).find((x) => x.level_id === levelId);
+    const histKey = `${coin}_BOUNCE_${levelId}`;
+    let w = (data.history || []).find((x) => x.key === histKey);
     if (!w) {
-      // История хранит ключ "{coin}_BOUNCE_{level_id}" (см. bc_removed_watchers
-      // в background_tasks.py), самого level_id отдельным полем там нет.
-      const histKey = `${coin}_BOUNCE_${levelId}`;
-      w = (data.history || []).find((x) => x.key === histKey);
+      w = (data.active || []).find((x) => x.level_id === levelId);
     }
     if (!w) return null;
     return {
@@ -957,10 +837,6 @@ async function buildFocusFromLevelId(coin, levelId) {
   }
 }
 
-// Округление цены под масштаб числа — 799.7180000000001 -> 799.72,
-// а для мелких монет (0.0000123...) оставляет больше знаков, чтобы не
-// обнулить цену. Тот же принцип, что price_precision на самом графике,
-// только без похода на биржу — тут просто по порядку величины числа.
 function formatPrice(v) {
   if (v === null || v === undefined || v === "") return "";
   const num = Number(v);
@@ -978,7 +854,7 @@ async function loadSignals() {
   const data = await res.json();
 
   if (data.length === 0) {
-    signalsBody.innerHTML = "<tr><td colspan='9'>нет сигналов</td></tr>";
+    signalsBody.innerHTML = "<tr><td colspan='11'>нет сигналов</td></tr>";
     return;
   }
 
@@ -987,6 +863,12 @@ async function loadSignals() {
     const tr = document.createElement("tr");
     const pct = s.result_percent;
     const pctText = pct === null || pct === undefined ? "" : `${pct > 0 ? "+" : ""}${pct}%`;
+    const durationText = s.status === "⏳"
+      ? formatDuration(s.time, new Date())
+      : (s.closed_at ? formatDuration(s.time, new Date(s.closed_at)) : "—");
+    const methodText = s.method === "volume" && s.method_value != null
+      ? formatVolume(s.method_value) + (s.method_mult != null ? " / x" + s.method_mult.toFixed(1) : "")
+      : "—";
     tr.innerHTML = `
       <td>${s.date ?? ""}</td>
       <td>${s.coin ?? ""}</td>
@@ -997,11 +879,9 @@ async function loadSignals() {
       <td>${formatPrice(s.stop)}</td>
       <td>${s.status ?? ""}</td>
       <td style="color:${pct > 0 ? '#4caf7d' : pct < 0 ? '#e5654f' : 'inherit'}">${pctText}</td>
+      <td>${durationText}</td>
+      <td>${methodText}</td>
     `;
-    // Кликабельны только сигналы с unix-временем входа (сохранены после
-    // этого фикса, пока только BOUNCE — см. watcher_plan.py::check_bounce).
-    // У старых записей time нет и взять его неоткуда — оставляем как есть,
-    // без курсора-указателя, чтобы не обещать то, что не сработает.
     if (s.coin && s.time) {
       tr.style.cursor = "pointer";
       tr.title = "Открыть график в момент сигнала";
@@ -1057,7 +937,6 @@ setInterval(async () => {
             color: c.close >= c.open ? "rgba(76,175,125,0.5)" : "rgba(229,101,79,0.5)",
           });
         } catch (e) {
-           // Библиотека игнорирует старые свечи
         }
       });
       
@@ -1068,7 +947,6 @@ setInterval(async () => {
   }
 }, 60000);
 
-// === КНОПКИ "СБРОСИТЬ ВОТЧЕРОВ" / "REBUILD УРОВНЕЙ" (только на главной) ===
 const resetWatchersBtnEl = document.getElementById("reset-watchers-btn");
 if (resetWatchersBtnEl) {
   resetWatchersBtnEl.onclick = async () => {
@@ -1078,9 +956,6 @@ if (resetWatchersBtnEl) {
       const res = await fetch("/api/reset_watchers", { method: "POST" });
       const data = await res.json();
       alert(data.message || "Готово");
-      // Флаг-слушатель в run_web.py проверяет раз в секунду — даём секунду
-      // с запасом, потом обновляем список сами, а не ждём следующего
-      // автообновления или ручной перезагрузки страницы.
       setTimeout(() => { loadActiveWatchers(); loadWatchlist(); }, 1500);
     } catch (e) {
       alert("Ошибка: " + e);
@@ -1099,10 +974,6 @@ if (rebuildLevelsBtnEl) {
       const res = await fetch("/api/rebuild_levels", { method: "POST" });
       const data = await res.json();
       alert(data.message || "Готово");
-      // Rebuild реально идёт пару минут — сразу освежаем список (обычно
-      // без изменений), а не молчим до случайного следующего обновления.
-      // Полную свежую картину увидишь, когда rebuild реально закончится
-      // (или просто обнови страницу вручную через пару минут).
       loadWatchlist();
     } catch (e) {
       alert("Ошибка: " + e);
@@ -1112,11 +983,6 @@ if (rebuildLevelsBtnEl) {
   };
 }
 
-// === КНОПКИ "ОЧИСТИТЬ СИГНАЛЫ" / "ОЧИСТИТЬ ПОСЛЕДНИЙ СКАН" ===
-// В отличие от reset-watchers/rebuild — без флага и без ожидания:
-// signals.json/watcher_history.json не живут в памяти сканера, backend
-// дашборда пишет файл сам и сразу же, поэтому просто перезагружаем
-// соответствующую панель сразу после ответа, без setTimeout.
 const clearSignalsBtnEl = document.getElementById("clear-signals-btn");
 if (clearSignalsBtnEl) {
   clearSignalsBtnEl.onclick = async () => {
@@ -1152,9 +1018,7 @@ if (clearHistoryBtnEl) {
     }
   };
 }
-// Маленькое модальное окошко с датой вместо голого confirm() — предзаполнено
-// "неделя назад" (просто жми "Рескан"), можно поменять на свою дату. Собрано
-// прямо в JS без правки index.html (тот же приём, что и панель стратегий ниже).
+
 function formatDatetimeLocal(d) {
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -1197,11 +1061,7 @@ function showRescanDialog(coin) {
 window.triggerRescan = async function(event, coin) {
   event.stopPropagation();
   const since = await showRescanDialog(coin);
-  if (since === null) return; // отмена
-  // Запоминаем, что именно было открыто ДО рескана (конкретный вотчер,
-  // если смотрели через фокус) — иначе перезагрузка после рескана падает
-  // на loadChart(coin) без фокуса, то есть на общий вид "все текущие
-  // уровни + обе стратегии разом", а не на то, что реально смотрели.
+  if (since === null) return; 
   const focusBeforeRescan = focusedLevel;
   try {
       const res = await fetch(`/api/rescan/${encodeURIComponent(coin)}?since=${since}`, { method: "POST" });
@@ -1218,13 +1078,7 @@ window.triggerRescan = async function(event, coin) {
       alert("Ошибка: " + e);
   }
 };
-// === ПАНЕЛЬ ВКЛ/ВЫКЛ СТРАТЕГИЙ ===
-// Собирается прямо в JS (без правки index.html — файл вне репозитория,
-// см. .gitignore *.html) и вставляется фиксированной плашкой в правый
-// верхний угол. Пишет/читает config.json через /api/strategies —
-// тот же файл, что читает background_tasks.py::crypto_orchestrator
-// (перечитывается раз в секунду, поэтому переключение применяется на
-// ближайшем скане без рестарта бота).
+
 const STRATEGY_TOGGLE_LABELS = {
   VB: "V_BOTTOM",
   VGB: "V_GREEN_BOTTOM",
@@ -1233,11 +1087,6 @@ const STRATEGY_TOGGLE_LABELS = {
 };
 
 function buildStrategiesPanel() {
-  // Вставляем СРАЗУ ПОСЛЕ последней кнопки таймфрейма (.tf-switch) — тот
-  // же тулбар. Раньше тут ещё был fallback на "sim-mode-btn" (кнопка
-  // режима симуляции на главной странице) — с тех пор как симулятор стал
-  // отдельной страницей на своём sim.js, кнопки sim-mode-btn на дашборде
-  // больше нет вообще, оставлен только актуальный якорь.
   const anchor = document.querySelector(".tf-switch .tf-btn:last-child")
     || document.querySelector(".tf-switch");
   if (!anchor) {
@@ -1271,8 +1120,6 @@ function buildStrategiesPanel() {
       panel.style.display = "none";
       return;
     }
-    // Позиционируем панель под самой кнопкой — считаем координаты в момент
-    // открытия (на случай ресайза/скролла), а не один раз при старте.
     const rect = toggle.getBoundingClientRect();
     panel.style.left = `${rect.left + window.scrollX}px`;
     panel.style.top = `${rect.bottom + window.scrollY}px`;
@@ -1280,7 +1127,6 @@ function buildStrategiesPanel() {
     refreshStrategiesPanel();
   };
 
-  // Клик мимо панели — закрыть, чтобы не оставалась висеть поверх графика
   document.addEventListener("click", (e) => {
     if (panel.style.display === "none") return;
     if (e.target === toggle || panel.contains(e.target)) return;
@@ -1322,12 +1168,6 @@ async function refreshStrategiesPanel() {
   }
 }
 
-// Панель "🧩 Стратегии" управляет config.json, который читает БОЕВОЙ
-// сканер (background_tasks.py) — показываем её только на главной странице
-// (есть watchlist-list). На странице симулятора её не должно быть вообще:
-// это два разных, независимых понятия "какие стратегии сейчас работают" —
-// выбор стратегии для конкретного прогона симуляции ещё не сделан, но
-// когда будет, это точно не тот же переключатель и не тот же config.json.
 function isMainDashboardPage() {
   return !!document.getElementById("watchlist-list");
 }
