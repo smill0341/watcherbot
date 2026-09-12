@@ -39,11 +39,11 @@ BACKFILL_DAYS_MAP = {        # Динамическая глубина скач�
     "1h": 180,
     "4h": 180,
     "1d": 365,
-    "1w": 1460,               # 2 года
-    "1M": 2000               # 3 года
+    "1w": 1460,               
+    "1M": 2000               
 }
 EXCHANGE_MAX_LIMIT = 999
-REQUEST_DELAY_SEC = 0.3      
+REQUEST_DELAY_SEC = 0.6     
 
 TIMEFRAME_MS = {
     "15m": 15 * 60 * 1000,

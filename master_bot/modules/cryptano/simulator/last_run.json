@@ -1,235 +1,180 @@
 {
-  "coin": "ARB",
-  "start_time": "2026-09-01 17:30",
-  "end_time": "2026-09-11 15:30:00",
+  "coin": "AVAX",
+  "start_time": "2026-09-02 10:30",
+  "end_time": "2026-09-12 20:00:00",
   "active": [
     {
-      "level_id": "BC_LONG_0.1083225_0.1138775",
-      "coin": "ARB",
+      "level_id": "BC_LONG_6.825975000000001_7.176025",
+      "coin": "AVAX",
       "strategy": "BOUNCE",
       "mode": null,
       "direction": "LONG",
       "state": "SCANNING",
-      "level_min": 0.1083225,
-      "level_max": 0.1138775,
-      "level_date": "2026-09-02",
-      "level_type": "4h_poc_standalone",
-      "level_score": 3.0,
+      "level_min": 6.825975000000001,
+      "level_max": 7.176025,
+      "level_date": "2026-08-23",
+      "level_type": "1W_low_PWL",
+      "level_score": 6.0,
       "events": [
         {
-          "time": 1788353100,
+          "time": 1788345000,
           "type": "ZONE_TOUCH",
-          "price": 0.10838
+          "price": 7.07
         }
       ]
     },
     {
-      "level_id": "BC_SHORT_0.14830927500000002_0.150550725__MIRROR",
-      "coin": "ARB",
+      "level_id": "BC_SHORT_8.11005_8.52595__MIRROR",
+      "coin": "AVAX",
       "strategy": "BOUNCE",
       "mode": "MIRROR",
       "direction": "SHORT",
       "state": "SCANNING",
-      "level_min": 0.14830927500000002,
-      "level_max": 0.150550725,
-      "level_date": "2026-05-01",
-      "level_type": "1M_MACRO_Resistance",
-      "level_score": 5.0,
+      "level_min": 8.11005,
+      "level_max": 8.52595,
+      "level_date": "2026-08-22",
+      "level_type": "1d_extreme_peak + 1M_high_PMH + 1W_high_PWH",
+      "level_score": 9.0,
       "events": [
         {
-          "time": 1789041600,
+          "time": 1788786900,
           "type": "ZONE_TOUCH",
-          "price": 0.14855
-        },
-        {
-          "time": 1789047000,
-          "type": "SWEEP_BOTTOM",
-          "price": 0.14981
-        },
-        {
-          "time": 1789056000,
-          "type": "SCAN",
-          "price": 0.1488
-        },
-        {
-          "time": 1789057800,
-          "type": "SCAN",
-          "price": 0.14746
-        },
-        {
-          "time": 1789079400,
-          "type": "SCAN",
-          "price": 0.14269
-        },
-        {
-          "time": 1789080300,
-          "type": "SCAN",
-          "price": 0.14246
-        },
-        {
-          "time": 1789081200,
-          "type": "SCAN",
-          "price": 0.14215
-        },
-        {
-          "time": 1789083000,
-          "type": "RUNAWAY",
-          "price": 0.14072
-        },
-        {
-          "time": 1789101000,
-          "type": "SWEEP_BOTTOM",
-          "price": 0.1498
-        },
-        {
-          "time": 1789122600,
-          "type": "RUNAWAY",
-          "price": 0.14062
-        },
-        {
-          "time": 1789134300,
-          "type": "SWEEP_BOTTOM",
-          "price": 0.15152
-        },
-        {
-          "time": 1789135200,
-          "type": "SCAN",
-          "price": 0.14989
-        },
-        {
-          "time": 1789136100,
-          "type": "SCAN",
-          "price": 0.14836
+          "price": 8.115
         }
       ]
     }
   ],
   "history": [
     {
-      "level_id": "BC_SHORT_0.14569425_0.15316575000000002__MIRROR",
-      "coin": "ARB",
+      "level_id": "BC_SHORT_7.537725_7.924275__MIRROR",
+      "coin": "AVAX",
       "strategy": "BOUNCE",
       "mode": "MIRROR",
       "direction": "SHORT",
       "state": "TRIGGERED",
-      "level_min": 0.14569425,
-      "level_max": 0.15316575000000002,
-      "level_date": "2026-05-09",
-      "level_type": "1d_extreme_peak",
-      "level_score": 4.5,
+      "level_min": 7.537725,
+      "level_max": 7.924275,
+      "level_date": "2026-08-23",
+      "level_type": "1W_high_PWH",
+      "level_score": 6.5,
       "events": [
         {
-          "time": 1788482700,
+          "time": 1788453000,
           "type": "ZONE_TOUCH",
-          "price": 0.14637
+          "price": 7.549
         },
         {
-          "time": 1788636600,
+          "time": 1788665400,
           "type": "SWEEP_BOTTOM",
-          "price": 0.14972
+          "price": 7.741
         },
         {
-          "time": 1788640200,
+          "time": 1788728400,
           "type": "SCAN",
-          "price": 0.16282
+          "price": 7.802
         },
         {
-          "time": 1788660900,
-          "type": "SCAN",
-          "price": 0.19362
-        },
-        {
-          "time": 1788667200,
-          "type": "SCAN",
-          "price": 0.1922
-        },
-        {
-          "time": 1788755400,
-          "type": "SCAN",
-          "price": 0.17554
-        },
-        {
-          "time": 1788759000,
-          "type": "SCAN",
-          "price": 0.17128
-        },
-        {
-          "time": 1788768900,
-          "type": "SCAN",
-          "price": 0.16422
-        },
-        {
-          "time": 1788769800,
-          "type": "SCAN",
-          "price": 0.16353
-        },
-        {
-          "time": 1788860700,
-          "type": "SCAN",
-          "price": 0.17518
-        },
-        {
-          "time": 1788863400,
-          "type": "SCAN",
-          "price": 0.17453
-        },
-        {
-          "time": 1788864300,
-          "type": "SCAN",
-          "price": 0.17423
-        },
-        {
-          "time": 1788874200,
-          "type": "SCAN",
-          "price": 0.16953
-        },
-        {
-          "time": 1788929100,
-          "type": "SCAN",
-          "price": 0.16846
-        },
-        {
-          "time": 1788934500,
-          "type": "SCAN",
-          "price": 0.1712
-        },
-        {
-          "time": 1788936300,
+          "time": 1788766200,
           "type": "ENTRY",
-          "price": 0.17245
+          "price": 7.768
+        }
+      ]
+    },
+    {
+      "level_id": "BC_LONG_7.429785714285715_7.537214285714286",
+      "coin": "AVAX",
+      "strategy": "BOUNCE",
+      "mode": null,
+      "direction": "LONG",
+      "state": "TRIGGERED",
+      "level_min": 7.429785714285715,
+      "level_max": 7.537214285714286,
+      "level_date": "2026-09-05",
+      "level_type": "4h_poc_standalone",
+      "level_score": 3.0,
+      "events": [
+        {
+          "time": 1788609600,
+          "type": "ZONE_TOUCH",
+          "price": 7.495
+        },
+        {
+          "time": 1789081200,
+          "type": "SWEEP_BOTTOM",
+          "price": 7.426
+        },
+        {
+          "time": 1789114500,
+          "type": "SCAN",
+          "price": 7.497
+        },
+        {
+          "time": 1789119900,
+          "type": "SCAN",
+          "price": 7.408
+        },
+        {
+          "time": 1789129800,
+          "type": "ENTRY",
+          "price": 7.543
         }
       ]
     }
   ],
   "levels": [
     {
-      "min": 0.14569425,
-      "max": 0.15316575000000002,
+      "min": 7.537725,
+      "max": 7.924275,
       "is_support": false,
-      "type": "1d_extreme_peak",
-      "score": 4.5
+      "type": "1W_high_PWH",
+      "score": 6.5
+    },
+    {
+      "min": 7.429785714285715,
+      "max": 7.537214285714286,
+      "is_support": true,
+      "type": "4h_poc_standalone",
+      "score": 3.0
     }
   ],
   "trades": [
     {
-      "date": "2026-09-09 06:45",
-      "time": 1788936300,
-      "coin": "ARB",
+      "date": "2026-09-07 07:30",
+      "time": 1788766200,
+      "coin": "AVAX",
       "type": "SHORT",
       "source": "BOUNCE_SHORT_MIRROR",
-      "entry": 0.17245,
-      "target": 0.16037849999999998,
-      "stop": 0.258675,
+      "entry": 7.768,
+      "target": 7.224239999999999,
+      "stop": 11.652,
       "rr": 0.14,
-      "level_id": "BC_SHORT_0.14569425_0.15316575000000002__MIRROR",
-      "level_min": 0.14569425,
-      "level_max": 0.15316575000000002,
-      "volume": 1725230.98,
-      "volume_mult": 5.450086654253084,
-      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:1.7M (x5.5)"
+      "level_id": "BC_SHORT_7.537725_7.924275__MIRROR",
+      "level_min": 7.537725,
+      "level_max": 7.924275,
+      "volume": 139234.28,
+      "volume_mult": 5.407164064384709,
+      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:139.2k (x5.4)"
+    },
+    {
+      "date": "2026-09-11 12:30",
+      "time": 1789129800,
+      "coin": "AVAX",
+      "type": "LONG",
+      "source": "BOUNCE_LONG",
+      "entry": 7.543,
+      "target": 8.071010000000001,
+      "stop": 3.7715,
+      "rr": 0.14,
+      "level_id": "BC_LONG_7.429785714285715_7.537214285714286",
+      "level_min": 7.429785714285715,
+      "level_max": 7.537214285714286,
+      "volume": 129883.481,
+      "volume_mult": 10.335157599966674,
+      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:129.9k (x10.3)"
     }
   ],
   "messages": [
-    "🔴 *BOUNCE SHORT* _ARB_ — 2026-09-09 06:45\nEntry: `0.17245000`  SL: `0.25867500`  TP: `0.16037850`  R/R: `0.14`\nBOUNCE (пробой #1, сделка 1/1) | V:1.7M (x5.5)  Level: `BC_SHORT_0.14569425_0.15316575000000002__MIRROR`"
+    "🔴 *BOUNCE SHORT* _AVAX_ — 2026-09-07 07:30\nEntry: `7.76800000`  SL: `11.65200000`  TP: `7.22424000`  R/R: `0.14`\nBOUNCE (пробой #1, сделка 1/1) | V:139.2k (x5.4)  Level: `BC_SHORT_7.537725_7.924275__MIRROR`",
+    "🟢 *BOUNCE LONG* _AVAX_ — 2026-09-11 12:30\nEntry: `7.54300000`  SL: `3.77150000`  TP: `8.07101000`  R/R: `0.14`\nBOUNCE (пробой #1, сделка 1/1) | V:129.9k (x10.3)  Level: `BC_LONG_7.429785714285715_7.537214285714286`"
   ]
 }

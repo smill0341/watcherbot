@@ -8,8 +8,6 @@ from modules.cryptano.utils.storage import load_json, save_json_atomic
 from modules.cryptano.utils.common import KNOWN_TICKER_ALIASES
 from modules.cryptano.utils.paths import MACRO_LEVELS_FILE, WATCHER_HISTORY_FILE, ACTIVE_WATCHERS_FILE, RESCAN_STATUS_FILE
 from modules.cryptano.strategy.bounce_manager import SHORT_MODES
-from modules.cryptano.filters.critical_filter import scan_market, format_results
-# from modules.cryptano.filters.light_filter import _execute_scan_cycle  # ОТКЛЮЧЕНО: light-фильтр выключен из пайплайна
 from modules.cryptano.utils.coin_generators import update_momentum_watchlist
 from modules.cryptano.swing_hunter import start_swing_hunter
 
@@ -40,6 +38,84 @@ def _resolve_watcher_meta(level_id, watcher, level_id_meta):
     return coin, direction, strategy
 
 
+def _write_active_watchers_snapshot(v_bottom_mgr, bounce_mgr, level_id_meta=None):
+    """Строит export-словарь active_watchers.json из живых вотчеров обеих
+    семей (V_BOTTOM/VGB/VRT + BOUNCE) и сохраняет его + save_watcher_state().
+
+    Единственное место, где реально собирается этот словарь — раньше было
+    два независимых куска кода (тут и внутри crypto_orchestrator), которые
+    легко было поправить в одном и забыть про другой. ТОЛЬКО чтение/экспорт
+    снимка — очистку/архивацию мёртвых вотчеров (она у V_BOTTOM и BOUNCE
+    РАЗНАЯ, см. VBottomManager.clear_dead_watchers vs BounceParent.
+    clear_dead_watchers) этот хелпер не делает и не должен — это остаётся
+    заботой вызывающего кода, до вызова этой функции.
+
+    level_id_meta — необязательный {level_id: {"coin":..., "direction":...}}
+    из живого скана (свежее и точнее для V_BOTTOM/VGB/VRT); при рескане
+    (нет живого скана вокруг) передаём None/{} — _resolve_watcher_meta сам
+    падает назад на атрибуты вотчера (watcher.coin/watcher.trade_type),
+    которые всегда на месте и для V_BOTTOM, и для BOUNCE."""
+    from modules.cryptano.live_scan import save_watcher_state
+
+    level_id_meta = level_id_meta or {}
+    now_dt = datetime.datetime.now()
+
+    export = {}
+    for level_id, watcher in v_bottom_mgr._watchers.items():
+        coin, direction, strategy = _resolve_watcher_meta(level_id, watcher, level_id_meta)
+        export[level_id] = {
+            "coin": coin,
+            "direction": direction,
+            "strategy": strategy,
+            "state": getattr(watcher, "state", None),
+            "breach_count": getattr(watcher, "breach_count", 0),
+            "history_log": getattr(watcher, "history_log", ""),
+            "level_min": getattr(watcher, "min", None),
+            "level_max": getattr(watcher, "max", None),
+            "level_date": getattr(watcher, "level_date", None),
+            "level_type": getattr(watcher, "level_type", None),
+            "level_score": getattr(watcher, "level_score", None),
+            "events": getattr(watcher, "event_log", []),
+            "updated_at": now_dt.isoformat(),
+        }
+    # BOUNCE — тот же самый export-словарь, тот же файл (дашборд читает один
+    # active_watchers.json на все стратегии). coin/strategy тут достаются из
+    # _resolve_watcher_meta через сам вотчер (watcher.coin, watcher.trade_type),
+    # т.к. level_id_meta для BC обычно не заполняется — префикс "BC_" в
+    # level_id и так однозначно резолвится в _STRATEGY_BY_TAG.
+    for level_id, watcher in bounce_mgr._watchers.items():
+        coin, direction, strategy = _resolve_watcher_meta(level_id, watcher, level_id_meta)
+        export[level_id] = {
+            "coin": coin,
+            "direction": direction,
+            "strategy": strategy,
+            "mode": getattr(watcher, "mode", None),
+            "state": getattr(watcher, "state", None),
+            # BOUNCE не отражает реальный прогресс в "state" (там всегда
+            # "SCANNING" до входа/смерти) — экспортируем эти два поля отдельно,
+            # дашборд (app.py::get_active_watchers) считает "активность" BOUNCE
+            # именно по ним, а не по state.
+            "currently_pierced": getattr(watcher, "currently_pierced", False),
+            "climax_stage": getattr(watcher, "climax_stage", None),
+            "breach_count": getattr(watcher, "pierce_count", 0),
+            "history_log": getattr(watcher, "history_log", ""),
+            "level_min": getattr(watcher, "min", None),
+            "level_max": getattr(watcher, "max", None),
+            "level_date": getattr(watcher, "level_date", None),
+            "level_type": getattr(watcher, "level_type", None),
+            "level_score": getattr(watcher, "level_score", None),
+            "events": getattr(watcher, "event_log", []),
+            "updated_at": now_dt.isoformat(),
+        }
+    save_json_atomic(ACTIVE_WATCHERS_FILE, export)
+
+    # Персистентность: сохраняем реальное состояние вотчеров (не только
+    # event_log для дашборда, а весь прогресс паттерна) + оба tracked-словаря
+    # + BOUNCE (вотчеры/graveyard/pierced_count), чтобы рестарт бота не
+    # обнулял прогресс ни у одной стратегии.
+    save_watcher_state()
+
+
 def export_dashboard_state(v_bottom_mgr, bounce_mgr):
     """
     Архивирует TRIGGERED/DEAD вотчеров BOUNCE в watcher_history.json и
@@ -55,8 +131,6 @@ def export_dashboard_state(v_bottom_mgr, bounce_mgr):
     следующего планового 15-минутного цикла — реплей отрабатывал честно,
     а дашборд просто не успевал об этом узнать.
     """
-    from modules.cryptano.live_scan import save_watcher_state
-
     now_dt = datetime.datetime.now()
 
     try:
@@ -88,46 +162,7 @@ def export_dashboard_state(v_bottom_mgr, bounce_mgr):
         print(f"⚠️ [DASHBOARD EXPORT] Не удалось заархивировать BOUNCE в watcher_history.json: {e}")
 
     try:
-        export = {}
-        for level_id, watcher in v_bottom_mgr._watchers.items():
-            coin, direction, strategy = _resolve_watcher_meta(level_id, watcher, {})
-            export[level_id] = {
-                "coin": coin,
-                "direction": direction,
-                "strategy": strategy,
-                "state": getattr(watcher, "state", None),
-                "breach_count": getattr(watcher, "breach_count", 0),
-                "history_log": getattr(watcher, "history_log", ""),
-                "level_min": getattr(watcher, "min", None),
-                "level_max": getattr(watcher, "max", None),
-                "level_date": getattr(watcher, "level_date", None),
-                "level_type": getattr(watcher, "level_type", None),
-                "level_score": getattr(watcher, "level_score", None),
-                "events": getattr(watcher, "event_log", []),
-                "updated_at": now_dt.isoformat(),
-            }
-        for level_id, watcher in bounce_mgr._watchers.items():
-            coin, direction, strategy = _resolve_watcher_meta(level_id, watcher, {})
-            export[level_id] = {
-                "coin": coin,
-                "direction": direction,
-                "strategy": strategy,
-                "mode": getattr(watcher, "mode", None),
-                "state": getattr(watcher, "state", None),
-                "currently_pierced": getattr(watcher, "currently_pierced", False),
-                "climax_stage": getattr(watcher, "climax_stage", None),
-                "breach_count": getattr(watcher, "pierce_count", 0),
-                "history_log": getattr(watcher, "history_log", ""),
-                "level_min": getattr(watcher, "min", None),
-                "level_max": getattr(watcher, "max", None),
-                "level_date": getattr(watcher, "level_date", None),
-                "level_type": getattr(watcher, "level_type", None),
-                "level_score": getattr(watcher, "level_score", None),
-                "events": getattr(watcher, "event_log", []),
-                "updated_at": now_dt.isoformat(),
-            }
-        save_json_atomic(ACTIVE_WATCHERS_FILE, export)
-        save_watcher_state()
+        _write_active_watchers_snapshot(v_bottom_mgr, bounce_mgr)
     except Exception as e:
         print(f"⚠️ [DASHBOARD EXPORT] Не удалось сохранить active_watchers.json: {e}")
 
@@ -140,8 +175,6 @@ def crypto_orchestrator(bot, admin_chat_id):
     print("🪙  Watcher Crypto инициализирован!")
     
     # Храним таймштампы последнего успешного запуска фильтров (в секундах)
-    last_critical = 0
-    last_light = 0
     last_watcher = 0
     last_generator = 0
     
@@ -184,48 +217,12 @@ def crypto_orchestrator(bot, admin_chat_id):
                 cascade_initialized = True
                 
                 # Сбрасываем таймеры в ноль, чтобы принудительно прогнать стартовую каскадную очередь
-                last_critical = 0
-                last_light = 0
                 last_watcher = 0
                 last_generator = 0
             
             # Считаем, сколько секунд прошло с момента нажатия кнопки "Старт"
             elapsed = time.time() - session_start_time
             
-            # =========================================================
-            # 1. ОЧЕРЕДЬ: 🚀 CRITICAL (Старт на 1-й минуте, далее каждый 1 час)
-            # =========================================================
-            if elapsed >= 60 and (time.time() - last_critical >= 3600 or last_critical == 0):
-                print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [DISPATCHER] ⏱ Каскад: Запуск Critical фильтра...")
-                last_critical = time.time()
-                
-                # Выполняем изолированный цикл Критикала
-                try:
-                    res = scan_market(scan_type="auto")
-                    # ОТКЛЮЧЕНО: авто-добавление в watchlist.json — список для скана теперь
-                    # берётся напрямую из macro_levels.json (см. блок WATCHER SCAN ниже),
-                    # watchlist.json как отдельная сущность больше не участвует в скане.
-                    # Critical остаётся ровно тем, чем и был — "сигнал глазами" человеку,
-                    # просто больше ничего никуда не передаёт автоматически.
-                    if res:
-                        msg = format_results(res, "⏰ Авто-находка: Сильный RSI + Аномальный объем!")
-                        bot.send_message(admin_chat_id, msg, parse_mode="Markdown")
-                except Exception as e:
-                    print(f"[DISPATCHER ERROR] Ошибка внутри Critical цикла: {e}")
-
-            # =========================================================
-            # 2. ОЧЕРЕДЬ: 💎 LIGHT (Старт на 2-й минуте, далее каждые 30 минут)
-            # =========================================================
-            # ОТКЛЮЧЕНО: light-фильтр выключен из пайплайна (light_filter.py не удалён,
-            # просто больше не вызывается в цикле скана).
-            # if elapsed >= 120 and (time.time() - last_light >= 1800 or last_light == 0):
-            #     print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [DISPATCHER] ⏱ Каскад: Запуск Light фильтра...")
-            #     last_light = time.time()
-            #     try:
-            #         _execute_scan_cycle(bot, admin_chat_id, is_auto=True)
-            #     except Exception as e:
-            #         print(f"[DISPATCHER ERROR] Ошибка внутри Light цикла: {e}")
-
             # =========================================================
             # 3. ОЧЕРЕДЬ: 👀 WATCHER SCAN (Старт на 5-й минуте, далее —
             # синхронизировано с закрытием 15м свечи на бирже + 1 минута
@@ -562,60 +559,7 @@ def crypto_orchestrator(bot, admin_chat_id):
                                 # такой лог в bounce_watcher.py. Само появление уровня в
                                 # подсветке ("активный", толстая линия) уже работает.
                                 try:
-                                    export = {}
-                                    for level_id, watcher in v_bottom_mgr._watchers.items():
-                                        coin, direction, strategy = _resolve_watcher_meta(level_id, watcher, level_id_meta)
-                                        export[level_id] = {
-                                            "coin": coin,
-                                            "direction": direction,
-                                            "strategy": strategy,
-                                            "state": getattr(watcher, "state", None),
-                                            "breach_count": getattr(watcher, "breach_count", 0),
-                                            "history_log": getattr(watcher, "history_log", ""),
-                                            "level_min": getattr(watcher, "min", None),
-                                            "level_max": getattr(watcher, "max", None),
-                                                "level_date": getattr(watcher, "level_date", None),
-                                                "level_type": getattr(watcher, "level_type", None),
-                                                "level_score": getattr(watcher, "level_score", None),
-                                            "events": getattr(watcher, "event_log", []),
-                                            "updated_at": now_dt.isoformat(),
-                                        }
-                                    # BOUNCE — тот же самый export-словарь, тот же файл (дашборд читает
-                                    # один active_watchers.json на все стратегии). coin/strategy тут
-                                    # достаются из _resolve_watcher_meta через сам вотчер (watcher.coin,
-                                    # watcher.trade_type), т.к. level_id_meta для BC не заполняется —
-                                    # префикс "BC_" в level_id и так однозначно резолвится в _STRATEGY_BY_TAG.
-                                    for level_id, watcher in bounce_mgr._watchers.items():
-                                        coin, direction, strategy = _resolve_watcher_meta(level_id, watcher, level_id_meta)
-                                        export[level_id] = {
-                                            "coin": coin,
-                                            "direction": direction,
-                                            "strategy": strategy,
-                                            "mode": getattr(watcher, "mode", None),
-                                            "state": getattr(watcher, "state", None),
-                                            # BOUNCE не отражает реальный прогресс в "state" (там всегда
-                                            # "SCANNING" до входа/смерти) — экспортируем эти два поля отдельно,
-                                            # дашборд (app.py::get_active_watchers) считает "активность" BOUNCE
-                                            # именно по ним, а не по state.
-                                            "currently_pierced": getattr(watcher, "currently_pierced", False),
-                                            "climax_stage": getattr(watcher, "climax_stage", None),
-                                            "breach_count": getattr(watcher, "pierce_count", 0),
-                                            "history_log": getattr(watcher, "history_log", ""),
-                                            "level_min": getattr(watcher, "min", None),
-                                            "level_max": getattr(watcher, "max", None),
-                                                "level_date": getattr(watcher, "level_date", None),
-                                                "level_type": getattr(watcher, "level_type", None),
-                                                "level_score": getattr(watcher, "level_score", None),
-                                            "events": getattr(watcher, "event_log", []),
-                                            "updated_at": now_dt.isoformat(),
-                                        }
-                                    save_json_atomic(ACTIVE_WATCHERS_FILE, export)
-
-                                    # Персистентность: сохраняем реальное состояние вотчеров
-                                    # (не только event_log для дашборда, а весь прогресс паттерна)
-                                    # + оба tracked-словаря + BOUNCE (вотчеры/graveyard/pierced_count),
-                                    # чтобы рестарт бота не обнулял прогресс ни у одной стратегии.
-                                    save_watcher_state()
+                                    _write_active_watchers_snapshot(v_bottom_mgr, bounce_mgr, level_id_meta)
                                 except Exception as e:
                                     print(f"⚠️ [DASHBOARD EXPORT] Не удалось сохранить active_watchers.json: {e}")
                                     

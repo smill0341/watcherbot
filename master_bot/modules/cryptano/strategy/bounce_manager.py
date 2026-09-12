@@ -245,33 +245,6 @@ class BounceManager:
                 current_level_ids.add(f"{base_id}__{m}")
         self.parent.clear_dead_watchers(current_level_ids)
 
-    def _get_active_climax_id(self):
-        """Фокус держится на уровне с максимальной стадией.
-        Новый уровень заберет фокус, только когда дойдет до стадии SEARCHING."""
-        STAGE_RANK = {'WAIT_MAX': 1, 'WAIT_BUFFER': 2, 'SEARCHING': 3}
-        candidates = [
-            (lid, w) for lid, w in self._watchers.items()
-            if getattr(w, 'trade_type', None) == 'SHORT'
-            and getattr(w, 'climax_stage', None) in STAGE_RANK
-            and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED")
-        ]
-        if not candidates:
-            return None
-        # Сначала сравниваем стадию, при равной стадии выигрывает самый верхний (max)
-        return max(candidates, key=lambda item: (STAGE_RANK[item[1].climax_stage], item[1].max))[0]
-
-    def get_active_climax_short(self):
-        active_id = self._get_active_climax_id()
-        if active_id is None:
-            return None, None, None, None
-            
-        best = self._watchers.get(active_id)
-        if best is None:
-            return None, None, None, None
-            
-        return best.min, best.max, None, None
-
-
     def _get_focus_level_id(self, trade_type, mode=None, coin="UNKNOWN"):
         """Единый центр принятия решений по фокусу — отдельно для каждой
         комбинации trade_type+mode, И ОБЯЗАТЕЛЬНО в пределах одной монеты
@@ -311,98 +284,6 @@ class BounceManager:
             return max(candidates, key=lambda item: (item[1].last_pierce_time, -item[1].min))[0]
         else:
             return max(candidates, key=lambda item: (item[1].last_pierce_time, item[1].max))[0]
-
-    def get_zone_drawing(self, c_close, allow_long=True, allow_short=True):
-        sup_min = sup_max = res_min = res_max = None
-
-        if allow_long:
-            focus_id = self._get_focus_level_id('LONG')
-            if focus_id is not None:
-                w = self._watchers.get(focus_id)
-                if w is not None:
-                    sup_min, sup_max = w.min, w.max
-            else:
-                active_longs = [w for w in self._watchers.values()
-                                 if getattr(w, 'trade_type', None) == 'LONG'
-                                 and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED")]
-                if active_longs:
-                    near = min(active_longs, key=lambda w: abs(((w.min + w.max) / 2) - c_close))
-                    sup_min, sup_max = near.min, near.max
-
-        if allow_short:
-            # Рисуем фокус CLIMAX, если он есть, иначе фокус MIRROR — чисто
-            # для линии на графике (сигналы в лог идут от обеих семей
-            # независимо от того, что тут нарисовано).
-            focus_id = self._get_focus_level_id('SHORT', mode='CLIMAX') or self._get_focus_level_id('SHORT', mode='MIRROR')
-            if focus_id is not None:
-                w = self._watchers.get(focus_id)
-                if w is not None:
-                    res_min, res_max = w.min, w.max
-            else:
-                active_shorts = [w for w in self._watchers.values()
-                                  if getattr(w, 'trade_type', None) == 'SHORT'
-                                  and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED")]
-                if active_shorts:
-                    near = min(active_shorts, key=lambda w: abs(((w.min + w.max) / 2) - c_close))
-                    res_min, res_max = near.min, near.max
-
-        return sup_min, sup_max, res_min, res_max
-
-    def get_zone_drawing_multi(self, c_close, allow_long=True, allow_short=True):
-        """То же самое, что get_zone_drawing, но НЕ схлопывает два независимых
-        SHORT-режима (CLIMAX/MIRROR) в одну пару линий — отдаёт обе зоны сразу,
-        каждую под своим ключом. Старый get_zone_drawing НЕ трогаем (может быть
-        завязан код, которого мы не видим — и в бэктесте, и в веб-графике живого
-        бота) — это ДОПОЛНИТЕЛЬНЫЙ метод, переходить на него нужно осознанно там,
-        где действительно хотят видеть обе зоны одновременно.
-
-        Возвращает dict:
-            {
-                'long':          (sup_min, sup_max) | (None, None),
-                'short_climax':  (res_min, res_max) | (None, None),
-                'short_mirror':  (res_min, res_max) | (None, None),
-            }
-        Если для какого-то ключа сейчас вообще нет ни одного активного вотчера
-        (ни в фокусе, ни просто рядом с ценой) — оба значения None, рисовать
-        для этого ключа нечего.
-        """
-        result = {
-            'long': (None, None),
-            'short_climax': (None, None),
-            'short_mirror': (None, None),
-        }
-
-        if allow_long:
-            focus_id = self._get_focus_level_id('LONG')
-            if focus_id is not None:
-                w = self._watchers.get(focus_id)
-                if w is not None:
-                    result['long'] = (w.min, w.max)
-            else:
-                active_longs = [w for w in self._watchers.values()
-                                 if getattr(w, 'trade_type', None) == 'LONG'
-                                 and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED")]
-                if active_longs:
-                    near = min(active_longs, key=lambda w: abs(((w.min + w.max) / 2) - c_close))
-                    result['long'] = (near.min, near.max)
-
-        if allow_short:
-            for mode, key in (('CLIMAX', 'short_climax'), ('MIRROR', 'short_mirror')):
-                focus_id = self._get_focus_level_id('SHORT', mode=mode)
-                if focus_id is not None:
-                    w = self._watchers.get(focus_id)
-                    if w is not None:
-                        result[key] = (w.min, w.max)
-                else:
-                    active = [w for w in self._watchers.values()
-                              if getattr(w, 'trade_type', None) == 'SHORT'
-                              and getattr(w, 'mode', None) == mode
-                              and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED")]
-                    if active:
-                        near = min(active, key=lambda w: abs(((w.min + w.max) / 2) - c_close))
-                        result[key] = (near.min, near.max)
-
-        return result
 
     def process_candle(self, c_low, c_high, c_close, current_supports, current_resistances,
                         df_slice, allow_long=True, allow_short=True, c_atr=0.0, coin="UNKNOWN"):
