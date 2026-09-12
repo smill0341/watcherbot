@@ -39,14 +39,9 @@ const ema20ValueEl = document.getElementById("ema20-value");
 const ema50ValueEl = document.getElementById("ema50-value");
 const ema200ValueEl = document.getElementById("ema200-value");
 
-const TF_LIMITS = {
-  "15m": 5760, // ~60 дней
-  "1h": 4320,  // ~180 дней
-  "4h": 1080,  // ~180 дней
-  "1d": 365,   // ~1 год (как в базе)
-  "1w": 105,   // ~2 года
-  "1M": 36,    // ~3 года
-};
+// Глубину истории теперь целиком задаёт candle_store.BACKFILL_DAYS_MAP на
+// бэкенде (и держит её постоянной cleanup_old() — скользящее окно). Фронт
+// запрашивает /api/ohlcv без limit и просто получает всё, что есть в базе.
 let currentTimeframe = "15m";
 
 // Фильтр-выравниватель: жестко сажает время любой свечи на сетку, чтобы хвост графика не отрывался
@@ -629,6 +624,16 @@ async function loadMacroEma200(coin) {
 
 let chartLoadToken = 0;
 
+// Бинарный поиск ближайшей по времени свечи (candles отсортированы по time).
+function findNearestCandleIndex(candles, targetTime) {
+  let lo = 0, hi = candles.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (candles[mid].time < targetTime) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+}
+
 async function loadChart(coin, focus = null, signal = null, opts = {}) {
   const skipLiveOverlay = !!opts.skipLiveOverlay;
   if (!coin || coin === "null" || coin === "undefined") return;
@@ -645,10 +650,8 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
   clearSignalLines();
   clearLevelLines();
 
-  const limit = TF_LIMITS[currentTimeframe] ?? 200;
-
   try {
-    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}&limit=${limit}`);
+    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}`);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       currentSymbolEl.textContent = err.detail || "график недоступен";
@@ -688,7 +691,22 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
     ema50Series.setData(computeEMA(formattedCandles, 50));
     rsiSeries.setData(computeRSI(formattedCandles, 14)); 
 
-    chart.timeScale().fitContent();
+    // Клик по сигналу — не обрезаем данные, грузим ВСЮ историю как обычно,
+    // просто ставим видимое окно (viewport) вокруг момента сигнала. Данные
+    // за пределами окна никуда не делись — можно спокойно отскроллить/
+    // отзумить и посмотреть весь график целиком.
+    if (signal && signal.time && formattedCandles.length) {
+      const idx = findNearestCandleIndex(formattedCandles, signal.time);
+      const half = 150; // свечей до и после сигнала
+      const fromIdx = Math.max(0, idx - half);
+      const toIdx = Math.min(formattedCandles.length - 1, idx + half);
+      chart.timeScale().setVisibleRange({
+        from: formattedCandles[fromIdx].time,
+        to: formattedCandles[toIdx].time,
+      });
+    } else {
+      chart.timeScale().fitContent();
+    }
     candleSeries.priceScale().applyOptions({ autoScale: true });
     if (!skipLiveOverlay) {
       loadLevels(coin, myToken);

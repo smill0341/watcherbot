@@ -11,7 +11,10 @@ SQLite-кэш свечей для дашборда. НЕ трогает торг
     REQUEST_DELAY_SEC между запросами (та же норма, что уже используется
     в остальном боте — см. time.sleep(0.3) в watcher_plan.py/swing_hunter.py).
   - Дальше — только "хвост": докачиваем свечи новее последней сохранённой.
-  - Чистка: свечи старше RETENTION_DAYS периодически удаляются.
+  - Чистка: для каждого (symbol, timeframe) свечи старше её собственного
+    окна из BACKFILL_DAYS_MAP периодически удаляются — так база держит
+    скользящее окно постоянного размера, а BACKFILL_DAYS_MAP остаётся
+    единственным местом, где настраивается глубина истории.
 """
 
 import os
@@ -36,11 +39,10 @@ BACKFILL_DAYS_MAP = {        # Динамическая глубина скач�
     "1h": 180,
     "4h": 180,
     "1d": 365,
-    "1w": 730,               # 2 года
-    "1M": 1095               # 3 года
+    "1w": 1460,               # 2 года
+    "1M": 2000               # 3 года
 }
-RETENTION_DAYS = 1200        # Чистка старше самой глубокой истории
-EXCHANGE_MAX_LIMIT = 999     
+EXCHANGE_MAX_LIMIT = 999
 REQUEST_DELAY_SEC = 0.3      
 
 TIMEFRAME_MS = {
@@ -246,12 +248,26 @@ def has_data(symbol, timeframe):
     return _last_timestamp(symbol, timeframe) is not None
 
 
-def cleanup_old(days=RETENTION_DAYS):
-    cutoff = int(time.time() - days * 86400)
+def cleanup_old():
+    """Чистит каждую (symbol, timeframe) по её собственному окну из
+    BACKFILL_DAYS_MAP — единое место правды для глубины истории.
+    Так база держит скользящее окно: top_up_tail() дописывает новые
+    свечи вперёд, cleanup_old() отрезает всё, что вышло за окно сзади,
+    и общее количество свечей на (symbol, timeframe) остаётся примерно
+    постоянным."""
     with _lock:
         conn = _get_conn()
         try:
-            conn.execute("DELETE FROM candles WHERE timestamp < ?", (cutoff,))
+            pairs = conn.execute(
+                "SELECT DISTINCT symbol, timeframe FROM candles"
+            ).fetchall()
+            for symbol, timeframe in pairs:
+                days = BACKFILL_DAYS_MAP.get(timeframe, BACKFILL_DAYS)
+                cutoff = int(time.time() - days * 86400)
+                conn.execute(
+                    "DELETE FROM candles WHERE symbol=? AND timeframe=? AND timestamp < ?",
+                    (symbol, timeframe, cutoff),
+                )
             conn.commit()
         finally:
             conn.close()

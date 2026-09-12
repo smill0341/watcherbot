@@ -591,16 +591,21 @@ def get_watcher_events(coin: str):
 def get_ohlcv(
     coin: str,
     timeframe: str = "15m",
-    limit: int = Query(default=200, ge=10, le=6000),
+    limit: Optional[int] = Query(default=None, ge=1, description="если не задан — вся история, что есть в базе (её глубину задаёт candle_store.BACKFILL_DAYS_MAP)"),
     around: Optional[int] = Query(default=None, description="unix-секунды — окно вокруг этого момента вместо последних `limit` свечей (переход по клику на старый сигнал/сделку)"),
 ):
     """
     Свечи по монете — из локальной SQLite-истории (candle_store), а не
     напрямую с биржи каждый раз. Для монет из watchlist история уже
-    докачана фоновым воркером (~2 месяца, см. candle_store.BACKFILL_DAYS).
+    докачана фоновым воркером на глубину candle_store.BACKFILL_DAYS_MAP
+    для этого таймфрейма (единственное место, где настраивается окно).
     Если монеты в базе ещё нет вообще (открыли не-watchlist монету
     напрямую) — докачиваем её здесь же, синхронно: это разовая пауза
     в несколько секунд на первое открытие, дальше она уже в базе.
+
+    Без `limit` отдаётся вся история, что есть в базе для этого
+    (symbol, timeframe) — её глубину и держит постоянной cleanup_old(),
+    так что "вся история" на практике и есть окно BACKFILL_DAYS_MAP.
 
     `around` — unix-секунды: вернуть окно СВЕЧЕЙ вокруг этого момента
     (примерно limit/2 до и после), а не последние `limit`. Нужно для
