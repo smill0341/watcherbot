@@ -598,11 +598,20 @@ async function loadEvents(coin, token = chartLoadToken) {
 
 async function loadMacroEma200(coin) {
   if (!emaMacroSeries) return;
+
+  // Для глобальных графиков строим честную 200 EMA по родным свечам этого же таймфрейма
+  if (currentTimeframe === "1d" || currentTimeframe === "1w" || currentTimeframe === "1M") {
+    if (coin !== selectedCoin) return;
+    emaMacroSeries.setData(computeEMA(globalCandles, 200));
+    return;
+  }
+
+  // Для внутридневных графиков (15m, 1h) скачиваем 4-часовую историю как макро-тренд
   try {
-    // Лимит строго 999, как и заложено в бэкенде
     const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=4h&limit=999`);
     if (!res.ok) { emaMacroSeries.setData([]); return; }
     const data = await res.json();
+    
     const candles = (data.candles || [])
       .map((c) => {
         const unixSeconds = c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time;
@@ -612,16 +621,7 @@ async function loadMacroEma200(coin) {
       
     if (coin !== selectedCoin) return;
     
-    let emaData = computeEMA(candles, 200);
-    
-    // ФИЛЬТР ДЫР: на старших таймфреймах оставляем только те точки EMA, 
-    // которые идеально ложатся на существующие бары, чтобы не создавать пустых слотов
-    if (currentTimeframe === "1d" || currentTimeframe === "1w" || currentTimeframe === "1M") {
-      const mainTimes = new Set(globalCandles.map(c => c.time));
-      emaData = emaData.filter(d => mainTimes.has(d.time));
-    }
-
-    emaMacroSeries.setData(emaData);
+    emaMacroSeries.setData(computeEMA(candles, 200));
   } catch (e) {
     console.error("macro EMA200(4H) load failed", e);
   }

@@ -81,18 +81,6 @@ def init_db():
             conn.close()
 
 
-def _last_timestamp(symbol, timeframe):
-    conn = _get_conn()
-    try:
-        row = conn.execute(
-            "SELECT MAX(timestamp) FROM candles WHERE symbol=? AND timeframe=?",
-            (symbol, timeframe),
-        ).fetchone()
-        return row[0] if row and row[0] is not None else None
-    finally:
-        conn.close()
-
-
 def _insert_candles(symbol, timeframe, rows):
     """rows: список в ccxt-формате [ts_ms, open, high, low, close, volume]."""
     if not rows:
@@ -141,16 +129,43 @@ def backfill_symbol(exchange, symbol, timeframe, days=None):
         time.sleep(REQUEST_DELAY_SEC)
 
 
+def _last_timestamp(symbol, timeframe):
+    conn = _get_conn()
+    try:
+        row = conn.execute(
+            "SELECT MAX(timestamp) FROM candles WHERE symbol=? AND timeframe=?",
+            (symbol, timeframe),
+        ).fetchone()
+        return row[0] if row and row[0] is not None else None
+    finally:
+        conn.close()
+
+
+def _first_timestamp(symbol, timeframe):
+    conn = _get_conn()
+    try:
+        row = conn.execute(
+            "SELECT MIN(timestamp) FROM candles WHERE symbol=? AND timeframe=?",
+            (symbol, timeframe),
+        ).fetchone()
+        return row[0] if row and row[0] is not None else None
+    finally:
+        conn.close()
+
+
 def top_up_tail(exchange, symbol, timeframe):
-    """Докачивает всё, что новее последней сохранённой свечи, циклом до текущего момента."""
+    """Докачивает новые свечи вперед и недостающую историю назад."""
     last_ts = _last_timestamp(symbol, timeframe)
     if last_ts is None:
         backfill_symbol(exchange, symbol, timeframe)
         return
         
-    since_ms = last_ts * 1000
     tf_ms = TIMEFRAME_MS.get(timeframe, 15 * 60 * 1000)
-
+    target_days = BACKFILL_DAYS_MAP.get(timeframe, BACKFILL_DAYS)
+    target_since_ms = int((time.time() - target_days * 86400) * 1000)
+    
+    # 1. Сначала докачиваем новые свечи вперед до текущего момента
+    since_ms = last_ts * 1000
     while True:
         try:
             batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since_ms, limit=EXCHANGE_MAX_LIMIT)
@@ -164,14 +179,33 @@ def top_up_tail(exchange, symbol, timeframe):
         _insert_candles(symbol, timeframe, batch)
         last_fetched_ts = batch[-1][0]
         
-        # Если скачали меньше максимума или упёрлись в текущее время — всё докачано
         if len(batch) < EXCHANGE_MAX_LIMIT or last_fetched_ts + tf_ms > time.time() * 1000:
             break
             
         since_ms = last_fetched_ts + tf_ms
-        import time
         time.sleep(REQUEST_DELAY_SEC)
 
+    # 2. Проверяем наличие дыры сзади. Если история короче лимита — докачиваем в прошлое
+    first_ts = _first_timestamp(symbol, timeframe)
+    if first_ts and (first_ts * 1000) > target_since_ms + tf_ms:
+        past_since_ms = target_since_ms
+        while past_since_ms < first_ts * 1000:
+            try:
+                batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=past_since_ms, limit=EXCHANGE_MAX_LIMIT)
+            except Exception as e:
+                print(f"⚠️ [candle_store] past backfill {symbol} {timeframe}: {e}")
+                break
+            if not batch:
+                break
+                
+            _insert_candles(symbol, timeframe, batch)
+            last_fetched_ts = batch[-1][0]
+            
+            if len(batch) < EXCHANGE_MAX_LIMIT or last_fetched_ts >= first_ts * 1000:
+                break
+                
+            past_since_ms = last_fetched_ts + tf_ms
+            time.sleep(REQUEST_DELAY_SEC)
 
 def get_candles(symbol, timeframe, limit=None, around=None):
     """Возвращает список dict {time, open, high, low, close, volume}, time — unix-секунды.
