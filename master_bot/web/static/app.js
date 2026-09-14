@@ -14,6 +14,47 @@ let ema50Series = null;
 let emaMacroSeries = null; 
 let rsiSeries = null; 
 let levelLines = []; 
+
+// hex "#rrggbb" -> "rrggbbAA" (альфа для CSS-цвета заливки)
+function hexWithAlpha(hex, alphaHex) {
+  return hex.replace("#", "") + alphaHex;
+}
+
+// Рисует ОДНУ зону как закрашенную полосу между min и max (перенесено из
+// sim.js — тот же приём: Baseline-серия, база = низ зоны, данные = верх
+// зоны, плюс отдельная сплошная линия по низу, т.к. Baseline даёт границу
+// только сверху). Возвращает обе серии — обе кладём в levelLines.
+function addZoneBand(zMin, zMax, color, candles, titleText) {
+  const bandSeries = chart.addBaselineSeries({
+    baseValue: { type: "price", price: zMin },
+    topFillColor1: "#" + hexWithAlpha(color, "40"),
+    topFillColor2: "#" + hexWithAlpha(color, "15"),
+    topLineColor: color,
+    bottomFillColor1: "rgba(0,0,0,0)",
+    bottomFillColor2: "rgba(0,0,0,0)",
+    bottomLineColor: "rgba(0,0,0,0)",
+    lineWidth: 1,
+    priceLineVisible: false,
+    lastValueVisible: false,
+    crosshairMarkerVisible: false,
+    title: titleText || "",
+    autoscaleInfoProvider: () => null,
+  });
+  bandSeries.setData(candles.map((c) => ({ time: c.time, value: zMax })));
+
+  const bottomLine = chart.addLineSeries({
+    color,
+    lineWidth: 1,
+    lineStyle: LightweightCharts.LineStyle.Solid,
+    crosshairMarkerVisible: false,
+    priceLineVisible: false,
+    lastValueVisible: false,
+    autoscaleInfoProvider: () => null,
+  });
+  bottomLine.setData(candles.map((c) => ({ time: c.time, value: zMin })));
+
+  return [bandSeries, bottomLine];
+}
 let selectedCoin = null;
 let focusedLevel = null;
 let isSignalView = false;
@@ -344,14 +385,37 @@ function clearSignalLines() {
 
 function drawSignalTradeLines(signal) {
   clearSignalLines();
-  if (!globalCandles.length) return;
-  const lineTimes = globalCandles.map((c) => c.time);
+  if (!globalCandles.length || signal.time == null) return;
+
+  // Линии живут ровно столько, сколько живёт сама сделка — от входа до
+  // закрытия (closed_at), а если сделка ещё открыта — до текущего момента.
+  // Раньше тянулись сплошными через весь график независимо от статуса.
+  const fromSec = signal.time;
+  const toSec = signal.closed_at ? Math.floor(new Date(signal.closed_at).getTime() / 1000) : Math.floor(Date.now() / 1000);
+  const lineCandles = globalCandles.filter((c) => c.time >= fromSec && c.time <= toSec);
+  if (!lineCandles.length) return;
+  const lineTimes = lineCandles.map((c) => c.time);
+
+  // Заливка между уровнями сделки — entry->target (потенциальная прибыль,
+  // зелёная) и entry->stop (риск, красная). Min/max берём явно — для SHORT
+  // target ниже entry, а stop выше, геометрия та же, просто зеркальная.
+  if (signal.entry != null && signal.target != null) {
+    const a = Math.min(signal.entry, signal.target);
+    const b = Math.max(signal.entry, signal.target);
+    signalLines.push(...addZoneBand(a, b, "#4caf7d", lineCandles, ""));
+  }
+  if (signal.entry != null && signal.stop != null) {
+    const a = Math.min(signal.entry, signal.stop);
+    const b = Math.max(signal.entry, signal.stop);
+    signalLines.push(...addZoneBand(a, b, "#e5654f", lineCandles, ""));
+  }
+
   const addLine = (price, color) => {
     if (price === null || price === undefined || Number.isNaN(Number(price))) return;
     const series = chart.addLineSeries({
       color,
       lineWidth: 2,
-      lineStyle: LightweightCharts.LineStyle.Solid,
+      lineStyle: LightweightCharts.LineStyle.Dashed,
       crosshairMarkerVisible: false,
       priceLineVisible: false,
       lastValueVisible: false,
@@ -427,22 +491,9 @@ async function loadLevels(coin, token = chartLoadToken) {
         const events = (w.events || []).filter((ev) => ev.time);
         if (events.length > 0) startTime = Math.min(...events.map((ev) => ev.time));
       }
-      const lineTimes = globalCandles.filter((c) => c.time >= startTime).map(c => c.time);
+      const lineTimes = globalCandles.filter((c) => c.time >= startTime);
       if (lineTimes.length === 0) return;
-      [wMax, wMin].forEach((priceValue, idx) => {
-        const series = chart.addLineSeries({
-          color: activeColor,
-          lineWidth: 2,
-          lineStyle: LightweightCharts.LineStyle.Dashed,
-          crosshairMarkerVisible: false,
-          priceLineVisible: false,
-          lastValueVisible: false,
-          title: idx === 0 ? levelTitle : "",
-          autoscaleInfoProvider: () => null,
-        });
-        series.setData(lineTimes.map(t => ({ time: t, value: priceValue })));
-        levelLines.push(series);
-      });
+      levelLines.push(...addZoneBand(wMin, wMax, activeColor, lineTimes, levelTitle));
     };
 
     if (focusedLevel) {
@@ -469,44 +520,20 @@ async function loadLevels(coin, token = chartLoadToken) {
       if (active) matchedActiveKeys.add(activeKey(active));
       const levelLabel = friendlyLevelType(lvl.type);
       let startTime = lvl.date ? new Date(lvl.date).getTime() / 1000 : firstTime;
-      const lineTimes = globalCandles.filter(c => c.time >= startTime).map(c => c.time);
+      const lineTimes = globalCandles.filter(c => c.time >= startTime);
       if (lineTimes.length === 0) return;
 
       if (active) {
         const activeColor = isSupport ? "#00c853" : "#ff3d3d";
         const label = friendlyStrategyWithMode(active.strategy, active.mode);
         const title = `${isSupport ? '🟢' : '🔴'} ${label} · ${levelLabel}${lvl.score != null ? ' ' + lvl.score : ''}`;
-        [lvl.max, lvl.min].forEach((priceValue, idx) => {
-          const series = chart.addLineSeries({
-            color: activeColor,
-            lineWidth: 2,
-            lineStyle: LightweightCharts.LineStyle.Dashed,
-            crosshairMarkerVisible: false,
-            priceLineVisible: false,
-            lastValueVisible: false,
-            title: idx === 0 ? title : "",
-            autoscaleInfoProvider: () => null,
-          });
-          series.setData(lineTimes.map(t => ({ time: t, value: priceValue })));
-          levelLines.push(series);
-        });
+        levelLines.push(...addZoneBand(lvl.min, lvl.max, activeColor, lineTimes, title));
         return;
       }
 
       const color = isSupport ? "#4caf7d" : "#e5654f";
-      const midPrice = (lvl.min + lvl.max) / 2;
-      const series = chart.addLineSeries({
-        color: color,
-        lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Solid,
-        crosshairMarkerVisible: false,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        title: `${levelLabel}${lvl.score != null ? ' ' + lvl.score : ''}`,
-        autoscaleInfoProvider: () => null,
-      });
-      series.setData(lineTimes.map(t => ({ time: t, value: midPrice })));
-      levelLines.push(series);
+      const title = `${levelLabel}${lvl.score != null ? ' ' + lvl.score : ''}`;
+      levelLines.push(...addZoneBand(lvl.min, lvl.max, color, lineTimes, title));
     };
 
     (data.supports || []).forEach((lvl) => addLevel(lvl, true));
@@ -905,7 +932,7 @@ async function loadSignals() {
       tr.title = "Открыть график в момент сигнала";
       tr.onclick = async () => {
         const focus = s.level_id ? await buildFocusFromLevelId(s.coin, s.level_id) : null;
-        loadChart(s.coin, focus, { time: s.time, entry: s.entry, target: s.target, stop: s.stop });
+        loadChart(s.coin, focus, { time: s.time, entry: s.entry, target: s.target, stop: s.stop, closed_at: s.closed_at });
       };
     }
     signalsBody.appendChild(tr);

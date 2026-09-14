@@ -9,7 +9,7 @@ import schedule
 from modules.cryptano.utils.crypto_utils import exchange
 from modules.cryptano.utils.common import resolve_symbol
 from modules.cryptano.utils.storage import load_json, save_json_atomic
-from modules.cryptano.utils.levels_builder import build_levels
+from modules.cryptano.utils.levels_builder import build_levels, _is_mitigated
 
 # =========================================================
 # ⚙️ НАСТРОЙКИ РАСПИСАНИЯ
@@ -34,6 +34,129 @@ from modules.cryptano.utils.paths import MACRO_LEVELS_FILE
 from modules.cryptano.levels_history import save_levels_snapshot
 
 MIN_VOLUME_USD = 10_000_000
+
+# Порог "это тот же уровень или новый" для паспорта уровня (см. обсуждение
+# дрожания min/max и пропадания-появления зон из-за того, что ATR, от
+# которого зависят и ширина зоны, и порог дистанции, пересчитывается заново
+# на каждой сборке). То же значение, что уже используют LEVEL_DEDUP_
+# TOLERANCE_PCT (bounce_manager.py) и MACRO_MERGE_DISTANCE_PCT (levels_
+# builder.py) для той же по смыслу задачи — держим согласованно, а не
+# заводим третью независимую константу.
+LEVEL_PASSPORT_TOLERANCE_PCT = 4.0
+
+
+def _is_poc_zone(zone):
+    """POC-зона (4h_poc_standalone) — не исторический свинг с точкой рождения,
+    а живой, скользящий показатель "где концентрировался объём за последнее
+    время" (см. levels_builder.py — у неё 'date' всегда ставится как сегодняшняя
+    дата скана, current_idx_date, а не дата какой-то конкретной свечи). Её
+    дрожание координат между сканами — не баг, а её прямая работа: она ДОЛЖНА
+    двигаться вместе с недавним объёмом. Паспорт её не трогает вообще.
+
+    Точное совпадение типа, а не подстрока: зона вида 'X+4h_poc' (структурный
+    уровень, который POC просто подтвердил объёмом — см. confluence в
+    levels_builder.py) — это НЕ чистый POC, это по-прежнему структурная зона
+    со своей исторической датой, паспорт её замораживает как обычно."""
+    return zone.get('type') == '4h_poc_standalone'
+
+
+def _reconcile_levels_with_registry(old_zones, fresh_zones, is_support, df_1d, current_idx=None):
+    """Паспорт уровня.
+
+    min/max/date уже существующей записи ("паспорт") считаются правдой по
+    геометрии и НЕ переписываются результатом свежего пересчёта — ATR, от
+    которого зависит и ширина зоны, и общий фильтр дистанции в levels_
+    builder.py, гуляет от скана к скану даже когда сам исторический уровень
+    никуда не сдвинулся. Обновляются только те поля, которым и положено
+    быть свежими каждый раз честно: type/score/reaction_count/mitigated/
+    class.
+
+    Свежая зона без пары в старом списке -> новый паспорт, как есть.
+
+    Старая запись без пары в свежем списке -> НЕ удаляется автоматически
+    (она могла просто не пройти сегодняшний фильтр дистанции ATR в levels_
+    builder.py, а не быть пробитой) — удаляется только если отдельная,
+    самостоятельная проверка _is_mitigated() (та же функция, что использует
+    сам levels_builder.py, не копия) говорит, что уровень реально пробит
+    закрытием с даты, когда он появился. levels_builder.py при этом не
+    трогаем — это отдельная проверка того же факта, снаружи.
+
+    ИСКЛЮЧЕНИЕ: POC-зоны (см. _is_poc_zone) в паспорт не попадают вообще —
+    ни заморозка геометрии, ни mitigated-проверка осиротевших записей. Они
+    просто проходят через реконсиляцию как есть, свежими каждый раз, потому
+    что у них по конструкции нет "исторической правды", с которой можно
+    было бы сверяться (см. эксперимент на реальных данных AVAX/timeline —
+    дата и координаты POC меняются на каждом скане, и это ожидаемо)."""
+    if current_idx is None:
+        current_idx = len(df_1d) - 1
+
+    def _mid(z):
+        return (z['min'] + z['max']) / 2.0
+
+    poc_fresh = [z for z in fresh_zones if _is_poc_zone(z)]
+    fresh_zones = [z for z in fresh_zones if not _is_poc_zone(z)]
+    old_zones_for_match = [z for z in old_zones if not _is_poc_zone(z)]
+
+    used_old = set()
+    result = list(poc_fresh)  # POC — сразу в результат, без сверки с паспортом
+
+    for fresh in fresh_zones:
+        fresh_mid = _mid(fresh)
+        match_i = None
+        for i, old in enumerate(old_zones_for_match):
+            if i in used_old:
+                continue
+            old_mid = _mid(old)
+            if old_mid == 0:
+                continue
+            if abs(fresh_mid - old_mid) / old_mid * 100.0 <= LEVEL_PASSPORT_TOLERANCE_PCT:
+                match_i = i
+                break
+        if match_i is not None:
+            used_old.add(match_i)
+            merged = dict(old_zones_for_match[match_i])  # геометрия/дата — от старой записи
+            for key in ('type', 'score', 'reaction_count', 'mitigated', 'class'):
+                if key in fresh:
+                    merged[key] = fresh[key]
+            result.append(merged)
+        else:
+            result.append(fresh)
+
+    for i, old in enumerate(old_zones_for_match):
+        if i in used_old:
+            continue
+        keep = True
+        date_str = old.get('date')
+        if date_str:
+            try:
+                date_mask = pd.to_datetime(df_1d['timestamp'], unit='ms').dt.strftime('%Y-%m-%d') == date_str
+                date_rows = df_1d.index[date_mask]
+                if len(date_rows) > 0:
+                    idx = int(date_rows[0])
+                    price = old['min'] if is_support else old['max']
+                    if _is_mitigated(df_1d, idx, price, is_support, current_idx=current_idx):
+                        keep = False
+            except Exception as e:
+                print(f"[PASSPORT] Не смог проверить mitigated для старой записи ({date_str}): {e} — оставляю как есть")
+        if keep:
+            result.append(old)
+
+    return result
+
+
+def _reconcile_coin_levels(coin, fresh_levels, macro_base, df_1d):
+    """Обёртка над _reconcile_levels_with_registry для одной монеты, отдельно
+    для supports и resistances. Единственная точка, которую вызывают оба
+    места сборки (build_macro_levels и build_levels_for_single_coin) — не
+    дублируем логику дважды (см. историю с дублем export в background_
+    tasks.py, тут та же ловушка)."""
+    old_entry = macro_base.get(coin, {})
+    old_supports = old_entry.get('supports', []) if isinstance(old_entry, dict) else []
+    old_resistances = old_entry.get('resistances', []) if isinstance(old_entry, dict) else []
+    return {
+        "supports": _reconcile_levels_with_registry(old_supports, fresh_levels["supports"], True, df_1d),
+        "resistances": _reconcile_levels_with_registry(old_resistances, fresh_levels["resistances"], False, df_1d),
+    }
 
 # Потолок числа монет — вернули после того, как без него список вырос
 # настолько, что скан-цикл начал занимать многие минуты. Настраивается в
@@ -72,10 +195,15 @@ def build_macro_levels(bot=None, admin_chat_id=None):
             exchange.load_markets(reload=False)
         tickers = exchange.fetch_tickers()
         
-        # Собираем пары с их объемами для последующей сортировки
+        # Собираем пары с их объемами для последующей сортировки.
+        # Только своп/фьючерс (та же логика, что resolve_symbol() в
+        # utils/common.py) — если брать ещё и спот, одна и та же монета
+        # может пройти порог объёма под ОБОИМИ символами и попасть в
+        # список дважды под одинаковым coin (symbol.split("/")[0]),
+        # непредсказуемо схлопываясь в один ключ ниже.
         symbols_with_volume = []
         for sym, tick in tickers.items():
-            if sym.endswith('/USDT') or sym.endswith(':USDT'):
+            if sym.endswith(':USDT'):
                 vol = float(tick.get('quoteVolume') or 0)
                 if vol >= MIN_VOLUME_USD:
                     symbols_with_volume.append((sym, vol))
@@ -128,9 +256,10 @@ def build_macro_levels(bot=None, admin_chat_id=None):
 
                 has_any = (levels["supports"] or levels["resistances"])
                 if has_any:
+                    reconciled = _reconcile_coin_levels(coin, levels, macro_base, df_1d)
                     macro_base[coin] = {
-                        "supports": levels["supports"],
-                        "resistances": levels["resistances"],
+                        "supports": reconciled["supports"],
+                        "resistances": reconciled["resistances"],
                         "updated_at": datetime.datetime.now().isoformat()
                     }
                 else:
@@ -216,11 +345,12 @@ def build_levels_for_single_coin(coin):
         df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_4h) >= 50 else None
 
         levels = build_levels(df_1M, df_1W, df_1d, df_4h, coin)
-        
+
         macro_base = load_json(MACRO_LEVELS_FILE, default={})
+        reconciled = _reconcile_coin_levels(coin, levels, macro_base, df_1d)
         macro_base[coin] = {
-            "supports": levels["supports"],
-            "resistances": levels["resistances"],
+            "supports": reconciled["supports"],
+            "resistances": reconciled["resistances"],
             "updated_at": datetime.datetime.now().isoformat()
         }
         save_json_atomic(MACRO_LEVELS_FILE, macro_base)

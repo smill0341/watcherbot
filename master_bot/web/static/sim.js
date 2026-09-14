@@ -30,25 +30,30 @@ const currentCoinEl = document.getElementById("current-coin");
 const currentSymbolEl = document.getElementById("current-symbol");
 const ema20ValueEl = document.getElementById("ema20-value");
 const ema50ValueEl = document.getElementById("ema50-value");
+const emaMacroValueEl = document.getElementById("ema-macro-value");
+const simStartInputEl = document.getElementById("sim-start-input");
+const simEndInputEl = document.getElementById("sim-end-input");
 
 let chart = null;
 let candleSeries = null;
 let volumeSeries = null;
 let ema20Series = null;
 let ema50Series = null;
+let emaMacroSeries = null;
 let globalCandles = [];
 let currentPrecision = 4;
 
 let selectedCoin = null;
-let simMode = false;
-let simStartTime = null; // unix seconds — клика по свече
+let simMode = true; // страница целиком и есть симулятор — переключать нечего
+let simStartTime = null; // unix seconds — из поля "От" (или клика по свече)
+let simEndTime = null;   // unix seconds — из поля "До", null = до конца графика
 let simRunning = false;
 let simLevelLines = [];  // линии зон уровней (2 линии на уровень: min+max)
 let simPlaybackTimer = null;
 let simHistory = [];  // data.history последнего прогона — для поиска эпизодов по клику на сделку
 let simTrades = [];   // data.trades последнего прогона
 
-const TF_LIMITS = { "15m": 5760, "1h": 1440, "4h": 360, "1d": 60 };
+const TF_LIMITS = { "15m": null, "1h": null, "4h": null, "1d": null, "1w": null, "1M": null };
 let currentTimeframe = "15m";
 
 // === ДУБЛИРОВАНО ИЗ app.js::formatPrice — синхронизировать вручную ===
@@ -70,6 +75,20 @@ function formatVolume(v) {
   if (abs >= 1_000_000) return (v / 1_000_000).toFixed(1) + "M";
   if (abs >= 1_000) return (v / 1_000).toFixed(1) + "k";
   return String(Math.round(v));
+}
+
+// === ДУБЛИРОВАНО ИЗ app.js::formatDuration ===
+function formatDuration(fromUnixSec, toDate) {
+  if (fromUnixSec === null || fromUnixSec === undefined) return "—";
+  const fromMs = fromUnixSec * 1000;
+  const toMs = toDate.getTime();
+  const totalMin = Math.max(0, Math.floor((toMs - fromMs) / 60000));
+  const days = Math.floor(totalMin / 1440);
+  const hours = Math.floor((totalMin % 1440) / 60);
+  const mins = totalMin % 60;
+  if (days > 0) return `${days}д ${hours}ч`;
+  if (hours > 0) return `${hours}ч ${mins}м`;
+  return `${mins}м`;
 }
 
 // === ДУБЛИРОВАНО ИЗ app.js::friendlyStrategy/friendlyLevelType ===
@@ -103,6 +122,39 @@ function computeEMA(candles, period) {
   return out;
 }
 
+// === ДУБЛИРОВАНО ИЗ app.js::loadMacroEma200 ===
+// Для 1d/1w/1M — честная EMA200 по родным свечам этого же таймфрейма.
+// Для внутридневных (15m/1h/4h) — отдельно тянем 4h-историю и считаем
+// EMA200 по ней (макро-тренд поверх мелкого графика).
+async function loadMacroEma200(coin) {
+  if (!emaMacroSeries) return;
+
+  if (currentTimeframe === "1d" || currentTimeframe === "1w" || currentTimeframe === "1M") {
+    if (coin !== selectedCoin) return;
+    emaMacroSeries.setData(computeEMA(globalCandles, 200));
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=4h&limit=999`);
+    if (!res.ok) { emaMacroSeries.setData([]); return; }
+    const data = await res.json();
+
+    const candles = (data.candles || [])
+      .map((c) => {
+        const unixSeconds = c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time;
+        return { ...c, time: unixSeconds };
+      })
+      .sort((a, b) => a.time - b.time);
+
+    if (coin !== selectedCoin) return;
+
+    emaMacroSeries.setData(computeEMA(candles, 200));
+  } catch (e) {
+    console.error("macro EMA200(4H) load failed", e);
+  }
+}
+
 function clearSimLevelLines() {
   simLevelLines.forEach((series) => { try { chart.removeSeries(series); } catch (e) {} });
   simLevelLines = [];
@@ -126,14 +178,26 @@ function initChart() {
     timeScale: {
       timeVisible: true,
       secondsVisible: false,
-      tickMarkFormatter: (time) => new Date(time * 1000).toLocaleTimeString("ru-RU", {
-        timeZone: "Europe/Kyiv", hour: "2-digit", minute: "2-digit",
-      }),
+      tickMarkFormatter: (time) => {
+        const d = new Date(time * 1000);
+        if (["1d", "1w", "1M"].includes(currentTimeframe)) {
+          return d.toLocaleDateString("ru-RU", { timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", year: "2-digit" });
+        }
+        return d.toLocaleTimeString("ru-RU", { timeZone: "Europe/Kyiv", hour: "2-digit", minute: "2-digit" });
+      },
     },
     localization: {
-      timeFormatter: (time) => new Date(time * 1000).toLocaleString("ru-RU", {
-        timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
-      }),
+      timeFormatter: (time) => {
+        const dateStr = new Date(time * 1000).toLocaleString("ru-RU", {
+          timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", year: "2-digit",
+          hour: "2-digit", minute: "2-digit",
+        });
+        const c = globalCandles.find((c) => c.time === time);
+        if (c && c.volume !== undefined && c.volume !== null) {
+          return `${dateStr} · Vol: ${formatVolume(c.volume)}`;
+        }
+        return dateStr;
+      },
     },
   });
 
@@ -151,25 +215,29 @@ function initChart() {
 
   ema20Series = chart.addLineSeries({ color: "#f2c14e", lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false });
   ema50Series = chart.addLineSeries({ color: "#5aa9e6", lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false });
+  emaMacroSeries = chart.addLineSeries({ color: "#7e57c2", lineWidth: 2, priceLineVisible: false, crosshairMarkerVisible: false });
 
   chart.subscribeCrosshairMove((param) => {
     if (!param || !param.time) {
       if (ema20ValueEl) ema20ValueEl.textContent = "—";
       if (ema50ValueEl) ema50ValueEl.textContent = "—";
+      if (emaMacroValueEl) emaMacroValueEl.textContent = "—";
       return;
     }
     const e20 = param.seriesData.get(ema20Series);
     const e50 = param.seriesData.get(ema50Series);
+    const eMacro = param.seriesData.get(emaMacroSeries);
     if (ema20ValueEl) ema20ValueEl.textContent = e20 ? e20.value.toFixed(currentPrecision) : "—";
     if (ema50ValueEl) ema50ValueEl.textContent = e50 ? e50.value.toFixed(currentPrecision) : "—";
+    if (emaMacroValueEl) emaMacroValueEl.textContent = eMacro ? eMacro.value.toFixed(currentPrecision) : "—";
   });
 
-  // Точка старта симуляции — клик по свече, только пока включён режим
-  // "🧪 Симуляция" (sim-mode-btn), как и раньше.
+  // Точка старта симуляции — клик по свече (быстрый способ, синхронизирует
+  // поле календаря "От"), либо просто вписать дату в само поле — работает
+  // и так, и так.
   chart.subscribeClick((param) => {
-    if (!simMode || !param || !param.time) return;
-    simStartTime = param.time;
-    updateSimUI();
+    if (!param || !param.time) return;
+    setSimStartTime(param.time);
   });
 
   new ResizeObserver(() => {
@@ -185,23 +253,13 @@ function initChart() {
     };
   });
 
-  const simModeBtnEl = document.getElementById("sim-mode-btn");
-  if (simModeBtnEl) {
-    simModeBtnEl.onclick = () => {
-      simMode = !simMode;
-      if (!simMode) {
-        simStartTime = null;
-        stopSimPlayback();
-        clearSimLevelLines();
-        candleSeries.setMarkers([]);
-      }
-      updateSimUI();
-    };
-  }
   const simCancelBtnEl = document.getElementById("sim-cancel-btn");
   if (simCancelBtnEl) {
     simCancelBtnEl.onclick = () => {
       simStartTime = null;
+      simEndTime = null;
+      if (simStartInputEl) simStartInputEl.value = "";
+      if (simEndInputEl) simEndInputEl.value = "";
       stopSimPlayback();
       clearSimLevelLines();
       candleSeries.setMarkers([]);
@@ -210,31 +268,165 @@ function initChart() {
   }
   const simRunBtnEl = document.getElementById("sim-run-btn");
   if (simRunBtnEl) simRunBtnEl.onclick = runSimulation;
+
+  // Поле "От" — источник правды для simStartTime, когда его меняют руками
+  // (не кликом по свече). Сразу тянет и рисует снимок уровней на эту дату.
+  if (simStartInputEl) {
+    simStartInputEl.onchange = () => {
+      const sec = dateInputToUnixSec(simStartInputEl.value);
+      if (sec != null) setSimStartTime(sec, { syncInput: false });
+    };
+  }
+  // Поле "До" — просто конец периода теста. Пусто = до конца графика,
+  // как и раньше (backend уже поддерживает end=None).
+  if (simEndInputEl) {
+    simEndInputEl.onchange = () => {
+      simEndTime = dateInputToUnixSec(simEndInputEl.value);
+    };
+  }
+}
+
+// Поля календаря — только дата, без времени (type="date", не datetime-
+// local). Строим Date из компонентов явно (не из "YYYY-MM-DD" строки
+// напрямую) — JS парсит голую ISO-дату как UTC-полночь, а нам нужно
+// местное календарное 00:00, как и весь остальной график (Europe/Kyiv).
+function dateInputToUnixSec(value) {
+  if (!value) return null;
+  const [y, m, d] = value.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return Math.floor(new Date(y, m - 1, d, 0, 0, 0).getTime() / 1000);
+}
+function unixSecToDateInputValue(sec) {
+  const d = new Date(sec * 1000);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// Диапазон текущего месяца (1-е число -> последний день) — дефолт для
+// полей "От"/"До", чтобы не вводить даты руками каждый раз.
+function currentMonthRangeSec() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 0, 0, 0); // 0-й день след. месяца = последний день текущего
+  return { startSec: Math.floor(start.getTime() / 1000), endSec: Math.floor(end.getTime() / 1000) };
+}
+
+// Единая точка входа для "поставили дату старта" — что кликом по свече,
+// что автозаполнением месяца, что руками в календаре: округляет до
+// полуночи того же дня, синхронизирует источники и сразу тянет снимок
+// уровней на эту дату (см. drawSnapshotLevels).
+//
+// syncInput=false — не перезаписывать поле "От" значением, которое там и
+// так уже стоит (вызывается из собственного onchange поля). Раньше тут
+// стояла безусловная перезапись — в некоторых браузерах (особенно Chrome)
+// input[type=date] сбрасывает/дёргает отображение, если его .value
+// переприсвоить прямо ВНУТРИ обработчика его же события change, даже
+// тем же самым значением. Для клика по свече/автозаполнения месяца
+// (дата приходит СНАРУЖИ поля) синхронизация по-прежнему нужна.
+function setSimStartTime(sec, { syncInput = true } = {}) {
+  const d = new Date(sec * 1000);
+  sec = Math.floor(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0).getTime() / 1000);
+  simStartTime = sec;
+  if (simStartInputEl && syncInput) simStartInputEl.value = unixSecToDateInputValue(sec);
+  updateSimUI();
+  if (selectedCoin) drawSnapshotLevels(selectedCoin, sec);
+}
+
+// hex "#rrggbb" -> "rrggbbAA" (добавляет альфу для CSS-цвета заливки)
+function hexWithAlpha(hex, alphaHex) {
+  return hex.replace("#", "") + alphaHex;
+}
+
+// Рисует ОДНУ зону как закрашенную полосу между min и max (Baseline-серия
+// даёт границу только СВЕРХУ, у base-значения снизу заливка просто
+// растворяется в фоне) + отдельную сплошную линию по нижней границе, чтобы
+// низ зоны тоже было видно чётко. Возвращает массив обеих серий — обе
+// нужно почистить при следующей перерисовке (см. clearSimLevelLines).
+function addZoneBand(zMin, zMax, color, candles, titleText) {
+  const bandSeries = chart.addBaselineSeries({
+    baseValue: { type: "price", price: zMin },
+    topFillColor1: "#" + hexWithAlpha(color, "40"),
+    topFillColor2: "#" + hexWithAlpha(color, "15"),
+    topLineColor: color,
+    bottomFillColor1: "rgba(0,0,0,0)",
+    bottomFillColor2: "rgba(0,0,0,0)",
+    bottomLineColor: "rgba(0,0,0,0)",
+    lineWidth: 1,
+    priceLineVisible: false,
+    lastValueVisible: false,
+    crosshairMarkerVisible: false,
+    title: titleText || "",
+    autoscaleInfoProvider: () => null,
+  });
+  bandSeries.setData(candles.map((c) => ({ time: c.time, value: zMax })));
+
+  const bottomLine = chart.addLineSeries({
+    color,
+    lineWidth: 1,
+    lineStyle: LightweightCharts.LineStyle.Solid,
+    crosshairMarkerVisible: false,
+    priceLineVisible: false,
+    lastValueVisible: false,
+    autoscaleInfoProvider: () => null,
+  });
+  bottomLine.setData(candles.map((c) => ({ time: c.time, value: zMin })));
+
+  return [bandSeries, bottomLine];
+}
+
+// Рисует ВСЕ зоны (supports зелёным, resistances красным) из честного
+// исторического снимка уровней на дату "От" (см. /api/levels_at/{coin} —
+// levels_history.get_levels_snapshot(), те же снимки раз в ~12ч, что
+// читает и рескан, и precalc_for_bot.py). Не текущий macro_levels.json —
+// то, что бот реально видел в этот момент.
+async function drawSnapshotLevels(coin, whenSec) {
+  clearSimLevelLines();
+  if (candleSeries) candleSeries.setMarkers([]);
+  if (!globalCandles.length) return;
+  try {
+    const res = await fetch(`/api/levels_at/${encodeURIComponent(coin)}?when=${whenSec}`);
+    if (!res.ok) return; // нет снимка на эту дату — молча ничего не рисуем
+    const data = await res.json();
+    const zones = [
+      ...(data.supports || []).map((z) => ({ ...z, color: "#4caf7d" })),
+      ...(data.resistances || []).map((z) => ({ ...z, color: "#e5654f" })),
+    ];
+    zones.forEach((z) => {
+      if (z.min == null || z.max == null) return;
+      // Не тянуть полосу на весь загруженный график — только с той даты,
+      // когда уровень реально появился (z.date). Без этого даже POC (у
+      // которого date вообще "сегодняшний скан", см. levels_builder.py)
+      // рисовался бы задним числом на недели назад.
+      const zoneStartSec = z.date ? dateInputToUnixSec(z.date) : null;
+      let candlesForZone = globalCandles;
+      if (zoneStartSec != null) {
+        const sliced = globalCandles.filter((c) => c.time >= zoneStartSec);
+        if (sliced.length) candlesForZone = sliced;
+      }
+      simLevelLines.push(...addZoneBand(z.min, z.max, z.color, candlesForZone, friendlyLevelType(z.type)));
+    });
+  } catch (e) {
+    console.error("drawSnapshotLevels failed", e);
+  }
 }
 
 function updateSimUI() {
-  const modeBtn = document.getElementById("sim-mode-btn");
   const status = document.getElementById("sim-status");
   const runBtn = document.getElementById("sim-run-btn");
   const cancelBtn = document.getElementById("sim-cancel-btn");
-  if (!modeBtn || !status || !runBtn || !cancelBtn) return;
-
-  modeBtn.classList.toggle("active", simMode);
-
-  if (!simMode) {
-    status.textContent = "";
-    runBtn.style.display = "none";
-    cancelBtn.style.display = "none";
-    return;
-  }
+  if (!status || !runBtn || !cancelBtn) return;
 
   if (simStartTime) {
     const d = new Date(simStartTime * 1000);
-    status.textContent = "Старт: " + d.toLocaleString("ru-RU", { timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    const startLabel = d.toLocaleDateString("ru-RU", { timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", year: "numeric" });
+    const endLabel = simEndTime
+      ? new Date(simEndTime * 1000).toLocaleDateString("ru-RU", { timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", year: "numeric" })
+      : "конец графика";
+    status.textContent = `Период: ${startLabel} → ${endLabel}`;
     runBtn.style.display = "";
     cancelBtn.style.display = "";
   } else {
-    status.textContent = "Кликни свечу на графике — точка старта";
+    status.textContent = "Укажи дату «От» (или кликни свечу)";
     runBtn.style.display = "none";
     cancelBtn.style.display = "none";
   }
@@ -284,22 +476,34 @@ async function loadSimCoins() {
 async function loadChartForCoin(coin) {
   if (!coin || coin === "null" || coin === "undefined") return;
 
+  // Переключение таймфрейма (тот же tf-btn.onclick, что и смена монеты)
+  // зовёт эту же функцию с ТЕМ ЖЕ coin — раньше это неотличимо трактовалось
+  // как "новая монета", и уже выбранный период "От"/"До" сбрасывался на
+  // дефолтный текущий месяц при каждом переключении 15m/1h/4h/1d/1w/1M.
+  // Теперь сброс — только при реальной смене монеты.
+  const isCoinChange = coin !== selectedCoin;
   selectedCoin = coin;
   if (currentCoinEl) currentCoinEl.textContent = coin;
   if (currentSymbolEl) currentSymbolEl.textContent = "загрузка графика...";
   highlightSelection();
 
-  // Смена монеты — старая точка старта и старый результат теряют смысл.
-  simStartTime = null;
   stopSimPlayback();
   clearSimLevelLines();
   if (candleSeries) candleSeries.setMarkers([]);
+  if (isCoinChange) {
+    // Смена монеты — старая точка старта и старый результат теряют смысл.
+    simStartTime = null;
+    simEndTime = null;
+    if (simStartInputEl) simStartInputEl.value = "";
+    if (simEndInputEl) simEndInputEl.value = "";
+  }
   updateSimUI();
 
-  const limit = TF_LIMITS[currentTimeframe] ?? 200;
+  const limit = TF_LIMITS[currentTimeframe]; // null (1w/1M) -> вся история из базы, без ограничения
 
   try {
-    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}&limit=${limit}`);
+    const limitParam = limit != null ? `&limit=${limit}` : "";
+    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}${limitParam}`);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       if (currentSymbolEl) currentSymbolEl.textContent = err.detail || "график недоступен";
@@ -308,6 +512,7 @@ async function loadChartForCoin(coin) {
       volumeSeries.setData([]);
       ema20Series.setData([]);
       ema50Series.setData([]);
+      if (emaMacroSeries) emaMacroSeries.setData([]);
       return;
     }
     const data = await res.json();
@@ -318,6 +523,7 @@ async function loadChartForCoin(coin) {
     candleSeries.applyOptions({ priceFormat });
     ema20Series.applyOptions({ priceFormat });
     ema50Series.applyOptions({ priceFormat });
+    if (emaMacroSeries) emaMacroSeries.applyOptions({ priceFormat });
 
     const formattedCandles = data.candles
       .map((c) => ({ ...c, time: c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time }))
@@ -330,9 +536,25 @@ async function loadChartForCoin(coin) {
     })));
     ema20Series.setData(computeEMA(formattedCandles, 20));
     ema50Series.setData(computeEMA(formattedCandles, 50));
+    loadMacroEma200(coin);
 
     chart.timeScale().fitContent();
     candleSeries.priceScale().applyOptions({ autoScale: true });
+
+    if (isCoinChange) {
+      // Монету сменили, пока режим симуляции уже был включён — сразу
+      // заполняем текущий месяц заново (как при первом включении режима).
+      if (simMode) {
+        const { startSec, endSec } = currentMonthRangeSec();
+        simEndTime = endSec;
+        if (simEndInputEl) simEndInputEl.value = unixSecToDateInputValue(endSec);
+        setSimStartTime(startSec);
+      }
+    } else if (simMode && simStartTime != null) {
+      // Та же монета, просто другой таймфрейм — период уже выбран,
+      // просто перерисовываем полосы на новом наборе свечей.
+      drawSnapshotLevels(coin, simStartTime);
+    }
   } catch (e) {
     if (currentSymbolEl) currentSymbolEl.textContent = "ошибка загрузки графика";
     console.error(e);
@@ -364,6 +586,7 @@ async function loadCandlesAroundRange(coin, fromSec, toSec) {
     })));
     ema20Series.setData(computeEMA(formattedCandles, 20));
     ema50Series.setData(computeEMA(formattedCandles, 50));
+    loadMacroEma200(coin);
     chart.timeScale().fitContent();
   } catch (e) {
     console.error("loadCandlesAroundRange failed", e);
@@ -426,23 +649,24 @@ function drawTradeDetail(trade) {
   events.sort((a, b) => a.time - b.time);
   if (!events.length) return;
 
-  const spanCandles = globalCandles.filter((c) => c.time >= events[0].time && c.time <= events[events.length - 1].time);
-  const lineCandles = spanCandles.length ? spanCandles : globalCandles;
+  // Та же логика, что и в drawSnapshotLevels — полоса идёт от настоящей
+  // даты уровня (level_date), а не от диапазона событий вотчера. Раньше
+  // тут был диапазон "от первого до последнего события" (spanCandles) —
+  // выглядело иначе, чем при обычном клике по монете, где полоса уже
+  // обрезается по level_date. Теперь оба пути согласованы.
+  const zoneStartSec = group[0].level_date ? dateInputToUnixSec(group[0].level_date) : null;
+  let lineCandles = globalCandles;
+  if (zoneStartSec != null) {
+    const sliced = globalCandles.filter((c) => c.time >= zoneStartSec);
+    if (sliced.length) lineCandles = sliced;
+  }
 
-  [zoneMax, zoneMin].forEach((value, i) => {
-    const series = chart.addLineSeries({
-      color,
-      lineWidth: 2,
-      lineStyle: LightweightCharts.LineStyle.Dashed,
-      crosshairMarkerVisible: false,
-      priceLineVisible: false,
-      lastValueVisible: false,
-      title: i === 0 ? `🧪 ${friendlyLevelType(group[0].level_type)}` : "",
-      autoscaleInfoProvider: () => null,
-    });
-    series.setData(lineCandles.map((c) => ({ time: c.time, value })));
-    simLevelLines.push(series);
-  });
+  simLevelLines.push(...addZoneBand(zoneMin, zoneMax, color, lineCandles, `🧪 ${friendlyLevelType(group[0].level_type)}`));
+
+  // title у Baseline-серии без priceLineVisible нигде реально не
+  // отображается — подписываем явным текстом, какой именно уровень сработал.
+  const statusEl = document.getElementById("sim-status");
+  if (statusEl) statusEl.textContent = `Уровень: ${friendlyLevelType(group[0].level_type)}`;
 
   playTradeAnimation(events, group[0].direction);
 }
@@ -505,14 +729,23 @@ function renderTradesTable(trades, noDataNote) {
   if (!tradesBody) return;
   simTrades = trades || [];
   if (noDataNote) {
-    tradesBody.innerHTML = `<tr><td colspan="10">${noDataNote}</td></tr>`;
+    tradesBody.innerHTML = `<tr><td colspan="12">${noDataNote}</td></tr>`;
     return;
   }
   if (!trades || !trades.length) {
-    tradesBody.innerHTML = "<tr><td colspan='10'>сделок не найдено</td></tr>";
+    tradesBody.innerHTML = "<tr><td colspan='12'>сделок не найдено</td></tr>";
     return;
   }
-  tradesBody.innerHTML = trades.map((t, i) => `
+  tradesBody.innerHTML = trades.map((t, i) => {
+    const pct = t.result_percent;
+    const pctText = pct === null || pct === undefined ? "" : `${pct > 0 ? "+" : ""}${pct}%`;
+    const durationText = t.status === "⏳"
+      ? formatDuration(t.time, new Date())
+      : (t.closed_at ? formatDuration(t.time, new Date(t.closed_at)) : "—");
+    const methodText = t.method === "volume" && t.method_value != null
+      ? formatVolume(t.method_value) + (t.method_mult != null ? " / x" + t.method_mult.toFixed(1) : "")
+      : "—";
+    return `
     <tr data-idx="${i}">
       <td>${t.date ?? ""}</td>
       <td>${t.coin ?? ""}</td>
@@ -521,11 +754,14 @@ function renderTradesTable(trades, noDataNote) {
       <td>${formatPrice(t.entry)}</td>
       <td>${formatPrice(t.target)}</td>
       <td>${formatPrice(t.stop)}</td>
+      <td>${t.status ?? ""}</td>
+      <td style="color:${pct > 0 ? '#4caf7d' : pct < 0 ? '#e5654f' : 'inherit'}">${pctText}</td>
+      <td>${durationText}</td>
+      <td>${methodText}</td>
       <td>${t.rr ?? ""}</td>
-      <td>${formatPrice(t.level_min)}–${formatPrice(t.level_max)}</td>
-      <td>${formatVolume(t.volume)}${t.volume_mult != null ? " / x" + t.volume_mult.toFixed(1) : ""}</td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
   tradesBody.querySelectorAll("tr[data-idx]").forEach((tr) => {
     tr.onclick = () => selectTrade(simTrades[Number(tr.dataset.idx)], tr);
   });
@@ -535,9 +771,9 @@ async function runSimulation() {
   if (!selectedCoin || !simStartTime || simRunning) return;
   simRunning = true;
   stopSimPlayback();
-  // Чистим результат прошлого прогона СРАЗУ — иначе пока считается новый,
-  // на графике ещё висят точки/линии от предыдущего.
-  clearSimLevelLines();
+  // Маркеры прошлого прогона чистим сразу, а вот линии снимка уровней "От"
+  // (см. drawSnapshotLevels) НЕ трогаем — их уже нарисовали при выборе
+  // даты, и они актуальны всё то же время, пока не сменили дату/монету.
   if (candleSeries) candleSeries.setMarkers([]);
 
   const status = document.getElementById("sim-status");
@@ -548,11 +784,19 @@ async function runSimulation() {
   status.textContent = "Считаю...";
   renderTradesTable(null, "Считаю...");
 
-  const iso = new Date(simStartTime * 1000).toISOString();
-  const startParam = iso.slice(0, 16).replace("T", " ");
-  const endpoint = isBounce
+  const startIso = new Date(simStartTime * 1000).toISOString();
+  const startParam = startIso.slice(0, 16).replace("T", " ");
+  let endpoint = isBounce
     ? `/api/simulate_bounce/${encodeURIComponent(selectedCoin)}?start=${encodeURIComponent(startParam)}`
     : `/api/simulate/${encodeURIComponent(selectedCoin)}?start=${encodeURIComponent(startParam)}`;
+  // "До" указано — период ограничен, иначе (как раньше) до конца графика.
+  // end= понимает только /api/simulate_bounce — у V-семейства (/api/simulate)
+  // такого параметра нет вообще, добавлять туда нечего.
+  if (simEndTime && isBounce) {
+    const endIso = new Date(simEndTime * 1000).toISOString();
+    const endParam = endIso.slice(0, 16).replace("T", " ");
+    endpoint += `&end=${encodeURIComponent(endParam)}`;
+  }
 
   try {
     const res = await fetch(endpoint, { method: "POST" });
@@ -564,7 +808,6 @@ async function runSimulation() {
     }
 
     simHistory = data.history || [];
-    const episodes = simHistory.filter((ep) => ep.state === "TRIGGERED");
 
     const endTimeSec = data.end_time ? Math.floor(new Date(data.end_time + "Z").getTime() / 1000) : Math.floor(Date.now() / 1000);
     await loadCandlesAroundRange(selectedCoin, simStartTime, endTimeSec);
@@ -582,12 +825,9 @@ async function runSimulation() {
       renderTradesTable(null, "Для V-семейства таблица сделок пока не поддерживается бэкендом (нет data.trades в /api/simulate)");
     }
 
-    if (episodes.length === 0) {
-      status.textContent = "Старт: " + startParam + " · сделок не найдено (уровней проверено: " + (data.levels || []).length + ")";
-    } else {
-      const summary = episodes.map((ep) => `${friendlyStrategy(ep.strategy)}:${ep.state}`).join(", ");
-      status.textContent = `Найдено: ${summary}`;
-    }
+    // Результат уже виден в таблице сделок ниже — статус наверху просто
+    // возвращаем к выбранному периоду (не затираем его текстом "Найдено...").
+    updateSimUI();
   } catch (e) {
     console.error("simulate failed", e);
     status.textContent = "ошибка запроса";

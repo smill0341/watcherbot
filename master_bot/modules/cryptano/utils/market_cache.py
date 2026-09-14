@@ -42,8 +42,9 @@ def get_top_usdt_coins_cached(exchange, limit=150, min_quote_volume=8_000_000.0,
 
         usdt_pairs = []
         for symbol, ticker in tickers.items():
-            # 1. Берем USDT пары (и спот, и фьючерсы)
-            if symbol.endswith('/USDT') or symbol.endswith(':USDT'):
+            # Только своп/фьючерс — та же логика, что resolve_symbol()
+            # и остальные места отбора монет по объёму.
+            if symbol.endswith(':USDT'):
                 
                 # 2. Проверяем, не стейблкоин ли это
                 is_stablecoin = any(stable in symbol for stable in stablecoins)

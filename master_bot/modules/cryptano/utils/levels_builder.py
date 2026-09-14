@@ -593,6 +593,15 @@ def merge_overlapping_zones(zones):
             if current.get('type') and last.get('type') and current['type'] not in last['type']:
                 last['type'] = f"{last['type']} + {current['type']}"
             last['reaction_count'] = max(last.get('reaction_count', 0), current.get('reaction_count', 0))
+            # Дата — самая РАННЯЯ среди слитых кандидатов, а не та, что
+            # случайно оказалась первой по сортировке min. Уровень появился
+            # тогда, когда сформировался первый из его компонентов — и это
+            # же самая безопасная точка отсчёта для проверки на пробой
+            # (_is_mitigated): если взять более позднюю дату, можно
+            # пропустить более ранний пробой и ошибочно считать уровень
+            # ещё живым.
+            if current.get('date') and (not last.get('date') or current['date'] < last['date']):
+                last['date'] = current['date']
         else:
             merged.append(current)
 
@@ -649,6 +658,9 @@ def _merge_nearby_macro_zones(zones, tolerance_pct=MACRO_MERGE_DISTANCE_PCT):
             last['reaction_count'] = max(last.get('reaction_count', 0), current.get('reaction_count', 0))
             if current.get('type') and last.get('type') and current['type'] not in last['type']:
                 last['type'] = f"{last['type']} + {current['type']}"
+            # Та же логика, что в merge_overlapping_zones — самая ранняя дата.
+            if current.get('date') and (not last.get('date') or current['date'] < last['date']):
+                last['date'] = current['date']
         else:
             merged.append(current)
 

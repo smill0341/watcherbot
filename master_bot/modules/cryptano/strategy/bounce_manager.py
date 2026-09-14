@@ -2,12 +2,6 @@
 bounce_manager.py
 ==================
 BOUNCE-специфичная часть менеджера, вынесенная в отдельный класс.
-
-Шаг 1 переезда: код перенесён 1-в-1 из watcher_manager.py, ни одна строка
-логики не изменена — только физическое место, где она живёт. WatcherManager
-по-прежнему предоставляет наружу те же самые методы (evaluate_bounce,
-evaluate_bounce_side, has_active_bounce_watchers) как тонкие обёртки —
-test_simulator.py ничего не должен заметить.
 """
 
 import os

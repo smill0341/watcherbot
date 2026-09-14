@@ -5,20 +5,6 @@ import os
 
 
 class BounceWatcher:
-    """
-    v1 — ПРИМИТИВ. Задача не "точная стратегия", а быстро увидеть на графике,
-    где вообще срабатывает идея "объёмный вход у уровня", прежде чем
-    ужесточать условия (тень/тело, RR-фильтр, ATR-стоп и т.д. — см. TODO ниже).
-
-    Условие входа:
-        - цена коснулась зоны уровня (не обязательно глубоко)
-        - свеча правильного цвета (зелёная для LONG, красная для SHORT)
-        - объём >= VOL_SPIKE_MULT (по умолчанию x3) от фонового (baseline_vol)
-
-    Выход: фиксированный % (FIXED_TP_PCT) — работает по-настоящему в этой
-    версии, в отличие от старой (там 'fixed_pct' был мёртвой веткой и TP
-    реально брался от противоположных уровней через _calc_tp_and_rr).
-    """
 
     # Набор (папка, монета), для которых в ЭТОМ запуске процесса уже была
     # первая запись в лог — используется только для маркера "процесс
@@ -60,12 +46,6 @@ class BounceWatcher:
         'CLIMAX_ATR_BUFFER': 2.0,      # см. SHORT_CLIMAX_MODE — множитель ATR над дальней зоной, стартовое
                                           # значение, откалибровать по логам (см. историю обсуждения проекта)
         'DEBUG': True,
-
-        # --- TODO для следующих итераций (сейчас не используется) ---
-        # 'PINBAR_SHADOW_RATIO': 1.5,   # требовать тень/тело — вернуть, когда примитив обкатан
-        # 'MAX_BODY_PCT': 40.0,         # ограничить жирность тела свечи входа
-        # 'USE_RR_FILTER': True,        # включить проверку риск/прибыль перед входом
-        # 'MIN_RR': 1.0,
     }
 
     def __init__(self, level_min: float, level_max: float, trade_type: str,
@@ -417,13 +397,26 @@ class BounceWatcher:
         # не давший сделки, бесплатен, просто ждём следующий. Событие/лог — один
         # раз на начало ухода, не на каждой свече, пока он длится. ---
         runaway_this_candle = False
+        runaway_direction = None  # 'up' | 'down' — куда именно ушла цена, для лога
         if self.pierced_bottom:
-            if self.trade_type == 'LONG':
-                runaway_limit = self.max * (1 + self.CONFIG['MAX_RUNAWAY_PCT'] / 100.0)
-                runaway_this_candle = c_close > runaway_limit
-            elif self.trade_type == 'SHORT':
-                runaway_limit = self.min * (1 - self.CONFIG['MAX_RUNAWAY_PCT'] / 100.0)
-                runaway_this_candle = c_close < runaway_limit
+            # Раньше LONG проверял только уход ВВЕРХ (цена отскочила и убежала
+            # мимо входа — упущенный бонус), а SHORT только уход ВНИЗ (то же
+            # самое, зеркально). Уход в ПРОТИВОПОЛОЖНУЮ, плохую сторону — цена
+            # проходит саму зону насквозь и улетает дальше (для LONG — вниз,
+            # пробивая поддержку; для SHORT — вверх, пробивая сопротивление и
+            # соседние уровни выше) — вообще не проверялся, пробой оставался
+            # "живым" сколь угодно долго и на любом расстоянии от зоны.
+            # Теперь проверяем оба предела независимо от trade_type.
+            runaway_limit_up = self.max * (1 + self.CONFIG['MAX_RUNAWAY_PCT'] / 100.0)
+            runaway_limit_down = self.min * (1 - self.CONFIG['MAX_RUNAWAY_PCT'] / 100.0)
+            if c_close > runaway_limit_up:
+                runaway_this_candle = True
+                runaway_direction = 'up'
+                runaway_limit = runaway_limit_up
+            elif c_close < runaway_limit_down:
+                runaway_this_candle = True
+                runaway_direction = 'down'
+                runaway_limit = runaway_limit_down
 
         if new_pierce_this_candle and runaway_this_candle:
             # Пробой и отбой случились на ОДНОЙ и той же свече (глубокий фитиль,
@@ -470,7 +463,7 @@ class BounceWatcher:
                 # чем снова разрешать вход.
                 self.pierced_bottom = False
                 self.currently_pierced = False
-                if self.trade_type == 'LONG':
+                if runaway_direction == 'up':
                     self._dbg(f"🟠 ОТБОЙ (пробой #{self.pierce_count} не реализован) | Цена ушла слишком высоко: {c_close:.4f} > лимит {runaway_limit:.4f} | Пробой аннулирован, жду новый")
                 else:
                     self._dbg(f"🟠 ОТБОЙ (пробой #{self.pierce_count} не реализован) | Цена ушла слишком низко: {c_close:.4f} < лимит {runaway_limit:.4f} | Пробой аннулирован, жду новый")
@@ -756,9 +749,6 @@ class BounceWatcher:
             "candles_in_sweep": 0,
             "pierced_bottom": getattr(self, 'pierced_bottom', False),
             "reborn": getattr(self, 'reborn', False),
-            # Отдельными полями — раньше были зашиты только текстом внутри
-            # reason ("V:5.6M (x10.5)"), парсить строку регуляркой ради
-            # отчёта симулятора не нужно, когда можно отдать сразу.
             "volume": c_vol,
             "volume_mult": vol_mult,
         }

@@ -22,6 +22,7 @@ import sqlite3
 import threading
 import time
 import bisect
+import datetime
 
 # candles.db переехал в общую накопительную папку (modules/cryptano/database/),
 # вместе с levels_timeline_*.json — путь считаем напрямую (без импорта
@@ -39,11 +40,11 @@ BACKFILL_DAYS_MAP = {        # Динамическая глубина скач�
     "1h": 180,
     "4h": 180,
     "1d": 365,
-    "1w": 1460,               
-    "1M": 2000               
+    "1w": 7300,               # ~20 лет — практически вся история крипты, свечей всё равно немного (недельная)
+    "1M": 7300                # то же самое — месячных свечей за 20 лет чуть больше 200, дёшево хранить
 }
 EXCHANGE_MAX_LIMIT = 999
-REQUEST_DELAY_SEC = 0.6     
+REQUEST_DELAY_SEC = 0.7      
 
 TIMEFRAME_MS = {
     "15m": 15 * 60 * 1000,
@@ -115,8 +116,13 @@ def backfill_symbol(exchange, symbol, timeframe, days=None):
     tf_ms = TIMEFRAME_MS.get(timeframe, 15 * 60 * 1000)
 
     while True:
+        # until обязателен по той же причине, что и в top_up_tail — см.
+        # комментарий там (ccxt issues #22191, #23066; официальный паттерн
+        # docs.ccxt.com/docs/examples/py/poloniex-fetch-ohlcv-with-pagination).
+        until_ms = since_ms + EXCHANGE_MAX_LIMIT * tf_ms
         try:
-            batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since_ms, limit=EXCHANGE_MAX_LIMIT)
+            batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since_ms,
+                                          limit=EXCHANGE_MAX_LIMIT, params={"until": int(until_ms)})
         except Exception as e:
             print(f"⚠️ [candle_store] backfill {symbol} {timeframe}: {e}")
             break
@@ -190,24 +196,46 @@ def top_up_tail(exchange, symbol, timeframe):
     # 2. Проверяем наличие дыры сзади. Если история короче лимита — докачиваем в прошлое
     first_ts = _first_timestamp(symbol, timeframe)
     if first_ts and (first_ts * 1000) > target_since_ms + tf_ms:
+        print(f"🕳️ [candle_store] {symbol} ({timeframe}): есть дыра сзади — "
+              f"самая старая свеча {datetime.datetime.utcfromtimestamp(first_ts).date()}, "
+              f"цель {datetime.datetime.utcfromtimestamp(target_since_ms / 1000).date()}. Докачиваю вглубь...")
         past_since_ms = target_since_ms
         while past_since_ms < first_ts * 1000:
+            # until обязателен — без него биржа на старый since иногда молча
+            # отдаёт свои ПОСЛЕДНИЕ свечи вместо запрошенного окна в прошлом
+            # (задокументированный класс поведения в ccxt для нескольких
+            # бирж — see https://github.com/ccxt/ccxt/issues/22191, .../23066;
+            # официальный паттерн докачки в прошлое — всегда since+until
+            # вместе: docs.ccxt.com/docs/examples/py/poloniex-fetch-ohlcv-with-pagination).
+            # Bybit v5 kline честно поддерживает end наравне с start.
+            until_ms = min(past_since_ms + EXCHANGE_MAX_LIMIT * tf_ms, first_ts * 1000)
             try:
-                batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=past_since_ms, limit=EXCHANGE_MAX_LIMIT)
+                batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=past_since_ms,
+                                              limit=EXCHANGE_MAX_LIMIT, params={"until": int(until_ms)})
             except Exception as e:
                 print(f"⚠️ [candle_store] past backfill {symbol} {timeframe}: {e}")
                 break
             if not batch:
+                print(f"🛑 [candle_store] {symbol} ({timeframe}): биржа вернула ПУСТО на since="
+                      f"{datetime.datetime.utcfromtimestamp(past_since_ms / 1000).date()} .. "
+                      f"{datetime.datetime.utcfromtimestamp(until_ms / 1000).date()} — "
+                      f"дальше вглубь данных нет, останавливаюсь здесь.")
                 break
-                
+
             _insert_candles(symbol, timeframe, batch)
+            first_in_batch = datetime.datetime.utcfromtimestamp(batch[0][0] / 1000).date()
+            last_in_batch = datetime.datetime.utcfromtimestamp(batch[-1][0] / 1000).date()
+            print(f"🔄 [candle_store] {symbol} ({timeframe}): докачано вглубь {len(batch)} свечей "
+                  f"({first_in_batch} .. {last_in_batch})")
             last_fetched_ts = batch[-1][0]
-            
+
             if len(batch) < EXCHANGE_MAX_LIMIT or last_fetched_ts >= first_ts * 1000:
                 break
                 
             past_since_ms = last_fetched_ts + tf_ms
             time.sleep(REQUEST_DELAY_SEC)
+    # Дыры сзади нет — штатный, ожидаемый результат на каждом обычном
+    # открытии графика, поэтому больше не печатаем (было спамом без пользы).
 
 def get_candles(symbol, timeframe, limit=None, around=None):
     """Возвращает список dict {time, open, high, low, close, volume}, time — unix-секунды.
@@ -246,6 +274,49 @@ def get_candles(symbol, timeframe, limit=None, around=None):
 
 def has_data(symbol, timeframe):
     return _last_timestamp(symbol, timeframe) is not None
+
+
+def cleanup_redundant_spot():
+    """Одноразовая миграционная чистка (не для регулярного вызова из
+    cleanup_old): убирает спот-серии (символ БЕЗ ':USDT', например
+    'BCH/USDT'), для которых в базе уже есть своп-версия того же символа
+    ('BCH/USDT:USDT') на том же таймфрейме. После правки resolve_symbol()
+    (своп теперь пробуется первым) такие спот-строки больше никогда не
+    запрашиваются и не докачиваются — просто занимают место.
+
+    Спот для монет, у которых своп НЕ листингован на Bybit, не трогает —
+    там спот по-прежнему единственный источник (resolve_symbol падает на
+    него как на запасной вариант), удалять нечего.
+
+    Возвращает (удалено_пар, оставлено_спот_без_свопа) для отчёта."""
+    with _lock:
+        conn = _get_conn()
+        try:
+            pairs = conn.execute("SELECT DISTINCT symbol, timeframe FROM candles").fetchall()
+            spot_pairs = [(s, tf) for s, tf in pairs if ":USDT" not in s]
+            removed = 0
+            kept = 0
+            for symbol, timeframe in spot_pairs:
+                swap_symbol = f"{symbol}:USDT"
+                has_swap = conn.execute(
+                    "SELECT 1 FROM candles WHERE symbol=? AND timeframe=? LIMIT 1",
+                    (swap_symbol, timeframe),
+                ).fetchone()
+                if has_swap:
+                    conn.execute(
+                        "DELETE FROM candles WHERE symbol=? AND timeframe=?",
+                        (symbol, timeframe),
+                    )
+                    removed += 1
+                    print(f"🧹 [candle_store] Удалил спот {symbol} ({timeframe}) — есть своп {swap_symbol}")
+                else:
+                    kept += 1
+            conn.commit()
+            print(f"🧹 [candle_store] Готово: удалено {removed} спот-серий, оставлено {kept} "
+                  f"(своп для них не листингован, спот там по-прежнему нужен)")
+            return removed, kept
+        finally:
+            conn.close()
 
 
 def cleanup_old():

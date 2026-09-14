@@ -26,6 +26,7 @@ from modules.cryptano.utils.storage import load_json, save_json_atomic
 from modules.cryptano.levels_history import get_levels_snapshot
 from modules.cryptano.strategy.bounce_manager import BounceManager
 from modules.cryptano.strategy.bounce_parent import BounceParent
+from modules.cryptano.strategy.bounce_watcher import BounceWatcher
 from modules.cryptano.watcher_plan import candle_store
 
 SIM_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
@@ -86,6 +87,67 @@ def _episode(watcher, level_id, coin):
         "level_type": getattr(watcher, "level_type", None),
         "level_score": getattr(watcher, "level_score", None),
         "events": list(getattr(watcher, "event_log", [])),
+    }
+
+
+def _compute_trade_outcome(entry_ts, entry_price, target_price, trade_type, df_full, max_hold_days):
+    """Честный проход ВПЕРЁД по свечам от входа — определяет исход сделки.
+
+    Закрывает сделку только TP либо дедлайн (MAX_HOLD_DAYS) — тот же самый
+    принцип, что уже описан в BounceWatcher.CONFIG['SL_PCT']: "держим для
+    отображения/справки — НЕ закрывает сделку, на тестах реального
+    стоп-лосса не было". Это не отдельное решение для симулятора, это
+    honest-копия того, как боевая система вообще считает исход.
+
+    Заодно считает MAE (худшую просадку от входа до момента разрешения) —
+    entry_ts должен быть tz-aware (тот же индекс, что у df_full)."""
+    deadline_ts = entry_ts + pd.Timedelta(days=max_hold_days)
+    future = df_full[(df_full.index > entry_ts) & (df_full.index <= deadline_ts)]
+
+    worst_adverse_pct = 0.0
+    for _, row in future.iterrows():
+        if trade_type == "LONG":
+            adverse_pct = (float(row["low"]) - entry_price) / entry_price * 100.0
+        else:
+            adverse_pct = (entry_price - float(row["high"])) / entry_price * 100.0
+        if adverse_pct < worst_adverse_pct:
+            worst_adverse_pct = adverse_pct
+
+        hit = (float(row["high"]) >= target_price) if trade_type == "LONG" else (float(row["low"]) <= target_price)
+        if hit:
+            result_pct = (target_price - entry_price) / entry_price * 100.0 if trade_type == "LONG" \
+                else (entry_price - target_price) / entry_price * 100.0
+            return {
+                "status": "✅",
+                "result_percent": round(result_pct, 2),
+                "closed_at": row.name.isoformat(),
+                "mae_pct": round(worst_adverse_pct, 2),
+            }
+
+    have_full_window = not df_full.empty and df_full.index[-1] >= deadline_ts
+    if have_full_window and not future.empty:
+        # Дошли до дедлайна, TP так и не случился — закрываем по последней
+        # доступной цене периода (тот же принцип, что history.py::
+        # check_and_update при MAX_HOLD_DAYS, просто честно по истории,
+        # а не по текущему тикеру биржи).
+        last_close = float(future.iloc[-1]["close"])
+        result_pct = (last_close - entry_price) / entry_price * 100.0 if trade_type == "LONG" \
+            else (entry_price - last_close) / entry_price * 100.0
+        return {
+            "status": "🕐",
+            "result_percent": round(result_pct, 2),
+            "closed_at": future.index[-1].isoformat(),
+            "mae_pct": round(worst_adverse_pct, 2),
+        }
+
+    # Данных пока не хватает до дедлайна (сделка случилась слишком близко к
+    # концу доступной истории) — честно показываем как ещё открытую, а не
+    # выдумываем закрытие раньше времени.
+    return {
+        "status": "⏳",
+        "result_percent": None,
+        "closed_at": None,
+        "mae_pct": round(worst_adverse_pct, 2) if not future.empty else None,
     }
 
 
@@ -163,6 +225,11 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None):
             mode = level_id_val.split("__")[-1] if "__" in level_id_val else None
             source_label = f"BOUNCE_{tt}" + (f"_{mode}" if tt == "SHORT" and mode else "")
 
+            outcome = _compute_trade_outcome(
+                ts, entry, tp, tt, df_full,
+                BounceWatcher.CONFIG.get("MAX_HOLD_DAYS", 14),
+            )
+
             trades.append({
                 "date": ts_naive.strftime("%Y-%m-%d %H:%M"),
                 "time": int(ts_naive.timestamp()),
@@ -179,6 +246,17 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None):
                 "volume": d.get("volume", float(row["volume"])),
                 "volume_mult": d.get("volume_mult"),
                 "reason": d.get("reason", ""),
+                # То же самое, что уже показывает боевой дашборд для реальных
+                # сигналов (см. history.py::save_signal/check_and_update) —
+                # только тут исход честно посчитан по истории, а не ждёт
+                # реального тикера биржи.
+                "status": outcome["status"],
+                "result_percent": outcome["result_percent"],
+                "closed_at": outcome["closed_at"],
+                "mae_pct": outcome["mae_pct"],
+                "method": "volume",
+                "method_value": d.get("volume", float(row["volume"])),
+                "method_mult": d.get("volume_mult"),
             })
 
             emoji = "🟢" if tt == "LONG" else "🔴"

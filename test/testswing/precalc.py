@@ -21,7 +21,7 @@ from swing_hunter import build_macro_levels, get_top_symbols, build_full_history
 # Можешь добавлять сюда или удалять любые нужные периоды
 MONTHS_TO_CALC = [
    
-    {"start": "2026-09-01", "end": "2026-09-09"}    
+    {"start": "2026-09-01", "end": "2026-09-13"}    
 ]
 
 def build_timeline_for_month(start_date, end_date, cache, valid_symbols):
@@ -31,14 +31,22 @@ def build_timeline_for_month(start_date, end_date, cache, valid_symbols):
     dates = pd.date_range(start=start_date, end=end_date, freq='12h')
     timeline = {}
 
+    # Паспорт: результат предыдущей даты передаём в следующий вызов как
+    # old_macro_base — так соседние даты сверяются между собой так же, как
+    # соседние 12-часовые циклы в боевом коде, а не строятся независимо
+    # каждая с нуля (см. обсуждение дрожания min/max).
+    running_macro_base = None
+
     for dt in dates:
         time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
         print(f"⏳ Сбор уровней на момент: {time_str}")
 
         # cache=... значит build_macro_levels работает целиком в памяти,
         # без единого сетевого запроса к бирже на этом шаге
-        levels_dict = build_macro_levels(target_time_str=time_str, cache=cache, valid_symbols=valid_symbols)
+        levels_dict = build_macro_levels(target_time_str=time_str, cache=cache, valid_symbols=valid_symbols,
+                                          old_macro_base=running_macro_base)
         timeline[time_str] = levels_dict
+        running_macro_base = levels_dict
 
     # Динамическое имя файла: levels_timeline_2026_02.json
     filename = f'levels_timeline_{month_label}.json'

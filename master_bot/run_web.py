@@ -74,7 +74,6 @@ def _rebuild_levels(notifier):
     print("[run_web] ⏳ Запускаю построение уровней вручную (может занять пару минут)...")
     try:
         result = build_macro_levels(notifier, ADMIN_LABEL)
-        print(f"[run_web] ✅ Построение уровней завершено: {result}")
     except Exception as e:
         print(f"[run_web] ❌ Ошибка при построении уровней: {e}")
 

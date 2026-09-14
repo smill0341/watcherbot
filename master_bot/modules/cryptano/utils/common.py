@@ -14,27 +14,30 @@ KNOWN_TICKER_ALIASES = {
 
 def resolve_symbol(coin, markets):
     """
-    Надёжно находит реальный символ монеты на Bybit.
-    Проверяет: спот -> фьючерс -> известный алиас (спот/фьючерс) ->
-    нечёткий поиск по всем рынкам с котировкой USDT.
-    Возвращает найденный symbol (str) или None, если монеты нет вообще.
+    Надёжно находит реальный символ монеты на Bybit — ТОЛЬКО своп/фьючерс
+    (":USDT"), спот не рассматривается вообще. Если у монеты нет своп-рынка
+    на Bybit — resolve_symbol возвращает None, и монета просто пропускается
+    (осознанное решение: не торговать/не строить уровни там, где нет
+    фьючерсного рынка, а не молча откатываться на другой рынок с другими
+    ценами/объёмом/историей).
+    Возвращает найденный symbol (str) или None, если своп-рынка нет.
     """
     coin = coin.upper().strip()
 
-    candidates = [f"{coin}/USDT", f"{coin}/USDT:USDT"]
+    candidates = [f"{coin}/USDT:USDT"]
 
     alias = KNOWN_TICKER_ALIASES.get(coin)
     if alias:
-        candidates += [f"{alias}/USDT", f"{alias}/USDT:USDT"]
+        candidates.append(f"{alias}/USDT:USDT")
 
     for symbol in candidates:
         if symbol in markets:
             return symbol
 
-    # Последняя попытка — нечёткое совпадение по базовой валюте
-    # (на случай других расхождений, которых нет в таблице алиасов)
+    # Последняя попытка — нечёткое совпадение по базовой валюте, тоже
+    # только среди своп-рынков.
     for symbol, m in markets.items():
-        if not symbol.endswith("/USDT") and ":USDT" not in symbol:
+        if ":USDT" not in symbol:
             continue
         base = (m.get("base") or "").upper()
         if base == coin or base == alias:

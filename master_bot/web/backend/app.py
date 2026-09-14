@@ -13,11 +13,28 @@ import json
 import time
 import datetime
 import threading
+import logging
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+
+# Приглушаем access-лог uvicorn для эндпоинтов, которые фронт опрашивает
+# часто (рескан-статус и подобное) — иначе консоль забивается строками
+# "GET /api/rescan_status 200 OK" на каждый опрос, за которыми не видно
+# реально важных логов (докачка свечей, ошибки и т.д.). Не трогает сами
+# запросы — только то, что от них печатается в консоль.
+_NOISY_ACCESS_LOG_PATHS = ("/api/rescan_status",)
+
+
+class _QuietPollingEndpoints(logging.Filter):
+    def filter(self, record):
+        msg = record.getMessage()
+        return not any(path in msg for path in _NOISY_ACCESS_LOG_PATHS)
+
+
+logging.getLogger("uvicorn.access").addFilter(_QuietPollingEndpoints())
 
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))          # .../master_bot/web/backend
 WEB_DIR = os.path.dirname(BACKEND_DIR)                            # .../master_bot/web
@@ -30,6 +47,7 @@ if BACKEND_DIR not in sys.path:
 
 from modules.cryptano.utils.crypto_utils import exchange
 from modules.cryptano.utils.common import resolve_symbol, KNOWN_TICKER_ALIASES, price_precision_from_market
+from modules.cryptano.levels_history import get_levels_snapshot
 import candle_store
 
 # Стратегии Watcher'а, которые можно вкл/выкл через дашборд — тот же
@@ -146,7 +164,8 @@ def _load_markets_on_startup():
                         if candle_store.has_data(symbol, tf):
                             candle_store.top_up_tail(exchange, symbol, tf)
                         else:
-                            print(f"[DASHBOARD] Backfill старт: {symbol} {tf} (~{candle_store.BACKFILL_DAYS}д)")
+                            days = candle_store.BACKFILL_DAYS_MAP.get(tf, candle_store.BACKFILL_DAYS)
+                            print(f"[DASHBOARD] Backfill старт: {symbol} {tf} (~{days}д)")
                             candle_store.backfill_symbol(exchange, symbol, tf)
                         time.sleep(candle_store.REQUEST_DELAY_SEC)
                 candle_store.cleanup_old()
@@ -399,6 +418,32 @@ def get_levels(coin: str):
             data = macro.get(alias)
     if data is None:
         raise HTTPException(status_code=404, detail=f"No levels for {coin}")
+    return data
+
+
+@app.get("/api/levels_at/{coin}")
+def get_levels_at(coin: str, when: int = Query(..., description="Unix-время (секунды, UTC) — на какой момент показать уровни")):
+    """То же самое, что /api/levels/{coin}, но не 'сейчас', а честный
+    исторический снимок на момент `when` — через levels_history.py::
+    get_levels_snapshot(), ту же функцию, что использует рескан и
+    bounce_simulate.py (см. modules/cryptano/levels_history.py). Читает
+    database/levels_timeline_YYYY_MM.json (снимки раз в ~12ч), а не
+    сегодняшний macro_levels.json — нужно для симулятора: при выборе даты
+    "От" показывать то, что бот реально видел в тот момент, а не текущее
+    состояние уровней."""
+    coin = coin.upper().strip()
+    when_dt = datetime.datetime.utcfromtimestamp(when)
+    snapshot = get_levels_snapshot(when_dt)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail=f"No levels history for {coin} at this time")
+
+    data = snapshot.get(coin)
+    if data is None:
+        alias = KNOWN_TICKER_ALIASES.get(coin)
+        if alias:
+            data = snapshot.get(alias)
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"No levels for {coin} at this time")
     return data
 
 

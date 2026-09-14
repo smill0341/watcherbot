@@ -250,6 +250,11 @@ body {
   flex-shrink: 0;
   max-height: 260px;
   overflow-y: auto;
+  overflow-x: auto;
+}
+
+#sim-trades-table {
+  min-width: 1150px;
 }
 
 .signals-panel h2 {
