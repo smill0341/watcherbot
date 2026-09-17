@@ -179,7 +179,15 @@ def _handle_rescan_flags(notifier):
                 bounce_mgr.clear_graveyard_by_coin(coin)
                 bounce_mgr.last_processed_time[coin] = since_val
 
-                bc_count, bc_reports, bc_levels = check_bounce(coin, True, True, bounce_mgr)
+                # Читаем СВЕЖИЙ конфиг на каждый рескан — направление могло
+                # переключиться на дашборде между кликами (единая точка
+                # правды с боевым сканом и симулятором, см. app.py::
+                # get_bounce_direction). Отсутствие ключа — включено (True).
+                _cfg = load_json(CONFIG_FILE, default={})
+                _crypto_cfg = _cfg.get("crypto", {})
+                bc_count, bc_reports, bc_levels = check_bounce(
+                    coin, _crypto_cfg.get("allow_long", True), _crypto_cfg.get("allow_short", True), bounce_mgr
+                )
                 for bc_report in bc_reports:
                     notifier.send_message(ADMIN_LABEL, bc_report, parse_mode="Markdown")
 

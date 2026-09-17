@@ -23,7 +23,7 @@ class BounceWatcher:
         'VOL_SPIKE_MULT': 3.0,     
         'MIN_VOL_MULT_TO_LOG': 1.5,   # Фильтр мусора: не рисовать SCAN и не писать лог, если объем ниже х1.5
         'MAX_RUNAWAY_PCT': 5.0,       # После пробоя: если цена ушла дальше этого % от уровня — отбой, вотчер умирает сам
-        'MIN_BODY_PCT': 20.0,         # Плотность свечи: тело должно занимать минимум 40% от всего размаха
+        'MIN_BODY_PCT': 40.0,         # Плотность свечи: тело должно занимать минимум 40% от всего размаха
         'MAX_WICKS_PCT': 60.0,        # Защита от отвержения: верхняя тень (для лонга) не больше 30%
         'FIXED_TP_PCT': 7.0,
         'SL_PCT': 50.0,  # держим для отображения/справки — НЕ закрывает сделку (см. history.py::update_open_signals,
@@ -346,6 +346,30 @@ class BounceWatcher:
         trigger_long = self.min if is_poc else self.zone_mid
         trigger_short = self.max if is_poc else self.zone_mid
 
+        # === ЖЁСТКАЯ СМЕРТЬ ПО СЛЕДУЮЩЕМУ УРОВНЮ (только SHORT — self.paired_level
+        # считается только для SHORT, см. bounce_manager.py::evaluate_bounce) ===
+        # Если цена дотянулась до СЛЕДУЮЩЕЙ resistance-зоны выше ровно ТЕМ ЖЕ
+        # порогом, которым любой уровень вообще считается "пробитым" (край для
+        # POC, середина для всех остальных — та же формула, что чуть выше для
+        # trigger_short) — следующий уровень пробит настолько же честно, как и
+        # любой другой уровень пробивается для входа. Значит этот, нижний,
+        # уровень уже позади рынка — умирает НАВСЕГДА, не мягкий сброс, как
+        # обычный ОТБОЙ ниже (тот прощает случайную тень, эта проверка — нет,
+        # раз дотянулись до середины СЛЕДУЮЩЕЙ зоны, это не случайность).
+        if self.trade_type == 'SHORT' and self.paired_level:
+            pl = self.paired_level
+            pl_is_poc = '4h_poc_standalone' in pl.get('type', '')
+            pl_trigger = pl['min'] if pl_is_poc else (pl['min'] + pl['max']) / 2.0
+            if c_high >= pl_trigger:
+                self.state = "DEAD"
+                self.last_event_type = "RUNAWAY"
+                self.history_log = (
+                    f"Цена пробила следующий уровень выше ({c_high:.4f} >= {pl_trigger:.4f}, "
+                    "той же формулой, что и обычный вход) — этот уровень позади рынка, убит навсегда."
+                )
+                self._dbg(f"🔴 СМЕРТЬ (след. уровень пробит) | {self.history_log}")
+                return None
+
         # --- НОВЫЙ ПЕРВЫЙ ШАГ: коснулись БЛИЖНЕГО КРАЯ полосы (не середины) ---
         # Для LONG цена падает сверху вниз в зону — ближний край self.max.
         # Для SHORT цена растёт снизу вверх в зону — ближний край self.min.
@@ -425,7 +449,6 @@ class BounceWatcher:
             # фокуса (pierce_count, last_pierce_time, событие SWEEP_BOTTOM), но
             # pierced_bottom остаётся True — честный будущий реклейм всё ещё разрешён.
             self.currently_pierced = False  # эта "попытка" пробоя отменена, ждём следующую как новую
-            self._dbg(f"⚪ ШУМ | Пробой и отбой в одной свече (Лой:{c_low:.4f} / Хай:{c_high:.4f} vs Закрытие:{c_close:.4f}) — не считаем")
         elif new_pierce_this_candle and not was_pierced_bottom_before:
             # not was_pierced_bottom_before — точку/лог/номер пишем только на
             # НАСТОЯЩИЙ первый пробой этого сетапа. Раньше это условие не

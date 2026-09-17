@@ -1,0 +1,260 @@
+{
+  "coin": "BCH",
+  "start_time": "2026-08-31 21:00",
+  "end_time": "2026-09-29 21:00",
+  "active": [],
+  "history": [
+    {
+      "level_id": "BC_LONG_233.22_245.17999999999998",
+      "coin": "BCH",
+      "strategy": "BOUNCE",
+      "mode": null,
+      "direction": "LONG",
+      "state": "TRIGGERED",
+      "level_min": 233.22,
+      "level_max": 245.17999999999998,
+      "level_date": "2026-08-23",
+      "level_type": "1W_low_PWL",
+      "level_score": 5.5,
+      "events": [
+        {
+          "time": 1788252300,
+          "type": "ZONE_TOUCH",
+          "price": 245.1
+        },
+        {
+          "time": 1789044300,
+          "type": "SWEEP_BOTTOM",
+          "price": 236.9
+        },
+        {
+          "time": 1789128900,
+          "type": "SCAN",
+          "price": 224.5
+        },
+        {
+          "time": 1789129800,
+          "type": "SCAN",
+          "price": 227.2
+        },
+        {
+          "time": 1789130700,
+          "type": "SCAN",
+          "price": 229.3
+        },
+        {
+          "time": 1789134300,
+          "type": "ENTRY",
+          "price": 235.9
+        }
+      ]
+    },
+    {
+      "level_id": "BC_SHORT_258.2775_271.5225__MIRROR",
+      "coin": "BCH",
+      "strategy": "BOUNCE",
+      "mode": "MIRROR",
+      "direction": "SHORT",
+      "state": "TRIGGERED",
+      "level_min": 258.2775,
+      "level_max": 271.5225,
+      "level_date": "2026-08-30",
+      "level_type": "1W_high_PWH",
+      "level_score": 5.5,
+      "events": [
+        {
+          "time": 1788696000,
+          "type": "ZONE_TOUCH",
+          "price": 260.5
+        },
+        {
+          "time": 1788796800,
+          "type": "SWEEP_BOTTOM",
+          "price": 265.8
+        },
+        {
+          "time": 1788797700,
+          "type": "SCAN",
+          "price": 265.3
+        },
+        {
+          "time": 1788819300,
+          "type": "SCAN",
+          "price": 257.3
+        },
+        {
+          "time": 1788854400,
+          "type": "SCAN",
+          "price": 255.3
+        },
+        {
+          "time": 1788874200,
+          "type": "SCAN",
+          "price": 252.2
+        },
+        {
+          "time": 1788984900,
+          "type": "SCAN",
+          "price": 253.5
+        },
+        {
+          "time": 1788991200,
+          "type": "ENTRY",
+          "price": 249.7
+        }
+      ]
+    },
+    {
+      "level_id": "BC_LONG_213.6225_224.5775",
+      "coin": "BCH",
+      "strategy": "BOUNCE",
+      "mode": null,
+      "direction": "LONG",
+      "state": "TRIGGERED",
+      "level_min": 213.6225,
+      "level_max": 224.5775,
+      "level_date": "2026-09-06",
+      "level_type": "1W_low_PWL",
+      "level_score": 5.5,
+      "events": [
+        {
+          "time": 1789300800,
+          "type": "ZONE_TOUCH",
+          "price": 222.8
+        },
+        {
+          "time": 1789337700,
+          "type": "SWEEP_BOTTOM",
+          "price": 219.1
+        },
+        {
+          "time": 1789477200,
+          "type": "SCAN",
+          "price": 223.8
+        },
+        {
+          "time": 1789479900,
+          "type": "SCAN",
+          "price": 224.4
+        },
+        {
+          "time": 1789497900,
+          "type": "SCAN",
+          "price": 218.0
+        },
+        {
+          "time": 1789600500,
+          "type": "SCAN",
+          "price": 220.1
+        },
+        {
+          "time": 1789601400,
+          "type": "ENTRY",
+          "price": 220.9
+        }
+      ]
+    }
+  ],
+  "levels": [
+    {
+      "min": 233.22,
+      "max": 245.17999999999998,
+      "is_support": true,
+      "type": "1W_low_PWL",
+      "score": 5.5
+    },
+    {
+      "min": 258.2775,
+      "max": 271.5225,
+      "is_support": false,
+      "type": "1W_high_PWH",
+      "score": 5.5
+    },
+    {
+      "min": 213.6225,
+      "max": 224.5775,
+      "is_support": true,
+      "type": "1W_low_PWL",
+      "score": 5.5
+    }
+  ],
+  "trades": [
+    {
+      "date": "2026-09-09 22:00",
+      "time": 1788991200,
+      "coin": "BCH",
+      "type": "SHORT",
+      "source": "BOUNCE_SHORT_MIRROR",
+      "entry": 249.7,
+      "target": 232.22099999999998,
+      "stop": 374.54999999999995,
+      "rr": 0.14,
+      "level_id": "BC_SHORT_258.2775_271.5225__MIRROR",
+      "level_min": 258.2775,
+      "level_max": 271.5225,
+      "volume": 4877.92,
+      "volume_mult": 4.331593445138466,
+      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:4.9k (x4.3)",
+      "status": "✅",
+      "result_percent": 7.0,
+      "closed_at": "2026-09-10T13:00:00+00:00",
+      "mae_pct": -1.04,
+      "method": "volume",
+      "method_value": 4877.92,
+      "method_mult": 4.331593445138466
+    },
+    {
+      "date": "2026-09-11 13:45",
+      "time": 1789134300,
+      "coin": "BCH",
+      "type": "LONG",
+      "source": "BOUNCE_LONG",
+      "entry": 235.9,
+      "target": 252.413,
+      "stop": 117.95,
+      "rr": 0.14,
+      "level_id": "BC_LONG_233.22_245.17999999999998",
+      "level_min": 233.22,
+      "level_max": 245.17999999999998,
+      "volume": 5823.12,
+      "volume_mult": 4.5662289513180845,
+      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:5.8k (x4.6)",
+      "status": "⏳",
+      "result_percent": null,
+      "closed_at": null,
+      "mae_pct": -9.88,
+      "method": "volume",
+      "method_value": 5823.12,
+      "method_mult": 4.5662289513180845
+    },
+    {
+      "date": "2026-09-16 23:30",
+      "time": 1789601400,
+      "coin": "BCH",
+      "type": "LONG",
+      "source": "BOUNCE_LONG",
+      "entry": 220.9,
+      "target": 236.36300000000003,
+      "stop": 110.45,
+      "rr": 0.14,
+      "level_id": "BC_LONG_213.6225_224.5775",
+      "level_min": 213.6225,
+      "level_max": 224.5775,
+      "volume": 1064.43,
+      "volume_mult": 3.0656574820498186,
+      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:1.1k (x3.1)",
+      "status": "⏳",
+      "result_percent": null,
+      "closed_at": null,
+      "mae_pct": -0.77,
+      "method": "volume",
+      "method_value": 1064.43,
+      "method_mult": 3.0656574820498186
+    }
+  ],
+  "messages": [
+    "🔴 *BOUNCE SHORT* _BCH_ — 2026-09-09 22:00\nEntry: `249.70000000`  SL: `374.55000000`  TP: `232.22100000`  R/R: `0.14`\nBOUNCE (пробой #1, сделка 1/1) | V:4.9k (x4.3)  Level: `BC_SHORT_258.2775_271.5225__MIRROR`",
+    "🟢 *BOUNCE LONG* _BCH_ — 2026-09-11 13:45\nEntry: `235.90000000`  SL: `117.95000000`  TP: `252.41300000`  R/R: `0.14`\nBOUNCE (пробой #1, сделка 1/1) | V:5.8k (x4.6)  Level: `BC_LONG_233.22_245.17999999999998`",
+    "🟢 *BOUNCE LONG* _BCH_ — 2026-09-16 23:30\nEntry: `220.90000000`  SL: `110.45000000`  TP: `236.36300000`  R/R: `0.14`\nBOUNCE (пробой #1, сделка 1/1) | V:1.1k (x3.1)  Level: `BC_LONG_213.6225_224.5775`"
+  ]
+}

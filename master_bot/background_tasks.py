@@ -202,6 +202,14 @@ def crypto_orchestrator(bot, admin_chat_id):
             vgb_enabled = strategies_cfg.get("VGB", True)
             vrt_enabled = strategies_cfg.get("VRT", True)
             bounce_enabled = strategies_cfg.get("BOUNCE", True)
+            # LONG/SHORT переключатель BOUNCE — единая точка правды с
+            # дашбордом (app.py::get_bounce_direction) и симулятором.
+            # Отсутствие ключа = включено (та же конвенция, что и strategies_cfg
+            # выше). AND'ится ниже с уже существующей проверкой dirs/
+            # bc_has_active_* — та смотрит "есть ли у монеты зоны сейчас",
+            # эта — "хочет ли пользователь вообще торговать эту сторону".
+            bc_allow_long = config.get("crypto", {}).get("allow_long", True)
+            bc_allow_short = config.get("crypto", {}).get("allow_short", True)
             
             # 📴 РЕЖИМ STOPPED: Если автобот выключен — глушим всю автоматику
             if status != "RUNNING":
@@ -415,7 +423,10 @@ def crypto_orchestrator(bot, admin_chat_id):
                                     # BounceWatcher.
                                     if bounce_enabled and (f"{coin}_LONG" not in watcher_cooldown_cache or f"{coin}_SHORT" not in watcher_cooldown_cache):
                                         bc_count, bc_reports, bc_levels = check_bounce(
-                                            coin, "LONG" in dirs or bc_has_active_long, "SHORT" in dirs or bc_has_active_short, bounce_mgr
+                                            coin,
+                                            bc_allow_long and ("LONG" in dirs or bc_has_active_long),
+                                            bc_allow_short and ("SHORT" in dirs or bc_has_active_short),
+                                            bounce_mgr
                                         )
                                         bounce_levels_checked += bc_levels
                                         for bc_report in bc_reports:

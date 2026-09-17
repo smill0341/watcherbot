@@ -38,44 +38,21 @@ if CURRENT_DIR not in sys.path:
 from modules.cryptano.utils.crypto_utils import exchange
 from modules.cryptano.utils.levels_builder import build_levels
 from modules.cryptano.utils.paths import DATABASE_DIR
-from modules.cryptano.swing_hunter import _reconcile_coin_levels  # тот же паспорт, что уже стоит в бою
+# get_top_symbols/MIN_VOLUME_USD/MAX_COINS — ОДНА точка правды, из swing_hunter.py
+# (тот же порог/потолок, что и в бою, а не отдельная копия, которая рано
+# или поздно расходится молча — ровно так родился баг с RAYDIUM: правили
+# порог в одном месте, он не подхватывался в другом).
+from modules.cryptano.swing_hunter import (
+    _reconcile_coin_levels,  # тот же паспорт, что уже стоит в бою
+    get_top_symbols, MIN_VOLUME_USD, MAX_COINS,
+)
 
 # --- ДИАПАЗОН ДАТ ДЛЯ ПЕРЕСЧЁТА ---
 # Можно указать несколько периодов подряд, как в test/precalc.py.
 MONTHS_TO_CALC = [
     {"start": "2026-08-01", "end": "2026-08-31"},
-    {"start": "2026-09-01", "end": "2026-09-14"},
+    {"start": "2026-09-01", "end": "2026-09-15"},
 ]
-
-MIN_VOLUME_USD = 10_000_000
-MAX_COINS = 80  # то же, что в бою (см. background_tasks.py::build_macro_levels)
-
-
-def get_top_symbols():
-    if not exchange.markets:
-        exchange.load_markets(reload=True)
-    else:
-        exchange.load_markets(reload=False)
-    tickers = exchange.fetch_tickers()
-
-    symbols_with_volume = []
-    for sym, tick in tickers.items():
-        # Только своп/фьючерс — та же логика, что теперь в resolve_symbol().
-        # Раньше сюда попадал и спот тоже — если одна и та же монета имела
-        # и спот, и своп, оба проходили порог объёма отдельно и оба
-        # добавлялись в список под РАЗНЫМИ символами, но одинаковым coin
-        # (symbol.split("/")[0]) — в кэше (build_full_history_cache)
-        # они бы схлопнулись под один ключ монеты непредсказуемо, кто
-        # последний обработан, тот и остался.
-        if sym.endswith(':USDT'):
-            vol = float(tick.get('quoteVolume') or 0)
-            if vol >= MIN_VOLUME_USD:
-                symbols_with_volume.append((sym, vol))
-
-    symbols_with_volume.sort(key=lambda x: x[1], reverse=True)
-    valid_symbols = [sym for sym, vol in symbols_with_volume[:MAX_COINS]]
-    print(f"🔥 Найдено {len(symbols_with_volume)} монет. Берём топ-{MAX_COINS}.")
-    return valid_symbols
 
 
 def _safe_fetch_ohlcv(symbol, tf, lim):
@@ -199,8 +176,21 @@ def build_timeline_for_month(start_date, end_date, cache):
         time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
         print(f"⏳ Сбор уровней на момент: {time_str}")
         levels_dict = build_snapshot_for_date(time_str, cache, running_macro_base)
-        timeline[time_str] = levels_dict
-        running_macro_base = levels_dict
+        # СЛИЯНИЕ, не замена: valid_symbols фиксируется ОДИН раз на весь прогон
+        # (по объёму ПРЯМО СЕЙЧАС) и одинаков для всех дат обоих месяцев —
+        # монета, которая сегодня не прошла порог объёма (например, RAYDIUM
+        # на границе $10M), просто не попадает в cache и, соответственно, в
+        # levels_dict ни на одну дату. Раньше `timeline[time_str] = levels_dict`
+        # ЗАМЕНЯЛО весь снимок на эту дату целиком — и стирало уже посчитанные
+        # ранее (в прошлом прогоне, когда монета проходила порог) уровни для
+        # монет, которых нет в ЭТОМ прогоне. Теперь — сохраняем старую запись
+        # для тех монет, кого сегодня не пересчитывали, и обновляем только тех,
+        # кого реально пересчитали.
+        old_snapshot = timeline.get(time_str, {})
+        merged_snapshot = dict(old_snapshot)
+        merged_snapshot.update(levels_dict)
+        timeline[time_str] = merged_snapshot
+        running_macro_base = merged_snapshot
 
     with open(output_path, 'w') as f:
         json.dump(timeline, f, indent=2)

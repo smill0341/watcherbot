@@ -18,7 +18,7 @@ body {
 }
 
 .sidebar {
-  width: 300px;
+  width: 260px;
   flex-shrink: 0;
   border-right: 1px solid #262832;
   display: flex;
@@ -284,13 +284,170 @@ th {
   text-transform: uppercase;
 }
 
-#sim-trades-body tr {
+#sim-trades-body tr,
+#sim-bulk-trades-body tr {
   cursor: pointer;
 }
-#sim-trades-body tr:hover {
+#sim-trades-body tr:hover,
+#sim-bulk-trades-body tr:hover {
   background: #1b1d24;
 }
-#sim-trades-body tr.selected {
+#sim-trades-body tr.selected,
+#sim-bulk-trades-body tr.selected {
   background: #1f2e22;
   outline: 1px solid #3a5c3f;
+}
+/* === Вкладки под графиком (Сделки / Все сделки / Отчёт по монетам) === */
+.sim-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #1b1d24;
+}
+.sim-bulk-progress {
+  margin-left: auto;
+  color: #9aa0ac;
+  font-size: 12px;
+  padding-right: 4px;
+  white-space: nowrap;
+}
+.sim-tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #9aa0ac;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.sim-tab-btn:hover {
+  color: #e6e6e6;
+}
+.sim-tab-btn.active {
+  color: #e6e6e6;
+  border-bottom-color: #3a4a70;
+}
+.sim-tab-panel {
+  display: none;
+}
+.sim-tab-panel.active {
+  display: block;
+}
+
+/* === Bulk-отчёт по всем монетам (см. sim.js::renderBulkReport) === */
+.bulk-summary {
+  color: #9aa0ac;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.bulk-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.bulk-table th {
+  text-align: left;
+  color: #9aa0ac;
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-bottom: 1px solid #2a2d38;
+}
+.bulk-table td {
+  padding: 4px 8px;
+}
+
+/* Выравнивание элементов управления в симуляторе */
+.sim-controls select,
+.sim-controls input[type="date"] {
+  background: #1b1d24;
+  border: 1px solid #262832;
+  color: #e6e6e6;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  height: 26px;
+  outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.sim-controls select:focus,
+.sim-controls input[type="date"]:focus {
+  border-color: #3a4a70;
+}
+
+.sim-date-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #9aa0ac;
+  height: 26px;
+}
+
+.sim-controls .sim-btn {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+/* === Модалка ручного добавления уровня (index.html, #add-level-overlay) === */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal-box {
+  background: #15161c;
+  border: 1px solid #2a2d38;
+  border-radius: 8px;
+  padding: 20px 24px;
+  width: 320px;
+  max-width: 90vw;
+}
+.modal-box h3 {
+  margin: 0 0 14px 0;
+  font-size: 15px;
+  color: #e6e6e6;
+}
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #9aa0ac;
+  margin-bottom: 10px;
+}
+.modal-field input,
+.modal-field select {
+  background: #1b1d24;
+  border: 1px solid #262832;
+  color: #e6e6e6;
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  outline: none;
+  font-family: inherit;
+}
+.modal-field input:focus,
+.modal-field select:focus {
+  border-color: #3a4a70;
+}
+.modal-error {
+  color: #e5654f;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }

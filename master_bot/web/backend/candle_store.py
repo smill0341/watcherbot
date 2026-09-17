@@ -34,17 +34,17 @@ DB_PATH = os.path.normpath(os.path.join(
 ))
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
-BACKFILL_DAYS = 60           # Базовое значение (чтобы не сломать принты в app.py)
-BACKFILL_DAYS_MAP = {        # Динамическая глубина скачивания для каждого таймфрейма
+BACKFILL_DAYS = 60
+BACKFILL_DAYS_MAP = {
     "15m": 60,
     "1h": 180,
     "4h": 180,
-    "1d": 365,
-    "1w": 7300,               # ~20 лет — практически вся история крипты, свечей всё равно немного (недельная)
-    "1M": 7300                # то же самое — месячных свечей за 20 лет чуть больше 200, дёшево хранить
+    "1d": None,  # None означает "копать всю историю до листинга"
+    "1w": None,  
+    "1M": None   
 }
 EXCHANGE_MAX_LIMIT = 999
-REQUEST_DELAY_SEC = 0.7      
+REQUEST_DELAY_SEC = 0.7    
 
 TIMEFRAME_MS = {
     "15m": 15 * 60 * 1000,
@@ -79,9 +79,36 @@ def init_db():
                 )
                 """
             )
+            # Новая таблица для памяти о дне (защита от лишних запросов)
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS genesis_flags (
+                    symbol TEXT NOT NULL,
+                    timeframe TEXT NOT NULL,
+                    last_check INTEGER NOT NULL,
+                    PRIMARY KEY (symbol, timeframe)
+                )
+                """
+            )
             conn.commit()
         finally:
             conn.close()
+
+def _get_genesis_check(symbol, timeframe):
+    conn = _get_conn()
+    try:
+        row = conn.execute("SELECT last_check FROM genesis_flags WHERE symbol=? AND timeframe=?", (symbol, timeframe)).fetchone()
+        return row[0] if row else 0
+    finally:
+        conn.close()
+
+def _set_genesis_check(symbol, timeframe):
+    conn = _get_conn()
+    try:
+        conn.execute("INSERT OR REPLACE INTO genesis_flags (symbol, timeframe, last_check) VALUES (?, ?, ?)", (symbol, timeframe, int(time.time())))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _insert_candles(symbol, timeframe, rows):
@@ -108,32 +135,53 @@ def _insert_candles(symbol, timeframe, rows):
 def backfill_symbol(exchange, symbol, timeframe, days=None):
     """
     Полная докачка истории назад, пачками по EXCHANGE_MAX_LIMIT.
+    Использует обратную пагинацию (от новых свечей к старым), чтобы
+    корректно загружать новые монеты, история которых короче BACKFILL_DAYS.
     """
     if days is None:
         days = BACKFILL_DAYS_MAP.get(timeframe, BACKFILL_DAYS)
         
-    since_ms = int((time.time() - days * 86400) * 1000)
-    tf_ms = TIMEFRAME_MS.get(timeframe, 15 * 60 * 1000)
+    if days is None:
+        target_since_ms = 0
+    else:
+        target_since_ms = int((time.time() - days * 86400) * 1000)
+        
+    current_until_ms = int(time.time() * 1000)
+    total_downloaded = 0
 
     while True:
-        # until обязателен по той же причине, что и в top_up_tail — см.
-        # комментарий там (ccxt issues #22191, #23066; официальный паттерн
-        # docs.ccxt.com/docs/examples/py/poloniex-fetch-ohlcv-with-pagination).
-        until_ms = since_ms + EXCHANGE_MAX_LIMIT * tf_ms
         try:
-            batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since_ms,
-                                          limit=EXCHANGE_MAX_LIMIT, params={"until": int(until_ms)})
+            # Идем назад: запрашиваем свечи ДО current_until_ms, не используя since
+            batch = exchange.fetch_ohlcv(
+                symbol, timeframe=timeframe, since=None, limit=EXCHANGE_MAX_LIMIT, 
+                params={"until": current_until_ms}
+            )
         except Exception as e:
             print(f"⚠️ [candle_store] backfill {symbol} {timeframe}: {e}")
             break
+            
         if not batch:
+            if days is None:
+                _set_genesis_check(symbol, timeframe)
             break
+            
         _insert_candles(symbol, timeframe, batch)
-        print(f"🔄 Стягиваю историю {symbol} ({timeframe}): скачано {len(batch)} свечей...")
-        last_ts = batch[-1][0]
-        if len(batch) < EXCHANGE_MAX_LIMIT or last_ts + tf_ms > time.time() * 1000:
-            break  # дошли до текущего момента
-        since_ms = last_ts + tf_ms
+        oldest_in_batch = batch[0][0]
+        total_downloaded += len(batch)
+        print(f"🔄 Стягиваю историю {symbol} ({timeframe}): скачано {total_downloaded} свечей...")
+        
+        # Если биржа отдала меньше лимита — мы уперлись в момент листинга монеты
+        if len(batch) < EXCHANGE_MAX_LIMIT:
+            if days is None:
+                _set_genesis_check(symbol, timeframe)
+            break
+            
+        # Если самая старая свеча в скачанной пачке зашла за лимит дней — стоп
+        if days is not None and oldest_in_batch <= target_since_ms:
+            break
+            
+        # Сдвигаем границу поиска на время старейшей свечи минус 1мс для следующего запроса
+        current_until_ms = oldest_in_batch - 1
         time.sleep(REQUEST_DELAY_SEC)
 
 
@@ -162,25 +210,45 @@ def _first_timestamp(symbol, timeframe):
 
 
 def top_up_tail(exchange, symbol, timeframe):
-    """Докачивает новые свечи вперед и недостающую историю назад."""
-    last_ts = _last_timestamp(symbol, timeframe)
-    if last_ts is None:
-        backfill_symbol(exchange, symbol, timeframe)
-        return
-        
-    tf_ms = TIMEFRAME_MS.get(timeframe, 15 * 60 * 1000)
+    """Гибридная докачка: малые ТФ до лимита дней, старшие ТФ — до упора с флагом на 30 дней."""
     target_days = BACKFILL_DAYS_MAP.get(timeframe, BACKFILL_DAYS)
-    target_since_ms = int((time.time() - target_days * 86400) * 1000)
+    is_infinite = target_days is None
     
-    # 1. Сначала докачиваем новые свечи вперед до текущего момента
-    since_ms = last_ts * 1000
-    while True:
+    # 1. Проверяем флаг дна (только для больших ТФ)
+    skip_deep = False
+    if is_infinite:
+        last_check = _get_genesis_check(symbol, timeframe)
+        if time.time() - last_check < 30 * 86400:
+            skip_deep = True
+        target_since_ms = 0
+    else:
+        target_since_ms = int((time.time() - target_days * 86400) * 1000)
+
+    last_ts = _last_timestamp(symbol, timeframe)
+    tf_ms = TIMEFRAME_MS.get(timeframe, 15 * 60 * 1000)
+
+    # 2. Если база пустая — делаем первый стартовый запрос (самые свежие 999 свечей)
+    if last_ts is None:
+        try:
+            batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=None, limit=EXCHANGE_MAX_LIMIT)
+            if batch:
+                _insert_candles(symbol, timeframe, batch)
+                last_ts = batch[-1][0] // 1000
+        except Exception as e:
+            print(f"⚠️ [candle_store] init fetch {symbol} {timeframe}: {e}")
+            return
+            
+    if last_ts is None:
+        return
+
+    # 3. Качаем ВПЕРЕД (новые свечи от последней сохраненной до сейчас)
+    since_ms = (last_ts * 1000) + tf_ms
+    while since_ms < time.time() * 1000:
         try:
             batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since_ms, limit=EXCHANGE_MAX_LIMIT)
         except Exception as e:
-            print(f"⚠️ [candle_store] top_up {symbol} {timeframe}: {e}")
+            print(f"⚠️ [candle_store] forward fetch {symbol} {timeframe}: {e}")
             break
-            
         if not batch:
             break
             
@@ -193,50 +261,54 @@ def top_up_tail(exchange, symbol, timeframe):
         since_ms = last_fetched_ts + tf_ms
         time.sleep(REQUEST_DELAY_SEC)
 
-    # 2. Проверяем наличие дыры сзади. Если история короче лимита — докачиваем в прошлое
+    # 4. Качаем В ПРОШЛОЕ (копаем историю)
+    if skip_deep:
+        return  # Дно проверено менее 30 дней назад, экономим запросы
+
     first_ts = _first_timestamp(symbol, timeframe)
-    if first_ts and (first_ts * 1000) > target_since_ms + tf_ms:
-        print(f"🕳️ [candle_store] {symbol} ({timeframe}): есть дыра сзади — "
-              f"самая старая свеча {datetime.datetime.utcfromtimestamp(first_ts).date()}, "
-              f"цель {datetime.datetime.utcfromtimestamp(target_since_ms / 1000).date()}. Докачиваю вглубь...")
-        past_since_ms = target_since_ms
-        while past_since_ms < first_ts * 1000:
-            # until обязателен — без него биржа на старый since иногда молча
-            # отдаёт свои ПОСЛЕДНИЕ свечи вместо запрошенного окна в прошлом
-            # (задокументированный класс поведения в ccxt для нескольких
-            # бирж — see https://github.com/ccxt/ccxt/issues/22191, .../23066;
-            # официальный паттерн докачки в прошлое — всегда since+until
-            # вместе: docs.ccxt.com/docs/examples/py/poloniex-fetch-ohlcv-with-pagination).
-            # Bybit v5 kline честно поддерживает end наравне с start.
-            until_ms = min(past_since_ms + EXCHANGE_MAX_LIMIT * tf_ms, first_ts * 1000)
-            try:
-                batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=past_since_ms,
-                                              limit=EXCHANGE_MAX_LIMIT, params={"until": int(until_ms)})
-            except Exception as e:
-                print(f"⚠️ [candle_store] past backfill {symbol} {timeframe}: {e}")
-                break
-            if not batch:
-                print(f"🛑 [candle_store] {symbol} ({timeframe}): биржа вернула ПУСТО на since="
-                      f"{datetime.datetime.utcfromtimestamp(past_since_ms / 1000).date()} .. "
-                      f"{datetime.datetime.utcfromtimestamp(until_ms / 1000).date()} — "
-                      f"дальше вглубь данных нет, останавливаюсь здесь.")
-                break
+    if not first_ts:
+        return
+        
+    current_until_ms = first_ts * 1000
+    
+    # Если это младший ТФ и мы уже скачали его норму в днях — выходим
+    if not is_infinite and current_until_ms <= target_since_ms + tf_ms:
+        return
 
-            _insert_candles(symbol, timeframe, batch)
-            first_in_batch = datetime.datetime.utcfromtimestamp(batch[0][0] / 1000).date()
-            last_in_batch = datetime.datetime.utcfromtimestamp(batch[-1][0] / 1000).date()
-            print(f"🔄 [candle_store] {symbol} ({timeframe}): докачано вглубь {len(batch)} свечей "
-                  f"({first_in_batch} .. {last_in_batch})")
-            last_fetched_ts = batch[-1][0]
-
-            if len(batch) < EXCHANGE_MAX_LIMIT or last_fetched_ts >= first_ts * 1000:
-                break
-                
-            past_since_ms = last_fetched_ts + tf_ms
-            time.sleep(REQUEST_DELAY_SEC)
-    # Дыры сзади нет — штатный, ожидаемый результат на каждом обычном
-    # открытии графика, поэтому больше не печатаем (было спамом без пользы).
-
+    while True:
+        try:
+            # Идем назад: запрашиваем 999 свечей ДО current_until_ms
+            batch = exchange.fetch_ohlcv(
+                symbol, timeframe=timeframe, since=None, limit=EXCHANGE_MAX_LIMIT, 
+                params={"until": int(current_until_ms - 1)}
+            )
+        except Exception as e:
+            print(f"⚠️ [candle_store] past backfill {symbol} {timeframe}: {e}")
+            break
+            
+        if not batch:
+            # Биржа вернула пустоту - это листинг
+            if is_infinite:
+                _set_genesis_check(symbol, timeframe)
+            break
+            
+        _insert_candles(symbol, timeframe, batch)
+        oldest_in_batch = batch[0][0]
+        
+        # Если биржа отдала меньше 999 свечей — мы ударились в листинг прямо внутри этой пачки
+        if len(batch) < EXCHANGE_MAX_LIMIT:
+            if is_infinite:
+                _set_genesis_check(symbol, timeframe)
+            break
+            
+        # Для младших ТФ: если самая старая свеча в пачке зашла за лимит дней — стоп
+        if not is_infinite and oldest_in_batch <= target_since_ms:
+            break
+            
+        # Шагаем дальше в прошлое
+        current_until_ms = oldest_in_batch
+        time.sleep(REQUEST_DELAY_SEC)
+        
 def get_candles(symbol, timeframe, limit=None, around=None):
     """Возвращает список dict {time, open, high, low, close, volume}, time — unix-секунды.
 
@@ -274,6 +346,19 @@ def get_candles(symbol, timeframe, limit=None, around=None):
 
 def has_data(symbol, timeframe):
     return _last_timestamp(symbol, timeframe) is not None
+
+
+def last_candle_age_seconds(symbol, timeframe):
+    """Сколько секунд назад была последняя ЛОКАЛЬНО сохранённая свеча — без
+    похода в сеть (простой SQLite MAX(timestamp)). None, если для этой
+    монеты вообще нет данных. Используется bulk-симулятором (см.
+    bounce_simulate.run_bulk_bounce_simulation), чтобы решить, нужна ли
+    докачка хвоста ИМЕННО этой монете, а не гонять top_up_tail() по всем
+    подряд — большинство активно отслеживаемых ботом монет и так свежие."""
+    ts = _last_timestamp(symbol, timeframe)
+    if ts is None:
+        return None
+    return time.time() - ts
 
 
 def cleanup_redundant_spot():
@@ -320,20 +405,16 @@ def cleanup_redundant_spot():
 
 
 def cleanup_old():
-    """Чистит каждую (symbol, timeframe) по её собственному окну из
-    BACKFILL_DAYS_MAP — единое место правды для глубины истории.
-    Так база держит скользящее окно: top_up_tail() дописывает новые
-    свечи вперёд, cleanup_old() отрезает всё, что вышло за окно сзади,
-    и общее количество свечей на (symbol, timeframe) остаётся примерно
-    постоянным."""
+    """Чистит только те таймфреймы, у которых задан жесткий лимит в днях."""
     with _lock:
         conn = _get_conn()
         try:
-            pairs = conn.execute(
-                "SELECT DISTINCT symbol, timeframe FROM candles"
-            ).fetchall()
+            pairs = conn.execute("SELECT DISTINCT symbol, timeframe FROM candles").fetchall()
             for symbol, timeframe in pairs:
                 days = BACKFILL_DAYS_MAP.get(timeframe, BACKFILL_DAYS)
+                if days is None:
+                    continue  # Для старших ТФ не удаляем ничего
+                
                 cutoff = int(time.time() - days * 86400)
                 conn.execute(
                     "DELETE FROM candles WHERE symbol=? AND timeframe=? AND timestamp < ?",

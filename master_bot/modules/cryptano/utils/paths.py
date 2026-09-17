@@ -17,6 +17,14 @@ DATABASE_DIR = os.path.join(CRYPTANO_DIR, "database")
 
 WATCHLIST_FILE = os.path.join(JSONBANK_DIR, "watchlist.json")
 MACRO_LEVELS_FILE = os.path.join(JSONBANK_DIR, "macro_levels.json")
+# Уровни, добавленные вручную с дашборда (см. app.py::add_custom_level) —
+# ОТДЕЛЬНЫЙ файл, не внутри macro_levels.json: тот целиком перезаписывается
+# каждый пересчёт swing_hunter (см. build_macro_levels) — ручная запись
+# внутри него не пережила бы следующий скан. custom_levels.json swing_hunter
+# не трогает вообще, живёт своей жизнью, сливается с macro на чтении (и в
+# GET /api/levels/{coin}, и в движке сканера — см. watcher_plan.py::
+# get_merged_levels_for_coin).
+CUSTOM_LEVELS_FILE = os.path.join(JSONBANK_DIR, "custom_levels.json")
 WATCHER_STATE_FILE = os.path.join(JSONBANK_DIR, "watcher_state.json")
 RESCAN_STATUS_FILE = os.path.join(JSONBANK_DIR, "rescan_status.json")
 BOUNCE_STATE_FILE = os.path.join(JSONBANK_DIR, "bounce_state.json")

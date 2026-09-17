@@ -13,9 +13,38 @@ from modules.cryptano.utils.indicators import pandas_get_local_structure, calcul
 from modules.cryptano.strategy.vbottom_manager import VBottomManager
 from modules.cryptano.strategy.bounce_manager import BounceManager
 from modules.cryptano.strategy.bounce_parent import BounceParent
-from modules.cryptano.utils.paths import MACRO_LEVELS_FILE
+from modules.cryptano.utils.paths import MACRO_LEVELS_FILE, CUSTOM_LEVELS_FILE
 from modules.cryptano.levels_history import get_levels_snapshot
 from modules.cryptano.history import save_signal
+
+
+def get_merged_levels_for_coin(coin):
+    """Supports/resistances монеты — macro (swing_hunter) + ручные
+    (custom_levels.json), слитые в один словарь. ОДНА точка правды для
+    всех четырёх стратегий (check_v_bottom/check_v_green_bottom/
+    check_v_red_top/check_bounce) — раньше каждая из них независимо делала
+    те же 2 строки (load_json + .get с алиасом), custom_levels.json тогда
+    пришлось бы добавлять в четырёх местах отдельно, с риском забыть одно
+    (та же ловушка, что раньше была с MIN_VOLUME_USD/MAX_COINS в
+    swing_hunter.py/precalc_for_bot.py — правили в одном месте, не
+    подхватывалось в другом).
+
+    Возвращает {} (не None), если по монете нет вообще ничего ни в одном
+    источнике — вызывающий код как проверял `if not coin_macro:`, так и
+    продолжает проверять, пустой словарь тоже falsy."""
+    macro_db = load_json(MACRO_LEVELS_FILE, default={})
+    coin_macro = macro_db.get(coin) or macro_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
+
+    custom_db = load_json(CUSTOM_LEVELS_FILE, default={})
+    coin_custom = custom_db.get(coin) or custom_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
+
+    if not coin_custom:
+        return coin_macro  # частый случай — без custom вообще ничего не копируем зря
+
+    merged = dict(coin_macro) if coin_macro else {}
+    merged["supports"] = list(coin_macro.get("supports", []) if coin_macro else []) + list(coin_custom.get("supports", []))
+    merged["resistances"] = list(coin_macro.get("resistances", []) if coin_macro else []) + list(coin_custom.get("resistances", []))
+    return merged
 
 # candle_store.py лежит в web/backend/ и не является пакетом (нет __init__.py) —
 # app.py подключает его тем же способом: добавляет свою папку в sys.path и
@@ -186,11 +215,10 @@ def check_v_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None):
             return False, fetch_err, 0
 
         # Загружаем макро-уровни
-        macro_db = load_json(MACRO_LEVELS_FILE, default={})
-        coin_macro = macro_db.get(coin) or macro_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
+        coin_macro = get_merged_levels_for_coin(coin)  # macro + custom (см. get_merged_levels_for_coin)
 
         if not coin_macro:
-            return False, f"⚠️ Нет уровней для {coin} в macro_levels.json.", 0
+            return False, f"⚠️ Нет уровней для {coin} (ни macro, ни custom).", 0
 
         if vbottom_mgr is None:
             vbottom_mgr = VBottomManager()
@@ -303,11 +331,10 @@ def check_v_green_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None)
         c_atr = float(atr_series.iloc[-1]) if not atr_series.empty and atr_series.iloc[-1] == atr_series.iloc[-1] else None
 
         # Загружаем макро-уровни
-        macro_db = load_json(MACRO_LEVELS_FILE, default={})
-        coin_macro = macro_db.get(coin) or macro_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
+        coin_macro = get_merged_levels_for_coin(coin)  # macro + custom (см. get_merged_levels_for_coin)
 
         if not coin_macro:
-            return False, f"⚠️ Нет уровней для {coin} в macro_levels.json.", 0
+            return False, f"⚠️ Нет уровней для {coin} (ни macro, ни custom).", 0
 
         if vbottom_mgr is None:
             vbottom_mgr = VBottomManager()
@@ -434,11 +461,10 @@ def check_v_red_top(coin, direction, vbottom_mgr=None, tracked_levels=None):
         rsi_series = calculate_rsi(df_rsi)
         c_rsi = float(rsi_series.iloc[-1]) if not rsi_series.empty and rsi_series.iloc[-1] == rsi_series.iloc[-1] else None
 
-        macro_db = load_json(MACRO_LEVELS_FILE, default={})
-        coin_macro = macro_db.get(coin) or macro_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
+        coin_macro = get_merged_levels_for_coin(coin)  # macro + custom (см. get_merged_levels_for_coin)
 
         if not coin_macro:
-            return False, f"⚠️ Нет уровней для {coin} в macro_levels.json.", 0
+            return False, f"⚠️ Нет уровней для {coin} (ни macro, ни custom).", 0
 
         if vbottom_mgr is None:
             vbottom_mgr = VBottomManager()
@@ -542,8 +568,7 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr):
         if df is None:
             return 0, [], 0
 
-        macro_db = load_json(MACRO_LEVELS_FILE, default={})
-        coin_macro = macro_db.get(coin) or macro_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
+        coin_macro = get_merged_levels_for_coin(coin)  # macro + custom (см. get_merged_levels_for_coin)
         supports = coin_macro.get("supports", [])
         resistances = coin_macro.get("resistances", [])
 

@@ -26,9 +26,47 @@ from modules.cryptano.utils.storage import load_json, save_json_atomic
 
 TIMELINE_RETENTION_MONTHS = 6  # держим полгода снимков, старше — чистим (см. cleanup_old_timelines)
 
+# Кэш уже распарсенных таймлайнов месяца — {month_label: (mtime, timeline_dict)}.
+# Инвалидируется по mtime файла, не по времени/счётчику: если файл на диске не
+# менялся, отдаём тот же объект без повторного чтения+json.loads. Для симулятора
+# (bounce_simulate.py реплеит тысячи свечей за один прогон, файл всё это время
+# статичен) это убирает повторное чтение одного и того же месяца с диска на
+# каждый вызов. Для боевого рескана файл может обновиться между вызовами —
+# mtime-проверка это ловит корректно, никакого протухшего кэша.
+_timeline_file_cache: Dict[str, tuple] = {}
+
 
 def _timeline_path(month_label: str) -> str:
     return os.path.join(DATABASE_DIR, f"levels_timeline_{month_label}.json")
+
+
+def _load_timeline_cached(month_label: str) -> Dict[str, Any]:
+    path = _timeline_path(month_label)
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return {}  # файла ещё нет — как и раньше, load_json(default={}) вернул бы то же самое
+
+    cached = _timeline_file_cache.get(month_label)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+
+    timeline = load_json(path, default={})
+    if not isinstance(timeline, dict):
+        timeline = {}
+    _timeline_file_cache[month_label] = (mtime, timeline)
+    return timeline
+
+
+def snapshot_bucket_start(when: datetime.datetime) -> datetime.datetime:
+    """Начало 12-часового бакета (00:00 или 12:00), на который попадает `when`
+    — ТА ЖЕ сетка, на которой save_levels_snapshot() кладёт ключи снимков.
+    Вынесено в отдельную функцию и переиспользуется и на запись (ниже), и на
+    чтение (bounce_simulate.py — чтобы решить, нужно ли вообще звать
+    get_levels_snapshot() заново для соседней свечи), чтобы кэш на стороне
+    читателя никогда не мог разъехаться с реальной гранулярностью данных."""
+    hour_bucket = 0 if when.hour < 12 else 12
+    return when.replace(hour=hour_bucket, minute=0, second=0, microsecond=0)
 
 
 def save_levels_snapshot(macro_base: Dict[str, Any], when: Optional[datetime.datetime] = None) -> None:
@@ -43,8 +81,7 @@ def save_levels_snapshot(macro_base: Dict[str, Any], when: Optional[datetime.dat
     tzinfo) — то же самое, что у меток свечей после ccxt/pandas, чтобы
     сравнение в get_levels_snapshot не спотыкалось об разницу поясов."""
     when = when or datetime.datetime.utcnow()
-    hour_bucket = 0 if when.hour < 12 else 12
-    snapshot_time = when.replace(hour=hour_bucket, minute=0, second=0, microsecond=0)
+    snapshot_time = snapshot_bucket_start(when)
     time_str = snapshot_time.strftime("%Y-%m-%d %H:%M:%S")
     month_label = snapshot_time.strftime("%Y_%m")
 
@@ -92,14 +129,14 @@ def get_levels_snapshot(when: datetime.datetime) -> Optional[Dict[str, Any]]:
     честно не реплеить/не заводить новых вотчеров на этом участке, а не
     подставлять текущие уровни как раньше."""
     month_label = when.strftime("%Y_%m")
-    timeline = load_json(_timeline_path(month_label), default={})
+    timeline = _load_timeline_cached(month_label)
     if isinstance(timeline, dict) and timeline:
         snapshot = _latest_in_timeline(timeline, before_or_at=when)
         if snapshot is not None:
             return snapshot
 
     prev_month_dt = when.replace(day=1) - datetime.timedelta(days=1)
-    prev_timeline = load_json(_timeline_path(prev_month_dt.strftime("%Y_%m")), default={})
+    prev_timeline = _load_timeline_cached(prev_month_dt.strftime("%Y_%m"))
     if isinstance(prev_timeline, dict) and prev_timeline:
         return _latest_in_timeline(prev_timeline)  # последний снимок предыдущего месяца целиком
 

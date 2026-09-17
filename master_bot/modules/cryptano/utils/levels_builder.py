@@ -316,11 +316,18 @@ def _extract_period_extremes(df_1d, freq, n_periods_back, current_price, atr_1d,
             reactions = _count_reactions(df_1d, idx_ref, price, atr_1d, is_support, current_idx)
             vol_bonus = _volume_bonus(df_1d, idx_ref)
 
+            # Уровень официально подтверждается только в конце периода.
+            # Сдвигаем дату рождения на момент закрытия недели/месяца,
+            # чтобы зеленая полоса не рисовалась задним числом.
+            period_end = (offset.rollforward(period_start)
+                          if offset.rollforward(period_start) != period_start
+                          else period_start + offset)
+            date_str = period_end.strftime('%Y-%m-%d')
+
             # Определяем base_score из константы наверху файла (SCORE_PMH_PML/
             # SCORE_PWH_PWL) — раньше тут был захардкожен 0.0, из-за чего
             # правка констант (0 -> 5, по факту бэктестов) никогда не применялась
             # к реальным зонам. См. историю обсуждения проекта.
-            date_str = period_start.strftime('%Y-%m-%d')
             base_score = SCORE_PMH_PML if freq == 'ME' else SCORE_PWH_PWL
 
             zone = _build_zone(price, atr_1d, base_score, label, date_str,
@@ -817,6 +824,12 @@ def build_levels(df_1M, df_1W, df_1d, df_4h, coin, current_idx=None):
     # (0-2 уникальных из 10), не дают новой информации, только раздували score.
 
     # Убираем mitigated-зоны - они не актуальны без подтверждённого слома структуры.
+    raw_zone_count = len(all_zones)  # сколько кандидатов вообще нашли все слои
+                                       # ДО фильтра mitigated — для диагностики ниже:
+                                       # если пусто и тут уже 0, дело в max_distance
+                                       # (не дошли до этой строки живыми); если тут
+                                       # много, а после mitigated пусто — дело в том,
+                                       # что все кандидаты оказались "пробиты".
     all_zones = [z for z in all_zones if not z['mitigated']]
 
     # Разделяем на supports/resistances и СНАЧАЛА сливаем дубли в одну зону.
@@ -869,6 +882,19 @@ def build_levels(df_1M, df_1W, df_1d, df_4h, coin, current_idx=None):
     compress_fat_zones(supports, coin)
     compress_fat_zones(resistances, coin)
     supports, resistances = resolve_cross_overlaps(supports, resistances)
+
+    # Диагностика — только когда результат ПУСТ с обеих сторон. Не теория,
+    # а числа с этого конкретного прогона: current_price/max_distance/atr —
+    # если цена реально дальше max_distance от всего, будет видно здесь
+    # прямо в консоли на следующем прогоне precalc_for_bot.py, а не в
+    # виде моих рассуждений без цифр.
+    if not supports and not resistances:
+        print(
+            f"[LEVELS DEBUG] {coin}: пусто и supports, и resistances | "
+            f"current_price={current_price:.6g} | max_distance={max_distance:.6g} "
+            f"({max_distance / current_price * 100:.1f}% от цены) | atr_1d={atr_1d:.6g} | "
+            f"кандидатов до mitigated-фильтра={raw_zone_count}"
+        )
 
     return {
         "supports": supports,

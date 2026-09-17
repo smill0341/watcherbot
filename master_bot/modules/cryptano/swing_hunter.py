@@ -9,7 +9,9 @@ import schedule
 from modules.cryptano.utils.crypto_utils import exchange
 from modules.cryptano.utils.common import resolve_symbol
 from modules.cryptano.utils.storage import load_json, save_json_atomic
-from modules.cryptano.utils.levels_builder import build_levels, _is_mitigated
+from modules.cryptano.utils.levels_builder import (
+    build_levels, _is_mitigated, merge_overlapping_zones, _merge_nearby_macro_zones,
+)
 
 # =========================================================
 # ⚙️ НАСТРОЙКИ РАСПИСАНИЯ
@@ -33,7 +35,16 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 from modules.cryptano.utils.paths import MACRO_LEVELS_FILE
 from modules.cryptano.levels_history import save_levels_snapshot
 
-MIN_VOLUME_USD = 10_000_000
+# Порог объёма и потолок числа монет — настраиваются в config.json (ключи
+# crypto.min_volume_usd / crypto.max_coins), а не в коде: если ключа там
+# нет, используется значение по умолчанию ниже. Единая точка правды —
+# precalc_for_bot.py импортирует ИМЕННО эти константы отсюда, не держит
+# своей копии (см. обсуждение бага с RAYDIUM — порог/потолок расходились
+# молча, пока не свели в одно место).
+_CONFIG_FILE = os.path.normpath(os.path.join(BASE_DIR, "..", "..", "config.json"))
+_config = load_json(_CONFIG_FILE, default={})
+MIN_VOLUME_USD = _config.get("crypto", {}).get("min_volume_usd", 10_000_000)
+MAX_COINS = _config.get("crypto", {}).get("max_coins", 80)
 
 # Порог "это тот же уровень или новый" для паспорта уровня (см. обсуждение
 # дрожания min/max и пропадания-появления зон из-за того, что ATR, от
@@ -98,7 +109,8 @@ def _reconcile_levels_with_registry(old_zones, fresh_zones, is_support, df_1d, c
     old_zones_for_match = [z for z in old_zones if not _is_poc_zone(z)]
 
     used_old = set()
-    result = list(poc_fresh)  # POC — сразу в результат, без сверки с паспортом
+    result = []  # POC не в этом списке вообще — добавляется отдельно, в самом конце,
+                 # чтобы финальный merge-проход ниже её не трогал (см. return).
 
     for fresh in fresh_zones:
         fresh_mid = _mid(fresh)
@@ -141,7 +153,31 @@ def _reconcile_levels_with_registry(old_zones, fresh_zones, is_support, df_1d, c
         if keep:
             result.append(old)
 
-    return result
+    # Финальный проход слияния — ПОСЛЕ паспорта, не только до него. levels_
+    # builder.py уже сливает пересекающиеся зоны, но видит только СЕГОДНЯШНИЙ
+    # свежий пересчёт целиком. Паспорт выше подменяет геометрию КАЖДОЙ зоны
+    # по отдельности на старую, замороженную — и две РАЗНЫЕ зоны, свежие
+    # версии которых не пересекались, могут оказаться физически пересекающимися
+    # уже здесь, после независимой подмены каждой на свою старую геометрию.
+    # Тот же самый merge, что уже есть в levels_builder.py, не новый — MACRO
+    # своим мягким правилом (по зазору между серединами), остальное — строгим
+    # (только реальное физическое пересечение), в том же порядке, что и там.
+    #
+    # ВАЖНО: обёрнуто в try/except намеренно. Это ДОПОЛНИТЕЛЬНАЯ уборка
+    # поверх уже готового, честного результата паспорта — если она сама
+    # на каких-то данных (например, старых записях с форматом до этой
+    # правки) споткнётся об исключение, монета не должна из-за этого
+    # ТЕРЯТЬ ВСЕ уровни целиком (см. build_macro_levels — необработанное
+    # исключение здесь пробросилось бы наверх и оставило бы coin вообще
+    # без обновления на этот цикл). Деградация — вернуть результат ДО
+    # этого прохода (дубли могут остаться), а не потерять всё.
+    try:
+        result = _merge_nearby_macro_zones(result)
+        result = merge_overlapping_zones(result)
+    except Exception as e:
+        print(f"[PASSPORT MERGE] Не смог финально слить зоны: {e} — оставляю без этого прохода")
+
+    return result + poc_fresh
 
 
 def _reconcile_coin_levels(coin, fresh_levels, macro_base, df_1d):
@@ -157,14 +193,6 @@ def _reconcile_coin_levels(coin, fresh_levels, macro_base, df_1d):
         "supports": _reconcile_levels_with_registry(old_supports, fresh_levels["supports"], True, df_1d),
         "resistances": _reconcile_levels_with_registry(old_resistances, fresh_levels["resistances"], False, df_1d),
     }
-
-# Потолок числа монет — вернули после того, как без него список вырос
-# настолько, что скан-цикл начал занимать многие минуты. Настраивается в
-# config.json (ключ crypto.max_coins), чтобы не лезть в код ради смены
-# числа — если ключа там нет, по умолчанию 80.
-_CONFIG_FILE = os.path.normpath(os.path.join(BASE_DIR, "..", "..", "config.json"))
-_config = load_json(_CONFIG_FILE, default={})
-MAX_COINS = _config.get("crypto", {}).get("max_coins", 80)
 
 _hunter_lock = threading.Lock()
 
@@ -185,38 +213,49 @@ def _safe_fetch_ohlcv(sym, tf, lim):
     raise Exception("Биржа заблокировала запросы после 5 попыток")
 
 
-def build_macro_levels(bot=None, admin_chat_id=None):
-    print(f"[SWING HUNTER] Запуск генерации институциональных зон...")
-    try:
-        # Загружаем рынки из сети только один раз
-        if not exchange.markets:
-            exchange.load_markets(reload=True)
-        else:
-            exchange.load_markets(reload=False)
-        tickers = exchange.fetch_tickers()
-        
-        # Собираем пары с их объемами для последующей сортировки.
-        # Только своп/фьючерс (та же логика, что resolve_symbol() в
-        # utils/common.py) — если брать ещё и спот, одна и та же монета
-        # может пройти порог объёма под ОБОИМИ символами и попасть в
-        # список дважды под одинаковым coin (symbol.split("/")[0]),
-        # непредсказуемо схлопываясь в один ключ ниже.
-        symbols_with_volume = []
-        for sym, tick in tickers.items():
-            if sym.endswith(':USDT'):
-                vol = float(tick.get('quoteVolume') or 0)
-                if vol >= MIN_VOLUME_USD:
-                    symbols_with_volume.append((sym, vol))
-                    
-        # Сортируем по убыванию объёма и берём топ-MAX_COINS самых
-        # ликвидных (см. MAX_COINS выше, настраивается в config.json) —
-        # без потолка список разросся настолько, что скан-цикл стал
-        # занимать многие минуты на одном только чистом ожидании между
-        # монетами.
-        symbols_with_volume.sort(key=lambda x: x[1], reverse=True)
-        valid_symbols = [sym for sym, vol in symbols_with_volume[:MAX_COINS]]
+def get_top_symbols():
+    """Единая точка правды для списка торговых символов, прошедших фильтр
+    по объёму (:USDT свопы, объём >= MIN_VOLUME_USD, топ-MAX_COINS по
+    убыванию объёма). Раньше эта логика была продублирована здесь и ОТДЕЛЬНО
+    в precalc_for_bot.py — при расхождении разъезжались тихо, без единой
+    ошибки (ровно так родился баг с RAYDIUM: подправили порог в одном месте,
+    он не появился в другом). Теперь precalc_for_bot.py импортирует эту же
+    функцию вместо своей копии — правишь порог/потолок ЗДЕСЬ, меняется и
+    в бою, и в ручном пересчёте истории разом."""
+    if not exchange.markets:
+        exchange.load_markets(reload=True)
+    else:
+        exchange.load_markets(reload=False)
+    tickers = exchange.fetch_tickers()
 
-        print(f"🔥 Найдено {len(symbols_with_volume)} монет с объёмом ≥ ${MIN_VOLUME_USD:,.0f}. Берём топ-{MAX_COINS}.")
+    # Только своп/фьючерс (та же логика, что resolve_symbol() в
+    # utils/common.py) — если брать ещё и спот, одна и та же монета
+    # может пройти порог объёма под ОБОИМИ символами и попасть в
+    # список дважды под одинаковым coin (symbol.split("/")[0]),
+    # непредсказуемо схлопываясь в один ключ ниже.
+    symbols_with_volume = []
+    for sym, tick in tickers.items():
+        if sym.endswith(':USDT'):
+            vol = float(tick.get('quoteVolume') or 0)
+            if vol >= MIN_VOLUME_USD:
+                symbols_with_volume.append((sym, vol))
+
+    # Сортируем по убыванию объёма и берём топ-MAX_COINS самых
+    # ликвидных (см. MAX_COINS выше, настраивается в config.json) —
+    # без потолка список разросся настолько, что скан-цикл стал
+    # занимать многие минуты на одном только чистом ожидании между
+    # монетами.
+    symbols_with_volume.sort(key=lambda x: x[1], reverse=True)
+    valid_symbols = [sym for sym, vol in symbols_with_volume[:MAX_COINS]]
+
+    print(f"🔥 Найдено {len(symbols_with_volume)} монет с объёмом ≥ ${MIN_VOLUME_USD:,.0f}. Берём топ-{MAX_COINS}.")
+    return valid_symbols
+
+
+def build_macro_levels(bot=None, admin_chat_id=None):
+    print(f"[SWING HUNTER] Запуск генерации зон интереса...")
+    try:
+        valid_symbols = get_top_symbols()
 
         # МЕРДЖ вместо полной перезаписи: если монета в этот раз не попала
         # в топ-70 (или биржа моргнула ошибкой на fetch_tickers) — её старая

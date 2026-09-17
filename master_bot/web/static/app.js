@@ -25,6 +25,19 @@ function hexWithAlpha(hex, alphaHex) {
 // зоны, плюс отдельная сплошная линия по низу, т.к. Baseline даёт границу
 // только сверху). Возвращает обе серии — обе кладём в levelLines.
 function addZoneBand(zMin, zMax, color, candles, titleText) {
+  // Для глобальных таймфреймов (1W, 1M) - рисуем одну линию по центру
+  if (currentTimeframe === "1w" || currentTimeframe === "1M") {
+    const centerPrice = (zMin + zMax) / 2;
+    const singleLine = chart.addLineSeries({
+      color: color, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid,
+      crosshairMarkerVisible: false, priceLineVisible: false, lastValueVisible: false,
+      title: titleText || "", autoscaleInfoProvider: () => null,
+    });
+    singleLine.setData(candles.map((c) => ({ time: c.time, value: centerPrice })));
+    return [singleLine];
+  }
+
+  // Стандартная заливка для всех остальных ТФ (твой оригинальный код)
   const bandSeries = chart.addBaselineSeries({
     baseValue: { type: "price", price: zMin },
     topFillColor1: "#" + hexWithAlpha(color, "40"),
@@ -33,22 +46,14 @@ function addZoneBand(zMin, zMax, color, candles, titleText) {
     bottomFillColor1: "rgba(0,0,0,0)",
     bottomFillColor2: "rgba(0,0,0,0)",
     bottomLineColor: "rgba(0,0,0,0)",
-    lineWidth: 1,
-    priceLineVisible: false,
-    lastValueVisible: false,
-    crosshairMarkerVisible: false,
-    title: titleText || "",
-    autoscaleInfoProvider: () => null,
+    lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+    title: titleText || "", autoscaleInfoProvider: () => null,
   });
   bandSeries.setData(candles.map((c) => ({ time: c.time, value: zMax })));
 
   const bottomLine = chart.addLineSeries({
-    color,
-    lineWidth: 1,
-    lineStyle: LightweightCharts.LineStyle.Solid,
-    crosshairMarkerVisible: false,
-    priceLineVisible: false,
-    lastValueVisible: false,
+    color, lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid,
+    crosshairMarkerVisible: false, priceLineVisible: false, lastValueVisible: false,
     autoscaleInfoProvider: () => null,
   });
   bottomLine.setData(candles.map((c) => ({ time: c.time, value: zMin })));
@@ -83,7 +88,8 @@ const ema200ValueEl = document.getElementById("ema200-value");
 // Глубину истории теперь целиком задаёт candle_store.BACKFILL_DAYS_MAP на
 // бэкенде (и держит её постоянной cleanup_old() — скользящее окно). Фронт
 // запрашивает /api/ohlcv без limit и просто получает всё, что есть в базе.
-let currentTimeframe = "15m";
+const savedState = JSON.parse(sessionStorage.getItem("watcher_state") || "null");
+let currentTimeframe = savedState ? (savedState.tf || "15m") : "15m";
 
 // Фильтр-выравниватель: жестко сажает время любой свечи на сетку, чтобы хвост графика не отрывался
 function alignTime(t, tf) {
@@ -280,6 +286,7 @@ function renderHistoryPanel(historyArr) {
 function initChart() {
   const box = document.getElementById("chart");
   chart = LightweightCharts.createChart(box, {
+    autoSize: true,
     layout: { background: { color: "#ffffff" }, textColor: "#1b1d24" },
     grid: { vertLines: { color: "#e6e8eb" }, horzLines: { color: "#e6e8eb" } },
     timeScale: {
@@ -313,6 +320,9 @@ function initChart() {
   candleSeries = chart.addCandlestickSeries({
     upColor: "#4caf7d", downColor: "#e5654f",
     borderVisible: false,
+    borderVisible: true,        // <-- ВЕРНУЛИ БОРДЮРЫ
+    borderUpColor: "#4caf7d",   // <-- КРАСИМ В ЦВЕТ ЗЕЛЕНОГО ТЕЛА
+    borderDownColor: "#e5654f", // <-- КРАСИМ В ЦВЕТ КРАСНОГО ТЕЛА
     wickUpColor: "#4caf7d", wickDownColor: "#e5654f",
   });
 
@@ -354,9 +364,7 @@ function initChart() {
     setOhlcvLegend(candle, vol, rsiVal);
   });
 
-  new ResizeObserver(() => {
-    chart.applyOptions({ width: box.clientWidth, height: box.clientHeight });
-  }).observe(box);
+  
 
   document.querySelectorAll(".tf-btn").forEach((btn) => {
     if (btn.dataset.tf === currentTimeframe) btn.classList.add("active");
@@ -672,6 +680,10 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
   selectedCoin = coin;
   currentCoinEl.textContent = coin;
   currentSymbolEl.textContent = "загрузка графика...";
+
+  sessionStorage.setItem("watcher_state", JSON.stringify({
+    coin, tf: currentTimeframe, focus, signal, opts
+  }));
   highlightSelection();
 
   clearSignalLines();
@@ -823,6 +835,11 @@ async function loadActiveWatchers() {
   }
 
   activeListEl.innerHTML = "";
+  
+  // --- НОВОЕ: Сортируем список по алфавиту (по тикеру монеты) ---
+  data.sort((a, b) => (a.coin || "").localeCompare(b.coin || ""));
+  // --------------------------------------------------------------
+
   data.forEach((w) => {
     const div = document.createElement("div");
     div.className = "list-item";
@@ -899,7 +916,7 @@ async function loadSignals() {
   const data = await res.json();
 
   if (data.length === 0) {
-    signalsBody.innerHTML = "<tr><td colspan='11'>нет сигналов</td></tr>";
+    signalsBody.innerHTML = "<tr><td colspan='12'>нет сигналов</td></tr>";
     return;
   }
 
@@ -919,6 +936,7 @@ async function loadSignals() {
       <td>${s.coin ?? ""}</td>
       <td class="dir-${s.type}">${s.type ?? ""}</td>
       <td>${s.source ?? ""}</td>
+      <td>${friendlyLevelType(s.level_type)}</td>
       <td>${formatPrice(s.entry)}</td>
       <td>${formatPrice(s.target)}</td>
       <td>${formatPrice(s.stop)}</td>
@@ -957,6 +975,10 @@ async function refreshAll() {
 initChart();
 refreshAll();
 loadRescanStatus();
+
+if (savedState && savedState.coin) {
+  loadChart(savedState.coin, savedState.focus, savedState.signal, savedState.opts);
+}
 
 // === АВТООБНОВЛЕНИЕ РАЗ В МИНУТУ ===
 setInterval(async () => {
@@ -1222,5 +1244,150 @@ if (isMainDashboardPage()) {
     document.addEventListener("DOMContentLoaded", buildStrategiesPanel);
   } else {
     buildStrategiesPanel();
+  }
+}
+
+// // === LONG/SHORT переключатель BOUNCE (#direction-select в index.html) ===
+async function refreshDirectionButtons() {
+  const selectEl = document.getElementById("direction-select");
+  if (!selectEl) return;
+  try {
+    const res = await fetch("/api/bounce_direction");
+    const state = await res.json();
+    
+    if (state.allow_long && state.allow_short) selectEl.value = "both";
+    else if (state.allow_long) selectEl.value = "long";
+    else if (state.allow_short) selectEl.value = "short";
+    
+  } catch (e) {
+    console.error("Не удалось загрузить состояние LONG/SHORT", e);
+  }
+}
+
+function wireDirectionButtons() {
+  const selectEl = document.getElementById("direction-select");
+  if (!selectEl) return;
+
+  selectEl.onchange = async () => {
+    selectEl.disabled = true;
+    const val = selectEl.value;
+    
+    let allowLong = false;
+    let allowShort = false;
+    
+    if (val === "both") { allowLong = true; allowShort = true; }
+    else if (val === "long") { allowLong = true; }
+    else if (val === "short") { allowShort = true; }
+
+    try {
+      await fetch('/api/bounce_direction/set', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allow_long: allowLong, allow_short: allowShort })
+      });
+      await refreshDirectionButtons();
+    } catch (e) {
+      console.error("Ошибка переключения направления", e);
+    } finally {
+      selectEl.disabled = false;
+    }
+  };
+
+  refreshDirectionButtons();
+}
+
+if (isMainDashboardPage()) {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wireDirectionButtons);
+  } else {
+    wireDirectionButtons();
+  }
+}
+
+// === Ручное добавление уровня (#add-level-btn / #add-level-overlay в index.html) ===
+function openAddLevelModal() {
+  const overlay = document.getElementById("add-level-overlay");
+  const errEl = document.getElementById("add-level-error");
+  if (!overlay) return;
+  if (errEl) { errEl.style.display = "none"; errEl.textContent = ""; }
+  // Если сейчас выбрана монета на графике — подставляем её сразу, чтобы
+  // не перепечатывать вручную самый частый случай "добавить уровень ТУТ".
+  const coinInput = document.getElementById("add-level-coin");
+  if (coinInput && selectedCoin) coinInput.value = selectedCoin;
+  overlay.style.display = "flex";
+}
+
+function closeAddLevelModal() {
+  const overlay = document.getElementById("add-level-overlay");
+  if (overlay) overlay.style.display = "none";
+}
+
+async function submitAddLevel() {
+  const errEl = document.getElementById("add-level-error");
+  const showError = (msg) => {
+    if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
+  };
+
+  const coin = (document.getElementById("add-level-coin").value || "").trim().toUpperCase();
+  const side = document.getElementById("add-level-side").value;
+  const minVal = parseFloat(document.getElementById("add-level-min").value);
+  const maxVal = parseFloat(document.getElementById("add-level-max").value);
+  const scoreRaw = document.getElementById("add-level-score").value;
+  const score = scoreRaw ? parseFloat(scoreRaw) : undefined;
+
+  if (!coin) return showError("Укажи монету");
+  if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) return showError("min/max должны быть числами");
+  if (minVal >= maxVal) return showError("min должен быть меньше max");
+
+  const submitBtn = document.getElementById("add-level-submit-btn");
+  submitBtn.disabled = true;
+  try {
+    const body = { coin, side, min: minVal, max: maxVal };
+    if (score !== undefined) body.score = score;
+    const res = await fetch("/api/levels/custom", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showError(data.detail || "Не удалось добавить уровень");
+      return;
+    }
+    closeAddLevelModal();
+    // Обновляем список слева (новая монета появится сама, если её там не
+    // было) и перерисовываем график, если сейчас смотрим именно эту монету.
+    await loadWatchlist();
+    if (selectedCoin === coin) {
+      await loadLevels(coin);
+    }
+  } catch (e) {
+    showError("Ошибка запроса: " + e.message);
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+function wireAddLevelModal() {
+  const btn = document.getElementById("add-level-btn");
+  const overlay = document.getElementById("add-level-overlay");
+  const cancelBtn = document.getElementById("add-level-cancel-btn");
+  const submitBtn = document.getElementById("add-level-submit-btn");
+  if (!btn || !overlay || !cancelBtn || !submitBtn) return;
+
+  btn.onclick = openAddLevelModal;
+  cancelBtn.onclick = closeAddLevelModal;
+  submitBtn.onclick = submitAddLevel;
+  // Клик по затемнённому фону (не по самой плашке) — тоже закрывает.
+  overlay.onclick = (e) => {
+    if (e.target === overlay) closeAddLevelModal();
+  };
+}
+
+if (isMainDashboardPage()) {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wireAddLevelModal);
+  } else {
+    wireAddLevelModal();
   }
 }

@@ -16,9 +16,10 @@ import threading
 import logging
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import FastAPI, HTTPException, Query, Response, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 # Приглушаем access-лог uvicorn для эндпоинтов, которые фронт опрашивает
 # часто (рескан-статус и подобное) — иначе консоль забивается строками
@@ -85,6 +86,11 @@ CRYPTANO_DIR = os.path.join(BASE_DIR, "modules", "cryptano")
 JSONBANK_DIR = os.path.join(CRYPTANO_DIR, "jsonbank")
 WATCHLIST_PATH = os.path.join(JSONBANK_DIR, "watchlist.json")
 MACRO_LEVELS_PATH = os.path.join(JSONBANK_DIR, "macro_levels.json")
+# Ручные уровни с дашборда — ОТДЕЛЬНЫЙ файл (не внутри macro_levels.json,
+# который целиком перезаписывается каждый пересчёт swing_hunter — ручная
+# запись там не пережила бы следующий скан). Тот же CUSTOM_LEVELS_FILE,
+# что читает движок сканера (watcher_plan.py::get_merged_levels_for_coin).
+CUSTOM_LEVELS_PATH = os.path.join(JSONBANK_DIR, "custom_levels.json")
 SIGNALS_PATH = os.path.join(JSONBANK_DIR, "signals.json")
 FOOTBALL_SIGNALS_PATH = os.path.join(JSONBANK_DIR, "football_signals.json")
 FOOTBALL_STATUS_PATH = os.path.join(JSONBANK_DIR, "football_status.json")
@@ -391,6 +397,63 @@ def toggle_strategy(tag: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/bounce_direction")
+def get_bounce_direction():
+    """LONG/SHORT — вкл/выкл направления сделок BOUNCE. ОДИН И ТОТ ЖЕ ключ
+    (crypto.allow_long/allow_short в config.json) читают и боевой бот
+    (run_web.py/background_tasks.py::check_bounce), и симулятор
+    (bounce_simulate.py) — единая точка правды, не два места, которые
+    могут разойтись. Отсутствие ключа — ВКЛЮЧЕНО (True), та же конвенция,
+    что у /api/strategies (см. get_strategies выше)."""
+    config = _read_json(CONFIG_FILE, default={})
+    crypto_cfg = config.get("crypto", {})
+    return {
+        "allow_long": crypto_cfg.get("allow_long", True),
+        "allow_short": crypto_cfg.get("allow_short", True),
+    }
+
+
+@app.post("/api/bounce_direction/{direction}/toggle")
+def toggle_bounce_direction(direction: str):
+    """Переключает LONG или SHORT по отдельности, не трогая другое
+    направление. Пишет в тот же config.json — боевой бот перечитывает его
+    каждый цикл сам (см. get_bounce_direction), применяется без рестарта
+    дашборда/сканера."""
+    direction = direction.lower().strip()
+    if direction not in ("long", "short"):
+        raise HTTPException(status_code=400, detail=f"Направление должно быть long или short, получено: {direction}")
+    key = f"allow_{direction}"
+    try:
+        config = _read_json(CONFIG_FILE, default={})
+        if "crypto" not in config:
+            config["crypto"] = {}
+        current = config["crypto"].get(key, True)
+        config["crypto"][key] = not current
+        _write_json_atomic(CONFIG_FILE, config)
+        return {"status": "ok", "direction": direction, "enabled": not current}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class DirectionSetRequest(BaseModel):
+    allow_long: bool
+    allow_short: bool
+
+@app.post("/api/bounce_direction/set")
+def set_bounce_direction(payload: DirectionSetRequest):
+    """Прямая установка LONG/SHORT из выпадающего списка."""
+    try:
+        config = _read_json(CONFIG_FILE, default={})
+        if "crypto" not in config:
+            config["crypto"] = {}
+        
+        config["crypto"]["allow_long"] = payload.allow_long
+        config["crypto"]["allow_short"] = payload.allow_short
+        
+        _write_json_atomic(CONFIG_FILE, config)
+        return {"status": "ok", "allow_long": payload.allow_long, "allow_short": payload.allow_short}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/history/all")
 def get_global_history():
     """Отдает глобальную историю всех умерших/отработавших вотчеров."""
@@ -407,8 +470,12 @@ def get_global_history():
 
 @app.get("/api/levels/{coin}")
 def get_levels(coin: str):
-    """Уровни поддержки/сопротивления по монете."""
+    """Уровни поддержки/сопротивления по монете — macro (swing_hunter) +
+    ручные (custom_levels.json), слитые в один ответ. Слияние тут, а не
+    отдельным полем в ответе — фронт (график) не должен ничего знать про
+    два источника, просто рисует то, что пришло, как и раньше."""
     macro = _read_json(MACRO_LEVELS_PATH, default={})
+    custom = _read_json(CUSTOM_LEVELS_PATH, default={})
     coin = coin.upper().strip()
     data = macro.get(coin)
     if data is None:
@@ -416,9 +483,91 @@ def get_levels(coin: str):
         alias = KNOWN_TICKER_ALIASES.get(coin)
         if alias:
             data = macro.get(alias)
+
+    custom_coin = custom.get(coin, {})
+    custom_supports = custom_coin.get("supports", [])
+    custom_resistances = custom_coin.get("resistances", [])
+
     if data is None:
-        raise HTTPException(status_code=404, detail=f"No levels for {coin}")
-    return data
+        if not custom_supports and not custom_resistances:
+            raise HTTPException(status_code=404, detail=f"No levels for {coin}")
+        # Ручные уровни есть, а macro для монеты нет вообще (например,
+        # SWING_HUNTER её пока не считал/не подхватил по объёму) —
+        # честно отдаём то, что реально есть, не 404.
+        return {"supports": list(custom_supports), "resistances": list(custom_resistances)}
+
+    merged = dict(data)
+    merged["supports"] = list(data.get("supports", [])) + list(custom_supports)
+    merged["resistances"] = list(data.get("resistances", [])) + list(custom_resistances)
+    return merged
+
+@app.post("/api/levels/custom")
+def add_custom_level(payload: dict = Body(...)):
+    """Ручное добавление уровня с дашборда (модалка "➕" у Watchlist).
+
+    Тело запроса: {"coin": "RAYDIUM", "side": "support"|"resistance",
+    "min": 1.05, "max": 1.10, "score": 10.0 (опционально)}.
+
+    Пишет в СВОЙ файл (custom_levels.json), не трогая macro_levels.json —
+    его целиком перезаписывает swing_hunter при каждом пересчёте, ручная
+    правка внутри него не пережила бы следующий скан. Оба файла читаются
+    и сливаются на чтении — здесь (GET /api/levels/{coin}) и в движке
+    сканера (watcher_plan.py::get_merged_levels_for_coin).
+
+    Если монеты ещё нет в watchlist.json — добавляет её сразу же, с
+    source="MANUAL" (НЕ "SWING_HUNTER") — существующая чистка "призраков"
+    в background_tasks.py трогает только source="SWING_HUNTER", так что
+    вручную добавленная монета не будет удалена из watchlist, даже если
+    у неё никогда не появится macro-уровней от swing_hunter."""
+    coin = str(payload.get("coin", "")).upper().strip()
+    side = str(payload.get("side", "")).lower().strip()
+    if not coin:
+        raise HTTPException(status_code=400, detail="Не указана монета (coin)")
+    if side not in ("support", "resistance"):
+        raise HTTPException(status_code=400, detail="side должен быть 'support' или 'resistance'")
+    try:
+        zone_min = float(payload["min"])
+        zone_max = float(payload["max"])
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="min/max обязательны и должны быть числами")
+    if zone_min >= zone_max:
+        raise HTTPException(status_code=400, detail="min должен быть меньше max")
+    score = payload.get("score", 10.0)
+    try:
+        score = float(score)
+    except (TypeError, ValueError):
+        score = 10.0
+
+    zone = {
+        "min": zone_min,
+        "max": zone_max,
+        "score": score,
+        "type": "MANUAL",
+        "date": datetime.date.today().isoformat(),
+        "reaction_count": 0,
+    }
+
+    try:
+        custom = _read_json(CUSTOM_LEVELS_PATH, default={})
+        if coin not in custom:
+            custom[coin] = {"supports": [], "resistances": []}
+        key = "supports" if side == "support" else "resistances"
+        custom[coin].setdefault(key, []).append(zone)
+        _write_json_atomic(CUSTOM_LEVELS_PATH, custom)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Не удалось сохранить custom_levels.json: {e}")
+
+    try:
+        wl = _read_json(WATCHLIST_PATH, default={})
+        if coin not in wl:
+            wl[coin] = {"source": "MANUAL", "added_at": datetime.datetime.now().isoformat()}
+            _write_json_atomic(WATCHLIST_PATH, wl)
+    except Exception as e:
+        # Уровень уже сохранён выше — не откатываем его из-за сбоя с
+        # watchlist, просто сообщаем, что эта часть не удалась.
+        return {"status": "partial", "detail": f"Уровень сохранён, но не удалось обновить watchlist.json: {e}"}
+
+    return {"status": "ok", "coin": coin, "side": side, "zone": zone}
 
 
 @app.get("/api/levels_at/{coin}")
@@ -489,6 +638,8 @@ def simulate_bounce(
     coin: str,
     start: str = Query(..., description="Дата/время старта симуляции, UTC. 'YYYY-MM-DD' или 'YYYY-MM-DD HH:MM'"),
     end: Optional[str] = Query(default=None, description="Конец периода, по умолчанию — самая свежая доступная свеча"),
+    allow_long: bool = Query(default=True, description="Искать LONG-сделки"),
+    allow_short: bool = Query(default=True, description="Искать SHORT-сделки"),
 ):
     """
     То же самое, что /api/simulate/{coin}, только для BOUNCE — прогоняет
@@ -499,7 +650,7 @@ def simulate_bounce(
     """
     from modules.cryptano.simulator.bounce_simulate import run_bounce_simulation
     try:
-        return run_bounce_simulation(coin, start, end)
+        return run_bounce_simulation(coin, start, end, allow_long=allow_long, allow_short=allow_short)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -513,6 +664,51 @@ def simulate_bounce_last():
     bounce_simulate.get_last_run/save_json_atomic(LAST_RUN_FILE, ...))."""
     from modules.cryptano.simulator.bounce_simulate import get_last_run
     return get_last_run() or {}
+
+
+@app.post("/api/simulate_bounce_bulk")
+def simulate_bounce_bulk(
+    start: str = Query(..., description="Дата/время старта периода, UTC. 'YYYY-MM-DD' или 'YYYY-MM-DD HH:MM'"),
+    end: Optional[str] = Query(default=None, description="Конец периода, по умолчанию — сейчас"),
+    allow_long: bool = Query(default=True, description="Искать LONG-сделки"),
+    allow_short: bool = Query(default=True, description="Искать SHORT-сделки"),
+):
+    """
+    Прогоняет BOUNCE-симуляцию по ВСЕМ монетам, у которых были уровни
+    хоть в одном снимке таймлайна за указанный период (см.
+    bounce_simulate.list_coins_with_levels) — НЕ по сегодняшнему топ-70
+    из /api/macro/coins, это разные списки для исторического периода.
+
+    Без сетевой докачки свечей (top_up=False на каждую монету) и без
+    перезаписи last_run.json одиночного симулятора (свой файл,
+    last_all_run.json) — см. докстринг run_bulk_bounce_simulation.
+
+    Одна упавшая монета не валит весь прогон — её ошибка просто попадает
+    в results[coin]['error'], остальные монеты считаются как обычно.
+    """
+    from modules.cryptano.simulator.bounce_simulate import run_bulk_bounce_simulation
+    try:
+        return run_bulk_bounce_simulation(start, end, allow_long=allow_long, allow_short=allow_short)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка bulk-симуляции BOUNCE: {e}")
+
+
+@app.get("/api/simulate_bounce_bulk/progress")
+def simulate_bounce_bulk_progress():
+    """Прогресс идущего сейчас (или последнего завершённого) bulk-прогона —
+    фронт опрашивает это раз в секунду, пока ждёт ответ на сам
+    POST /api/simulate_bounce_bulk (тот долгий, отвечает только в конце).
+    {} если bulk ещё ни разу не запускали."""
+    from modules.cryptano.simulator.bounce_simulate import get_bulk_progress
+    return get_bulk_progress() or {}
+
+
+@app.get("/api/simulate_bounce_bulk/last")
+def simulate_bounce_bulk_last():
+    """Последний сохранённый результат bulk-прогона — свой файл
+    (last_all_run.json), не пересекается с одиночным /api/simulate_bounce/last."""
+    from modules.cryptano.simulator.bounce_simulate import get_last_all_run
+    return get_last_all_run() or {}
 
 
 @app.get("/api/signals")

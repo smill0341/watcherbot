@@ -53,6 +53,13 @@ let simPlaybackTimer = null;
 let simHistory = [];  // data.history последнего прогона — для поиска эпизодов по клику на сделку
 let simTrades = [];   // data.trades последнего прогона
 
+// === bulk-прогон (все монеты) — своё состояние, не пересекается с simHistory/
+// simTrades одиночного симулятора выше. bulkHistoryByCoin используется точно
+// так же, как simHistory: клик по сделке ищет в нём свой эпизод, просто ключ —
+// монета, потому что сделок тут много и по разным монетам разом.
+let bulkTrades = [];          // плоский список сделок по всем монетам bulk-прогона
+let bulkHistoryByCoin = {};   // {coin: [...эпизоды TRIGGERED/DEAD...]}
+
 const TF_LIMITS = { "15m": null, "1h": null, "4h": null, "1d": null, "1w": null, "1M": null };
 let currentTimeframe = "15m";
 
@@ -62,7 +69,16 @@ function formatPrice(v) {
   const num = Number(v);
   if (Number.isNaN(num)) return String(v);
   const abs = Math.abs(num);
-  const decimals = abs >= 100 ? 2 : abs >= 1 ? 4 : abs >= 0.01 ? 6 : 8;
+  
+  // Умная градация знаков после запятой
+  let decimals;
+  if (abs >= 100) decimals = 2;
+  else if (abs >= 10) decimals = 3;
+  else if (abs >= 0.1) decimals = 4;
+  else if (abs >= 0.01) decimals = 5;
+  else if (abs >= 0.001) decimals = 6;
+  else decimals = 8;
+
   let str = num.toFixed(decimals);
   str = str.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
   return str;
@@ -269,6 +285,9 @@ function initChart() {
   const simRunBtnEl = document.getElementById("sim-run-btn");
   if (simRunBtnEl) simRunBtnEl.onclick = runSimulation;
 
+  const simBulkBtnEl = document.getElementById("sim-bulk-btn");
+  if (simBulkBtnEl) simBulkBtnEl.onclick = runBulkSimulation;
+
   // Поле "От" — источник правды для simStartTime, когда его меняют руками
   // (не кликом по свече). Сразу тянет и рисует снимок уровней на эту дату.
   if (simStartInputEl) {
@@ -414,21 +433,19 @@ function updateSimUI() {
   const status = document.getElementById("sim-status");
   const runBtn = document.getElementById("sim-run-btn");
   const cancelBtn = document.getElementById("sim-cancel-btn");
+  const bulkBtn = document.getElementById("sim-bulk-btn");
   if (!status || !runBtn || !cancelBtn) return;
 
   if (simStartTime) {
-    const d = new Date(simStartTime * 1000);
-    const startLabel = d.toLocaleDateString("ru-RU", { timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", year: "numeric" });
-    const endLabel = simEndTime
-      ? new Date(simEndTime * 1000).toLocaleDateString("ru-RU", { timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", year: "numeric" })
-      : "конец графика";
-    status.textContent = `Период: ${startLabel} → ${endLabel}`;
+    status.textContent = ""; // Убрали текст с датами
     runBtn.style.display = "";
     cancelBtn.style.display = "";
+    if (bulkBtn) bulkBtn.style.display = "";
   } else {
     status.textContent = "Укажи дату «От» (или кликни свечу)";
     runBtn.style.display = "none";
     cancelBtn.style.display = "none";
+    if (bulkBtn) bulkBtn.style.display = "none";
   }
 }
 
@@ -499,47 +516,9 @@ async function loadChartForCoin(coin) {
   }
   updateSimUI();
 
-  const limit = TF_LIMITS[currentTimeframe]; // null (1w/1M) -> вся история из базы, без ограничения
-
   try {
-    const limitParam = limit != null ? `&limit=${limit}` : "";
-    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}${limitParam}`);
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      if (currentSymbolEl) currentSymbolEl.textContent = err.detail || "график недоступен";
-      candleSeries.setData([]);
-      candleSeries.setMarkers([]);
-      volumeSeries.setData([]);
-      ema20Series.setData([]);
-      ema50Series.setData([]);
-      if (emaMacroSeries) emaMacroSeries.setData([]);
-      return;
-    }
-    const data = await res.json();
-    if (currentSymbolEl) currentSymbolEl.textContent = `${data.symbol} · ${data.timeframe}`;
-    currentPrecision = data.price_precision ?? 4;
-
-    const priceFormat = { type: "price", precision: currentPrecision, minMove: 1 / Math.pow(10, currentPrecision) };
-    candleSeries.applyOptions({ priceFormat });
-    ema20Series.applyOptions({ priceFormat });
-    ema50Series.applyOptions({ priceFormat });
-    if (emaMacroSeries) emaMacroSeries.applyOptions({ priceFormat });
-
-    const formattedCandles = data.candles
-      .map((c) => ({ ...c, time: c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time }))
-      .sort((a, b) => a.time - b.time);
-    globalCandles = formattedCandles;
-
-    candleSeries.setData(formattedCandles);
-    volumeSeries.setData(formattedCandles.map((c) => ({
-      time: c.time, value: c.volume, color: c.close >= c.open ? "rgba(76,175,125,0.5)" : "rgba(229,101,79,0.5)",
-    })));
-    ema20Series.setData(computeEMA(formattedCandles, 20));
-    ema50Series.setData(computeEMA(formattedCandles, 50));
-    loadMacroEma200(coin);
-
-    chart.timeScale().fitContent();
-    candleSeries.priceScale().applyOptions({ autoScale: true });
+    const ok = await loadFullCandlesForCoin(coin);
+    if (!ok) return;
 
     if (isCoinChange) {
       // Монету сменили, пока режим симуляции уже был включён — сразу
@@ -559,6 +538,56 @@ async function loadChartForCoin(coin) {
     if (currentSymbolEl) currentSymbolEl.textContent = "ошибка загрузки графика";
     console.error(e);
   }
+}
+
+// Собственно загрузка + отрисовка свечей монеты на график — БЕЗ побочных
+// эффектов на состояние периода/UI (это отдельно решает loadChartForCoin
+// выше). Всегда вся доступная локальная история (TF_LIMITS для страницы
+// симулятора — null на всех таймфреймах, см. объявление TF_LIMITS), без
+// узких окон — переиспользуется и обычным кликом по монете слева, и
+// кликом по bulk-сделке (см. selectBulkTrade): график должен грузиться
+// одинаково в обоих местах, не двумя разными путями с разным поведением.
+async function loadFullCandlesForCoin(coin) {
+  const limit = TF_LIMITS[currentTimeframe]; // null -> вся история из базы, без ограничения
+  const limitParam = limit != null ? `&limit=${limit}` : "";
+  const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}${limitParam}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    if (currentSymbolEl) currentSymbolEl.textContent = err.detail || "график недоступен";
+    candleSeries.setData([]);
+    candleSeries.setMarkers([]);
+    volumeSeries.setData([]);
+    ema20Series.setData([]);
+    ema50Series.setData([]);
+    if (emaMacroSeries) emaMacroSeries.setData([]);
+    return false;
+  }
+  const data = await res.json();
+  if (currentSymbolEl) currentSymbolEl.textContent = `${data.symbol} · ${data.timeframe}`;
+  currentPrecision = data.price_precision ?? 4;
+
+  const priceFormat = { type: "price", precision: currentPrecision, minMove: 1 / Math.pow(10, currentPrecision) };
+  candleSeries.applyOptions({ priceFormat });
+  ema20Series.applyOptions({ priceFormat });
+  ema50Series.applyOptions({ priceFormat });
+  if (emaMacroSeries) emaMacroSeries.applyOptions({ priceFormat });
+
+  const formattedCandles = data.candles
+    .map((c) => ({ ...c, time: c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time }))
+    .sort((a, b) => a.time - b.time);
+  globalCandles = formattedCandles;
+
+  candleSeries.setData(formattedCandles);
+  volumeSeries.setData(formattedCandles.map((c) => ({
+    time: c.time, value: c.volume, color: c.close >= c.open ? "rgba(76,175,125,0.5)" : "rgba(229,101,79,0.5)",
+  })));
+  ema20Series.setData(computeEMA(formattedCandles, 20));
+  ema50Series.setData(computeEMA(formattedCandles, 50));
+  loadMacroEma200(coin);
+
+  chart.timeScale().fitContent();
+  candleSeries.priceScale().applyOptions({ autoScale: true });
+  return true;
 }
 
 // Подтягивает окно свечей, реально покрывающее диапазон [fromSec, toSec] —
@@ -649,26 +678,82 @@ function drawTradeDetail(trade) {
   events.sort((a, b) => a.time - b.time);
   if (!events.length) return;
 
-  // Та же логика, что и в drawSnapshotLevels — полоса идёт от настоящей
-  // даты уровня (level_date), а не от диапазона событий вотчера. Раньше
-  // тут был диапазон "от первого до последнего события" (spanCandles) —
-  // выглядело иначе, чем при обычном клике по монете, где полоса уже
-  // обрезается по level_date. Теперь оба пути согласованы.
+  // Полоса идёт от настоящей даты уровня (level_date) и до момента, когда
+  // СДЕЛКА разрешилась (closed_at) — не до конца всей истории. Если
+  // уровень уже отработал, дальше он не торгуется, значит и рисовать его
+  // как "ещё актуальный" не нужно. Для ⏳ (ещё не закрыта) — тянем до
+  // "сейчас", это единственный случай, где зона реально ещё жива.
   const zoneStartSec = group[0].level_date ? dateInputToUnixSec(group[0].level_date) : null;
-  let lineCandles = globalCandles;
+  const zoneEndSec = trade.closed_at
+    ? Math.floor(new Date(trade.closed_at).getTime() / 1000)
+    : Math.floor(Date.now() / 1000);
+  let lineCandles = globalCandles.filter((c) => c.time <= zoneEndSec);
   if (zoneStartSec != null) {
-    const sliced = globalCandles.filter((c) => c.time >= zoneStartSec);
+    const sliced = lineCandles.filter((c) => c.time >= zoneStartSec);
     if (sliced.length) lineCandles = sliced;
   }
 
   simLevelLines.push(...addZoneBand(zoneMin, zoneMax, color, lineCandles, `🧪 ${friendlyLevelType(group[0].level_type)}`));
 
-  // title у Baseline-серии без priceLineVisible нигде реально не
-  // отображается — подписываем явным текстом, какой именно уровень сработал.
   const statusEl = document.getElementById("sim-status");
-  if (statusEl) statusEl.textContent = `Уровень: ${friendlyLevelType(group[0].level_type)}`;
+  if (statusEl) statusEl.textContent = ""; // Убрали текст с названием уровня
 
-  playTradeAnimation(events, group[0].direction);
+  // Данные всегда полные (вся локальная история монеты, без урезания —
+  // см. loadFullCandlesForCoin), поэтому сама сделка может оказаться
+  // крошечным отрезком на фоне месяцев истории. Явно просим график
+  // "камерой" приблизиться к месту сделки — это не подмена данных,
+  // просто какой диапазон сейчас показан, весь остальной график
+  // никуда не делся, можно спокойно проскроллить/отдалить обратно.
+  // Правая граница — zoneEndSec (закрытие сделки), а не последнее
+  // событие вотчера: вотчер пишет события только ДО входа (ENTRY —
+  // последнее, что он вообще знает), а сделка может держаться ещё
+  // много дней после входа до реального закрытия.
+  centerChartOnEvents(events, zoneEndSec);
+
+  // Крупная точка на месте реального закрытия сделки — куда бы оно ни
+  // пришлось (TP ✅, дедлайн 14 дней 🕐). Не требует ничего нового от
+  // бэкенда: closed_at/status/result_percent уже есть в каждой сделке.
+  // ⏳ (ещё не закрыта) — closed_at нет, значит и точку ставить не на что,
+  // это честно, не выдумываем момент, которого не было.
+  playTradeAnimation(events, group[0].direction, buildCloseMarker(trade));
+}
+
+// Точка конца сделки — зелёная (в плюс) или красная (в минус), крупнее
+// обычных маркеров пути, с подписью причины закрытия. Насколько именно
+// цена была "у стопа" — этот симулятор в принципе не считает: сделка
+// закрывается только по TP или по дедлайну (см. докстринг
+// _compute_trade_outcome в bounce_simulate.py) — closed_at это и есть
+// честный момент, который система реально засчитала как конец.
+function buildCloseMarker(trade) {
+  if (!trade.closed_at) return null;
+  const win = (trade.result_percent ?? 0) > 0;
+  return {
+    time: Math.floor(new Date(trade.closed_at).getTime() / 1000),
+    position: "inBar",
+    color: win ? "#4caf7d" : "#e5654f",
+    shape: "circle",
+    size: 2,
+    text: trade.status === "🕐" ? "14д" : "TP",
+  };
+}
+
+// Приближает видимую область графика к диапазону сделки — от первого
+// события вотчера (касание/скан ДО входа) до момента закрытия сделки
+// (tradeEndSec), с отступом по паре дней с каждой стороны, чтобы был
+// виден контекст (что было до и после), а не только точки впритык.
+function centerChartOnEvents(events, tradeEndSec, paddingSec = 2 * 24 * 3600) {
+  if (!chart || !events.length) return;
+  const rightEdge = Math.max(events[events.length - 1].time, tradeEndSec ?? 0);
+  try {
+    chart.timeScale().setVisibleRange({
+      from: events[0].time - paddingSec,
+      to: rightEdge + paddingSec,
+    });
+  } catch (e) {
+    // Диапазон сделки может вылезать за пределы того, что реально
+    // загружено (край доступной истории) — не критично, график просто
+    // останется в состоянии fitContent(), как после обычной загрузки.
+  }
 }
 
 // Плейбек — теперь только вдоль пути ВЫБРАННОЙ сделки (от первого события
@@ -677,7 +762,7 @@ function drawTradeDetail(trade) {
 // direction нужен только для ENTRY-маркера: LONG — зелёная стрелка вверх,
 // SHORT — красная стрелка вниз (раньше ENTRY был всегда зелёной "вверх",
 // даже у шортов — вводило в заблуждение).
-function playTradeAnimation(events, direction) {
+function playTradeAnimation(events, direction, closeMarker) {
   stopSimPlayback();
 
   const entryStyle = direction === "SHORT"
@@ -688,6 +773,10 @@ function playTradeAnimation(events, direction) {
     const style = ev.type === "ENTRY" ? entryStyle : (EVENT_MARKER_STYLE[ev.type] || { color: "#8a8f98", shape: "circle" });
     return { time: ev.time, position: ev.type === "ENTRY" ? (direction === "SHORT" ? "belowBar" : "aboveBar") : "inBar", color: style.color, shape: style.shape, text: "" };
   });
+  // closeMarker.time всегда >= времени последнего события (закрытие не
+  // может случиться раньше входа) — просто добавляем в конец, порядок
+  // по времени (обязателен для setMarkers) не нарушается.
+  if (closeMarker) markers.push(closeMarker);
 
   const playCandles = globalCandles.filter((c) => c.time >= events[0].time && c.time <= events[events.length - 1].time);
   if (playCandles.length < 2) {
@@ -724,6 +813,40 @@ function selectTrade(trade, rowEl) {
   drawTradeDetail(trade);
 }
 
+// Разметка ОДНОЙ строки таблицы сделок — общая для одиночного симулятора
+// (renderTradesTable/#sim-trades-body) и bulk-вкладки "Все сделки"
+// (renderBulkTradesTable/#sim-bulk-trades-body). Колонки одинаковые в обеих
+// таблицах (см. simulator.html), поэтому строим HTML один раз, а не дважды
+// одним и тем же кодом с риском разъехаться при следующей правке.
+function _tradeRowHtml(t, i) {
+  const pct = t.result_percent;
+  const pctText = pct === null || pct === undefined ? "" : `${pct > 0 ? "+" : ""}${pct}%`;
+  const durationText = t.status === "⏳"
+    ? formatDuration(t.time, new Date())
+    : (t.closed_at ? formatDuration(t.time, new Date(t.closed_at)) : "—");
+  const methodText = t.method === "volume" && t.method_value != null
+    ? formatVolume(t.method_value) + (t.method_mult != null ? " / x" + t.method_mult.toFixed(1) : "")
+    : "—";
+  const levelTypeStr = t.level_type ? friendlyLevelType(t.level_type) : "—"; // <--- Добавили форматирование
+  return `
+    <tr data-idx="${i}">
+      <td>${t.date ?? ""}</td>
+      <td>${t.coin ?? ""}</td>
+      <td class="dir-${t.type}">${t.type ?? ""}</td>
+      <td>${t.source ?? ""}</td>
+      <td>${levelTypeStr}</td> <!-- Вывели колонку -->
+      <td>${formatPrice(t.entry)}</td>
+      <td>${formatPrice(t.target)}</td>
+      <td>${formatPrice(t.stop)}</td>
+      <td>${t.status ?? ""}</td>
+      <td style="color:${pct > 0 ? '#4caf7d' : pct < 0 ? '#e5654f' : 'inherit'}">${pctText}</td>
+      <td>${durationText}</td>
+      <td>${methodText}</td>
+      <td>${t.rr ?? ""}</td>
+    </tr>
+  `;
+}
+
 function renderTradesTable(trades, noDataNote) {
   const tradesBody = document.getElementById("sim-trades-body");
   if (!tradesBody) return;
@@ -736,35 +859,64 @@ function renderTradesTable(trades, noDataNote) {
     tradesBody.innerHTML = "<tr><td colspan='12'>сделок не найдено</td></tr>";
     return;
   }
-  tradesBody.innerHTML = trades.map((t, i) => {
-    const pct = t.result_percent;
-    const pctText = pct === null || pct === undefined ? "" : `${pct > 0 ? "+" : ""}${pct}%`;
-    const durationText = t.status === "⏳"
-      ? formatDuration(t.time, new Date())
-      : (t.closed_at ? formatDuration(t.time, new Date(t.closed_at)) : "—");
-    const methodText = t.method === "volume" && t.method_value != null
-      ? formatVolume(t.method_value) + (t.method_mult != null ? " / x" + t.method_mult.toFixed(1) : "")
-      : "—";
-    return `
-    <tr data-idx="${i}">
-      <td>${t.date ?? ""}</td>
-      <td>${t.coin ?? ""}</td>
-      <td class="dir-${t.type}">${t.type ?? ""}</td>
-      <td>${t.source ?? ""}</td>
-      <td>${formatPrice(t.entry)}</td>
-      <td>${formatPrice(t.target)}</td>
-      <td>${formatPrice(t.stop)}</td>
-      <td>${t.status ?? ""}</td>
-      <td style="color:${pct > 0 ? '#4caf7d' : pct < 0 ? '#e5654f' : 'inherit'}">${pctText}</td>
-      <td>${durationText}</td>
-      <td>${methodText}</td>
-      <td>${t.rr ?? ""}</td>
-    </tr>
-  `;
-  }).join("");
+  tradesBody.innerHTML = trades.map((t, i) => _tradeRowHtml(t, i)).join("");
   tradesBody.querySelectorAll("tr[data-idx]").forEach((tr) => {
     tr.onclick = () => selectTrade(simTrades[Number(tr.dataset.idx)], tr);
   });
+}
+
+// То же самое для bulk-вкладки — единственная разница с renderTradesTable:
+// пишет в bulkTrades (не в simTrades) и клик открывает selectBulkTrade
+// (переключает монету на графике перед отрисовкой — сделки тут вперемешку
+// с разных монет, не одна, как в одиночном симуляторе).
+function renderBulkTradesTable(trades) {
+  const tradesBody = document.getElementById("sim-bulk-trades-body");
+  if (!tradesBody) return;
+  bulkTrades = trades || [];
+  if (!bulkTrades.length) {
+    tradesBody.innerHTML = "<tr><td colspan='12'>сделок не найдено</td></tr>";
+    return;
+  }
+  tradesBody.innerHTML = bulkTrades.map((t, i) => _tradeRowHtml(t, i)).join("");
+  tradesBody.querySelectorAll("tr[data-idx]").forEach((tr) => {
+    tr.onclick = () => selectBulkTrade(bulkTrades[Number(tr.dataset.idx)], tr);
+  });
+}
+
+// Клик по сделке из bulk-списка — тот же принцип, что и в selectTrade()
+// одиночного симулятора (drawTradeDetail рисует по simHistory/globalCandles),
+// просто ПЕРЕД отрисовкой переключаем эти общие "текущий контекст"
+// переменные на монету этой конкретной сделки. История уже в памяти
+// (bulkHistoryByCoin — пришла одним общим bulk-ответом, см.
+// runBulkSimulation/restoreLastBulkSimIfAny), новый поход на сервер нужен
+// только за свечами — та же полная загрузка, что и при обычном клике по
+// монете слева (loadFullCandlesForCoin), без урезания до какого-то окна:
+// раз вся история уже на диске, зачем её резать. Приближение к самой
+// сделке на графике делает drawTradeDetail() через centerChartOnEvents().
+async function selectBulkTrade(trade, rowEl) {
+  if (!trade) return;
+  document.querySelectorAll("#sim-bulk-trades-body tr").forEach((tr) => tr.classList.remove("selected"));
+  if (rowEl) rowEl.classList.add("selected");
+
+  simHistory = bulkHistoryByCoin[trade.coin] || [];
+  selectedCoin = trade.coin;
+  if (currentCoinEl) currentCoinEl.textContent = trade.coin;
+  highlightSelection();
+
+  await loadFullCandlesForCoin(trade.coin);
+
+  drawTradeDetail(trade);
+}
+
+// Читает #sim-direction-select и превращает его в query-параметры
+// allow_long/allow_short — общая точка для одиночного прогона (runSimulation)
+// и bulk (runBulkSimulation), чтобы оба всегда понимали значение одинаково.
+function directionQueryParams() {
+  const sel = document.getElementById("sim-direction-select");
+  const value = sel ? sel.value : "both";
+  if (value === "long") return "&allow_long=true&allow_short=false";
+  if (value === "short") return "&allow_long=false&allow_short=true";
+  return "&allow_long=true&allow_short=true";
 }
 
 async function runSimulation() {
@@ -797,6 +949,11 @@ async function runSimulation() {
     const endParam = endIso.slice(0, 16).replace("T", " ");
     endpoint += `&end=${encodeURIComponent(endParam)}`;
   }
+  // LONG/SHORT — тоже только у BOUNCE (V-семейство свой отдельный набор
+  // вотчеров, туда это не относится вообще).
+  if (isBounce) {
+    endpoint += directionQueryParams();
+  }
 
   try {
     const res = await fetch(endpoint, { method: "POST" });
@@ -809,8 +966,8 @@ async function runSimulation() {
 
     simHistory = data.history || [];
 
-    const endTimeSec = data.end_time ? Math.floor(new Date(data.end_time + "Z").getTime() / 1000) : Math.floor(Date.now() / 1000);
-    await loadCandlesAroundRange(selectedCoin, simStartTime, endTimeSec);
+    // Загружаем ВСЮ историю монеты без обрезки
+    await loadFullCandlesForCoin(selectedCoin);
 
     // V-семейство (/api/simulate/{coin}) пока не отдаёт структурированный
     // список сделок (data.trades) — только эпизоды вотчеров. Не выдумываем
@@ -842,6 +999,176 @@ async function runSimulation() {
 // last_run.json на сервере (см. bounce_simulate.py::LAST_RUN_FILE).
 // Больше не может быть затёрто фоновым обновлением — на этой странице
 // фонового обновления графика нет вообще.
+// === BULK-ПРОГОН ПО ВСЕМ МОНЕТАМ (отчёт в отдельном окне) ===============
+// Полностью аддитивный блок: ничего из существующих функций выше не
+// меняет. Список монет слева (loadSimCoins/#sim-list) и одиночный прогон
+// (runSimulation/#sim-run-btn) продолжают работать ровно как раньше —
+// bulk использует тот же ужё выбранный период (simStartTime/simEndTime),
+// просто зовёт отдельный эндпоинт /api/simulate_bounce_bulk, который сам
+// внутри себя решает, какие монеты имели уровни в этом периоде (см.
+// bounce_simulate.list_coins_with_levels на бэкенде) — независимо от
+// того, что сейчас показано в левом списке (тот всегда "сегодняшний").
+//
+// Кнопка (#sim-bulk-btn), диалог (#sim-bulk-dialog/#sim-bulk-body) и его
+// закрытие (#sim-bulk-close) — разметка и стили в simulator.html/style.css
+// (.bulk-dialog/.bulk-table), здесь их только находим и наполняем.
+// Обработчики клика вешаются в initChart(), рядом с sim-run-btn/
+// sim-cancel-btn — тем же способом, каким там уже всё сделано.
+
+function renderBulkReport(data) {
+  const body = document.getElementById("sim-bulk-body");
+  if (!body) return;
+  if (!data || !data.results || Object.keys(data.results).length === 0) {
+    body.innerHTML = "<div class='muted'>Монет с уровнями за этот период не найдено</div>";
+    return;
+  }
+
+  const rows = Object.entries(data.results)
+    // Монеты со сделками — сверху, ошибки — в самый низ, остальное по алфавиту.
+    .sort((a, b) => {
+      const aErr = !!a[1].error, bErr = !!b[1].error;
+      if (aErr !== bErr) return aErr ? 1 : -1;
+      return (b[1].total_trades || 0) - (a[1].total_trades || 0);
+    })
+    .map(([coin, r]) => {
+      if (r.error) {
+        return `<tr><td>${coin}</td><td colspan="6" class="muted">ошибка: ${r.error}</td></tr>`;
+      }
+      const cov = r.levels_coverage || {};
+      const covStr = cov.snapshots_total ? `${cov.snapshots_with_levels}/${cov.snapshots_total}` : "-";
+      const longWr = r.long.win_rate_pct != null ? `${r.long.win_rate_pct}%` : "-";
+      const shortWr = r.short.win_rate_pct != null ? `${r.short.win_rate_pct}%` : "-";
+      return `<tr>
+        <td>${coin}</td>
+        <td>${r.total_trades}</td>
+        <td class="dir-LONG">${r.long.count} (${longWr})</td>
+        <td class="dir-SHORT">${r.short.count} (${shortWr})</td>
+        <td>${r.long.avg_result_pct ?? "-"}</td>
+        <td>${r.short.avg_result_pct ?? "-"}</td>
+        <td class="muted">${covStr}</td>
+      </tr>`;
+    })
+    .join("");
+
+  body.innerHTML = `
+    <div class="bulk-summary">
+      Период: ${data.start_time} → ${data.end_time || "сейчас"} ·
+      монет просканировано: ${data.coins_scanned} · со сделками: ${data.coins_with_trades}
+    </div>
+    <table class="bulk-table">
+      <thead>
+        <tr>
+          <th>Монета</th>
+          <th>Сделок</th>
+          <th>LONG (WR)</th>
+          <th>SHORT (WR)</th>
+          <th>Avg LONG %</th>
+          <th>Avg SHORT %</th>
+          <th>Покрытие уровней</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+async function runBulkSimulation() {
+  if (!simStartTime) return;
+  const body = document.getElementById("sim-bulk-body");
+  const progressEl = document.getElementById("sim-bulk-progress");
+  if (!body) return;
+  body.innerHTML = "<div class='muted'>Запускаю...</div>";
+  if (progressEl) progressEl.textContent = "Запускаю...";
+
+  const startIso = new Date(simStartTime * 1000).toISOString();
+  const startParam = startIso.slice(0, 16).replace("T", " ");
+  let endpoint = `/api/simulate_bounce_bulk?start=${encodeURIComponent(startParam)}`;
+  if (simEndTime) {
+    const endIso = new Date(simEndTime * 1000).toISOString();
+    const endParam = endIso.slice(0, 16).replace("T", " ");
+    endpoint += `&end=${encodeURIComponent(endParam)}`;
+  }
+  endpoint += directionQueryParams();
+
+  // Сам POST долгий и отвечает только когда прогон целиком закончен —
+  // пока ждём его, отдельно опрашиваем /progress раз в секунду и
+  // обновляем счётчик "X/Y — MONETA" в шапке над вкладками (виден на
+  // любой из них, не только на "Отчёт по монетам"). Опрос останавливаем
+  // в finally, что бы ни случилось с основным запросом (успех/ошибка).
+  const pollProgress = async () => {
+    try {
+      const res = await fetch("/api/simulate_bounce_bulk/progress");
+      const p = await res.json();
+      if (progressEl && p && p.total) {
+        const coinLabel = p.current_coin ? ` — ${p.current_coin}` : "";
+        progressEl.textContent = `Считаю... ${p.done}/${p.total}${coinLabel}`;
+      }
+    } catch (e) {
+      // молча — это фоновый опрос, ошибка тут не критична, основной fetch важнее
+    }
+  };
+  const progressTimer = setInterval(pollProgress, 1000);
+  pollProgress(); // не ждать первую секунду, спросить сразу
+
+  try {
+    const res = await fetch(endpoint, { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) {
+      body.innerHTML = `<div class="muted">${data.detail || "ошибка bulk-симуляции"}</div>`;
+      return;
+    }
+    applyBulkResult(data);
+  } catch (e) {
+    console.error("bulk simulate failed", e);
+    body.innerHTML = "<div class='muted'>ошибка запроса</div>";
+  } finally {
+    clearInterval(progressTimer);
+    // Результат уже разложен по вкладкам — счётчик в шапке своё отработал,
+    // дальше висел бы неактуальным остатком прошлого прогона.
+    if (progressEl) progressEl.textContent = "";
+  }
+}
+
+// Раскладывает один bulk-ответ (свежий прогон ИЛИ восстановленный после F5
+// из /api/simulate_bounce_bulk/last — формат тот же) по обеим вкладкам и
+// сохраняет bulkHistoryByCoin для клика по сделке (см. selectBulkTrade).
+// Общая точка, чтобы "свежий прогон" и "восстановление после F5" не могли
+// разъехаться в том, как они раскладывают один и тот же формат ответа.
+function applyBulkResult(data) {
+  renderBulkReport(data);
+  renderBulkTradesTable(data.trades || []);
+  bulkHistoryByCoin = data.history_by_coin || {};
+}
+
+// Восстановление последнего bulk-прогона после F5 — тот же принцип, что и
+// restoreLastBounceSimIfAny() для одиночного симулятора (см. ниже), свой
+// файл на сервере (last_all_run.json), без пересчёта.
+async function restoreLastBulkSimIfAny() {
+  try {
+    const res = await fetch("/api/simulate_bounce_bulk/last");
+    const data = await res.json();
+    if (!data || !data.results || Object.keys(data.results).length === 0) return;
+    applyBulkResult(data);
+  } catch (e) {
+    console.error("restoreLastBulkSimIfAny failed", e);
+  }
+}
+
+// Переключатель вкладок под графиком — простой show/hide, тот же паттерн,
+// что уже есть у .tf-btn (переключение таймфреймов) чуть выше в файле.
+function initSimTabs() {
+  const tabBtns = document.querySelectorAll(".sim-tab-btn");
+  if (!tabBtns.length) return;
+  tabBtns.forEach((btn) => {
+    btn.onclick = () => {
+      tabBtns.forEach((b) => b.classList.toggle("active", b === btn));
+      document.querySelectorAll(".sim-tab-panel").forEach((panel) => {
+        panel.classList.toggle("active", panel.id === `tab-${btn.dataset.tab}`);
+      });
+    };
+  });
+}
+
 async function restoreLastBounceSimIfAny() {
   const tradesBody = document.getElementById("sim-trades-body");
   if (!tradesBody) return;
@@ -862,9 +1189,6 @@ async function restoreLastBounceSimIfAny() {
     const startSec = data.start_time
       ? Math.floor(new Date(data.start_time.replace(" ", "T") + "Z").getTime() / 1000)
       : null;
-    const endSec = data.end_time
-      ? Math.floor(new Date(data.end_time.replace(" ", "T") + "Z").getTime() / 1000)
-      : Math.floor(Date.now() / 1000);
 
     const status = document.getElementById("sim-status");
     if (!startSec) {
@@ -873,19 +1197,21 @@ async function restoreLastBounceSimIfAny() {
       // ничего не рисовать было бы вводящим в заблуждение, поэтому явно
       // говорим об этом в статусе и показываем хотя бы таблицу сделок.
       renderTradesTable(data.trades || []);
-      if (status) status.textContent = "Восстановлено частично: нет даты старта, точки/уровни не показаны";
+      if (status) status.textContent = ""; // Убрали текст
       return;
     }
 
     simStartTime = startSec;
-    await loadCandlesAroundRange(data.coin, startSec, endSec);
+    // Свечи уже полностью загружены выше (loadChartForCoin) — раньше тут
+    // был повторный поход за узким окном вокруг периода, который просто
+    // затирал уже загруженную полную историю худшей, урезанной версией.
 
     simHistory = data.history || [];
     renderTradesTable(data.trades || []);
     const firstRow = document.querySelector('#sim-trades-body tr[data-idx="0"]');
     if (simTrades.length) selectTrade(simTrades[0], firstRow);
 
-    if (status) status.textContent = `Восстановлено: старт ${data.start_time ?? ""}`;
+    if (status) status.textContent = ""; // Убрали текст
   } catch (e) {
     console.error("restoreLastBounceSimIfAny failed", e);
   }
@@ -894,3 +1220,5 @@ async function restoreLastBounceSimIfAny() {
 initChart();
 loadSimCoins();
 restoreLastBounceSimIfAny();
+restoreLastBulkSimIfAny();
+initSimTabs();
