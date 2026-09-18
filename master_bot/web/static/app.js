@@ -60,6 +60,41 @@ function addZoneBand(zMin, zMax, color, candles, titleText) {
 
   return [bandSeries, bottomLine];
 }
+
+// Новая функция для разделения уровня на "тонкую линию истории" и "цветную боевую зону"
+function addSplitLevel(zMin, zMax, color, candles, birthTime, zoneStartTime, titleText) {
+  const result = [];
+  const centerPrice = (zMin + zMax) / 2;
+
+  // Защита от кривого времени: зона не может начаться раньше рождения
+  if (zoneStartTime < birthTime) zoneStartTime = birthTime;
+
+  // 1. Тонкая линия истории (от даты рождения до старта активности)
+  const historyCandles = candles.filter(c => c.time >= birthTime && c.time <= zoneStartTime);
+  if (historyCandles.length > 0) {
+    const historyLine = chart.addLineSeries({
+      color: color,
+      lineWidth: 1, // Тонкая сплошная линия
+      lineStyle: LightweightCharts.LineStyle.Solid,
+      crosshairMarkerVisible: false,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      title: titleText + " (исток)",
+      autoscaleInfoProvider: () => null,
+    });
+    historyLine.setData(historyCandles.map(c => ({ time: c.time, value: centerPrice })));
+    result.push(historyLine);
+  }
+
+  // 2. Активная зона (заливка)
+  const activeCandles = candles.filter(c => c.time >= zoneStartTime);
+  if (activeCandles.length > 0) {
+    result.push(...addZoneBand(zMin, zMax, color, activeCandles, titleText));
+  }
+
+  return result;
+}
+
 let selectedCoin = null;
 let focusedLevel = null;
 let isSignalView = false;
@@ -69,6 +104,24 @@ const STRATEGY_COLORS = {
   V_GREEN_BOTTOM: "#26a69a",
   V_RED_TOP: "#ff9800",
   BOUNCE: "#29b6f6",
+};
+
+// Стиль маркеров событий вотчера на графике (loadEvents). Та же самая
+// причина, что была у loadLevels — тело/константа потерялись при более
+// ранней правке файла, вызов остался. Восстановлено ОТСЮДА в sim.js
+// (там прямым текстом в комментарии: "ДУБЛИРОВАНО ИЗ app.js::
+// EVENT_MARKER_STYLE") — значит это и есть оригинал, не гадаю.
+const EVENT_MARKER_STYLE = {
+  // ENTRY стиль задаётся отдельно (зависит от LONG/SHORT) — см. entryStyle
+  // в loadEvents ниже, сюда не входит.
+  CANCEL:             { color: "#5c6370", shape: "square" },
+  DEAD:               { color: "#e5654f", shape: "square" },
+  SWEEP_BOTTOM:       { color: "#9c27b0", shape: "circle" },
+  RUNAWAY:            { color: "#e5654f", shape: "circle" },
+  CLIMAX_NEAR_BREACH: { color: "#5aa9e6", shape: "circle" },
+  CLIMAX_FAR_BREACH:  { color: "#5aa9e6", shape: "circle" },
+  ZONE_TOUCH:         { color: "#5aa9e6", shape: "circle" },
+  SCAN:               { color: "#f2c14e", shape: "circle" },
 };
 
 function friendlyStrategyWithMode(strategy, mode) {
@@ -90,29 +143,6 @@ const ema200ValueEl = document.getElementById("ema200-value");
 // запрашивает /api/ohlcv без limit и просто получает всё, что есть в базе.
 const savedState = JSON.parse(sessionStorage.getItem("watcher_state") || "null");
 let currentTimeframe = savedState ? (savedState.tf || "15m") : "15m";
-
-// Фильтр-выравниватель: жестко сажает время любой свечи на сетку, чтобы хвост графика не отрывался
-function alignTime(t, tf) {
-  const d = new Date(t * 1000);
-  if (tf === "15m") {
-    d.setUTCMinutes(Math.floor(d.getUTCMinutes() / 15) * 15, 0, 0);
-  } else if (tf === "1h") {
-    d.setUTCMinutes(0, 0, 0);
-  } else if (tf === "4h") {
-    d.setUTCHours(Math.floor(d.getUTCHours() / 4) * 4, 0, 0, 0);
-  } else if (tf === "1d") {
-    d.setUTCHours(0, 0, 0, 0);
-  } else if (tf === "1w") {
-    const day = d.getUTCDay();
-    const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
-    d.setUTCDate(diff);
-    d.setUTCHours(0, 0, 0, 0);
-  } else if (tf === "1M") {
-    d.setUTCDate(1);
-    d.setUTCHours(0, 0, 0, 0);
-  }
-  return Math.floor(d.getTime() / 1000);
-}
 
 function formatVolume(v) {
   if (v === null || v === undefined) return "—";
@@ -286,7 +316,6 @@ function renderHistoryPanel(historyArr) {
 function initChart() {
   const box = document.getElementById("chart");
   chart = LightweightCharts.createChart(box, {
-    autoSize: true,
     layout: { background: { color: "#ffffff" }, textColor: "#1b1d24" },
     grid: { vertLines: { color: "#e6e8eb" }, horzLines: { color: "#e6e8eb" } },
     timeScale: {
@@ -318,11 +347,10 @@ function initChart() {
   });
 
   candleSeries = chart.addCandlestickSeries({
-    upColor: "#4caf7d", downColor: "#e5654f",
-    borderVisible: false,
-    borderVisible: true,        // <-- ВЕРНУЛИ БОРДЮРЫ
-    borderUpColor: "#4caf7d",   // <-- КРАСИМ В ЦВЕТ ЗЕЛЕНОГО ТЕЛА
-    borderDownColor: "#e5654f", // <-- КРАСИМ В ЦВЕТ КРАСНОГО ТЕЛА
+    upColor: "#4caf7d", downColor: "#e5654f",       
+    borderVisible: true, 
+    borderUpColor: "#4caf7d",   
+    borderDownColor: "#e5654f", 
     wickUpColor: "#4caf7d", wickDownColor: "#e5654f",
   });
 
@@ -364,7 +392,16 @@ function initChart() {
     setOhlcvLegend(candle, vol, rsiVal);
   });
 
-  
+  // 14.09 (рабочая версия) это делал ручной ResizeObserver, не встроенный
+  // autoSize: true у createChart — при более поздней правке ResizeObserver
+  // убрали, оставили только autoSize, и график стал заметно "кривить"
+  // ширину свечей (видимо, встроенный автосайз некорректно меряет момент,
+  // когда в шапке появились новые элементы — TP/SL, выбор направления —
+  // которых 14.09 ещё не было). Возвращаем ровно то, что было в рабочей
+  // версии, тем же кодом.
+  new ResizeObserver(() => {
+    chart.applyOptions({ width: box.clientWidth, height: box.clientHeight });
+  }).observe(box);
 
   document.querySelectorAll(".tf-btn").forEach((btn) => {
     if (btn.dataset.tf === currentTimeframe) btn.classList.add("active");
@@ -395,29 +432,14 @@ function drawSignalTradeLines(signal) {
   clearSignalLines();
   if (!globalCandles.length || signal.time == null) return;
 
-  // Линии живут ровно столько, сколько живёт сама сделка — от входа до
-  // закрытия (closed_at), а если сделка ещё открыта — до текущего момента.
-  // Раньше тянулись сплошными через весь график независимо от статуса.
+  // Определяем временные рамки сделки
   const fromSec = signal.time;
   const toSec = signal.closed_at ? Math.floor(new Date(signal.closed_at).getTime() / 1000) : Math.floor(Date.now() / 1000);
   const lineCandles = globalCandles.filter((c) => c.time >= fromSec && c.time <= toSec);
   if (!lineCandles.length) return;
   const lineTimes = lineCandles.map((c) => c.time);
 
-  // Заливка между уровнями сделки — entry->target (потенциальная прибыль,
-  // зелёная) и entry->stop (риск, красная). Min/max берём явно — для SHORT
-  // target ниже entry, а stop выше, геометрия та же, просто зеркальная.
-  if (signal.entry != null && signal.target != null) {
-    const a = Math.min(signal.entry, signal.target);
-    const b = Math.max(signal.entry, signal.target);
-    signalLines.push(...addZoneBand(a, b, "#4caf7d", lineCandles, ""));
-  }
-  if (signal.entry != null && signal.stop != null) {
-    const a = Math.min(signal.entry, signal.stop);
-    const b = Math.max(signal.entry, signal.stop);
-    signalLines.push(...addZoneBand(a, b, "#e5654f", lineCandles, ""));
-  }
-
+  // Функция рисования пунктирной линии
   const addLine = (price, color) => {
     if (price === null || price === undefined || Number.isNaN(Number(price))) return;
     const series = chart.addLineSeries({
@@ -433,7 +455,8 @@ function drawSignalTradeLines(signal) {
     series.setData(lineTimes.map((t) => ({ time: t, value: Number(price) })));
     signalLines.push(series);
   };
-  addLine(signal.entry, "#5aa9e6");
+
+  // Оставляем только Target и Stop (Entry и заливка удалены)
   addLine(signal.target, "#4caf7d");
   addLine(signal.stop, "#e5654f");
 }
@@ -459,121 +482,6 @@ function friendlyLevelType(type) {
   return type;
 }
 
-async function loadLevels(coin, token = chartLoadToken) {
-  clearLevelLines();
-  if (globalCandles.length === 0) return;
-
-  try {
-    const [levelsRes, eventsRes] = await Promise.all([
-      fetch(`/api/levels/${encodeURIComponent(coin)}`),
-      fetch(`/api/events/${encodeURIComponent(coin)}`).catch(() => null),
-    ]);
-    if (token !== chartLoadToken) return;
-    if (!levelsRes.ok) return; 
-    const data = await levelsRes.json();
-    if (token !== chartLoadToken) return;
-
-    let activeLevels = [];
-    if (eventsRes && eventsRes.ok) {
-      const eventsData = await eventsRes.json();
-      if (token !== chartLoadToken) return;
-      activeLevels = Array.isArray(eventsData.active) ? eventsData.active : [];
-    }
-
-    const firstTime = globalCandles[0].time;
-
-    const drawOrphanActiveLevel = (w) => {
-      const wMin = w.level_min ?? w.min;
-      const wMax = w.level_max ?? w.max;
-      const direction = w.direction ?? (w.mode ? "SHORT" : "LONG");
-      const isSupport = direction === "LONG";
-      const activeColor = isSupport ? "#00c853" : "#ff3d3d";
-      const label = friendlyStrategyWithMode(w.strategy, w.mode);
-      const scoreSuffix = w.level_score != null ? ` ${w.level_score}` : "";
-      const levelTitle = `${isSupport ? '🟢' : '🔴'} ${label} · ${friendlyLevelType(w.level_type)}${scoreSuffix}`;
-      let startTime = globalCandles[0].time;
-      if (w.level_date) {
-        const parsed = new Date(w.level_date).getTime() / 1000;
-        if (!Number.isNaN(parsed)) startTime = parsed;
-      } else {
-        const events = (w.events || []).filter((ev) => ev.time);
-        if (events.length > 0) startTime = Math.min(...events.map((ev) => ev.time));
-      }
-      const lineTimes = globalCandles.filter((c) => c.time >= startTime);
-      if (lineTimes.length === 0) return;
-      levelLines.push(...addZoneBand(wMin, wMax, activeColor, lineTimes, levelTitle));
-    };
-
-    if (focusedLevel) {
-      if (focusedLevel.fromHistory) {
-        drawOrphanActiveLevel(focusedLevel);
-        return;
-      }
-      const w = activeLevels.find((x) => x.level_id === focusedLevel.level_id);
-      if (!w) return;
-      drawOrphanActiveLevel(w);
-      return;
-    }
-
-    if (isSignalView) return;
-
-    const findActive = (lvl) => activeLevels.find(
-      (w) => Math.abs((w.level_min ?? NaN) - lvl.min) < 1e-9 && Math.abs((w.level_max ?? NaN) - lvl.max) < 1e-9
-    );
-    const matchedActiveKeys = new Set();
-    const activeKey = (w) => w.level_id ?? `${w.level_min}_${w.level_max}`;
-
-    const addLevel = (lvl, isSupport) => {
-      const active = findActive(lvl);
-      if (active) matchedActiveKeys.add(activeKey(active));
-      const levelLabel = friendlyLevelType(lvl.type);
-      let startTime = lvl.date ? new Date(lvl.date).getTime() / 1000 : firstTime;
-      const lineTimes = globalCandles.filter(c => c.time >= startTime);
-      if (lineTimes.length === 0) return;
-
-      if (active) {
-        const activeColor = isSupport ? "#00c853" : "#ff3d3d";
-        const label = friendlyStrategyWithMode(active.strategy, active.mode);
-        const title = `${isSupport ? '🟢' : '🔴'} ${label} · ${levelLabel}${lvl.score != null ? ' ' + lvl.score : ''}`;
-        levelLines.push(...addZoneBand(lvl.min, lvl.max, activeColor, lineTimes, title));
-        return;
-      }
-
-      const color = isSupport ? "#4caf7d" : "#e5654f";
-      const title = `${levelLabel}${lvl.score != null ? ' ' + lvl.score : ''}`;
-      levelLines.push(...addZoneBand(lvl.min, lvl.max, color, lineTimes, title));
-    };
-
-    (data.supports || []).forEach((lvl) => addLevel(lvl, true));
-    (data.resistances || []).forEach((lvl) => addLevel(lvl, false));
-
-    activeLevels
-      .filter((w) => !matchedActiveKeys.has(activeKey(w)))
-      .forEach((w) => drawOrphanActiveLevel(w));
-  } catch (e) {
-    console.error("levels load failed", e);
-  }
-}
-
-const EVENT_MARKER_STYLE = {
-  ORIENTIR:    { color: "#8a8f98", shape: "circle" },   
-  START:       { color: "#5aa9e6", shape: "circle" },   
-  PEAK:        { color: "#f2c14e", shape: "circle" },   
-  PIT:         { color: "#e5654f", shape: "circle" },   
-  SCAN:        { color: "#f2c14e", shape: "circle" },   
-  GOOD_GREEN:  { color: "#f2c14e", shape: "circle" },   
-  TRACK_START: { color: "#8a8f98", shape: "circle" },   
-  NEW_PEAK:    { color: "#f2c14e", shape: "circle" },   
-  GOOD_RED:    { color: "#f2c14e", shape: "circle" },   
-  CANCEL:      { color: "#5c6370", shape: "square" },   
-  DEAD:        { color: "#e5654f", shape: "square" },   
-  SWEEP_BOTTOM:       { color: "#9c27b0", shape: "circle" },
-  RUNAWAY:            { color: "#e5654f", shape: "circle" },
-  CLIMAX_NEAR_BREACH: { color: "#5aa9e6", shape: "circle" },
-  CLIMAX_FAR_BREACH:  { color: "#5aa9e6", shape: "circle" },
-  ZONE_TOUCH:         { color: "#5aa9e6", shape: "circle" },
-};
-
 async function loadEvents(coin, token = chartLoadToken) {
   try {
     const res = await fetch(`/api/events/${encodeURIComponent(coin)}`);
@@ -590,8 +498,8 @@ async function loadEvents(coin, token = chartLoadToken) {
     const maxCandleTime = globalCandles.length ? globalCandles[globalCandles.length - 1].time : null;
     const inRange = (t) => minCandleTime !== null && t >= minCandleTime && t <= maxCandleTime;
 
-    const seen = new Set(); 
-    const markers = [];
+    // ЖЕСТКИЙ ФИЛЬТР: Строго 1 маркер на 1 свечу (требование движка)
+    const markersMap = {};
 
     const sourceWatchers = isSignalView && !focusedLevel
       ? []
@@ -603,26 +511,73 @@ async function loadEvents(coin, token = chartLoadToken) {
       if (!matchesFocus(w)) return;
       const isShort = w.direction === "SHORT";
       const entryStyle = isShort ? { color: "#e5654f", shape: "arrowDown" } : { color: "#4caf7d", shape: "arrowUp" };
+      
       (w.events || []).forEach((ev) => {
         if (!ev.time || !inRange(ev.time)) return;
-        const key = `${ev.time}_${ev.type}`;
-        if (seen.has(key)) return;
-        seen.add(key);
+        
+        // Примагничиваем событие к точной свече
+        const cIdx = findNearestCandleIndex(globalCandles, ev.time);
+        const snappedTime = globalCandles[cIdx].time;
+
         const style = ev.type === "ENTRY" ? entryStyle : (EVENT_MARKER_STYLE[ev.type] || { color: "#cfd3da", shape: "circle" });
-        markers.push({
-          time: ev.time,
-          position: ev.type === "ENTRY" && isShort ? "belowBar" : "aboveBar",
-          color: style.color,
-          shape: style.shape,
-          text: "",
-        });
+        
+        // Если маркера на этой свече еще нет, или это важный маркер ENTRY - перезаписываем
+        if (!markersMap[snappedTime] || ev.type === "ENTRY") {
+          markersMap[snappedTime] = {
+            time: snappedTime,
+            position: ev.type === "ENTRY" && isShort ? "belowBar" : "aboveBar",
+            color: style.color,
+            shape: style.shape,
+            text: "",
+          };
+        }
       });
     });
 
-    markers.sort((a, b) => a.time - b.time);
+    // TradingView требует массив, жестко отсортированный по времени
+    const markers = Object.values(markersMap).sort((a, b) => a.time - b.time);
     candleSeries.setMarkers(markers);
   } catch (e) {
     console.error("events load failed", e);   
+  }
+}
+
+async function loadLevels(coin, token = chartLoadToken) {
+  // Эта функция была ПОЛНОСТЬЮ утеряна при более раннем изменении файла —
+  // вызов остался (loadChart/submitAddLevel), само тело исчезло, отсюда
+  // "loadLevels is not defined". addZoneBand/addSplitLevel (см. верх
+  // файла) остались нетронуты — они и есть готовые "кирпичики" для
+  // рисования, просто их было НЕКОМУ вызывать. Написана заново, тем же
+  // принципом, что уже проверен в симуляторе (sim.js::drawSnapshotLevels):
+  // support — зелёным, resistance — красным, полоса от даты уровня, не
+  // от начала графика.
+  try {
+    const res = await fetch(`/api/levels/${encodeURIComponent(coin)}`);
+    if (token !== chartLoadToken) return;
+    clearLevelLines();
+    if (!res.ok) return; // 404 — у монеты просто нет уровней, это не ошибка
+
+    const data = await res.json();
+    if (token !== chartLoadToken) return;
+    if (!globalCandles.length) return;
+
+    const drawSide = (zones, color) => {
+      (zones || []).forEach((z) => {
+        if (z.min == null || z.max == null) return;
+        const zoneStartSec = z.date ? Math.floor(new Date(z.date + "T00:00:00Z").getTime() / 1000) : null;
+        const lineCandles = zoneStartSec !== null
+          ? globalCandles.filter((c) => c.time >= zoneStartSec)
+          : globalCandles;
+        if (!lineCandles.length) return;
+        const title = z.type ? `${z.type}` : "";
+        levelLines.push(...addZoneBand(z.min, z.max, color, lineCandles, title));
+      });
+    };
+
+    drawSide(data.supports, "#00c853");
+    drawSide(data.resistances, "#ff3d3d");
+  } catch (e) {
+    console.error("levels load failed", e);
   }
 }
 
@@ -705,6 +660,15 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
       return;
     }
     const data = await res.json();
+
+    // Гонка при быстром переключении монеты/таймфрейма: если пока этот
+    // запрос летел, пользователь успел кликнуть что-то ещё — myToken уже
+    // не совпадает с chartLoadToken. Раньше это нигде не проверялось для
+    // самих свечей (только для уровней/событий ниже) — устаревший, более
+    // медленный ответ мог прилететь ПОСЛЕ свежего и молча перезаписать
+    // правильный график чужим таймфреймом/монетой без единой ошибки.
+    if (myToken !== chartLoadToken) return;
+
     currentSymbolEl.textContent = `${data.symbol} · ${data.timeframe}`;
     currentPrecision = data.price_precision ?? 4;
 
@@ -714,12 +678,17 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
     ema50Series.applyOptions({ priceFormat });
     emaMacroSeries.applyOptions({ priceFormat });
 
-    const formattedCandles = data.candles.map(c => {
-      const unixSeconds = c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time;
-      return { ...c, time: unixSeconds };
-    });
-
-    formattedCandles.sort((a, b) => a.time - b.time);
+    // Бэкенд (candle_store.py) уже гарантирует уникальность и порядок —
+    // PRIMARY KEY (symbol, timeframe, timestamp) физически не даёт дублей
+    // попасть в базу, ORDER BY timestamp ASC отдаёт их отсортированными.
+    // Досюда доходит уже чистый набор — насильно подгонять каждую свечу
+    // под сетку (alignTime) и схлопывать дубли самим не нужно: если у
+    // двух РАЗНЫХ свечей после такой подгонки совпадало время, одна из
+    // них молча терялась (Map просто перезаписывался), а вторая сдвигалась
+    // на чужое время — источник "кривого" графика, не решение проблемы.
+    const formattedCandles = data.candles
+      .map((c) => ({ ...c, time: c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time }))
+      .sort((a, b) => a.time - b.time);
     globalCandles = formattedCandles;
 
     candleSeries.setData(formattedCandles);
@@ -990,10 +959,14 @@ setInterval(async () => {
       if (!res.ok) return;
       const data = await res.json();
 
-      const formattedCandles = data.candles.map(c => ({
-        ...c,
-        time: c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time,
-      })).sort((a, b) => a.time - b.time);
+      // Тот же принцип, что и в loadChart() — бэкенд уже отдаёт чистые,
+      // уникальные, отсортированные свечи, подгонять/схлопывать самим не
+      // нужно. Здесь это даже важнее: candleSeries.update() требует строго
+      // неубывающее время — если бы подгонка сдвинула свечу не туда, это
+      // могло бы испортить уже нарисованную серию прямо во время просмотра.
+      const formattedCandles = data.candles
+        .map((c) => ({ ...c, time: c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time }))
+        .sort((a, b) => a.time - b.time);
 
       formattedCandles.forEach(c => {
         try {
@@ -1389,5 +1362,85 @@ if (isMainDashboardPage()) {
     document.addEventListener("DOMContentLoaded", wireAddLevelModal);
   } else {
     wireAddLevelModal();
+  }
+}
+// === Настройки TP/SL для BOUNCE (#tpsl-btn / #tpsl-overlay) ===
+function openTpSlModal() {
+  const overlay = document.getElementById("tpsl-overlay");
+  const errEl = document.getElementById("tpsl-error");
+  if (!overlay) return;
+  if (errEl) { errEl.style.display = "none"; errEl.textContent = ""; }
+  
+  // Подтягиваем текущие значения с бэкенда
+  fetch("/api/config/bounce_tpsl")
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById("tpsl-tp").value = data.bounce_tp_pct;
+      document.getElementById("tpsl-sl").value = data.bounce_sl_pct;
+      overlay.style.display = "flex";
+    })
+    .catch(e => console.error("Ошибка загрузки TP/SL:", e));
+}
+
+function closeTpSlModal() {
+  const overlay = document.getElementById("tpsl-overlay");
+  if (overlay) overlay.style.display = "none";
+}
+
+async function submitTpSl() {
+  const errEl = document.getElementById("tpsl-error");
+  const showError = (msg) => {
+    if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
+  };
+
+  const tpVal = parseFloat(document.getElementById("tpsl-tp").value);
+  const slVal = parseFloat(document.getElementById("tpsl-sl").value);
+
+  if (!Number.isFinite(tpVal) || !Number.isFinite(slVal)) return showError("Значения должны быть числами");
+  if (tpVal <= 0 || slVal <= 0) return showError("Значения должны быть больше 0");
+
+  const submitBtn = document.getElementById("tpsl-submit-btn");
+  submitBtn.disabled = true;
+  try {
+    const res = await fetch("/api/config/bounce_tpsl", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bounce_tp_pct: tpVal, bounce_sl_pct: slVal }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showError(data.detail || "Не удалось сохранить настройки");
+      return;
+    }
+    closeTpSlModal();
+  } catch (e) {
+    showError("Ошибка запроса: " + e.message);
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+function wireTpSlModal() {
+  const btn = document.getElementById("tpsl-btn");
+  const overlay = document.getElementById("tpsl-overlay");
+  const cancelBtn = document.getElementById("tpsl-cancel-btn");
+  const submitBtn = document.getElementById("tpsl-submit-btn");
+  
+  if (!btn || !overlay || !cancelBtn || !submitBtn) return;
+
+  btn.onclick = openTpSlModal;
+  cancelBtn.onclick = closeTpSlModal;
+  submitBtn.onclick = submitTpSl;
+  
+  overlay.onclick = (e) => {
+    if (e.target === overlay) closeTpSlModal();
+  };
+}
+
+if (isMainDashboardPage()) {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wireTpSlModal);
+  } else {
+    wireTpSlModal();
   }
 }

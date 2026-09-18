@@ -433,7 +433,31 @@ def toggle_bounce_direction(direction: str):
         return {"status": "ok", "direction": direction, "enabled": not current}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+class TpSlRequest(BaseModel):
+    bounce_tp_pct: float
+    bounce_sl_pct: float
 
+@app.get("/api/config/bounce_tpsl")
+def get_bounce_tpsl():
+    config = _read_json(CONFIG_FILE, default={})
+    crypto_cfg = config.get("crypto", {})
+    return {
+        "bounce_tp_pct": crypto_cfg.get("bounce_tp_pct", 7.0),
+        "bounce_sl_pct": crypto_cfg.get("bounce_sl_pct", 50.0),
+    }
+
+@app.post("/api/config/bounce_tpsl")
+def set_bounce_tpsl(payload: TpSlRequest):
+    try:
+        config = _read_json(CONFIG_FILE, default={})
+        if "crypto" not in config:
+            config["crypto"] = {}
+        config["crypto"]["bounce_tp_pct"] = payload.bounce_tp_pct
+        config["crypto"]["bounce_sl_pct"] = payload.bounce_sl_pct
+        _write_json_atomic(CONFIG_FILE, config)
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 class DirectionSetRequest(BaseModel):
     allow_long: bool
     allow_short: bool

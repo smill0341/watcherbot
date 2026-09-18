@@ -241,8 +241,8 @@ def top_up_tail(exchange, symbol, timeframe):
     if last_ts is None:
         return
 
-    # 3. Качаем ВПЕРЕД (новые свечи от последней сохраненной до сейчас)
-    since_ms = (last_ts * 1000) + tf_ms
+    # 3. Качаем ВПЕРЕД (захватываем последнюю свечу, так как она могла быть еще открыта)
+    since_ms = last_ts * 1000
     while since_ms < time.time() * 1000:
         try:
             batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since_ms, limit=EXCHANGE_MAX_LIMIT)

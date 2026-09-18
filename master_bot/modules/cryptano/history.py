@@ -47,6 +47,7 @@ def save_signal(signal: dict):
         # сможет перейти на конкретное место, это ожидаемо для старых записей.
         "time": signal.get("time"),
         "level_id": signal.get("level_id"),
+        "level_type": signal.get("level_type"),
         # Метод реакции на уровень, которым нашёлся вход — пока только
         # "volume" (объём/множитель от среднего), на будущее появятся
         # другие методы, каждый со своим value/mult (см. watcher_plan.py::check_bounce).

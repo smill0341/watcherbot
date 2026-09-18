@@ -22,8 +22,8 @@ class BounceWatcher:
         'MIN_SCORE': 1.0,          
         'VOL_SPIKE_MULT': 3.0,     
         'MIN_VOL_MULT_TO_LOG': 1.5,   # Фильтр мусора: не рисовать SCAN и не писать лог, если объем ниже х1.5
-        'MAX_RUNAWAY_PCT': 5.0,       # После пробоя: если цена ушла дальше этого % от уровня — отбой, вотчер умирает сам
-        'MIN_BODY_PCT': 40.0,         # Плотность свечи: тело должно занимать минимум 40% от всего размаха
+        'MAX_RUNAWAY_PCT': 7.0,       # После пробоя: если цена ушла дальше этого % от уровня — отбой, вотчер умирает сам
+        'MIN_BODY_PCT': 20.0,         # Плотность свечи: тело должно занимать минимум 40% от всего размаха
         'MAX_WICKS_PCT': 60.0,        # Защита от отвержения: верхняя тень (для лонга) не больше 30%
         'FIXED_TP_PCT': 7.0,
         'SL_PCT': 50.0,  # держим для отображения/справки — НЕ закрывает сделку (см. history.py::update_open_signals,
@@ -57,6 +57,24 @@ class BounceWatcher:
         # SHORT_CLIMAX_MODE и вели бы себя одинаково. mode — просто метка для
         # лога/фокуса ('CLIMAX'/'MIRROR'/None), сама логика идёт через CONFIG.
         self.CONFIG = {**BounceWatcher.CONFIG, **(config_overrides or {})}
+        # Динамически подтягиваем TP/SL из config.json, перетирая дефолты
+        import os
+        from modules.cryptano.utils.storage import load_json
+        from modules.cryptano.utils.paths import CRYPTANO_DIR
+        
+        try:
+            # CRYPTANO_DIR это .../master_bot/modules/cryptano
+            # Поднимаемся на 2 уровня вверх до папки master_bot
+            master_bot_dir = os.path.dirname(os.path.dirname(CRYPTANO_DIR))
+            config_file = os.path.join(master_bot_dir, "config.json")
+            
+            live_cfg = load_json(config_file, default={}).get("crypto", {})
+            if "bounce_tp_pct" in live_cfg:
+                self.CONFIG['FIXED_TP_PCT'] = float(live_cfg["bounce_tp_pct"])
+            if "bounce_sl_pct" in live_cfg:
+                self.CONFIG['SL_PCT'] = float(live_cfg["bounce_sl_pct"])
+        except Exception as e:
+            pass # Если файл битый или ключей нет - останутся дефолты из класса
         self.mode = mode
         # В общем реестре bounce_mgr (один инстанс на ВСЕ монеты, как и у
         # VBottomManager) вотчеры разных монет ничем, кроме min/max, не
@@ -763,6 +781,7 @@ class BounceWatcher:
         return {
             "allow": True,
             "level_id": f"{self.min}_{self.max}",
+            "level_type": getattr(self, 'level_type', ''),
             "action": "BUY" if self.trade_type == 'LONG' else "SELL",
             "entry_price": actual_entry,
             "sl": sl,

@@ -278,6 +278,7 @@ def check_v_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None):
             "price": entry_price,
             "take_profit": tp,
             "stop_loss": sl,
+            "level_type": tracked.get("type"),
         })
 
         report = (
@@ -388,6 +389,7 @@ def check_v_green_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None)
             "price": entry_price,
             "take_profit": tp,
             "stop_loss": sl,
+            "level_type": tracked.get("type"),
         })
 
         report = (
@@ -521,6 +523,7 @@ def check_v_red_top(coin, direction, vbottom_mgr=None, tracked_levels=None):
             "price": entry_price,
             "take_profit": tp,
             "stop_loss": sl,
+            "level_type": tracked.get("type"),
         })
 
         report = (
@@ -687,6 +690,7 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr):
                     "method": "volume" if d.get("volume") is not None else None,
                     "method_value": d.get("volume"),
                     "method_mult": d.get("volume_mult"),
+                    "level_type": d.get("level_type") or d.get("type"),
                 })
 
                 reports.append(
