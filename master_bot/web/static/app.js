@@ -62,6 +62,7 @@ function renderWatchlistFiltered(entries) {
       .map(info => `
         <div class="list-item" data-coin="${info.coin}">
           <span>${info.coin}</span>
+          ${info.has_custom_levels ? `<span class="custom-level-badge" title="У монеты есть ручная зона — клик, чтобы посмотреть/удалить" style="margin-left:4px;cursor:pointer;" onclick="event.stopPropagation(); openManageZonesModal('${info.coin}');">🎯 ЗОНА</span>` : ''}
           ${info.source === 'MANUAL' ? '<span class="manual-badge" title="Добавлена вручную">✋ РУЧНО</span>' : ''}
         </div>`)
       .join("");
@@ -125,8 +126,8 @@ function renderActiveWatchersFiltered(watchers) {
           ${label} · <span class="state-tag" style="display: inline-block; padding: 0; margin: 0;">${w.state}</span>${rescanBadge}
         </div>
       </div>
-      <button title="Пересчитать структуру (вся монета)" onclick="triggerRescan(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 8px; align-self: flex-start;">🔄</button>
-      <button title="Точечный рескан ТОЛЬКО этого уровня, от его activated_at — соседей не трогает" onclick="triggerSingleWatcherRescan(event, '${w.coin}', '${w.level_id}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 4px; align-self: flex-start;">🎯</button>
+      <button title="Пересчитать структуру (вся монета)" onclick="triggerRescan(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 6px; align-self: flex-start;">🔄</button>
+      <button title="Точечный рескан ТОЛЬКО этого уровня, от его activated_at — соседей не трогает" onclick="triggerSingleWatcherRescan(event, '${w.coin}', '${w.level_id}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 2px; align-self: flex-start;">🎯</button>
     `;
     div.title = w.history_log || "";
     div.onclick = (e) => {
@@ -943,16 +944,22 @@ async function loadWatchlist() {
     return;
   }
 
-  // --- 🔥 НОВОЕ: СОРТИРОВКА ПО ПРИОРИТЕТУ ---
-  // Сначала MANUAL (ручно добавленные) по дате, потом остальные по алфавиту
+  // --- СОРТИРОВКА ПО ПРИОРИТЕТУ ---
+  // Сначала монеты с ручными зонами (кнопка ➕) — их видно сразу, не искать
+  // глазами; потом MANUAL (ручно добавленные) по дате, потом остальные по
+  // алфавиту. Бэкенд (/api/watchlist) уже отдаёт в этом порядке, тут
+  // сортируем повторно на случай смены фильтра/дозагрузки на клиенте.
   const sortByPriority = (arr) => {
-    const manual = arr.filter(e => e.source === 'MANUAL').sort((a, b) => 
+    const withCustom = arr.filter(e => e.has_custom_levels).sort((a, b) =>
+      new Date(b.added_at || 0) - new Date(a.added_at || 0)
+    );
+    const manual = arr.filter(e => !e.has_custom_levels && e.source === 'MANUAL').sort((a, b) =>
       new Date(b.added_at || 0) - new Date(a.added_at || 0) // Новые первыми
     );
-    const auto = arr.filter(e => e.source !== 'MANUAL').sort((a, b) => 
+    const auto = arr.filter(e => !e.has_custom_levels && e.source !== 'MANUAL').sort((a, b) =>
       a.coin.localeCompare(b.coin) // По алфавиту
     );
-    return [...manual, ...auto];
+    return [...withCustom, ...manual, ...auto];
   };
 
   const sortedWithLevels = sortByPriority(withLevels);
@@ -967,6 +974,7 @@ async function loadWatchlist() {
       .map(info => `
         <div class="list-item" data-coin="${info.coin}">
           <span>${info.coin}</span>
+          ${info.has_custom_levels ? `<span class="custom-level-badge" title="У монеты есть ручная зона — клик, чтобы посмотреть/удалить" style="margin-left:4px;cursor:pointer;" onclick="event.stopPropagation(); openManageZonesModal('${info.coin}');">🎯 ЗОНА</span>` : ''}
           ${info.source === 'MANUAL' ? '<span class="manual-badge" title="Добавлена вручную">✋ РУЧНО</span>' : ''}
         </div>`)
       .join("");
@@ -1049,7 +1057,7 @@ async function loadActiveWatchers() {
     
     // 🔥 НОВОЕ: Checkbox для удаления
     div.innerHTML = `
-      <input type="checkbox" class="watcher-checkbox" data-level-id="${w.level_id}" style="cursor: pointer; margin-right: 8px;">
+      <input type="checkbox" class="watcher-checkbox" data-level-id="${w.level_id}" style="cursor: pointer; margin-right: 2px;">
       <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 4px;">
         <div style="font-weight: 600; font-size: 14px;">
           <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};margin-right:6px;vertical-align: middle;"></span>
@@ -1059,8 +1067,8 @@ async function loadActiveWatchers() {
           ${label} · <span class="state-tag" style="display: inline-block; padding: 0; margin: 0;">${w.state}</span>${rescanBadge}
         </div>
       </div>
-      <button title="Пересчитать структуру (вся монета)" onclick="triggerRescan(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 8px; align-self: flex-start;">🔄</button>
-      <button title="Точечный рескан ТОЛЬКО этого уровня, от его activated_at — соседей не трогает" onclick="triggerSingleWatcherRescan(event, '${w.coin}', '${w.level_id}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 4px; align-self: flex-start;">🎯</button>
+      <button title="Пересчитать структуру (вся монета)" onclick="triggerRescan(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; padding: 0 2px;">🔄</button>
+        <button title="Точечный рескан ТОЛЬКО этого уровня, от его activated_at — соседей не трогает" onclick="triggerSingleWatcherRescan(event, '${w.coin}', '${w.level_id}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; padding: 0 2px;">🎯</button>
     `;
     div.title = w.history_log || "";
     div.onclick = (e) => {
@@ -1151,7 +1159,7 @@ async function loadSignals() {
     
     // 🔥 НОВОЕ: Checkbox в начале
     tr.innerHTML = `
-      <td><input type="checkbox" class="signal-checkbox" data-time="${s.time}" style="cursor: pointer;"></td>
+      <td><input type="checkbox" class="signal-checkbox" data-time="${s.time}" data-coin="${s.coin ?? ""}" data-level-id="${s.level_id ?? ""}" style="cursor: pointer;"></td>
       <td>${s.date ?? ""}</td>
       <td>${s.coin ?? ""}</td>
       <td class="dir-${s.type}">${s.type ?? ""}</td>
@@ -1224,12 +1232,21 @@ async function deleteSelectedSignals() {
     return;
   }
   
-  const times = Array.from(checkboxes).map(cb => parseInt(cb.dataset.time));
+  // Раньше отправляли голый time — не уникален (свечи разных монет часто
+  // закрываются в одну и ту же секунду), из-за чего удаление одного
+  // выделенного сигнала сносило все сигналы с тем же time, включая чужие
+  // монеты. Теперь шлём составной ключ (time+coin+level_id), см.
+  // web/backend/app.py::delete_signals.
+  const keys = Array.from(checkboxes).map(cb => ({
+    time: parseInt(cb.dataset.time),
+    coin: cb.dataset.coin || null,
+    level_id: cb.dataset.levelId || null,
+  }));
   try {
     const res = await fetch("/api/signals/delete", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(times)
+      body: JSON.stringify(keys)
     });
     
     const result = await res.json();
@@ -1730,6 +1747,144 @@ if (isMainDashboardPage()) {
     wireAddLevelModal();
   }
 }
+// === Управление ручными зонами (клик по бейджу "🎯 ЗОНА" в Watchlist) ===
+// index.html недоступен в этой сессии (не в git-репозитории), поэтому вся
+// модалка строится прямо тут через JS, без готовой разметки в HTML —
+// в отличие от #add-level-overlay выше, которая уже есть в index.html.
+function ensureManageZonesOverlay() {
+  let overlay = document.getElementById("manage-zones-overlay");
+  if (overlay) return overlay;
+  overlay = document.createElement("div");
+  overlay.id = "manage-zones-overlay";
+  overlay.style.cssText = "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;";
+  overlay.innerHTML = `
+    <div style="background:#1e1e1e;color:#eee;border-radius:8px;padding:16px 20px;min-width:320px;max-width:420px;max-height:70vh;overflow-y:auto;box-shadow:0 4px 24px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <strong id="manage-zones-title">Ручные зоны</strong>
+        <span id="manage-zones-close" style="cursor:pointer;font-size:18px;line-height:1;padding:0 4px;">✕</span>
+      </div>
+      <div id="manage-zones-body">Загрузка...</div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.onclick = (e) => {
+    if (e.target === overlay) closeManageZonesModal();
+  };
+  overlay.querySelector("#manage-zones-close").onclick = closeManageZonesModal;
+  return overlay;
+}
+
+function closeManageZonesModal() {
+  const overlay = document.getElementById("manage-zones-overlay");
+  if (overlay) overlay.style.display = "none";
+}
+
+async function openManageZonesModal(coin) {
+  const overlay = ensureManageZonesOverlay();
+  const titleEl = overlay.querySelector("#manage-zones-title");
+  const bodyEl = overlay.querySelector("#manage-zones-body");
+  titleEl.textContent = `Ручные зоны — ${coin}`;
+  bodyEl.textContent = "Загрузка...";
+  overlay.style.display = "flex";
+  await renderManageZonesList(coin, bodyEl);
+}
+
+async function renderManageZonesList(coin, bodyEl) {
+  let data;
+  try {
+    const res = await fetch(`/api/levels/${encodeURIComponent(coin)}`);
+    data = await res.json();
+  } catch (e) {
+    bodyEl.textContent = "Ошибка запроса: " + e.message;
+    return;
+  }
+  if (!data || (!data.supports && !data.resistances)) {
+    bodyEl.textContent = "У монеты нет уровней вообще.";
+    return;
+  }
+  // Ручные зоны помечены сервером как type: "MANUAL" (см. add_custom_level
+  // в app.py) — отсекаем ими от обычных SWING_HUNTER-уровней, слитых в тот
+  // же ответ /api/levels/{coin}.
+  const manualSupports = (data.supports || []).filter(z => z.type === "MANUAL");
+  const manualResistances = (data.resistances || []).filter(z => z.type === "MANUAL");
+
+  if (manualSupports.length === 0 && manualResistances.length === 0) {
+    bodyEl.textContent = "Ручных зон не осталось (все уже удалены).";
+    return;
+  }
+
+  const rowHtml = (z, side) => {
+    const label = side === "support" ? "Поддержка" : "Сопротивление";
+    return `
+      <div class="manage-zone-row" data-side="${side}" data-min="${z.min}" data-max="${z.max}"
+           style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #333;">
+        <span>${label}: ${z.min} — ${z.max}</span>
+        <span class="manage-zone-del" style="cursor:pointer;color:#e55;margin-left:10px;white-space:nowrap;" title="Удалить">✕ удалить</span>
+      </div>`;
+  };
+
+  let html = "";
+  if (manualSupports.length > 0) {
+    html += `<div style="opacity:0.7;margin:8px 0 2px;">Поддержки</div>`;
+    html += manualSupports.map(z => rowHtml(z, "support")).join("");
+  }
+  if (manualResistances.length > 0) {
+    html += `<div style="opacity:0.7;margin:8px 0 2px;">Сопротивления</div>`;
+    html += manualResistances.map(z => rowHtml(z, "resistance")).join("");
+  }
+  bodyEl.innerHTML = html;
+
+  bodyEl.querySelectorAll(".manage-zone-row").forEach((row) => {
+    const delBtn = row.querySelector(".manage-zone-del");
+    delBtn.onclick = async () => {
+      // Клик "с подстраховкой" вместо нативного confirm(): первый клик
+      // только "взводит" кнопку на 3 секунды, реальное удаление — второй
+      // клик. Так проще случайно не снести уровень мимо, кликнув один раз.
+      if (delBtn.dataset.armed !== "1") {
+        delBtn.dataset.armed = "1";
+        delBtn.textContent = "точно удалить?";
+        setTimeout(() => {
+          if (delBtn.dataset.armed === "1") {
+            delBtn.dataset.armed = "0";
+            delBtn.textContent = "✕ удалить";
+          }
+        }, 3000);
+        return;
+      }
+      delBtn.textContent = "...";
+      const side = row.dataset.side;
+      const minVal = parseFloat(row.dataset.min);
+      const maxVal = parseFloat(row.dataset.max);
+      try {
+        const res = await fetch("/api/levels/custom/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ coin, side, min: minVal, max: maxVal }),
+        });
+        const result = await res.json();
+        if (!res.ok) {
+          alert(result.detail || "Не удалось удалить уровень");
+          delBtn.dataset.armed = "0";
+          delBtn.textContent = "✕ удалить";
+          return;
+        }
+      } catch (e) {
+        alert("Ошибка запроса: " + e.message);
+        delBtn.dataset.armed = "0";
+        delBtn.textContent = "✕ удалить";
+        return;
+      }
+      // Обновляем список внутри модалки, watchlist (бейдж/сортировка) и
+      // график, если сейчас смотрим именно эту монету.
+      const bodyEl2 = document.getElementById("manage-zones-body");
+      if (bodyEl2) await renderManageZonesList(coin, bodyEl2);
+      await loadWatchlist();
+      if (typeof selectedCoin !== "undefined" && selectedCoin === coin) {
+        await loadLevels(coin);
+      }
+    };
+  });
+}
+
 // === Настройки TP/SL для BOUNCE (#tpsl-btn / #tpsl-overlay) ===
 function openTpSlModal() {
   const overlay = document.getElementById("tpsl-overlay");

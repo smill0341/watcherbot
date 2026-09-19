@@ -210,6 +210,16 @@ def get_watchlist():
     if not isinstance(wl, dict):
         wl = {}
     macro = _read_json(MACRO_LEVELS_PATH, default={})
+    # Ручные зоны (кнопка ➕) — coin может иметь custom-зону независимо от
+    # того, как сам coin попал в watchlist (SWING_HUNTER или MANUAL) — это
+    # две разные вещи: "монета добавлена руками" vs "у монеты есть ручная
+    # зона". Раньше на дашборде это было визуально неотличимо от обычной
+    # монеты, добавленный уровень терялся в общем списке.
+    custom_db = _read_json(CUSTOM_LEVELS_PATH, default={})
+
+    def _has_custom_levels(coin):
+        c = custom_db.get(coin) or custom_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
+        return bool((c or {}).get("supports")) or bool((c or {}).get("resistances"))
 
     with_levels = []
     without_levels = []
@@ -218,27 +228,32 @@ def get_watchlist():
             continue
         has_levels = coin in macro or KNOWN_TICKER_ALIASES.get(coin) in macro
         clean_meta = {k: v for k, v in (meta or {}).items() if k != "direction"}
-        
+
         # 🔥 Сохраняем source и added_at
         source = clean_meta.get("source", "SWING_HUNTER")
         added_at = clean_meta.get("added_at", "")
-        
+
         entry = {
             "coin": coin,
             "has_levels": has_levels,
             "source": source,
             "added_at": added_at,
+            "has_custom_levels": _has_custom_levels(coin),
             **{k: v for k, v in clean_meta.items() if k not in ["source", "added_at", "direction"]}
         }
         (with_levels if has_levels else without_levels).append(entry)
 
-    # 🔥 Функция сортировки: MANUAL первыми (по дате), потом остальные (по алфавиту)
+    # 🔥 Функция сортировки: сначала монеты с ручными зонами (их видно сразу,
+    # не искать глазами по всему списку), потом MANUAL по дате, потом
+    # остальные по алфавиту.
     def sort_by_priority(items):
-        manual = sorted([i for i in items if i.get("source") == "MANUAL"],
+        with_custom = sorted([i for i in items if i.get("has_custom_levels")],
+                             key=lambda x: x.get("added_at") or "", reverse=True)
+        manual = sorted([i for i in items if not i.get("has_custom_levels") and i.get("source") == "MANUAL"],
                        key=lambda x: x.get("added_at") or "", reverse=True)
-        auto = sorted([i for i in items if i.get("source") != "MANUAL"],
+        auto = sorted([i for i in items if not i.get("has_custom_levels") and i.get("source") != "MANUAL"],
                      key=lambda x: x["coin"])
-        return manual + auto
+        return with_custom + manual + auto
 
     with_levels = sort_by_priority(with_levels)
     without_levels = sort_by_priority(without_levels)
@@ -671,6 +686,71 @@ def add_custom_level(payload: dict = Body(...)):
     return {"status": "ok", "coin": coin, "side": side, "zone": zone}
 
 
+@app.post("/api/levels/custom/delete")
+def delete_custom_level(payload: dict = Body(...)):
+    """Удаление вручную добавленного уровня из custom_levels.json (кнопка
+    "✕" у зоны в модалке "Управление ручными зонами" на дашборде).
+
+    Тело запроса: {"coin": "RAYDIUM", "side": "support"|"resistance",
+    "min": 1.05, "max": 1.10} — те же min/max, что были при добавлении
+    (их отдаёт GET /api/levels/{coin}, там ручные зоны помечены
+    "type": "MANUAL"). У ручных зон нет своего id, поэтому ищем зону по
+    точному совпадению min/max в указанных монете и стороне — этого
+    достаточно, дублей с одинаковыми min/max для одной монеты в UI не
+    заводится (кнопка "+" не запрещает завести две одинаковые зоны, но
+    это уже осознанный выбор пользователя, а не баг этого эндпоинта).
+
+    НЕ трогает watchlist.json — монета остаётся в списке наблюдения (у
+    неё вполне может быть ещё один ручной уровень или обычные уровни от
+    SWING_HUNTER); чистка "призраков" в watchlist — отдельная механика в
+    background_tasks.py, тут её сознательно не дублируем."""
+    coin = str(payload.get("coin", "")).upper().strip()
+    side = str(payload.get("side", "")).lower().strip()
+    if not coin:
+        raise HTTPException(status_code=400, detail="Не указана монета (coin)")
+    if side not in ("support", "resistance"):
+        raise HTTPException(status_code=400, detail="side должен быть 'support' или 'resistance'")
+    try:
+        zone_min = float(payload["min"])
+        zone_max = float(payload["max"])
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="min/max обязательны и должны быть числами")
+
+    custom = _read_json(CUSTOM_LEVELS_PATH, default={})
+    coin_data = custom.get(coin)
+    if not coin_data:
+        raise HTTPException(status_code=404, detail=f"У монеты {coin} нет ручных уровней")
+
+    key = "supports" if side == "support" else "resistances"
+    zones = coin_data.get(key, [])
+
+    def _close(a, b):
+        return abs(a - b) < 1e-9
+
+    new_zones = [
+        z for z in zones
+        if not (_close(float(z.get("min", 0)), zone_min) and _close(float(z.get("max", 0)), zone_max))
+    ]
+
+    if len(new_zones) == len(zones):
+        raise HTTPException(status_code=404, detail="Такой уровень не найден (возможно, уже удалён)")
+
+    coin_data[key] = new_zones
+    # Если у монеты не осталось ручных уровней вообще ни с одной стороны —
+    # чистим пустую запись, чтобы файл не разрастался мусором из {"supports": [], "resistances": []}.
+    if not coin_data.get("supports") and not coin_data.get("resistances"):
+        custom.pop(coin, None)
+    else:
+        custom[coin] = coin_data
+
+    try:
+        _write_json_atomic(CUSTOM_LEVELS_PATH, custom)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Не удалось сохранить custom_levels.json: {e}")
+
+    return {"status": "ok", "coin": coin, "side": side, "deleted": True}
+
+
 @app.get("/api/levels_at/{coin}")
 def get_levels_at(coin: str, when: int = Query(..., description="Unix-время (секунды, UTC) — на какой момент показать уровни")):
     """То же самое, что /api/levels/{coin}, но не 'сейчас', а честный
@@ -1019,38 +1099,88 @@ def get_ohlcv(
 
 
 @app.post("/api/signals/delete")
-def delete_signals(signal_times: list = Body(...)):
-    """Удаляет сигналы по их time (unix timestamp)"""
+def delete_signals(signal_keys: list = Body(...)):
+    """Удаляет сигналы по составному ключу (time, coin, level_id) — НЕ по
+    голому time.
+
+    Раньше удаление шло только по time (unix-секунды свечи входа) — а это
+    НЕ уникальный идентификатор одного сигнала: свечи многих монет часто
+    закрываются в одну и ту же секунду (сетка 15м/1ч у всех одна), особенно
+    после рескана, когда несколько сигналов у разных монет легко попадают
+    на один и тот же таймстамп. В итоге выделение и удаление ОДНОГО сигнала
+    в таблице удаляло вообще все сигналы с этим же time — по факту всех
+    монет, у кого совпало время входа, а не только отмеченный.
+
+    Тело запроса теперь — список объектов {"time":.., "coin":.., "level_id":..}
+    (level_id может быть null у старых сигналов без него) — ровно то, что
+    однозначно отличает одну строку таблицы "Результаты" от другой."""
     signals = _read_json(SIGNALS_PATH, default=[])
     if not isinstance(signals, list):
         return {"deleted": 0}
-    
-    # Фильтруем - оставляем только те сигналы, time которых НЕ в списке на удаление
-    filtered = [s for s in signals if s.get('time') not in signal_times]
+
+    def _key(s):
+        return (s.get('time'), s.get('coin'), s.get('level_id'))
+
+    keys_to_delete = set()
+    for k in signal_keys:
+        if isinstance(k, dict):
+            keys_to_delete.add((k.get('time'), k.get('coin'), k.get('level_id')))
+        else:
+            # Обратная совместимость: если фронт вдруг прислал голый time
+            # (старый формат) — как и раньше, удаляем всё с этим time.
+            keys_to_delete.add(k)
+
+    def _should_delete(s):
+        return _key(s) in keys_to_delete or s.get('time') in keys_to_delete
+
+    filtered = [s for s in signals if not _should_delete(s)]
     deleted_count = len(signals) - len(filtered)
-    
+
     if deleted_count > 0:
         _write_json_atomic(SIGNALS_PATH, filtered)
-    
+
     return {"deleted": deleted_count}
 
 
 @app.post("/api/watchers/delete")
 def delete_watchers(level_ids: list = Body(...)):
-    """Удаляет вотчеры по level_id"""
-    watchers = _read_json(ACTIVE_WATCHERS_PATH, default={})
-    if not isinstance(watchers, dict):
-        return {"deleted": 0}
-    
-    deleted_count = 0
-    for level_id in level_ids:
-        if level_id in watchers:
-            del watchers[level_id]
-            deleted_count += 1
-    
-    if deleted_count > 0:
-        _write_json_atomic(ACTIVE_WATCHERS_PATH, watchers)
-    
+    """Удаляет вотчеры по level_id — НАВСЕГДА, из живой памяти процесса, не
+    только из файла-снимка active_watchers.json.
+
+    Раньше это редактировало ТОЛЬКО файл: bounce_mgr._watchers/
+    v_bottom_mgr._watchers в памяти ничего не знали об удалении, и
+    следующий же export_dashboard_state() (плановый 15-минутный скан-цикл
+    или любой рескан монеты) пересобирал active_watchers.json заново из
+    памяти — удалённые вотчеры молча возвращались обратно на дашборд.
+
+    Использует тот же _watcher_lock, что и боевой скан/рескан (см.
+    /api/rescan_watcher выше), чтобы не удалить вотчер ровно в момент, когда
+    его же обрабатывает боевой цикл в другом потоке."""
+    from modules.cryptano.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
+    from background_tasks import export_dashboard_state
+
+    _watcher_lock.acquire()
+    try:
+        deleted_count = 0
+        for level_id in level_ids:
+            found = False
+            if level_id in bounce_mgr._watchers:
+                del bounce_mgr._watchers[level_id]
+                found = True
+            if level_id in v_bottom_mgr._watchers:
+                del v_bottom_mgr._watchers[level_id]
+                found = True
+            if found:
+                deleted_count += 1
+
+        if deleted_count > 0:
+            # Пересобирает active_watchers.json из уже очищенной памяти —
+            # тот же приём, что и после точечного рескана выше, без него
+            # дашборд не увидел бы удаление до следующего планового цикла.
+            export_dashboard_state(v_bottom_mgr, bounce_mgr)
+    finally:
+        _watcher_lock.release()
+
     return {"deleted": deleted_count}
 
 

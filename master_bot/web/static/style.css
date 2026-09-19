@@ -18,7 +18,7 @@ body {
 }
 
 .sidebar {
-  width: 260px;
+  width: 270px;
   flex-shrink: 0;
   border-right: 1px solid #262832;
   display: flex;
@@ -83,14 +83,14 @@ body {
 }
 
 .list-item {
-  padding: 6px 8px;
+  padding: 2px 8px;
   border-radius: 6px;
   cursor: pointer;
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   font-size: 13px;
-  margin-bottom: 2px;
+  margin-bottom: 0px;
 }
 
 .list-item:hover { background: #1b1d24; }

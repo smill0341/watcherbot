@@ -593,6 +593,25 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr):
 
         atr_series = calculate_atr(df)
 
+        # Ручные (custom_levels.json) зоны — единожды, вне цикла по свечам.
+        # В отличие от macro-уровней у них нет "исторического снимка"
+        # (levels_history.py снимает состояние ТОЛЬКО из macro_base
+        # swing_hunter'а, см. swing_hunter.py::save_levels_snapshot — custom
+        # туда никогда не попадал). Раньше это означало, что ручно
+        # добавленный через "+" уровень СОХРАНЯЛСЯ в custom_levels.json и
+        # был виден на графике (/api/levels/{coin} мержит оба файла для
+        # отображения), но самим движком BOUNCE ниже (candle_supports/
+        # candle_resistances читаются ИЗ ИСТОРИЧЕСКОГО снимка) никогда не
+        # использовался — вотчер по нему не мог родиться ни при обычном
+        # тике, ни при рескане, даже если у монеты уже были другие уровни.
+        # Ручной уровень — не исторический факт, а "живой" с момента
+        # добавления, поэтому подмешиваем его в КАЖДУЮ свечу реплея как есть,
+        # без привязки к снимку конкретного момента времени.
+        custom_db = load_json(CUSTOM_LEVELS_FILE, default={})
+        coin_custom = custom_db.get(coin) or custom_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
+        custom_supports = coin_custom.get("supports", [])
+        custom_resistances = coin_custom.get("resistances", [])
+
         last_t = bounce_mgr.last_processed_time.get(coin)
         if last_t is None:
             # Первый скан этой монеты с тех пор, как появилась персистентность
@@ -644,13 +663,18 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr):
                 candle_resistances = hist_coin_macro.get("resistances", [])
             else:
                 # Снимка на этот момент нет вообще (ни у бота, ни подложенного
-                # вручную) — честно НЕ подставляем сегодняшние уровни, значит
-                # новый вотчер тут родиться не может. Уже живые вотчеры (после
-                # reset_for_rescan) при этом всё равно кормятся этой свечой —
-                # process_candle сам подхватывает их из levels_to_eval
-                # независимо от переданного списка supports/resistances.
+                # вручную) — честно НЕ подставляем сегодняшние macro-уровни,
+                # значит новый вотчер тут родиться не может от НИХ. Уже живые
+                # вотчеры (после reset_for_rescan) при этом всё равно кормятся
+                # этой свечой — process_candle сам подхватывает их из
+                # levels_to_eval независимо от переданного списка supports/
+                # resistances. Ручные уровни ниже подмешиваются в любом
+                # случае — на них это исключение не распространяется.
                 candle_supports = []
                 candle_resistances = []
+
+            candle_supports = candle_supports + custom_supports
+            candle_resistances = candle_resistances + custom_resistances
 
             orders, draw_events = bounce_mgr.process_candle(
                 c_low, c_high, c_close, candle_supports, candle_resistances, df_slice,
@@ -862,6 +886,26 @@ def rescan_single_bounce_watcher(coin, level_id, bounce_mgr):
                 'sl': decision.get('sl'),
                 'tp': decision.get('tp'),
                 'reason': decision.get('reason', ''),
+            })
+            # Раньше точечный рескан только собирал orders в ответ для алерта
+            # в браузере — save_signal() (как в check_bounce() выше) не
+            # вызывался вообще, поэтому найденная реплеем сделка нигде не
+            # оставалась и не попадала в таблицу "Результаты"/signals.json.
+            entry, sl, tp = decision.get('entry_price', 0.0), decision.get('sl', 0.0), decision.get('tp', 0.0)
+            source_label = f"BOUNCE_{trade_type}" + (f"_{mode}" if trade_type == "SHORT" and mode else "")
+            save_signal({
+                "type": "SHORT_PUMP" if trade_type == "SHORT" else "WATCHER_LONG",
+                "coin": coin,
+                "source": source_label,
+                "price": entry,
+                "take_profit": tp,
+                "stop_loss": sl,
+                "time": int(ts.timestamp()),
+                "level_id": level_id,
+                "method": "volume" if decision.get("volume") is not None else None,
+                "method_value": decision.get("volume"),
+                "method_mult": decision.get("volume_mult"),
+                "level_type": decision.get("level_type") or level.get("type"),
             })
 
     first_touch_naive = first_touch_ts.tz_localize(None) if first_touch_ts.tzinfo is not None else first_touch_ts
