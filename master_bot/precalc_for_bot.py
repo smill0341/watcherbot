@@ -51,7 +51,7 @@ from modules.cryptano.swing_hunter import (
 # Можно указать несколько периодов подряд, как в test/precalc.py.
 MONTHS_TO_CALC = [
     {"start": "2026-08-01", "end": "2026-08-31"},
-    {"start": "2026-09-01", "end": "2026-09-15"},
+    {"start": "2026-09-01", "end": "2026-09-19"},
 ]
 
 

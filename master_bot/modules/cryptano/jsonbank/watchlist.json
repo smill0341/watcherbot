@@ -1,545 +1,390 @@
 {
-    "APT": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.078740",
-        "source": "Swing Hunter"
-    },
-    "ASTER": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.078740",
-        "source": "Swing Hunter"
-    },
-    "AVAX": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.078740",
-        "source": "Swing Hunter"
-    },
-    "BCH": {
-        "direction": "LONG",
-        "added_at": "2026-09-07T11:59:01.078740",
-        "source": "Swing Hunter"
-    },
-    "BNB": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.078740",
-        "source": "Swing Hunter"
-    },
-    "COTI": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.078740",
-        "source": "Swing Hunter"
-    },
-    "CRCL": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.078740",
-        "source": "Swing Hunter"
-    },
-    "DASH": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.078740",
-        "source": "Swing Hunter"
-    },
-    "DOOD": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "GOOGL": {
-        "direction": "LONG",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "HBAR": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "HYPE": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "LINK": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "LTC": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "MON": {
-        "direction": "LONG",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "NVDA": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "ONDO": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "ONG": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "ORCA": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "SNDK": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "SOXL": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "SPCX": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "STX": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "SUI": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "TIA": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "TSEM": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "WLD": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "XAG": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "XAU": {
-        "direction": "LONG",
-        "added_at": "2026-09-07T11:59:01.079740",
-        "source": "Swing Hunter"
-    },
-    "VIRTUAL": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T12:00:02.250021",
-        "source": "Swing Hunter"
-    },
-    "_meta": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-07T12:01:00.605050"
-    },
-    "FIL": {
-        "direction": "SHORT",
-        "added_at": "2026-09-07T22:02:43.523628",
-        "source": "Swing Hunter"
-    },
     "BTC": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "ETH": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "SOL": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "ZEC": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "XRP": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "LSK": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
-    "CVC": {
+    "HYPE": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "SOXL": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "CL": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "XAU": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "DOGE": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "FIL": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "SUI": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "NEAR": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
-    },
-    "KORU": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "ENA": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "ADA": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "SKHYNIX": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "SNDK": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "BTW": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "1000PEPE": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
-    "ARK": {
+    "LINK": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "PUMPFUN": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "AAPL": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
-    "MTL": {
+    "BNB": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "LIT": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
-    "FLOCK": {
+    "ONDO": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "TAO": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "UNI": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "USELESS": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "SKHY": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "ARB": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "XAUT": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "WLD": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "AAVE": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
-    },
-    "STEEM": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "XMR": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "BR": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
-    },
-    "BZ": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "MU": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "MSTR": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
-    "REZ": {
+    "XAG": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "TRUMP": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
-    "POWER": {
+    "LTC": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "VVV": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "ETHFI": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
-    },
-    "PUNDIX": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "INJ": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
-    },
-    "STORJ": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "FARTCOIN": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "AVAX": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "XLM": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "AKE": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
-    "B3": {
+    "CRCL": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "XPL": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "CRV": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "WLFI": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "DOT": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
-    "UAI": {
+    "BCH": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "RAYDIUM": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T14:03:09.793286"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
-    "T": {
+    "APT": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-14T15:16:01.395825"
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "SPCX": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "CAP": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-15T15:16:02.338832"
-    },
-    "FF": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-15T15:16:02.338832"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "OP": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-15T15:16:02.338832"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "SNXX": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-15T15:16:02.338832"
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "HBAR": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "PENDLE": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-15T15:16:02.338832"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "TSLA": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-15T15:16:02.338832"
-    },
-    "AVAAI": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-15T15:16:02.338832"
-    },
-    "ASTR": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-15T15:16:02.338832"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "PENGU": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-15T15:16:02.339831"
-    },
-    "INTC": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-15T15:16:02.339831"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "WIF": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-15T15:16:02.339831"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
-    "DRAM": {
+    "DASH": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-15T15:16:02.339831"
-    },
-    "DELL": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-15T19:16:02.398387"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "SAGA": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-16T15:07:53.278244"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "POL": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-16T15:07:53.278244"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
-    "META": {
+    "ASTER": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-16T15:07:53.278244"
-    },
-    "TRX": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-16T15:07:53.278244"
-    },
-    "SOXS": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-16T15:07:53.278244"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "ZRO": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-16T15:07:53.278244"
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "NVDA": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "MON": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "TIA": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "SHIB1000": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-16T15:07:53.278244"
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "VIRTUAL": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "ATOM": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-16T15:07:53.278244"
-    },
-    "IOST": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-16T15:07:53.278244"
-    },
-    "CHIP": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-16T15:07:53.278244"
-    },
-    "PONS": {
-        "source": "MANUAL",
-        "added_at": "2026-09-17T11:35:49.558824"
-    },
-    "AVA": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-17T15:16:04.367132"
-    },
-    "HNT": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-17T15:16:04.367132"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "JUP": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-17T15:16:04.367132"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "SAMSUNG": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-17T15:16:04.367132"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "1000BONK": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-17T15:16:04.367132"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
-    "GENIUS": {
+    "COTI": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-18T15:16:08.950279"
-    },
-    "DRIFT": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-18T15:16:08.950728"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "STRK": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-18T15:16:08.950728"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "AERO": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-18T15:16:08.950728"
-    },
-    "CROSS": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-18T15:16:08.950728"
-    },
-    "KSM": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-18T15:16:08.950728"
-    },
-    "NBIS": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-18T15:16:08.950728"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "MNT": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-18T15:16:08.950728"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "STG": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-18T15:16:08.950728"
+        "added_at": "2026-09-19T16:46:09.574251"
     },
-    "GALA": {
+    "MYX": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-18T15:16:08.950728"
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "F": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "PIEVERSE": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "AR": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "B2": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "ZAMA": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "JPM": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "XTZ": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "MORPHO": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "ZEN": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "AEHR": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
+    },
+    "JTO": {
+        "source": "SWING_HUNTER",
+        "added_at": "2026-09-19T16:46:09.574251"
     },
     "ICP": {
         "source": "SWING_HUNTER",
-        "added_at": "2026-09-18T15:16:08.950728"
-    },
-    "EWY": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-18T15:16:08.950728"
-    },
-    "RDW": {
-        "source": "SWING_HUNTER",
-        "added_at": "2026-09-18T15:16:08.950728"
+        "added_at": "2026-09-19T17:55:55.621585"
     }
 }

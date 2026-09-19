@@ -1,4028 +1,5 @@
 {
-    "BC_LONG_0.5661825_0.5952175": {
-        "coin": "APT",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 3,
-        "history_log": "",
-        "level_min": 0.5661825,
-        "level_max": 0.5952175,
-        "level_date": "2026-09-06",
-        "level_type": "1W_low_PWL",
-        "level_score": 5.5,
-        "events": [
-            {
-                "time": 1789382700,
-                "type": "ZONE_TOUCH",
-                "price": 0.59
-            },
-            {
-                "time": 1789449300,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.5762
-            },
-            {
-                "time": 1789542000,
-                "type": "RUNAWAY",
-                "price": 0.5371
-            },
-            {
-                "time": 1789586100,
-                "type": "RUNAWAY",
-                "price": 0.5364
-            },
-            {
-                "time": 1789596900,
-                "type": "RUNAWAY",
-                "price": 0.5374
-            },
-            {
-                "time": 1789597800,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.5364
-            },
-            {
-                "time": 1789598700,
-                "type": "RUNAWAY",
-                "price": 0.5368
-            },
-            {
-                "time": 1789599600,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.5359
-            },
-            {
-                "time": 1789601400,
-                "type": "SCAN",
-                "price": 0.5531
-            },
-            {
-                "time": 1789689600,
-                "type": "SCAN",
-                "price": 0.5994
-            },
-            {
-                "time": 1789694100,
-                "type": "SCAN",
-                "price": 0.6111
-            },
-            {
-                "time": 1789697700,
-                "type": "RUNAWAY",
-                "price": 0.6278
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_53.38125_56.11875__MIRROR": {
-        "coin": "LTC",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 3,
-        "history_log": "",
-        "level_min": 53.38125,
-        "level_max": 56.11875,
-        "level_date": "2026-07-31",
-        "level_type": "1W_high_PWH + 1M_high_PMH + 1d_extreme_peak",
-        "level_score": 9.0,
-        "events": [
-            {
-                "time": 1789383600,
-                "type": "ZONE_TOUCH",
-                "price": 53.87
-            },
-            {
-                "time": 1789701300,
-                "type": "SWEEP_BOTTOM",
-                "price": 54.83
-            },
-            {
-                "time": 1789777800,
-                "type": "RUNAWAY",
-                "price": 58.93
-            },
-            {
-                "time": 1789778700,
-                "type": "SWEEP_BOTTOM",
-                "price": 58.93
-            },
-            {
-                "time": 1789790400,
-                "type": "RUNAWAY",
-                "price": 59.01
-            },
-            {
-                "time": 1789791300,
-                "type": "SWEEP_BOTTOM",
-                "price": 58.86
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_110.02874999999999_115.67125": {
-        "coin": "SOXL",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 110.02874999999999,
-        "level_max": 115.67125,
-        "level_date": "2026-09-06",
-        "level_type": "1W_low_PWL",
-        "level_score": 6.0,
-        "events": [
-            {
-                "time": 1789641000,
-                "type": "SWEEP_BOTTOM",
-                "price": 110.6
-            },
-            {
-                "time": 1789651800,
-                "type": "SCAN",
-                "price": 114.25
-            },
-            {
-                "time": 1789663500,
-                "type": "SCAN",
-                "price": 115.11
-            },
-            {
-                "time": 1789716600,
-                "type": "SCAN",
-                "price": 119.61
-            },
-            {
-                "time": 1789718400,
-                "type": "SCAN",
-                "price": 119.25
-            },
-            {
-                "time": 1789760700,
-                "type": "RUNAWAY",
-                "price": 123.78
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_4270.51_4376.05": {
-        "coin": "XAU",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 4270.51,
-        "level_max": 4376.05,
-        "level_date": "2026-08-09",
-        "level_type": "1d_extreme_peak + 1W_low_PWL",
-        "level_score": 8.0,
-        "events": [
-            {
-                "time": 1789383600,
-                "type": "SWEEP_BOTTOM",
-                "price": 4300.0
-            },
-            {
-                "time": 1789525800,
-                "type": "SCAN",
-                "price": 4317.37
-            },
-            {
-                "time": 1789567200,
-                "type": "SCAN",
-                "price": 4346.44
-            },
-            {
-                "time": 1789597800,
-                "type": "SCAN",
-                "price": 4279.78
-            },
-            {
-                "time": 1789649100,
-                "type": "SCAN",
-                "price": 4379.76
-            },
-            {
-                "time": 1789663500,
-                "type": "SCAN",
-                "price": 4370.11
-            },
-            {
-                "time": 1789693200,
-                "type": "SCAN",
-                "price": 4365.94
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.9754875_1.0255125__MIRROR": {
-        "coin": "FIL",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.9754875,
-        "level_max": 1.0255125,
-        "level_date": "2026-05-31",
-        "level_type": "1M_high_PMH",
-        "level_score": 6.0,
-        "events": [
-            {
-                "time": 1789383600,
-                "type": "SWEEP_BOTTOM",
-                "price": 1.0017
-            },
-            {
-                "time": 1789430400,
-                "type": "RUNAWAY",
-                "price": 0.9258
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_1.3778857142857144_1.3941142857142859__MIRROR": {
-        "coin": "XRP",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 3,
-        "history_log": "",
-        "level_min": 1.3778857142857144,
-        "level_max": 1.3941142857142859,
-        "level_date": "2026-09-13",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789391700,
-                "type": "ZONE_TOUCH",
-                "price": 1.3911
-            },
-            {
-                "time": 1789392600,
-                "type": "SWEEP_BOTTOM",
-                "price": 1.399
-            },
-            {
-                "time": 1789411500,
-                "type": "RUNAWAY",
-                "price": 1.4749
-            },
-            {
-                "time": 1789412400,
-                "type": "SWEEP_BOTTOM",
-                "price": 1.4774
-            },
-            {
-                "time": 1789416000,
-                "type": "RUNAWAY",
-                "price": 1.4768
-            },
-            {
-                "time": 1789497000,
-                "type": "SCAN",
-                "price": 1.3592
-            },
-            {
-                "time": 1789499700,
-                "type": "RUNAWAY",
-                "price": 1.3066
-            },
-            {
-                "time": 1789742700,
-                "type": "SWEEP_BOTTOM",
-                "price": 1.3954
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_20.5725_21.6275": {
-        "coin": "KORU",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 2,
-        "history_log": "",
-        "level_min": 20.5725,
-        "level_max": 21.6275,
-        "level_date": "2026-09-06",
-        "level_type": "1W_low_PWL",
-        "level_score": 6.0,
-        "events": [
-            {
-                "time": 1789662600,
-                "type": "SWEEP_BOTTOM",
-                "price": 20.43
-            },
-            {
-                "time": 1789733700,
-                "type": "RUNAWAY",
-                "price": 19.54
-            },
-            {
-                "time": 1789740000,
-                "type": "RUNAWAY",
-                "price": 19.37
-            },
-            {
-                "time": 1789755300,
-                "type": "RUNAWAY",
-                "price": 19.53
-            },
-            {
-                "time": 1789756200,
-                "type": "SWEEP_BOTTOM",
-                "price": 19.61
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.16033875_0.16856125000000002__MIRROR": {
-        "coin": "ARK",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 2,
-        "history_log": "",
-        "level_min": 0.16033875,
-        "level_max": 0.16856125000000002,
-        "level_date": "2026-05-31",
-        "level_type": "1M_high_PMH+4h_poc",
-        "level_score": 7.5,
-        "events": [
-            {
-                "time": 1789386300,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.16798
-            },
-            {
-                "time": 1789424100,
-                "type": "RUNAWAY",
-                "price": 0.1774
-            },
-            {
-                "time": 1789425000,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.1785
-            },
-            {
-                "time": 1789442100,
-                "type": "RUNAWAY",
-                "price": 0.1506
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.061035000000000006_0.064165": {
-        "coin": "FLOCK",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.061035000000000006,
-        "level_max": 0.064165,
-        "level_date": "2026-09-13",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789382700,
-                "type": "ZONE_TOUCH",
-                "price": 0.06415
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.12888525_0.13549475": {
-        "coin": "ARB",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.12888525,
-        "level_max": 0.13549475,
-        "level_date": "2026-09-06",
-        "level_type": "1W_low_PWL",
-        "level_score": 6.0,
-        "events": [
-            {
-                "time": 1789382700,
-                "type": "ZONE_TOUCH",
-                "price": 0.13505
-            },
-            {
-                "time": 1789433100,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.13163
-            },
-            {
-                "time": 1789478100,
-                "type": "RUNAWAY",
-                "price": 0.1431
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_4251.864285714286_4357.635714285714": {
-        "coin": "XAUT",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 4251.864285714286,
-        "level_max": 4357.635714285714,
-        "level_date": "2026-08-09",
-        "level_type": "1d_extreme_peak + 1W_low_PWL",
-        "level_score": 8.0,
-        "events": [
-            {
-                "time": 1789383600,
-                "type": "SWEEP_BOTTOM",
-                "price": 4298.1
-            },
-            {
-                "time": 1789603200,
-                "type": "SCAN",
-                "price": 4284.5
-            },
-            {
-                "time": 1789624800,
-                "type": "SCAN",
-                "price": 4308.1
-            },
-            {
-                "time": 1789649100,
-                "type": "SCAN",
-                "price": 4367.6
-            },
-            {
-                "time": 1789689600,
-                "type": "SCAN",
-                "price": 4352.9
-            },
-            {
-                "time": 1789693200,
-                "type": "SCAN",
-                "price": 4356.7
-            },
-            {
-                "time": 1789694100,
-                "type": "SCAN",
-                "price": 4358.5
-            },
-            {
-                "time": 1789717500,
-                "type": "SCAN",
-                "price": 4390.6
-            },
-            {
-                "time": 1789809300,
-                "type": "SCAN",
-                "price": 4371.7
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.057470714285714285_0.06016928571428571__MIRROR": {
-        "coin": "WLFI",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.057470714285714285,
-        "level_max": 0.06016928571428571,
-        "level_date": "2026-08-30",
-        "level_type": "1W_high_PWH+4h_poc",
-        "level_score": 7.0,
-        "events": [
-            {
-                "time": 1789383600,
-                "type": "ZONE_TOUCH",
-                "price": 0.05762
-            },
-            {
-                "time": 1789605000,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.05896
-            },
-            {
-                "time": 1789608600,
-                "type": "SCAN",
-                "price": 0.05916
-            },
-            {
-                "time": 1789662600,
-                "type": "SCAN",
-                "price": 0.05692
-            },
-            {
-                "time": 1789673400,
-                "type": "SCAN",
-                "price": 0.05802
-            },
-            {
-                "time": 1789718400,
-                "type": "SCAN",
-                "price": 0.05813
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_10.750837500000001_11.3021625": {
-        "coin": "LINK",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 10.750837500000001,
-        "level_max": 11.3021625,
-        "level_date": "2026-08-23",
-        "level_type": "1W_low_PWL",
-        "level_score": 6.0,
-        "events": [
-            {
-                "time": 1789390800,
-                "type": "ZONE_TOUCH",
-                "price": 11.297
-            },
-            {
-                "time": 1789497900,
-                "type": "SWEEP_BOTTOM",
-                "price": 10.867
-            },
-            {
-                "time": 1789601400,
-                "type": "SCAN",
-                "price": 11.056
-            },
-            {
-                "time": 1789663500,
-                "type": "SCAN",
-                "price": 11.368
-            },
-            {
-                "time": 1789699500,
-                "type": "SCAN",
-                "price": 11.594
-            },
-            {
-                "time": 1789701300,
-                "type": "SCAN",
-                "price": 11.71
-            },
-            {
-                "time": 1789725600,
-                "type": "RUNAWAY",
-                "price": 11.887
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_1.3773107142857144_1.3946892857142859": {
-        "coin": "XRP",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 1.3773107142857144,
-        "level_max": 1.3946892857142859,
-        "level_date": "2026-09-14",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789390800,
-                "type": "ZONE_TOUCH",
-                "price": 1.3924
-            },
-            {
-                "time": 1789497000,
-                "type": "SWEEP_BOTTOM",
-                "price": 1.34
-            },
-            {
-                "time": 1789499700,
-                "type": "RUNAWAY",
-                "price": 1.3066
-            },
-            {
-                "time": 1789649100,
-                "type": "RUNAWAY",
-                "price": 1.3045
-            },
-            {
-                "time": 1789656300,
-                "type": "RUNAWAY",
-                "price": 1.3077
-            },
-            {
-                "time": 1789700400,
-                "type": "SCAN",
-                "price": 1.3158
-            },
-            {
-                "time": 1789701300,
-                "type": "SCAN",
-                "price": 1.3209
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.18525_0.19475": {
-        "coin": "USELESS",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.18525,
-        "level_max": 0.19475,
-        "level_date": "2026-09-06",
-        "level_type": "1W_low_PWL",
-        "level_score": 6.0,
-        "events": [
-            {
-                "time": 1789390800,
-                "type": "ZONE_TOUCH",
-                "price": 0.19327
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.005098_0.005301999999999999__MIRROR": {
-        "coin": "T",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 2,
-        "history_log": "",
-        "level_min": 0.005098,
-        "level_max": 0.005301999999999999,
-        "level_date": "2026-09-14",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789391700,
-                "type": "ZONE_TOUCH",
-                "price": 0.005164
-            },
-            {
-                "time": 1789394400,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.005454
-            },
-            {
-                "time": 1789408800,
-                "type": "RUNAWAY",
-                "price": 0.004832
-            },
-            {
-                "time": 1789432200,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.005474
-            },
-            {
-                "time": 1789434000,
-                "type": "SCAN",
-                "price": 0.005274
-            },
-            {
-                "time": 1789442100,
-                "type": "RUNAWAY",
-                "price": 0.004825
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.19331464285714287_0.20322821428571428__MIRROR": {
-        "coin": "XLM",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.19331464285714287,
-        "level_max": 0.20322821428571428,
-        "level_date": "2026-08-23",
-        "level_type": "1d_extreme_peak + 1W_high_PWH+4h_poc",
-        "level_score": 9.0,
-        "events": [
-            {
-                "time": 1789401600,
-                "type": "ZONE_TOUCH",
-                "price": 0.1945
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_11.583107142857143_11.739892857142857__MIRROR": {
-        "coin": "LINK",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 2,
-        "history_log": "",
-        "level_min": 11.583107142857143,
-        "level_max": 11.739892857142857,
-        "level_date": "2026-09-14",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789407000,
-                "type": "ZONE_TOUCH",
-                "price": 11.588
-            },
-            {
-                "time": 1789415100,
-                "type": "SWEEP_BOTTOM",
-                "price": 11.741
-            },
-            {
-                "time": 1789497000,
-                "type": "SCAN",
-                "price": 11.148
-            },
-            {
-                "time": 1789497900,
-                "type": "RUNAWAY",
-                "price": 10.957
-            },
-            {
-                "time": 1789703100,
-                "type": "SWEEP_BOTTOM",
-                "price": 11.79
-            },
-            {
-                "time": 1789760700,
-                "type": "RUNAWAY",
-                "price": 12.382
-            },
-            {
-                "time": 1789777800,
-                "type": "RUNAWAY",
-                "price": 12.368
-            },
-            {
-                "time": 1789782300,
-                "type": "RUNAWAY",
-                "price": 12.336
-            },
-            {
-                "time": 1789794000,
-                "type": "RUNAWAY",
-                "price": 12.394
-            },
-            {
-                "time": 1789799400,
-                "type": "RUNAWAY",
-                "price": 12.357
-            },
-            {
-                "time": 1789804800,
-                "type": "RUNAWAY",
-                "price": 12.386
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_1.43017875_1.50352125__MIRROR": {
-        "coin": "XRP",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 1.43017875,
-        "level_max": 1.50352125,
-        "level_date": "2026-08-30",
-        "level_type": "1W_high_PWH",
-        "level_score": 6.0,
-        "events": [
-            {
-                "time": 1789407900,
-                "type": "ZONE_TOUCH",
-                "price": 1.4359
-            },
-            {
-                "time": 1789411500,
-                "type": "SWEEP_BOTTOM",
-                "price": 1.4778
-            },
-            {
-                "time": 1789497000,
-                "type": "SCAN",
-                "price": 1.3592
-            },
-            {
-                "time": 1789497900,
-                "type": "RUNAWAY",
-                "price": 1.313
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.39673928571428574_0.4052607142857143__MIRROR": {
-        "coin": "WLD",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 3,
-        "history_log": "",
-        "level_min": 0.39673928571428574,
-        "level_max": 0.4052607142857143,
-        "level_date": "2026-09-14",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789416900,
-                "type": "ZONE_TOUCH",
-                "price": 0.3994
-            },
-            {
-                "time": 1789698600,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.4102
-            },
-            {
-                "time": 1789699500,
-                "type": "SCAN",
-                "price": 0.4088
-            },
-            {
-                "time": 1789704900,
-                "type": "SCAN",
-                "price": 0.4176
-            },
-            {
-                "time": 1789714800,
-                "type": "RUNAWAY",
-                "price": 0.4293
-            },
-            {
-                "time": 1789765200,
-                "type": "RUNAWAY",
-                "price": 0.4266
-            },
-            {
-                "time": 1789773300,
-                "type": "RUNAWAY",
-                "price": 0.4264
-            },
-            {
-                "time": 1789774200,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.4268
-            },
-            {
-                "time": 1789776900,
-                "type": "RUNAWAY",
-                "price": 0.4261
-            },
-            {
-                "time": 1789782300,
-                "type": "RUNAWAY",
-                "price": 0.4294
-            },
-            {
-                "time": 1789813800,
-                "type": "RUNAWAY",
-                "price": 0.426
-            },
-            {
-                "time": 1789814700,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.4252
-            },
-            {
-                "time": 1789816500,
-                "type": "RUNAWAY",
-                "price": 0.4258
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.35553375000000004_0.37376625": {
-        "coin": "WLD",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.35553375000000004,
-        "level_max": 0.37376625,
-        "level_date": "2026-08-23",
-        "level_type": "1W_low_PWL",
-        "level_score": 6.0,
-        "events": [
-            {
-                "time": 1789452900,
-                "type": "ZONE_TOUCH",
-                "price": 0.3734
-            },
-            {
-                "time": 1789497900,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.3592
-            },
-            {
-                "time": 1789601400,
-                "type": "SCAN",
-                "price": 0.3731
-            },
-            {
-                "time": 1789663500,
-                "type": "SCAN",
-                "price": 0.3786
-            },
-            {
-                "time": 1789664400,
-                "type": "SCAN",
-                "price": 0.3797
-            },
-            {
-                "time": 1789695900,
-                "type": "RUNAWAY",
-                "price": 0.3939
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.036048535714285714_0.03789717857142857__MIRROR": {
-        "coin": "CVC",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.036048535714285714,
-        "level_max": 0.03789717857142857,
-        "level_date": "2026-03-17",
-        "level_type": "1d_extreme_peak + 1M_MACRO_Resistance+4h_poc",
-        "level_score": 6.5,
-        "events": [
-            {
-                "time": 1789443900,
-                "type": "ZONE_TOUCH",
-                "price": 0.03655
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.7391323526785715_0.7770365758928571__MIRROR": {
-        "coin": "BTW",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.7391323526785715,
-        "level_max": 0.7770365758928571,
-        "level_date": "2026-07-31",
-        "level_type": "1W_high_PWH + 1M_high_PMH + 1d_extreme_peak",
-        "level_score": 9.0,
-        "events": [
-            {
-                "time": 1789460100,
-                "type": "ZONE_TOUCH",
-                "price": 0.74226
-            },
-            {
-                "time": 1789532100,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.7642
-            },
-            {
-                "time": 1789533000,
-                "type": "SCAN",
-                "price": 0.74372
-            },
-            {
-                "time": 1789639200,
-                "type": "RUNAWAY",
-                "price": 0.69949
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_215.752875_226.817125": {
-        "coin": "TAO",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 215.752875,
-        "level_max": 226.817125,
-        "level_date": "2026-08-30",
-        "level_type": "1W_low_PWL+4h_poc",
-        "level_score": 7.0,
-        "events": [
-            {
-                "time": 1789458300,
-                "type": "ZONE_TOUCH",
-                "price": 225.01
-            },
-            {
-                "time": 1789497000,
-                "type": "SWEEP_BOTTOM",
-                "price": 219.78
-            },
-            {
-                "time": 1789568100,
-                "type": "SCAN",
-                "price": 215.82
-            },
-            {
-                "time": 1789600500,
-                "type": "SCAN",
-                "price": 221.69
-            },
-            {
-                "time": 1789601400,
-                "type": "SCAN",
-                "price": 221.91
-            },
-            {
-                "time": 1789603200,
-                "type": "SCAN",
-                "price": 223.8
-            },
-            {
-                "time": 1789664400,
-                "type": "SCAN",
-                "price": 229.28
-            },
-            {
-                "time": 1789699500,
-                "type": "RUNAWAY",
-                "price": 239.01
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_937.3106428571429_946.9113571428571__MIRROR": {
-        "coin": "MU",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 2,
-        "history_log": "",
-        "level_min": 937.3106428571429,
-        "level_max": 946.9113571428571,
-        "level_date": "2026-09-14",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789432200,
-                "type": "ZONE_TOUCH",
-                "price": 939.22
-            },
-            {
-                "time": 1789642800,
-                "type": "SWEEP_BOTTOM",
-                "price": 947.99
-            },
-            {
-                "time": 1789653600,
-                "type": "SCAN",
-                "price": 982.03
-            },
-            {
-                "time": 1789663500,
-                "type": "SCAN",
-                "price": 976.86
-            },
-            {
-                "time": 1789710300,
-                "type": "SCAN",
-                "price": 988.36
-            },
-            {
-                "time": 1789715700,
-                "type": "RUNAWAY",
-                "price": 995.12
-            },
-            {
-                "time": 1789716600,
-                "type": "SWEEP_BOTTOM",
-                "price": 995.56
-            },
-            {
-                "time": 1789718400,
-                "type": "SCAN",
-                "price": 991.92
-            },
-            {
-                "time": 1789741800,
-                "type": "RUNAWAY",
-                "price": 994.5
-            },
-            {
-                "time": 1789749900,
-                "type": "RUNAWAY",
-                "price": 994.3
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_1.8602999999999998_1.9557": {
-        "coin": "TRUMP",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 1.8602999999999998,
-        "level_max": 1.9557,
-        "level_date": "2026-09-06",
-        "level_type": "1W_low_PWL",
-        "level_score": 5.5,
-        "events": [
-            {
-                "time": 1789448400,
-                "type": "ZONE_TOUCH",
-                "price": 1.948
-            },
-            {
-                "time": 1789497900,
-                "type": "SWEEP_BOTTOM",
-                "price": 1.863
-            },
-            {
-                "time": 1789624800,
-                "type": "SCAN",
-                "price": 1.951
-            },
-            {
-                "time": 1789663500,
-                "type": "SCAN",
-                "price": 1.955
-            },
-            {
-                "time": 1789700400,
-                "type": "SCAN",
-                "price": 2.036
-            },
-            {
-                "time": 1789701300,
-                "type": "SCAN",
-                "price": 2.052
-            },
-            {
-                "time": 1789703100,
-                "type": "RUNAWAY",
-                "price": 2.061
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.135369_0.142311__MIRROR": {
-        "coin": "POWER",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 4,
-        "history_log": "",
-        "level_min": 0.135369,
-        "level_max": 0.142311,
-        "level_date": "2026-09-06",
-        "level_type": "1W_high_PWH",
-        "level_score": 5.5,
-        "events": [
-            {
-                "time": 1789415100,
-                "type": "ZONE_TOUCH",
-                "price": 0.13793
-            },
-            {
-                "time": 1789416000,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.14034
-            },
-            {
-                "time": 1789423200,
-                "type": "SCAN",
-                "price": 0.14343
-            },
-            {
-                "time": 1789427700,
-                "type": "RUNAWAY",
-                "price": 0.15018
-            },
-            {
-                "time": 1789428600,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.15145
-            },
-            {
-                "time": 1789429500,
-                "type": "RUNAWAY",
-                "price": 0.15017
-            },
-            {
-                "time": 1789434000,
-                "type": "SCAN",
-                "price": 0.14114
-            },
-            {
-                "time": 1789436700,
-                "type": "RUNAWAY",
-                "price": 0.15046
-            },
-            {
-                "time": 1789531200,
-                "type": "SCAN",
-                "price": 0.13796
-            },
-            {
-                "time": 1789545600,
-                "type": "RUNAWAY",
-                "price": 0.15
-            },
-            {
-                "time": 1789546500,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.14806
-            },
-            {
-                "time": 1789565400,
-                "type": "RUNAWAY",
-                "price": 0.12563
-            },
-            {
-                "time": 1789614900,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.14124
-            },
-            {
-                "time": 1789634700,
-                "type": "RUNAWAY",
-                "price": 0.1259
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.12275250000000001_0.1290475__MIRROR": {
-        "coin": "PUNDIX",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.12275250000000001,
-        "level_max": 0.1290475,
-        "level_date": "2026-06-27",
-        "level_type": "1d_extreme_peak+4h_poc",
-        "level_score": 6.0,
-        "events": [
-            {
-                "time": 1789462800,
-                "type": "ZONE_TOUCH",
-                "price": 0.12441
-            },
-            {
-                "time": 1789547400,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.12645
-            },
-            {
-                "time": 1789554600,
-                "type": "RUNAWAY",
-                "price": 0.1148
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.93054_0.97826": {
-        "coin": "DOT",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.93054,
-        "level_max": 0.97826,
-        "level_date": "2026-09-06",
-        "level_type": "1W_low_PWL",
-        "level_score": 6.0,
-        "events": [
-            {
-                "time": 1789459200,
-                "type": "ZONE_TOUCH",
-                "price": 0.9774
-            },
-            {
-                "time": 1789497000,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.9514
-            },
-            {
-                "time": 1789560000,
-                "type": "SCAN",
-                "price": 0.9767
-            },
-            {
-                "time": 1789602300,
-                "type": "SCAN",
-                "price": 1.0185
-            },
-            {
-                "time": 1789603200,
-                "type": "RUNAWAY",
-                "price": 1.03
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.0607425_0.0638575__MIRROR": {
-        "coin": "CAP",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.0607425,
-        "level_max": 0.0638575,
-        "level_date": "2026-09-15",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789476300,
-                "type": "ZONE_TOUCH",
-                "price": 0.06366
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_2.325765_2.4450350000000003__MIRROR": {
-        "coin": "PENDLE",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 5,
-        "history_log": "",
-        "level_min": 2.325765,
-        "level_max": 2.4450350000000003,
-        "level_date": "2026-01-06",
-        "level_type": "1d_extreme_peak",
-        "level_score": 5.5,
-        "events": [
-            {
-                "time": 1789474500,
-                "type": "ZONE_TOUCH",
-                "price": 2.327
-            },
-            {
-                "time": 1789697700,
-                "type": "SWEEP_BOTTOM",
-                "price": 2.403
-            },
-            {
-                "time": 1789733700,
-                "type": "RUNAWAY",
-                "price": 2.643
-            },
-            {
-                "time": 1789745400,
-                "type": "RUNAWAY",
-                "price": 2.618
-            },
-            {
-                "time": 1789746300,
-                "type": "SWEEP_BOTTOM",
-                "price": 2.604
-            },
-            {
-                "time": 1789754400,
-                "type": "RUNAWAY",
-                "price": 2.621
-            },
-            {
-                "time": 1789758900,
-                "type": "RUNAWAY",
-                "price": 2.623
-            },
-            {
-                "time": 1789759800,
-                "type": "SWEEP_BOTTOM",
-                "price": 2.618
-            },
-            {
-                "time": 1789761600,
-                "type": "RUNAWAY",
-                "price": 2.618
-            },
-            {
-                "time": 1789762500,
-                "type": "SWEEP_BOTTOM",
-                "price": 2.62
-            },
-            {
-                "time": 1789763400,
-                "type": "RUNAWAY",
-                "price": 2.639
-            },
-            {
-                "time": 1789769700,
-                "type": "RUNAWAY",
-                "price": 2.625
-            },
-            {
-                "time": 1789770600,
-                "type": "SWEEP_BOTTOM",
-                "price": 2.62
-            },
-            {
-                "time": 1789781400,
-                "type": "RUNAWAY",
-                "price": 2.617
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.16623749999999998_0.1747625__MIRROR": {
-        "coin": "POWER",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.16623749999999998,
-        "level_max": 0.1747625,
-        "level_date": "2026-09-15",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789476300,
-                "type": "ZONE_TOUCH",
-                "price": 0.17019
-            },
-            {
-                "time": 1789477200,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.18021
-            },
-            {
-                "time": 1789498800,
-                "type": "RUNAWAY",
-                "price": 0.19071
-            },
-            {
-                "time": 1789510500,
-                "type": "RUNAWAY",
-                "price": 0.18732
-            },
-            {
-                "time": 1789531200,
-                "type": "RUNAWAY",
-                "price": 0.13796
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.0790075_0.08039249999999999__MIRROR": {
-        "coin": "HBAR",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.0790075,
-        "level_max": 0.08039249999999999,
-        "level_date": "2026-09-15",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789477200,
-                "type": "ZONE_TOUCH",
-                "price": 0.07932
-            },
-            {
-                "time": 1789817400,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.08048
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_339.144_356.53600000000006": {
-        "coin": "TSLA",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 339.144,
-        "level_max": 356.53600000000006,
-        "level_date": "2026-08-23",
-        "level_type": "1W_low_PWL+4h_poc",
-        "level_score": 7.5,
-        "events": [
-            {
-                "time": 1789479000,
-                "type": "ZONE_TOUCH",
-                "price": 355.34
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_1.2611625_1.3258374999999998": {
-        "coin": "RAYDIUM",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 1.2611625,
-        "level_max": 1.3258374999999998,
-        "level_date": "2026-09-14",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789481700,
-                "type": "ZONE_TOUCH",
-                "price": 1.3207
-            },
-            {
-                "time": 1789484400,
-                "type": "SWEEP_BOTTOM",
-                "price": 1.2577
-            },
-            {
-                "time": 1789565400,
-                "type": "SCAN",
-                "price": 1.3768
-            },
-            {
-                "time": 1789581600,
-                "type": "SCAN",
-                "price": 1.3485
-            },
-            {
-                "time": 1789597800,
-                "type": "SCAN",
-                "price": 1.3731
-            },
-            {
-                "time": 1789606800,
-                "type": "RUNAWAY",
-                "price": 1.4228
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_52.313625_54.996375": {
-        "coin": "DRAM",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 52.313625,
-        "level_max": 54.996375,
-        "level_date": "2026-08-16",
-        "level_type": "1W_low_PWL",
-        "level_score": 6.0,
-        "events": [
-            {
-                "time": 1789485300,
-                "type": "ZONE_TOUCH",
-                "price": 54.99
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.1894425_0.1991575": {
-        "coin": "ADA",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.1894425,
-        "level_max": 0.1991575,
-        "level_date": "2026-08-23",
-        "level_type": "1W_low_PWL",
-        "level_score": 5.5,
-        "events": [
-            {
-                "time": 1789497000,
-                "type": "ZONE_TOUCH",
-                "price": 0.1981
-            },
-            {
-                "time": 1789509600,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.1937
-            },
-            {
-                "time": 1789601400,
-                "type": "SCAN",
-                "price": 0.1961
-            },
-            {
-                "time": 1789663500,
-                "type": "SCAN",
-                "price": 0.2023
-            },
-            {
-                "time": 1789664400,
-                "type": "SCAN",
-                "price": 0.2025
-            },
-            {
-                "time": 1789696800,
-                "type": "RUNAWAY",
-                "price": 0.21
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.0534885_0.0562315": {
-        "coin": "WLFI",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.0534885,
-        "level_max": 0.0562315,
-        "level_date": "2026-08-23",
-        "level_type": "1W_low_PWL+4h_poc",
-        "level_score": 7.5,
-        "events": [
-            {
-                "time": 1789497000,
-                "type": "ZONE_TOUCH",
-                "price": 0.05583
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_6.954187500000001_7.3108125": {
-        "coin": "AVAX",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 6.954187500000001,
-        "level_max": 7.3108125,
-        "level_date": "2026-08-23",
-        "level_type": "1W_low_PWL",
-        "level_score": 6.0,
-        "events": [
-            {
-                "time": 1789497900,
-                "type": "ZONE_TOUCH",
-                "price": 7.255
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_94.05765000000001_96.92235000000001": {
-        "coin": "SOL",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 94.05765000000001,
-        "level_max": 96.92235000000001,
-        "level_date": "2026-08-23",
-        "level_type": "1W_low_PWL",
-        "level_score": 6.5,
-        "events": [
-            {
-                "time": 1789497900,
-                "type": "ZONE_TOUCH",
-                "price": 96.8
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.13149824999999998_0.13824175": {
-        "coin": "ENA",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.13149824999999998,
-        "level_max": 0.13824175,
-        "level_date": "2026-08-23",
-        "level_type": "1W_low_PWL",
-        "level_score": 6.5,
-        "events": [
-            {
-                "time": 1789497900,
-                "type": "ZONE_TOUCH",
-                "price": 0.13663
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_5.1674999999999995_5.4325": {
-        "coin": "INJ",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 5.1674999999999995,
-        "level_max": 5.4325,
-        "level_date": "2026-09-06",
-        "level_type": "1W_low_PWL+4h_poc",
-        "level_score": 7.0,
-        "events": [
-            {
-                "time": 1789497900,
-                "type": "ZONE_TOUCH",
-                "price": 5.432
-            },
-            {
-                "time": 1789572600,
-                "type": "SWEEP_BOTTOM",
-                "price": 5.288
-            },
-            {
-                "time": 1789654500,
-                "type": "RUNAWAY",
-                "price": 5.72
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.16755375_0.17614625": {
-        "coin": "XLM",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.16755375,
-        "level_max": 0.17614625,
-        "level_date": "2026-08-23",
-        "level_type": "1W_low_PWL",
-        "level_score": 6.5,
-        "events": [
-            {
-                "time": 1789497900,
-                "type": "ZONE_TOUCH",
-                "price": 0.1758
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_469.95975_494.06025": {
-        "coin": "XMR",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 469.95975,
-        "level_max": 494.06025,
-        "level_date": "2026-08-30",
-        "level_type": "1W_low_PWL+4h_poc",
-        "level_score": 8.0,
-        "events": [
-            {
-                "time": 1789503300,
-                "type": "ZONE_TOUCH",
-                "price": 493.52
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.229125_0.24087499999999998__MIRROR": {
-        "coin": "USELESS",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.229125,
-        "level_max": 0.24087499999999998,
-        "level_date": "2026-09-14",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789533000,
-                "type": "ZONE_TOUCH",
-                "price": 0.23132
-            },
-            {
-                "time": 1789542000,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.2423
-            },
-            {
-                "time": 1789615800,
-                "type": "RUNAWAY",
-                "price": 0.25457
-            },
-            {
-                "time": 1789659900,
-                "type": "RUNAWAY",
-                "price": 0.25393
-            },
-            {
-                "time": 1789709400,
-                "type": "SCAN",
-                "price": 0.25059
-            },
-            {
-                "time": 1789710300,
-                "type": "RUNAWAY",
-                "price": 0.25686
-            },
-            {
-                "time": 1789741800,
-                "type": "RUNAWAY",
-                "price": 0.25417
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.212199_0.223081": {
-        "coin": "BR",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.212199,
-        "level_max": 0.223081,
-        "level_date": "2026-08-30",
-        "level_type": "1W_low_PWL+4h_poc",
-        "level_score": 7.0,
-        "events": [
-            {
-                "time": 1789531200,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.21661
-            },
-            {
-                "time": 1789551900,
-                "type": "RUNAWAY",
-                "price": 0.26777
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.2704364_0.2745236": {
-        "coin": "BR",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.2704364,
-        "level_max": 0.2745236,
-        "level_date": "2026-03-01",
-        "level_type": "1M_MACRO_Resistance",
-        "level_score": 5.0,
-        "events": [],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.1233375_0.1296625": {
-        "coin": "POWER",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 3,
-        "history_log": "",
-        "level_min": 0.1233375,
-        "level_max": 0.1296625,
-        "level_date": "2026-09-14",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789531200,
-                "type": "ZONE_TOUCH",
-                "price": 0.12707
-            },
-            {
-                "time": 1789566300,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.12227
-            },
-            {
-                "time": 1789567200,
-                "type": "RUNAWAY",
-                "price": 0.11583
-            },
-            {
-                "time": 1789568100,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.11424
-            },
-            {
-                "time": 1789614000,
-                "type": "RUNAWAY",
-                "price": 0.13628
-            },
-            {
-                "time": 1789634700,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.123
-            },
-            {
-                "time": 1789799400,
-                "type": "SCAN",
-                "price": 0.12529
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.057470714285714285_0.06936785714285715__MIRROR": {
-        "coin": "WLFI",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.057470714285714285,
-        "level_max": 0.06936785714285715,
-        "level_date": "2026-05-31",
-        "level_type": "1W_high_PWH + 1d_extreme_peak + 1M_high_PMH+4h_poc + 1M_high_PMH + 1d_extreme_peak",
-        "level_score": 12.0,
-        "events": [
-            {
-                "time": 1789531200,
-                "type": "ZONE_TOUCH",
-                "price": 0.05753
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_4346.860785714285_4365.082214285714__MIRROR": {
-        "coin": "XAUT",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 4346.860785714285,
-        "level_max": 4365.082214285714,
-        "level_date": "2026-09-14",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789556400,
-                "type": "ZONE_TOUCH",
-                "price": 4349.4
-            },
-            {
-                "time": 1789648200,
-                "type": "SWEEP_BOTTOM",
-                "price": 4374.5
-            },
-            {
-                "time": 1789682400,
-                "type": "SCAN",
-                "price": 4343.1
-            },
-            {
-                "time": 1789701300,
-                "type": "SCAN",
-                "price": 4340.8
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.312585_0.328615": {
-        "coin": "UAI",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.312585,
-        "level_max": 0.328615,
-        "level_date": "2026-05-31",
-        "level_type": "1M_low_PML + 1W_low_PWL + 1d_extreme_peak+4h_poc",
-        "level_score": 10.0,
-        "events": [
-            {
-                "time": 1789557300,
-                "type": "ZONE_TOUCH",
-                "price": 0.3272
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_1227.7785_1290.7415__MIRROR": {
-        "coin": "ZEC",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 2,
-        "history_log": "",
-        "level_min": 1227.7785,
-        "level_max": 1290.7415,
-        "level_date": "2026-08-30",
-        "level_type": "1W_high_PWH",
-        "level_score": 6.0,
-        "events": [
-            {
-                "time": 1789559100,
-                "type": "ZONE_TOUCH",
-                "price": 1238.57
-            },
-            {
-                "time": 1789566300,
-                "type": "SWEEP_BOTTOM",
-                "price": 1275.0
-            },
-            {
-                "time": 1789607700,
-                "type": "RUNAWAY",
-                "price": 1365.44
-            },
-            {
-                "time": 1789623900,
-                "type": "RUNAWAY",
-                "price": 1358.01
-            },
-            {
-                "time": 1789629300,
-                "type": "RUNAWAY",
-                "price": 1357.66
-            },
-            {
-                "time": 1789644600,
-                "type": "RUNAWAY",
-                "price": 1355.9
-            },
-            {
-                "time": 1789645500,
-                "type": "SWEEP_BOTTOM",
-                "price": 1348.18
-            },
-            {
-                "time": 1789646400,
-                "type": "RUNAWAY",
-                "price": 1368.91
-            },
-            {
-                "time": 1789653600,
-                "type": "RUNAWAY",
-                "price": 1370.18
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.6479849999999999_0.681215": {
-        "coin": "ASTER",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.6479849999999999,
-        "level_max": 0.681215,
-        "level_date": "2026-08-23",
-        "level_type": "1W_low_PWL+4h_poc",
-        "level_score": 8.0,
-        "events": [
-            {
-                "time": 1789482600,
-                "type": "ZONE_TOUCH",
-                "price": 0.6791
-            },
-            {
-                "time": 1789497900,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.66
-            },
-            {
-                "time": 1789597800,
-                "type": "SCAN",
-                "price": 0.697
-            },
-            {
-                "time": 1789600500,
-                "type": "SCAN",
-                "price": 0.7011
-            },
-            {
-                "time": 1789603200,
-                "type": "SCAN",
-                "price": 0.7055
-            },
-            {
-                "time": 1789612200,
-                "type": "RUNAWAY",
-                "price": 0.7164
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.58695_0.61705": {
-        "coin": "VIRTUAL",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.58695,
-        "level_max": 0.61705,
-        "level_date": "2026-09-06",
-        "level_type": "1W_low_PWL",
-        "level_score": 5.5,
-        "events": [
-            {
-                "time": 1789383600,
-                "type": "ZONE_TOUCH",
-                "price": 0.6137
-            },
-            {
-                "time": 1789449300,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.602
-            },
-            {
-                "time": 1789461000,
-                "type": "SCAN",
-                "price": 0.6024
-            },
-            {
-                "time": 1789497900,
-                "type": "SCAN",
-                "price": 0.5942
-            },
-            {
-                "time": 1789601400,
-                "type": "SCAN",
-                "price": 0.5997
-            },
-            {
-                "time": 1789663500,
-                "type": "SCAN",
-                "price": 0.6116
-            },
-            {
-                "time": 1789665300,
-                "type": "SCAN",
-                "price": 0.6116
-            },
-            {
-                "time": 1789692300,
-                "type": "SCAN",
-                "price": 0.619
-            },
-            {
-                "time": 1789693200,
-                "type": "SCAN",
-                "price": 0.6209
-            },
-            {
-                "time": 1789700400,
-                "type": "SCAN",
-                "price": 0.6375
-            },
-            {
-                "time": 1789701300,
-                "type": "SCAN",
-                "price": 0.6389
-            },
-            {
-                "time": 1789726500,
-                "type": "RUNAWAY",
-                "price": 0.6486
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.5060250000000001_0.531975__MIRROR": {
-        "coin": "BR",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.5060250000000001,
-        "level_max": 0.531975,
-        "level_date": "2026-09-16",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789561800,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.563
-            },
-            {
-                "time": 1789563600,
-                "type": "RUNAWAY",
-                "price": 0.57481
-            },
-            {
-                "time": 1789565400,
-                "type": "SCAN",
-                "price": 0.50317
-            },
-            {
-                "time": 1789567200,
-                "type": "RUNAWAY",
-                "price": 0.59812
-            },
-            {
-                "time": 1789636500,
-                "type": "RUNAWAY",
-                "price": 0.59757
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_647.1267857142857_649.3882142857142__MIRROR": {
-        "coin": "META",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 647.1267857142857,
-        "level_max": 649.3882142857142,
-        "level_date": "2026-09-13",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_647.0510714285715_651.6839285714286": {
-        "coin": "META",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 647.0510714285715,
-        "level_max": 651.6839285714286,
-        "level_date": "2026-09-14",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789392600,
-                "type": "ZONE_TOUCH",
-                "price": 649.6
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.33061071428571426_0.3359892857142857": {
-        "coin": "TRX",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.33061071428571426,
-        "level_max": 0.3359892857142857,
-        "level_date": "2026-09-06",
-        "level_type": "1W_low_PWL",
-        "level_score": 6.0,
-        "events": [
-            {
-                "time": 1789498800,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.332
-            },
-            {
-                "time": 1789539300,
-                "type": "SCAN",
-                "price": 0.3346
-            },
-            {
-                "time": 1789666200,
-                "type": "SCAN",
-                "price": 0.3338
-            },
-            {
-                "time": 1789675200,
-                "type": "SCAN",
-                "price": 0.3351
-            },
-            {
-                "time": 1789703100,
-                "type": "SCAN",
-                "price": 0.3361
-            },
-            {
-                "time": 1789715700,
-                "type": "SCAN",
-                "price": 0.3363
-            },
-            {
-                "time": 1789776900,
-                "type": "SCAN",
-                "price": 0.338
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.004745325_0.004988675": {
-        "coin": "SHIB1000",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.004745325,
-        "level_max": 0.004988675,
-        "level_date": "2026-08-23",
-        "level_type": "1W_low_PWL",
-        "level_score": 6.5,
-        "events": [
-            {
-                "time": 1789560000,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.004865
-            },
-            {
-                "time": 1789601400,
-                "type": "SCAN",
-                "price": 0.00498
-            },
-            {
-                "time": 1789660800,
-                "type": "SCAN",
-                "price": 0.005196
-            },
-            {
-                "time": 1789661700,
-                "type": "SCAN",
-                "price": 0.00522
-            },
-            {
-                "time": 1789663500,
-                "type": "RUNAWAY",
-                "price": 0.005257
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_1.5288000000000002_1.6072": {
-        "coin": "ATOM",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 1.5288000000000002,
-        "level_max": 1.6072,
-        "level_date": "2026-09-06",
-        "level_type": "1W_low_PWL",
-        "level_score": 6.0,
-        "events": [
-            {
-                "time": 1789498800,
-                "type": "SWEEP_BOTTOM",
-                "price": 1.529
-            },
-            {
-                "time": 1789602300,
-                "type": "SCAN",
-                "price": 1.519
-            },
-            {
-                "time": 1789662600,
-                "type": "SCAN",
-                "price": 1.564
-            },
-            {
-                "time": 1789689600,
-                "type": "SCAN",
-                "price": 1.576
-            },
-            {
-                "time": 1789700400,
-                "type": "SCAN",
-                "price": 1.606
-            },
-            {
-                "time": 1789702200,
-                "type": "SCAN",
-                "price": 1.615
-            },
-            {
-                "time": 1789704000,
-                "type": "SCAN",
-                "price": 1.624
-            },
-            {
-                "time": 1789746300,
-                "type": "RUNAWAY",
-                "price": 1.688
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.7524075_0.7909925000000001": {
-        "coin": "FIL",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.7524075,
-        "level_max": 0.7909925000000001,
-        "level_date": "2026-09-06",
-        "level_type": "1W_low_PWL",
-        "level_score": 6.5,
-        "events": [
-            {
-                "time": 1789562700,
-                "type": "ZONE_TOUCH",
-                "price": 0.7813
-            },
-            {
-                "time": 1789572600,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.77
-            },
-            {
-                "time": 1789619400,
-                "type": "SCAN",
-                "price": 0.7963
-            },
-            {
-                "time": 1789648200,
-                "type": "SCAN",
-                "price": 0.8134
-            },
-            {
-                "time": 1789686900,
-                "type": "RUNAWAY",
-                "price": 0.8381
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_84.7275_89.0725": {
-        "coin": "CRCL",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 84.7275,
-        "level_max": 89.0725,
-        "level_date": "2026-08-23",
-        "level_type": "1W_low_PWL",
-        "level_score": 6.0,
-        "events": [
-            {
-                "time": 1789664400,
-                "type": "SWEEP_BOTTOM",
-                "price": 85.0
-            },
-            {
-                "time": 1789738200,
-                "type": "SCAN",
-                "price": 89.14
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_152.2992857142857_157.22071428571428__MIRROR": {
-        "coin": "SPCX",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 152.2992857142857,
-        "level_max": 157.22071428571428,
-        "level_date": "2026-09-06",
-        "level_type": "1W_high_PWH + 1d_extreme_peak",
-        "level_score": 8.0,
-        "events": [
-            {
-                "time": 1789570800,
-                "type": "ZONE_TOUCH",
-                "price": 152.57
-            },
-            {
-                "time": 1789654500,
-                "type": "SWEEP_BOTTOM",
-                "price": 155.98
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_119.19375_125.30625": {
-        "coin": "MSTR",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 119.19375,
-        "level_max": 125.30625,
-        "level_date": "2026-08-23",
-        "level_type": "1W_low_PWL+4h_poc",
-        "level_score": 7.0,
-        "events": [
-            {
-                "time": 1789581600,
-                "type": "ZONE_TOUCH",
-                "price": 124.84
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.6957857142857142_0.7082142857142857__MIRROR": {
-        "coin": "ASTER",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 2,
-        "history_log": "",
-        "level_min": 0.6957857142857142,
-        "level_max": 0.7082142857142857,
-        "level_date": "2026-09-16",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789597800,
-                "type": "ZONE_TOUCH",
-                "price": 0.697
-            },
-            {
-                "time": 1789605000,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.7122
-            },
-            {
-                "time": 1789622100,
-                "type": "SCAN",
-                "price": 0.7298
-            },
-            {
-                "time": 1789623000,
-                "type": "SCAN",
-                "price": 0.7264
-            },
-            {
-                "time": 1789659900,
-                "type": "RUNAWAY",
-                "price": 0.7457
-            },
-            {
-                "time": 1789667100,
-                "type": "RUNAWAY",
-                "price": 0.7441
-            },
-            {
-                "time": 1789668000,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.7444
-            },
-            {
-                "time": 1789677000,
-                "type": "RUNAWAY",
-                "price": 0.7448
-            },
-            {
-                "time": 1789681500,
-                "type": "SCAN",
-                "price": 0.7426
-            },
-            {
-                "time": 1789689600,
-                "type": "RUNAWAY",
-                "price": 0.7445
-            },
-            {
-                "time": 1789698600,
-                "type": "RUNAWAY",
-                "price": 0.7439
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_57.66425_58.53575__MIRROR": {
-        "coin": "DASH",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 6,
-        "history_log": "",
-        "level_min": 57.66425,
-        "level_max": 58.53575,
-        "level_date": "2026-05-01",
-        "level_type": "1M_MACRO_Resistance",
-        "level_score": 5.0,
-        "events": [
-            {
-                "time": 1789606800,
-                "type": "SWEEP_BOTTOM",
-                "price": 58.16
-            },
-            {
-                "time": 1789610400,
-                "type": "SCAN",
-                "price": 58.36
-            },
-            {
-                "time": 1789661700,
-                "type": "RUNAWAY",
-                "price": 61.55
-            },
-            {
-                "time": 1789663500,
-                "type": "SCAN",
-                "price": 61.39
-            },
-            {
-                "time": 1789664400,
-                "type": "RUNAWAY",
-                "price": 61.53
-            },
-            {
-                "time": 1789667100,
-                "type": "RUNAWAY",
-                "price": 61.56
-            },
-            {
-                "time": 1789671600,
-                "type": "SCAN",
-                "price": 59.7
-            },
-            {
-                "time": 1789675200,
-                "type": "RUNAWAY",
-                "price": 61.52
-            },
-            {
-                "time": 1789680600,
-                "type": "RUNAWAY",
-                "price": 61.58
-            },
-            {
-                "time": 1789681500,
-                "type": "SWEEP_BOTTOM",
-                "price": 61.59
-            },
-            {
-                "time": 1789698600,
-                "type": "RUNAWAY",
-                "price": 61.54
-            },
-            {
-                "time": 1789699500,
-                "type": "SWEEP_BOTTOM",
-                "price": 61.87
-            },
-            {
-                "time": 1789700400,
-                "type": "RUNAWAY",
-                "price": 61.73
-            },
-            {
-                "time": 1789701300,
-                "type": "SWEEP_BOTTOM",
-                "price": 61.95
-            },
-            {
-                "time": 1789703100,
-                "type": "RUNAWAY",
-                "price": 61.67
-            },
-            {
-                "time": 1789704000,
-                "type": "SWEEP_BOTTOM",
-                "price": 61.68
-            },
-            {
-                "time": 1789707600,
-                "type": "RUNAWAY",
-                "price": 62.27
-            },
-            {
-                "time": 1789767900,
-                "type": "RUNAWAY",
-                "price": 61.64
-            },
-            {
-                "time": 1789768800,
-                "type": "SWEEP_BOTTOM",
-                "price": 61.45
-            },
-            {
-                "time": 1789769700,
-                "type": "RUNAWAY",
-                "price": 61.54
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.3472642857142857_0.35673571428571427__MIRROR": {
-        "coin": "TIA",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.3472642857142857,
-        "level_max": 0.35673571428571427,
-        "level_date": "2026-09-16",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789608600,
-                "type": "ZONE_TOUCH",
-                "price": 0.3478
-            },
-            {
-                "time": 1789692300,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.3587
-            },
-            {
-                "time": 1789701300,
-                "type": "RUNAWAY",
-                "price": 0.38
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_4.9983375_5.2546625__MIRROR": {
-        "coin": "LIT",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 2,
-        "history_log": "",
-        "level_min": 4.9983375,
-        "level_max": 5.2546625,
-        "level_date": "2026-08-30",
-        "level_type": "1W_high_PWH + 1d_extreme_peak",
-        "level_score": 8.0,
-        "events": [
-            {
-                "time": 1789634700,
-                "type": "ZONE_TOUCH",
-                "price": 5.009
-            },
-            {
-                "time": 1789716600,
-                "type": "SWEEP_BOTTOM",
-                "price": 5.144
-            },
-            {
-                "time": 1789741800,
-                "type": "SCAN",
-                "price": 4.907
-            },
-            {
-                "time": 1789751700,
-                "type": "RUNAWAY",
-                "price": 4.714
-            },
-            {
-                "time": 1789813800,
-                "type": "SWEEP_BOTTOM",
-                "price": 5.177
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.18019285714285713_0.18580714285714287__MIRROR": {
-        "coin": "XLM",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 4,
-        "history_log": "",
-        "level_min": 0.18019285714285713,
-        "level_max": 0.18580714285714287,
-        "level_date": "2026-09-17",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789647300,
-                "type": "ZONE_TOUCH",
-                "price": 0.1831
-            },
-            {
-                "time": 1789655400,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.1861
-            },
-            {
-                "time": 1789661700,
-                "type": "SCAN",
-                "price": 0.1864
-            },
-            {
-                "time": 1789662600,
-                "type": "SCAN",
-                "price": 0.186
-            },
-            {
-                "time": 1789704000,
-                "type": "SCAN",
-                "price": 0.1878
-            },
-            {
-                "time": 1789760700,
-                "type": "RUNAWAY",
-                "price": 0.1952
-            },
-            {
-                "time": 1789761600,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.1952
-            },
-            {
-                "time": 1789777800,
-                "type": "RUNAWAY",
-                "price": 0.196
-            },
-            {
-                "time": 1789785000,
-                "type": "RUNAWAY",
-                "price": 0.1952
-            },
-            {
-                "time": 1789785900,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.1958
-            },
-            {
-                "time": 1789786800,
-                "type": "RUNAWAY",
-                "price": 0.1955
-            },
-            {
-                "time": 1789787700,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.1955
-            },
-            {
-                "time": 1789790400,
-                "type": "RUNAWAY",
-                "price": 0.1956
-            },
-            {
-                "time": 1789794900,
-                "type": "RUNAWAY",
-                "price": 0.1954
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.019305_0.020294999999999997__MIRROR": {
-        "coin": "SAGA",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.019305,
-        "level_max": 0.020294999999999997,
-        "level_date": "2026-09-17",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789738200,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.020306
-            },
-            {
-                "time": 1789750800,
-                "type": "RUNAWAY",
-                "price": 0.027694
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.2975515_0.3020485__MIRROR": {
-        "coin": "AVA",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 2,
-        "history_log": "",
-        "level_min": 0.2975515,
-        "level_max": 0.3020485,
-        "level_date": "2026-05-01",
-        "level_type": "1M_MACRO_Resistance",
-        "level_score": 5.0,
-        "events": [
-            {
-                "time": 1789649100,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.3157
-            },
-            {
-                "time": 1789660800,
-                "type": "RUNAWAY",
-                "price": 0.2753
-            },
-            {
-                "time": 1789664400,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.3079
-            },
-            {
-                "time": 1789674300,
-                "type": "RUNAWAY",
-                "price": 0.2814
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.27885_0.29314999999999997": {
-        "coin": "AVA",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 3,
-        "history_log": "",
-        "level_min": 0.27885,
-        "level_max": 0.29314999999999997,
-        "level_date": "2026-09-17",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789648200,
-                "type": "ZONE_TOUCH",
-                "price": 0.2866
-            },
-            {
-                "time": 1789660800,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.2698
-            },
-            {
-                "time": 1789686000,
-                "type": "RUNAWAY",
-                "price": 0.2532
-            },
-            {
-                "time": 1789691400,
-                "type": "RUNAWAY",
-                "price": 0.2649
-            },
-            {
-                "time": 1789698600,
-                "type": "RUNAWAY",
-                "price": 0.2594
-            },
-            {
-                "time": 1789699500,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.262
-            },
-            {
-                "time": 1789705800,
-                "type": "RUNAWAY",
-                "price": 0.2579
-            },
-            {
-                "time": 1789714800,
-                "type": "RUNAWAY",
-                "price": 0.2634
-            },
-            {
-                "time": 1789730100,
-                "type": "RUNAWAY",
-                "price": 0.2637
-            },
-            {
-                "time": 1789731000,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.2631
-            },
-            {
-                "time": 1789731900,
-                "type": "RUNAWAY",
-                "price": 0.2602
-            },
-            {
-                "time": 1789744500,
-                "type": "RUNAWAY",
-                "price": 0.2528
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_23.501464285714285_24.618535714285713": {
-        "coin": "VVV",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 23.501464285714285,
-        "level_max": 24.618535714285713,
-        "level_date": "2026-09-17",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789650900,
-                "type": "ZONE_TOUCH",
-                "price": 24.507
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_7.2052499999999995_7.57475__MIRROR": {
-        "coin": "UNI",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 7.2052499999999995,
-        "level_max": 7.57475,
-        "level_date": "2026-08-30",
-        "level_type": "1W_high_PWH + 1d_extreme_peak",
-        "level_score": 8.0,
-        "events": [
-            {
-                "time": 1789653600,
-                "type": "ZONE_TOUCH",
-                "price": 7.268
-            },
-            {
-                "time": 1789662600,
-                "type": "SWEEP_BOTTOM",
-                "price": 7.395
-            },
-            {
-                "time": 1789682400,
-                "type": "SCAN",
-                "price": 7.579
-            },
-            {
-                "time": 1789700400,
-                "type": "RUNAWAY",
-                "price": 8.146
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_370.8069508928571_389.8226919642857__MIRROR": {
-        "coin": "TSLA",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 370.8069508928571,
-        "level_max": 389.8226919642857,
-        "level_date": "2026-08-30",
-        "level_type": "1W_high_PWH + 1d_extreme_peak",
-        "level_score": 7.5,
-        "events": [
-            {
-                "time": 1789653600,
-                "type": "ZONE_TOUCH",
-                "price": 370.93
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.05680607142857143_0.057593928571428574": {
-        "coin": "WLFI",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.05680607142857143,
-        "level_max": 0.057593928571428574,
-        "level_date": "2026-09-17",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789657200,
-                "type": "ZONE_TOUCH",
-                "price": 0.05739
-            },
-            {
-                "time": 1789662600,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.05643
-            },
-            {
-                "time": 1789666200,
-                "type": "SCAN",
-                "price": 0.0575
-            },
-            {
-                "time": 1789667100,
-                "type": "SCAN",
-                "price": 0.0577
-            },
-            {
-                "time": 1789701300,
-                "type": "SCAN",
-                "price": 0.05854
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_3.1020600000000003_3.2611400000000006__MIRROR": {
-        "coin": "NEAR",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 3.1020600000000003,
-        "level_max": 3.2611400000000006,
-        "level_date": "2025-09-01",
-        "level_type": "1d_extreme_peak + 1M_high_PMH + 1M_MACRO_Resistance",
-        "level_score": 7.5,
-        "events": [
-            {
-                "time": 1789686000,
-                "type": "ZONE_TOUCH",
-                "price": 3.14
-            },
-            {
-                "time": 1789687800,
-                "type": "SWEEP_BOTTOM",
-                "price": 3.196
-            },
-            {
-                "time": 1789703100,
-                "type": "RUNAWAY",
-                "price": 3.498
-            },
-            {
-                "time": 1789706700,
-                "type": "RUNAWAY",
-                "price": 3.502
-            },
-            {
-                "time": 1789716600,
-                "type": "RUNAWAY",
-                "price": 3.512
-            },
-            {
-                "time": 1789724700,
-                "type": "RUNAWAY",
-                "price": 3.501
-            },
-            {
-                "time": 1789731900,
-                "type": "RUNAWAY",
-                "price": 3.516
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_86.90383928571428_91.36044642857142__MIRROR": {
-        "coin": "HYPE",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 86.90383928571428,
-        "level_max": 91.36044642857142,
-        "level_date": "2026-08-30",
-        "level_type": "1W_high_PWH + 1d_extreme_peak",
-        "level_score": 8.0,
-        "events": [
-            {
-                "time": 1789693200,
-                "type": "ZONE_TOUCH",
-                "price": 86.91
-            },
-            {
-                "time": 1789725600,
-                "type": "SWEEP_BOTTOM",
-                "price": 89.25
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.3840525_0.40374750000000004__MIRROR": {
-        "coin": "ONDO",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.3840525,
-        "level_max": 0.40374750000000004,
-        "level_date": "2026-08-23",
-        "level_type": "1W_high_PWH + 1d_extreme_peak",
-        "level_score": 8.0,
-        "events": [
-            {
-                "time": 1789693200,
-                "type": "ZONE_TOUCH",
-                "price": 0.3849
-            },
-            {
-                "time": 1789701300,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.3963
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_233.6852857142857_239.0267142857143__MIRROR": {
-        "coin": "TAO",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 3,
-        "history_log": "",
-        "level_min": 233.6852857142857,
-        "level_max": 239.0267142857143,
-        "level_date": "2026-09-17",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789692300,
-                "type": "ZONE_TOUCH",
-                "price": 234.63
-            },
-            {
-                "time": 1789699500,
-                "type": "SWEEP_BOTTOM",
-                "price": 239.21
-            },
-            {
-                "time": 1789785900,
-                "type": "RUNAWAY",
-                "price": 256.29
-            },
-            {
-                "time": 1789795800,
-                "type": "RUNAWAY",
-                "price": 255.95
-            },
-            {
-                "time": 1789796700,
-                "type": "SWEEP_BOTTOM",
-                "price": 257.06
-            },
-            {
-                "time": 1789802100,
-                "type": "RUNAWAY",
-                "price": 255.77
-            },
-            {
-                "time": 1789803000,
-                "type": "SWEEP_BOTTOM",
-                "price": 253.64
-            },
-            {
-                "time": 1789805700,
-                "type": "RUNAWAY",
-                "price": 256.19
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.22237142857142858_0.2328285714285714__MIRROR": {
-        "coin": "ARB",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 2,
-        "history_log": "",
-        "level_min": 0.22237142857142858,
-        "level_max": 0.2328285714285714,
-        "level_date": "2026-01-06",
-        "level_type": "1d_extreme_peak",
-        "level_score": 5.0,
-        "events": [
-            {
-                "time": 1789701300,
-                "type": "ZONE_TOUCH",
-                "price": 0.22304
-            },
-            {
-                "time": 1789703100,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.22853
-            },
-            {
-                "time": 1789731000,
-                "type": "RUNAWAY",
-                "price": 0.20673
-            },
-            {
-                "time": 1789763400,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.22823
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.00426275_0.004407250000000001__MIRROR": {
-        "coin": "PUMPFUN",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.00426275,
-        "level_max": 0.004407250000000001,
-        "level_date": "2026-09-17",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789707600,
-                "type": "ZONE_TOUCH",
-                "price": 0.004268
-            },
-            {
-                "time": 1789759800,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.004431
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_1.697990357142857_1.7850667857142857__MIRROR": {
-        "coin": "RAYDIUM",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 1.697990357142857,
-        "level_max": 1.7850667857142857,
-        "level_date": "2025-11-11",
-        "level_type": "1W_high_PWH + 1d_extreme_peak",
-        "level_score": 8.0,
-        "events": [
-            {
-                "time": 1789707600,
-                "type": "ZONE_TOUCH",
-                "price": 1.7047
-            },
-            {
-                "time": 1789717500,
-                "type": "SWEEP_BOTTOM",
-                "price": 1.7424
-            },
-            {
-                "time": 1789808400,
-                "type": "SCAN",
-                "price": 1.8525
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_52.14628571428572_52.952714285714286__MIRROR": {
-        "coin": "LTC",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 52.14628571428572,
-        "level_max": 52.952714285714286,
-        "level_date": "2026-09-17",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_88.08064285714285_90.71635714285715__MIRROR": {
-        "coin": "CRCL",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 88.08064285714285,
-        "level_max": 90.71635714285715,
-        "level_date": "2026-09-17",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789722000,
-                "type": "ZONE_TOUCH",
-                "price": 88.65
-            },
-            {
-                "time": 1789740000,
-                "type": "SWEEP_BOTTOM",
-                "price": 91.09
-            },
-            {
-                "time": 1789741800,
-                "type": "SCAN",
-                "price": 91.89
-            },
-            {
-                "time": 1789810200,
-                "type": "SCAN",
-                "price": 92.2
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_545.205375_573.1646249999999__MIRROR": {
-        "coin": "XMR",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 545.205375,
-        "level_max": 573.1646249999999,
-        "level_date": "2026-08-30",
-        "level_type": "1W_high_PWH",
-        "level_score": 6.0,
-        "events": [
-            {
-                "time": 1789722000,
-                "type": "ZONE_TOUCH",
-                "price": 545.25
-            },
-            {
-                "time": 1789745400,
-                "type": "SWEEP_BOTTOM",
-                "price": 559.94
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.0037259625_0.0039170375__MIRROR": {
-        "coin": "1000PEPE",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.0037259625,
-        "level_max": 0.0039170375,
-        "level_date": "2026-08-30",
-        "level_type": "1W_high_PWH",
-        "level_score": 5.5,
-        "events": [
-            {
-                "time": 1789726500,
-                "type": "ZONE_TOUCH",
-                "price": 0.00375
-            },
-            {
-                "time": 1789741800,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.003854
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.3146107142857143_0.3263892857142857__MIRROR": {
-        "coin": "CRV",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.3146107142857143,
-        "level_max": 0.3263892857142857,
-        "level_date": "2026-09-17",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_7.492285714285715_7.642714285714287__MIRROR": {
-        "coin": "AVAX",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 7.492285714285715,
-        "level_max": 7.642714285714287,
-        "level_date": "2026-09-17",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_4350.380071428572_4390.052928571429__MIRROR": {
-        "coin": "XAU",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 4350.380071428572,
-        "level_max": 4390.052928571429,
-        "level_date": "2026-09-18",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789733700,
-                "type": "ZONE_TOUCH",
-                "price": 4381.5
-            },
-            {
-                "time": 1789750800,
-                "type": "SWEEP_BOTTOM",
-                "price": 4393.78
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.424125_0.445875__MIRROR": {
-        "coin": "LSK",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.424125,
-        "level_max": 0.445875,
-        "level_date": "2026-09-18",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789748100,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.45008
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.06966071428571427_0.07313928571428571__MIRROR": {
-        "coin": "FLOCK",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.06966071428571427,
-        "level_max": 0.07313928571428571,
-        "level_date": "2026-09-18",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789733700,
-                "type": "ZONE_TOUCH",
-                "price": 0.07292
-            },
-            {
-                "time": 1789740900,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.07404
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.2301_0.24189999999999998": {
-        "coin": "USELESS",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.2301,
-        "level_max": 0.24189999999999998,
-        "level_date": "2026-09-18",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789733700,
-                "type": "ZONE_TOUCH",
-                "price": 0.24105
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_11.490892857142857_12.025107142857141__MIRROR": {
-        "coin": "RDW",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 11.490892857142857,
-        "level_max": 12.025107142857141,
-        "level_date": "2026-09-09",
-        "level_type": "1W_high_PWH + 1d_extreme_peak+4h_poc",
-        "level_score": 9.0,
-        "events": [
-            {
-                "time": 1789733700,
-                "type": "ZONE_TOUCH",
-                "price": 11.607
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_137.64388392857143_144.70254464285716__MIRROR": {
-        "coin": "AAVE",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 137.64388392857143,
-        "level_max": 144.70254464285716,
-        "level_date": "2026-07-31",
-        "level_type": "1W_high_PWH + 1d_extreme_peak + 1M_high_PMH",
-        "level_score": 9.0,
-        "events": [
-            {
-                "time": 1789735500,
-                "type": "ZONE_TOUCH",
-                "price": 137.83
-            },
-            {
-                "time": 1789776900,
-                "type": "SWEEP_BOTTOM",
-                "price": 142.7
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.18082857142857142_0.18517142857142857": {
-        "coin": "XLM",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.18082857142857142,
-        "level_max": 0.18517142857142857,
-        "level_date": "2026-09-18",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789736400,
-                "type": "ZONE_TOUCH",
-                "price": 0.1849
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_107.19754999999999_110.46245__MIRROR": {
-        "coin": "SOL",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 107.19754999999999,
-        "level_max": 110.46245,
-        "level_date": "2026-07-31",
-        "level_type": "1W_high_PWH + 1M_high_PMH",
-        "level_score": 9.0,
-        "events": [
-            {
-                "time": 1789739100,
-                "type": "ZONE_TOUCH",
-                "price": 108.32
-            },
-            {
-                "time": 1789740000,
-                "type": "SWEEP_BOTTOM",
-                "price": 108.99
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_80327.44125892856_82773.96231249999__MIRROR": {
+    "BC_SHORT_80621.88238392856_83077.3711875__MIRROR": {
         "coin": "BTC",
         "direction": "SHORT",
         "strategy": "BOUNCE",
@@ -4030,405 +7,22 @@
         "state": "SCANNING",
         "currently_pierced": false,
         "climax_stage": null,
-        "breach_count": 1,
+        "breach_count": 0,
         "history_log": "",
-        "level_min": 80327.44125892856,
-        "level_max": 82773.96231249999,
+        "level_min": 80621.88238392856,
+        "level_max": 83077.3711875,
         "level_date": "2026-05-01",
-        "level_type": "1W_high_PWH + 1M_high_PMH + 1d_extreme_peak + 1M_MACRO_Resistance",
+        "level_type": "1M_high_PMH + 1W_high_PWH + 1d_extreme_peak + 1M_MACRO_Resistance",
         "level_score": 9.0,
+        "activated_at": "2026-09-13",
         "events": [
             {
-                "time": 1789739100,
+                "time": 1789834500,
                 "type": "ZONE_TOUCH",
-                "price": 80500.0
-            },
-            {
-                "time": 1789779600,
-                "type": "SWEEP_BOTTOM",
-                "price": 81735.0
+                "price": 81746.9
             }
         ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_143.50537500000002_150.864625__MIRROR": {
-        "coin": "MSTR",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 143.50537500000002,
-        "level_max": 150.864625,
-        "level_date": "2026-08-30",
-        "level_type": "1d_extreme_peak + 1W_high_PWH",
-        "level_score": 7.5,
-        "events": [
-            {
-                "time": 1789740000,
-                "type": "ZONE_TOUCH",
-                "price": 145.49
-            },
-            {
-                "time": 1789741800,
-                "type": "SWEEP_BOTTOM",
-                "price": 147.2
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.33908571428571427_0.34131428571428574__MIRROR": {
-        "coin": "TRX",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.33908571428571427,
-        "level_max": 0.34131428571428574,
-        "level_date": "2026-09-16",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789740000,
-                "type": "ZONE_TOUCH",
-                "price": 0.3391
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.13475475_0.14166525": {
-        "coin": "STG",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.13475475,
-        "level_max": 0.14166525,
-        "level_date": "2026-08-23",
-        "level_type": "1W_low_PWL+4h_poc",
-        "level_score": 7.0,
-        "events": [
-            {
-                "time": 1789740000,
-                "type": "ZONE_TOUCH",
-                "price": 0.14132
-            },
-            {
-                "time": 1789746300,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.13752
-            },
-            {
-                "time": 1789775100,
-                "type": "RUNAWAY",
-                "price": 0.15567
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_331.8949285714286_334.0470714285714": {
-        "coin": "AAPL",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 331.8949285714286,
-        "level_max": 334.0470714285714,
-        "level_date": "2026-09-18",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789740900,
-                "type": "ZONE_TOUCH",
-                "price": 333.51
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.19790000000000002_0.2021__MIRROR": {
-        "coin": "WIF",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.19790000000000002,
-        "level_max": 0.2021,
-        "level_date": "2026-09-18",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789740900,
-                "type": "ZONE_TOUCH",
-                "price": 0.1986
-            },
-            {
-                "time": 1789741800,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.2035
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_176.934_179.054": {
-        "coin": "EWY",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 176.934,
-        "level_max": 179.054,
-        "level_date": "2026-09-18",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789741800,
-                "type": "ZONE_TOUCH",
-                "price": 178.94
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.037703424107142856_0.039636933035714285__MIRROR": {
-        "coin": "STRK",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.037703424107142856,
-        "level_max": 0.039636933035714285,
-        "level_date": "2026-06-15",
-        "level_type": "1d_extreme_peak + 1M_high_PMH",
-        "level_score": 8.5,
-        "events": [
-            {
-                "time": 1789748100,
-                "type": "ZONE_TOUCH",
-                "price": 0.03778
-            },
-            {
-                "time": 1789755300,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.03888
-            },
-            {
-                "time": 1789758000,
-                "type": "RUNAWAY",
-                "price": 0.04327
-            },
-            {
-                "time": 1789762500,
-                "type": "RUNAWAY",
-                "price": 0.04294
-            },
-            {
-                "time": 1789782300,
-                "type": "RUNAWAY",
-                "price": 0.04246
-            },
-            {
-                "time": 1789786800,
-                "type": "RUNAWAY",
-                "price": 0.04294
-            },
-            {
-                "time": 1789806600,
-                "type": "RUNAWAY",
-                "price": 0.04263
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.006662174999999999_0.007003825__MIRROR": {
-        "coin": "ASTR",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.006662174999999999,
-        "level_max": 0.007003825,
-        "level_date": "2026-09-06",
-        "level_type": "1W_high_PWH + 1d_extreme_peak",
-        "level_score": 8.0,
-        "events": [
-            {
-                "time": 1789749900,
-                "type": "ZONE_TOUCH",
-                "price": 0.006672
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_0.40211785714285714_0.4158821428571428": {
-        "coin": "WLD",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.40211785714285714,
-        "level_max": 0.4158821428571428,
-        "level_date": "2026-09-18",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789750800,
-                "type": "ZONE_TOUCH",
-                "price": 0.4121
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.75894_0.79786__MIRROR": {
-        "coin": "ETHFI",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.75894,
-        "level_max": 0.79786,
-        "level_date": "2026-09-06",
-        "level_type": "1W_high_PWH + 1d_extreme_peak",
-        "level_score": 7.5,
-        "events": [
-            {
-                "time": 1789754400,
-                "type": "ZONE_TOUCH",
-                "price": 0.7591
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.03339375_0.035106250000000006__MIRROR": {
-        "coin": "STRK",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.03339375,
-        "level_max": 0.035106250000000006,
-        "level_date": "2026-09-09",
-        "level_type": "1W_high_PWH + 1d_extreme_peak+4h_poc",
-        "level_score": 9.0,
-        "events": [],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_19.80221428571429_20.475785714285717__MIRROR": {
-        "coin": "KORU",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 19.80221428571429,
-        "level_max": 20.475785714285717,
-        "level_date": "2026-09-18",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789758000,
-                "type": "ZONE_TOUCH",
-                "price": 19.84
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.658515_0.692285__MIRROR": {
-        "coin": "AERO",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.658515,
-        "level_max": 0.692285,
-        "level_date": "2026-09-08",
-        "level_type": "1W_high_PWH + 1d_extreme_peak",
-        "level_score": 8.0,
-        "events": [
-            {
-                "time": 1789758000,
-                "type": "ZONE_TOUCH",
-                "price": 0.6684
-            },
-            {
-                "time": 1789758900,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.6841
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_2517.980125_2594.6698749999996__MIRROR": {
-        "coin": "ETH",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 2517.980125,
-        "level_max": 2594.6698749999996,
-        "level_date": "2026-07-31",
-        "level_type": "1W_high_PWH + 1M_high_PMH+4h_poc",
-        "level_score": 10.0,
-        "events": [],
-        "updated_at": "2026-09-19T14:49:25.225461"
+        "updated_at": "2026-09-19T21:08:57.923847"
     },
     "BC_SHORT_2630.9153_2711.0447__MIRROR": {
         "coin": "ETH",
@@ -4442,20 +36,21 @@
         "history_log": "",
         "level_min": 2630.9153,
         "level_max": 2711.0447,
-        "level_date": "2026-09-06",
-        "level_type": "1d_extreme_peak + 1W_high_PWH",
-        "level_score": 7.5,
+        "level_date": "2026-09-13",
+        "level_type": "1W_high_PWH + 1d_extreme_peak",
+        "level_score": 8.0,
+        "activated_at": "2026-09-15",
         "events": [
             {
-                "time": 1789758900,
+                "time": 1789834500,
                 "type": "ZONE_TOUCH",
-                "price": 2637.96
+                "price": 2644.37
             }
         ],
-        "updated_at": "2026-09-19T14:49:25.225461"
+        "updated_at": "2026-09-19T21:08:57.923847"
     },
-    "BC_SHORT_0.66568125_0.6998187499999999__MIRROR": {
-        "coin": "APT",
+    "BC_SHORT_1.43017875_1.7425__MIRROR": {
+        "coin": "XRP",
         "direction": "SHORT",
         "strategy": "BOUNCE",
         "mode": "MIRROR",
@@ -4464,39 +59,22 @@
         "climax_stage": null,
         "breach_count": 0,
         "history_log": "",
-        "level_min": 0.66568125,
-        "level_max": 0.6998187499999999,
-        "level_date": "2026-06-30",
-        "level_type": "1W_high_PWH + 1d_extreme_peak + 1M_high_PMH",
-        "level_score": 9.0,
-        "events": [],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_1775.8193839285714_1866.8870446428573__MIRROR": {
-        "coin": "SNDK",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 1775.8193839285714,
-        "level_max": 1866.8870446428573,
-        "level_date": "2026-07-31",
-        "level_type": "1W_high_PWH + 1d_extreme_peak + 1M_high_PMH",
-        "level_score": 9.0,
+        "level_min": 1.43017875,
+        "level_max": 1.7425,
+        "level_date": "2026-03-17",
+        "level_type": "1W_high_PWH + 1d_extreme_peak+4h_poc + 1d_extreme_peak + 1M_high_PMH + 1W_high_PWH",
+        "level_score": 11.5,
+        "activated_at": "2026-09-15",
         "events": [
             {
-                "time": 1789760700,
+                "time": 1789834500,
                 "type": "ZONE_TOUCH",
-                "price": 1795.66
+                "price": 1.4359
             }
         ],
-        "updated_at": "2026-09-19T14:49:25.225461"
+        "updated_at": "2026-09-19T21:08:57.923847"
     },
-    "BC_SHORT_120.22364285714286_123.43935714285715__MIRROR": {
+    "BC_SHORT_119.92007142857143_123.74292857142858__MIRROR": {
         "coin": "SOXL",
         "direction": "SHORT",
         "strategy": "BOUNCE",
@@ -4504,21 +82,77 @@
         "state": "SCANNING",
         "currently_pierced": false,
         "climax_stage": null,
-        "breach_count": 1,
+        "breach_count": 0,
         "history_log": "",
-        "level_min": 120.22364285714286,
-        "level_max": 123.43935714285715,
+        "level_min": 119.92007142857143,
+        "level_max": 123.74292857142858,
         "level_date": "2026-09-18",
         "level_type": "4h_poc_standalone",
         "level_score": 3.0,
+        "activated_at": "2026-09-18",
         "events": [
             {
-                "time": 1789760700,
-                "type": "SWEEP_BOTTOM",
-                "price": 123.94
+                "time": 1789834500,
+                "type": "ZONE_TOUCH",
+                "price": 120.09
             }
         ],
-        "updated_at": "2026-09-19T14:49:25.225461"
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_4350.007928571429_4390.425071428572__MIRROR": {
+        "coin": "XAU",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 4350.007928571429,
+        "level_max": 4390.425071428572,
+        "level_date": "2026-09-18",
+        "level_type": "4h_poc_standalone",
+        "level_score": 3.0,
+        "activated_at": "2026-09-18",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "ZONE_TOUCH",
+                "price": 4381.98
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_0.9754875_1.126065__MIRROR": {
+        "coin": "FIL",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": true,
+        "climax_stage": null,
+        "breach_count": 1,
+        "history_log": "",
+        "level_min": 0.9754875,
+        "level_max": 1.126065,
+        "level_date": "2026-05-27",
+        "level_type": "1M_high_PMH + 1W_high_PWH + 1d_extreme_peak+4h_poc",
+        "level_score": 10.0,
+        "activated_at": "2026-09-15",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "ZONE_TOUCH",
+                "price": 0.9903
+            },
+            {
+                "time": 1789837200,
+                "type": "SWEEP_BOTTOM",
+                "price": 1.0794
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
     },
     "BC_SHORT_0.8138812500000001_0.8556187500000001__MIRROR": {
         "coin": "SUI",
@@ -4532,330 +166,39 @@
         "history_log": "",
         "level_min": 0.8138812500000001,
         "level_max": 0.8556187500000001,
+        "level_date": "2026-08-30",
+        "level_type": "1W_high_PWH + 1d_extreme_peak",
+        "level_score": 8.5,
+        "activated_at": "2026-09-13",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.8493
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_0.1822665_0.1916135__MIRROR": {
+        "coin": "ENA",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 0.1822665,
+        "level_max": 0.1916135,
         "level_date": "2026-08-23",
-        "level_type": "1W_high_PWH + 1d_extreme_peak",
-        "level_score": 8.5,
-        "events": [
-            {
-                "time": 1789763400,
-                "type": "ZONE_TOUCH",
-                "price": 0.8152
-            },
-            {
-                "time": 1789812000,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.8376
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_1018.9559598214287_1071.210111607143__MIRROR": {
-        "coin": "MU",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 1018.9559598214287,
-        "level_max": 1071.210111607143,
-        "level_date": "2026-07-31",
-        "level_type": "1d_extreme_peak + 1M_high_PMH + 1W_high_PWH",
+        "level_type": "1W_high_PWH + 1M_high_PMH",
         "level_score": 9.0,
-        "events": [
-            {
-                "time": 1789761600,
-                "type": "ZONE_TOUCH",
-                "price": 1019.37
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.09752925000000001_0.10253075__MIRROR": {
-        "coin": "POL",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.09752925000000001,
-        "level_max": 0.10253075,
-        "level_date": "2026-08-30",
-        "level_type": "1W_high_PWH",
-        "level_score": 6.5,
+        "activated_at": "2026-09-13",
         "events": [],
-        "updated_at": "2026-09-19T14:49:25.225461"
+        "updated_at": "2026-09-19T21:08:57.923847"
     },
-    "BC_SHORT_0.1081_0.1109__MIRROR": {
-        "coin": "POL",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.1081,
-        "level_max": 0.1109,
-        "level_date": "2026-09-18",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789760700,
-                "type": "ZONE_TOUCH",
-                "price": 0.10937
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_LONG_40.8915_42.988499999999995": {
-        "coin": "SOXS",
-        "direction": "LONG",
-        "strategy": "BOUNCE",
-        "mode": null,
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 40.8915,
-        "level_max": 42.988499999999995,
-        "level_date": "2026-09-06",
-        "level_type": "1d_extreme_peak + 1W_low_PWL+4h_poc",
-        "level_score": 9.0,
-        "events": [
-            {
-                "time": 1789760700,
-                "type": "SWEEP_BOTTOM",
-                "price": 41.49
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.2724985714285715_0.2864728571428572__MIRROR": {
-        "coin": "JUP",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.2724985714285715,
-        "level_max": 0.2864728571428572,
-        "level_date": "2026-05-01",
-        "level_type": "1W_high_PWH + 1d_extreme_peak + 1M_MACRO_Resistance",
-        "level_score": 8.0,
-        "events": [
-            {
-                "time": 1789762500,
-                "type": "ZONE_TOUCH",
-                "price": 0.2728
-            },
-            {
-                "time": 1789809300,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.2804
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_224.39242857142858_231.62957142857147__MIRROR": {
-        "coin": "NBIS",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 224.39242857142858,
-        "level_max": 231.62957142857147,
-        "level_date": "2026-09-18",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789760700,
-                "type": "ZONE_TOUCH",
-                "price": 224.69
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.0019134374999999998_0.0020115625__MIRROR": {
-        "coin": "GALA",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.0019134374999999998,
-        "level_max": 0.0020115625,
-        "level_date": "2026-08-30",
-        "level_type": "1W_high_PWH + 1d_extreme_peak",
-        "level_score": 8.5,
-        "events": [
-            {
-                "time": 1789761600,
-                "type": "ZONE_TOUCH",
-                "price": 0.001915
-            },
-            {
-                "time": 1789776000,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.001969
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.194439375_0.20441062499999998__MIRROR": {
-        "coin": "ARB",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.194439375,
-        "level_max": 0.20441062499999998,
-        "level_date": "2026-08-30",
-        "level_type": "1W_high_PWH + 1d_extreme_peak",
-        "level_score": 8.0,
-        "events": [],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_260.37375_273.72624999999994__MIRROR": {
-        "coin": "BCH",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 260.37375,
-        "level_max": 273.72624999999994,
-        "level_date": "2026-08-30",
-        "level_type": "1W_high_PWH",
-        "level_score": 5.5,
-        "events": [
-            {
-                "time": 1789770600,
-                "type": "ZONE_TOUCH",
-                "price": 263.6
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.045734325_0.048079674999999995__MIRROR": {
-        "coin": "AKE",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 2,
-        "history_log": "",
-        "level_min": 0.045734325,
-        "level_max": 0.048079674999999995,
-        "level_date": "2026-08-30",
-        "level_type": "1W_high_PWH + 1d_extreme_peak",
-        "level_score": 7.5,
-        "events": [
-            {
-                "time": 1789770600,
-                "type": "ZONE_TOUCH",
-                "price": 0.046669
-            },
-            {
-                "time": 1789772400,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.0478
-            },
-            {
-                "time": 1789785900,
-                "type": "RUNAWAY",
-                "price": 0.042277
-            },
-            {
-                "time": 1789794000,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.0497
-            },
-            {
-                "time": 1789795800,
-                "type": "RUNAWAY",
-                "price": 0.05376
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_58.300821428571425_61.29060714285714__MIRROR": {
-        "coin": "LTC",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 58.300821428571425,
-        "level_max": 61.29060714285714,
-        "level_date": "2026-05-01",
-        "level_type": "1W_high_PWH + 1d_extreme_peak + 1M_MACRO_Resistance",
-        "level_score": 7.5,
-        "events": [
-            {
-                "time": 1789776000,
-                "type": "ZONE_TOUCH",
-                "price": 58.85
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.6730392857142857_0.6869607142857144__MIRROR": {
-        "coin": "VIRTUAL",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.6730392857142857,
-        "level_max": 0.6869607142857144,
-        "level_date": "2026-09-18",
-        "level_type": "4h_poc_standalone",
-        "level_score": 3.0,
-        "events": [
-            {
-                "time": 1789777800,
-                "type": "ZONE_TOUCH",
-                "price": 0.6731
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.22658999999999999_0.23821__MIRROR": {
+    "BC_SHORT_0.22737_0.23903__MIRROR": {
         "coin": "ADA",
         "direction": "SHORT",
         "strategy": "BOUNCE",
@@ -4863,163 +206,75 @@
         "state": "SCANNING",
         "currently_pierced": false,
         "climax_stage": null,
-        "breach_count": 1,
+        "breach_count": 0,
         "history_log": "",
-        "level_min": 0.22658999999999999,
-        "level_max": 0.23821,
-        "level_date": "2026-05-31",
+        "level_min": 0.22737,
+        "level_max": 0.23903,
+        "level_date": "2026-06-30",
         "level_type": "1W_high_PWH + 1d_extreme_peak + 1M_high_PMH+4h_poc",
         "level_score": 10.0,
+        "activated_at": "2026-09-15",
         "events": [
             {
-                "time": 1789771500,
+                "time": 1789834500,
                 "type": "ZONE_TOUCH",
-                "price": 0.227
-            },
-            {
-                "time": 1789785000,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.2351
-            },
-            {
-                "time": 1789797600,
-                "type": "SCAN",
-                "price": 0.2228
+                "price": 0.2282
             }
         ],
-        "updated_at": "2026-09-19T14:49:25.225461"
+        "updated_at": "2026-09-19T21:08:57.923847"
     },
-    "BC_SHORT_28.543125_30.006874999999997__MIRROR": {
-        "coin": "VVV",
+    "BC_SHORT_0.0037830000000000008_0.0039770000000000005__MIRROR": {
+        "coin": "1000PEPE",
         "direction": "SHORT",
         "strategy": "BOUNCE",
         "mode": "MIRROR",
         "state": "SCANNING",
-        "currently_pierced": false,
+        "currently_pierced": true,
         "climax_stage": null,
         "breach_count": 1,
         "history_log": "",
-        "level_min": 28.543125,
-        "level_max": 30.006874999999997,
+        "level_min": 0.0037830000000000008,
+        "level_max": 0.0039770000000000005,
+        "level_date": "2026-09-06",
+        "level_type": "1W_high_PWH",
+        "level_score": 6.5,
+        "activated_at": "2026-09-13",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.003944
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_4.80675_5.255833928571429__MIRROR": {
+        "coin": "LIT",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": true,
+        "climax_stage": null,
+        "breach_count": 1,
+        "history_log": "",
+        "level_min": 4.80675,
+        "level_max": 5.255833928571429,
         "level_date": "2026-09-06",
         "level_type": "1W_high_PWH + 1d_extreme_peak",
-        "level_score": 7.5,
-        "events": [
-            {
-                "time": 1789774200,
-                "type": "ZONE_TOUCH",
-                "price": 28.679
-            },
-            {
-                "time": 1789785000,
-                "type": "SWEEP_BOTTOM",
-                "price": 29.505
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.120276_0.126444__MIRROR": {
-        "coin": "OP",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.120276,
-        "level_max": 0.126444,
-        "level_date": "2026-07-31",
-        "level_type": "1M_high_PMH + 1W_high_PWH + 1d_extreme_peak",
-        "level_score": 9.0,
-        "events": [
-            {
-                "time": 1789774200,
-                "type": "ZONE_TOUCH",
-                "price": 0.12091
-            },
-            {
-                "time": 1789785900,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.12397
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.7856341071428572_0.8259230357142857__MIRROR": {
-        "coin": "ASTER",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.7856341071428572,
-        "level_max": 0.8259230357142857,
-        "level_date": "2026-01-05",
-        "level_type": "1d_extreme_peak + 1M_high_PMH + 1W_high_PWH + 1M_MACRO_Resistance",
-        "level_score": 9.0,
-        "events": [
-            {
-                "time": 1789785900,
-                "type": "ZONE_TOUCH",
-                "price": 0.7859
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.17933174999999998_0.18852824999999998__MIRROR": {
-        "coin": "ENA",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": true,
-        "climax_stage": null,
-        "breach_count": 1,
-        "history_log": "",
-        "level_min": 0.17933174999999998,
-        "level_max": 0.18852824999999998,
-        "level_date": "2026-07-31",
-        "level_type": "1W_high_PWH + 1M_high_PMH",
-        "level_score": 9.0,
-        "events": [
-            {
-                "time": 1789786800,
-                "type": "ZONE_TOUCH",
-                "price": 0.17998
-            },
-            {
-                "time": 1789790400,
-                "type": "SWEEP_BOTTOM",
-                "price": 0.18393
-            }
-        ],
-        "updated_at": "2026-09-19T14:49:25.225461"
-    },
-    "BC_SHORT_0.11018475_0.11583525__MIRROR": {
-        "coin": "OP",
-        "direction": "SHORT",
-        "strategy": "BOUNCE",
-        "mode": "MIRROR",
-        "state": "SCANNING",
-        "currently_pierced": false,
-        "climax_stage": null,
-        "breach_count": 0,
-        "history_log": "",
-        "level_min": 0.11018475,
-        "level_max": 0.11583525,
-        "level_date": "2026-08-23",
-        "level_type": "1W_high_PWH + 1d_extreme_peak",
         "level_score": 8.5,
-        "events": [],
-        "updated_at": "2026-09-19T14:49:25.225461"
+        "activated_at": "2026-09-13",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "SWEEP_BOTTOM",
+                "price": 5.134
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
     },
-    "BC_SHORT_7.157475_7.524525000000001__MIRROR": {
-        "coin": "INJ",
+    "BC_SHORT_0.38405249999999996_0.4399336607142857__MIRROR": {
+        "coin": "ONDO",
         "direction": "SHORT",
         "strategy": "BOUNCE",
         "mode": "MIRROR",
@@ -5028,19 +283,120 @@
         "climax_stage": null,
         "breach_count": 1,
         "history_log": "",
-        "level_min": 7.157475,
-        "level_max": 7.524525000000001,
-        "level_date": "2026-05-31",
-        "level_type": "1d_extreme_peak + 1M_high_PMH + 1M_MACRO_Resistance",
-        "level_score": 7.5,
+        "level_min": 0.38405249999999996,
+        "level_max": 0.4399336607142857,
+        "level_date": "2026-06-30",
+        "level_type": "1W_high_PWH + 1d_extreme_peak + 1M_high_PMH + 1W_high_PWH",
+        "level_score": 11.0,
+        "activated_at": "2026-09-13",
         "events": [
             {
-                "time": 1789799400,
+                "time": 1789834500,
                 "type": "SWEEP_BOTTOM",
-                "price": 7.39
+                "price": 0.4344
             }
         ],
-        "updated_at": "2026-09-19T14:49:25.225461"
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_255.1185_268.2015__MIRROR": {
+        "coin": "TAO",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": true,
+        "climax_stage": null,
+        "breach_count": 1,
+        "history_log": "",
+        "level_min": 255.1185,
+        "level_max": 268.2015,
+        "level_date": "2026-08-30",
+        "level_type": "1d_extreme_peak + 1M_high_PMH + 1W_high_PWH",
+        "level_score": 9.0,
+        "activated_at": "2026-09-02",
+        "events": [
+            {
+                "time": 1789839900,
+                "type": "SWEEP_BOTTOM",
+                "price": 265.04
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_141.18975_148.43025__MIRROR": {
+        "coin": "AAVE",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 141.18975,
+        "level_max": 148.43025,
+        "level_date": "2026-08-23",
+        "level_type": "1W_high_PWH + 1M_high_PMH + 1d_extreme_peak",
+        "level_score": 9.0,
+        "activated_at": "2026-09-13",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "ZONE_TOUCH",
+                "price": 142.51
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_555.7792499999999_584.28075__MIRROR": {
+        "coin": "XMR",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 1,
+        "history_log": "",
+        "level_min": 555.7792499999999,
+        "level_max": 584.28075,
+        "level_date": "2026-09-06",
+        "level_type": "1W_high_PWH",
+        "level_score": 6.5,
+        "activated_at": "2026-09-13",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "SWEEP_BOTTOM",
+                "price": 571.61
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_157.17_165.23__MIRROR": {
+        "coin": "MSTR",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 157.17,
+        "level_max": 165.23,
+        "level_date": "2026-06-30",
+        "level_type": "1M_high_PMH",
+        "level_score": 5.5,
+        "activated_at": "2026-06-30",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "ZONE_TOUCH",
+                "price": 159.11
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
     },
     "BC_SHORT_6.546150000000001_6.88185__MIRROR": {
         "coin": "INJ",
@@ -5054,13 +410,39 @@
         "history_log": "",
         "level_min": 6.546150000000001,
         "level_max": 6.88185,
-        "level_date": "2026-09-06",
+        "level_date": "2026-09-13",
         "level_type": "1W_high_PWH + 1d_extreme_peak",
         "level_score": 8.5,
+        "activated_at": "2026-09-13",
         "events": [],
-        "updated_at": "2026-09-19T14:49:25.225461"
+        "updated_at": "2026-09-19T21:08:57.923847"
     },
-    "BC_SHORT_8.90375_9.234250000000001__MIRROR": {
+    "BC_SHORT_7.157475_7.524525000000001__MIRROR": {
+        "coin": "INJ",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": true,
+        "climax_stage": null,
+        "breach_count": 1,
+        "history_log": "",
+        "level_min": 7.157475,
+        "level_max": 7.524525000000001,
+        "level_date": "2026-06-01",
+        "level_type": "1d_extreme_peak + 1M_high_PMH",
+        "level_score": 7.5,
+        "activated_at": "2026-08-01",
+        "events": [
+            {
+                "time": 1789836300,
+                "type": "SWEEP_BOTTOM",
+                "price": 7.509
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_8.842275_9.295725000000001__MIRROR": {
         "coin": "AVAX",
         "direction": "SHORT",
         "strategy": "BOUNCE",
@@ -5070,11 +452,12 @@
         "climax_stage": null,
         "breach_count": 1,
         "history_log": "",
-        "level_min": 8.90375,
-        "level_max": 9.234250000000001,
-        "level_date": "2026-05-31",
+        "level_min": 8.842275,
+        "level_max": 9.295725000000001,
+        "level_date": "2026-06-30",
         "level_type": "1M_high_PMH",
         "level_score": 5.5,
+        "activated_at": "2026-06-30",
         "events": [
             {
                 "time": 1789808400,
@@ -5082,15 +465,15 @@
                 "price": 8.932
             },
             {
-                "time": 1789813800,
+                "time": 1789812900,
                 "type": "SWEEP_BOTTOM",
-                "price": 9.147
+                "price": 9.099
             }
         ],
-        "updated_at": "2026-09-19T14:49:25.225461"
+        "updated_at": "2026-09-19T21:08:57.923847"
     },
-    "BC_SHORT_157.23857142857142_165.16142857142856__MIRROR": {
-        "coin": "MSTR",
+    "BC_SHORT_0.19539_0.20540999999999998__MIRROR": {
+        "coin": "XLM",
         "direction": "SHORT",
         "strategy": "BOUNCE",
         "mode": "MIRROR",
@@ -5099,22 +482,23 @@
         "climax_stage": null,
         "breach_count": 0,
         "history_log": "",
-        "level_min": 157.23857142857142,
-        "level_max": 165.16142857142856,
-        "level_date": "2026-05-31",
-        "level_type": "1M_high_PMH",
-        "level_score": 5.5,
+        "level_min": 0.19539,
+        "level_max": 0.20540999999999998,
+        "level_date": "2026-08-30",
+        "level_type": "1W_high_PWH+4h_poc",
+        "level_score": 7.5,
+        "activated_at": "2026-09-13",
         "events": [
             {
-                "time": 1789805700,
+                "time": 1789834500,
                 "type": "ZONE_TOUCH",
-                "price": 157.26
+                "price": 0.1991
             }
         ],
-        "updated_at": "2026-09-19T14:49:25.225461"
+        "updated_at": "2026-09-19T21:08:57.923847"
     },
-    "BC_SHORT_0.17588686607142856_0.18490670535714282__MIRROR": {
-        "coin": "STG",
+    "BC_SHORT_0.057470714285714285_0.06936785714285715__MIRROR": {
+        "coin": "WLFI",
         "direction": "SHORT",
         "strategy": "BOUNCE",
         "mode": "MIRROR",
@@ -5123,22 +507,440 @@
         "climax_stage": null,
         "breach_count": 0,
         "history_log": "",
-        "level_min": 0.17588686607142856,
-        "level_max": 0.18490670535714282,
-        "level_date": "2026-07-07",
-        "level_type": "1W_high_PWH + 1M_high_PMH + 1d_extreme_peak",
+        "level_min": 0.057470714285714285,
+        "level_max": 0.06936785714285715,
+        "level_date": "2026-06-04",
+        "level_type": "1W_high_PWH + 1d_extreme_peak + 1M_high_PMH + 1M_high_PMH + 1d_extreme_peak",
+        "level_score": 11.0,
+        "activated_at": "2026-09-13",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "ZONE_TOUCH",
+                "price": 0.05884
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_1.6815825_1.7678174999999998__MIRROR": {
+        "coin": "RAYDIUM",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 1,
+        "history_log": "",
+        "level_min": 1.6815825,
+        "level_max": 1.7678174999999998,
+        "level_date": "2025-11-11",
+        "level_type": "1W_high_PWH + 1d_extreme_peak",
+        "level_score": 8.0,
+        "activated_at": "2026-09-15",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "SWEEP_BOTTOM",
+                "price": 1.7634
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_0.66568125_0.7319525__MIRROR": {
+        "coin": "APT",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 0.66568125,
+        "level_max": 0.7319525,
+        "level_date": "2026-07-31",
+        "level_type": "1M_high_PMH + 1W_high_PWH + 1d_extreme_peak+4h_poc",
+        "level_score": 10.0,
+        "activated_at": "2026-09-15",
+        "events": [],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_152.23214285714283_157.28785714285715__MIRROR": {
+        "coin": "SPCX",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 152.23214285714283,
+        "level_max": 157.28785714285715,
+        "level_date": "2026-09-13",
+        "level_type": "1W_high_PWH",
+        "level_score": 6.5,
+        "activated_at": "2026-09-13",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "ZONE_TOUCH",
+                "price": 152.78
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_0.120276_0.126444__MIRROR": {
+        "coin": "OP",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 1,
+        "history_log": "",
+        "level_min": 0.120276,
+        "level_max": 0.126444,
+        "level_date": "2026-08-22",
+        "level_type": "1M_high_PMH + 1W_high_PWH + 1d_extreme_peak",
         "level_score": 9.0,
+        "activated_at": "2026-08-31",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.12394
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_362.83964285714285_374.97035714285715__MIRROR": {
+        "coin": "TSLA",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 362.83964285714285,
+        "level_max": 374.97035714285715,
+        "level_date": "2026-08-30",
+        "level_type": "1W_high_PWH + 1d_extreme_peak",
+        "level_score": 8.0,
+        "activated_at": "2026-09-13",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "ZONE_TOUCH",
+                "price": 365.13
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_0.672725_0.6872750000000001__MIRROR": {
+        "coin": "VIRTUAL",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 0.672725,
+        "level_max": 0.6872750000000001,
+        "level_date": "2026-09-18",
+        "level_type": "4h_poc_standalone",
+        "level_score": 3.0,
+        "activated_at": "2026-09-18",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "ZONE_TOUCH",
+                "price": 0.6755
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_0.658515_0.692285__MIRROR": {
+        "coin": "AERO",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 0.658515,
+        "level_max": 0.692285,
+        "level_date": "2026-09-08",
+        "level_type": "1W_high_PWH + 1d_extreme_peak",
+        "level_score": 8.0,
+        "activated_at": "2026-09-13",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "ZONE_TOUCH",
+                "price": 0.6727
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_0.0745875_0.0784125__MIRROR": {
+        "coin": "MYX",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 0.0745875,
+        "level_max": 0.0784125,
+        "level_date": "2026-08-30",
+        "level_type": "1W_high_PWH+4h_poc",
+        "level_score": 7.0,
+        "activated_at": "2026-09-13",
+        "events": [],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_0.08555050446428572_0.09982607142857143__MIRROR": {
+        "coin": "MYX",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 0.08555050446428572,
+        "level_max": 0.09982607142857143,
+        "level_date": "2026-07-21",
+        "level_type": "1W_high_PWH + 1M_high_PMH + 1d_extreme_peak+4h_poc",
+        "level_score": 10.0,
+        "activated_at": "2026-08-31",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "ZONE_TOUCH",
+                "price": 0.08704
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_LONG_0.004631250000000001_0.004868750000000001": {
+        "coin": "F",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 0.004631250000000001,
+        "level_max": 0.004868750000000001,
+        "level_date": "2026-09-18",
+        "level_type": "4h_poc_standalone",
+        "level_score": 3.0,
+        "activated_at": "2026-09-18",
+        "events": [],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_4.4898750000000005_4.720125__MIRROR": {
+        "coin": "AR",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 1,
+        "history_log": "",
+        "level_min": 4.4898750000000005,
+        "level_max": 4.720125,
+        "level_date": "2025-12-03",
+        "level_type": "1d_extreme_peak",
+        "level_score": 4.0,
+        "activated_at": "2025-12-07",
         "events": [
             {
                 "time": 1789806600,
-                "type": "ZONE_TOUCH",
-                "price": 0.1773
+                "type": "SWEEP_BOTTOM",
+                "price": 4.674
+            },
+            {
+                "time": 1789827300,
+                "type": "SCAN",
+                "price": 4.71
             }
         ],
-        "updated_at": "2026-09-19T14:49:25.225461"
+        "updated_at": "2026-09-19T21:08:57.923847"
     },
-    "BC_SHORT_8.075158928571428_8.489269642857144__MIRROR": {
-        "coin": "AVAX",
+    "BC_SHORT_0.57081375_0.60008625__MIRROR": {
+        "coin": "B2",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 1,
+        "history_log": "",
+        "level_min": 0.57081375,
+        "level_max": 0.60008625,
+        "level_date": "2026-06-30",
+        "level_type": "1d_extreme_peak + 1M_high_PMH",
+        "level_score": 8.0,
+        "activated_at": "2026-07-31",
+        "events": [
+            {
+                "time": 1789804800,
+                "type": "RUNAWAY",
+                "price": 0.7967
+            },
+            {
+                "time": 1789830900,
+                "type": "RUNAWAY",
+                "price": 0.5263
+            },
+            {
+                "time": 1789832700,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.5893
+            },
+            {
+                "time": 1789839000,
+                "type": "RUNAWAY",
+                "price": 0.5285
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_LONG_345.66821428571427_351.9917857142857": {
+        "coin": "JPM",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 345.66821428571427,
+        "level_max": 351.9917857142857,
+        "level_date": "2026-08-31",
+        "level_type": "1M_low_PML",
+        "level_score": 5.0,
+        "activated_at": "2026-08-31",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "ZONE_TOUCH",
+                "price": 350.69
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_0.34286428571428573_0.35973571428571427__MIRROR": {
+        "coin": "XTZ",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": true,
+        "climax_stage": null,
+        "breach_count": 1,
+        "history_log": "",
+        "level_min": 0.34286428571428573,
+        "level_max": 0.35973571428571427,
+        "level_date": "2026-05-31",
+        "level_type": "1d_extreme_peak",
+        "level_score": 4.5,
+        "activated_at": "2026-06-02",
+        "events": [
+            {
+                "time": 1789800300,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.3853
+            },
+            {
+                "time": 1789802100,
+                "type": "SCAN",
+                "price": 0.3509
+            },
+            {
+                "time": 1789803900,
+                "type": "SCAN",
+                "price": 0.3476
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_2.652975_2.789025__MIRROR": {
+        "coin": "MORPHO",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 1,
+        "history_log": "",
+        "level_min": 2.652975,
+        "level_max": 2.789025,
+        "level_date": "2026-09-06",
+        "level_type": "1W_high_PWH+4h_poc",
+        "level_score": 7.5,
+        "activated_at": "2026-09-13",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "ZONE_TOUCH",
+                "price": 2.71
+            },
+            {
+                "time": 1789835400,
+                "type": "SWEEP_BOTTOM",
+                "price": 2.726
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_LONG_8.104755_8.227245": {
+        "coin": "ZEN",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "state": "SCANNING",
+        "currently_pierced": true,
+        "climax_stage": null,
+        "breach_count": 1,
+        "history_log": "",
+        "level_min": 8.104755,
+        "level_max": 8.227245,
+        "level_date": "2026-05-01",
+        "level_type": "1M_MACRO_Resistance",
+        "level_score": 5.0,
+        "activated_at": "2026-07-01",
+        "events": [
+            {
+                "time": 1789759800,
+                "type": "SWEEP_BOTTOM",
+                "price": 8.109
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_0.47112000000000004_0.49528__MIRROR": {
+        "coin": "JTO",
         "direction": "SHORT",
         "strategy": "BOUNCE",
         "mode": "MIRROR",
@@ -5147,12 +949,214 @@
         "climax_stage": null,
         "breach_count": 0,
         "history_log": "",
-        "level_min": 8.075158928571428,
-        "level_max": 8.489269642857144,
-        "level_date": "2026-07-31",
+        "level_min": 0.47112000000000004,
+        "level_max": 0.49528,
+        "level_date": "2026-09-06",
+        "level_type": "1W_high_PWH",
+        "level_score": 6.0,
+        "activated_at": "2026-09-13",
+        "events": [
+            {
+                "time": 1789834500,
+                "type": "ZONE_TOUCH",
+                "price": 0.4772
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_LONG_6.825975000000001_7.176025": {
+        "coin": "AVAX",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 6.825975000000001,
+        "level_max": 7.176025,
+        "level_date": "2026-08-30",
+        "level_type": "1W_low_PWL",
+        "level_score": 6.5,
+        "activated_at": "2026-09-13",
+        "events": [
+            {
+                "time": 1789497900,
+                "type": "ZONE_TOUCH",
+                "price": 7.176
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_LONG_0.132068625_0.145585875": {
+        "coin": "STG",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 1,
+        "history_log": "",
+        "level_min": 0.132068625,
+        "level_max": 0.145585875,
+        "level_date": "2026-08-16",
+        "level_type": "1W_low_PWL+4h_poc",
+        "level_score": 7.0,
+        "activated_at": "2026-09-13",
+        "events": [
+            {
+                "time": 1789835400,
+                "type": "ZONE_TOUCH",
+                "price": 0.14308
+            },
+            {
+                "time": 1789838100,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.1384
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_1780.4669999999999_1871.773__MIRROR": {
+        "coin": "SNDK",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 1780.4669999999999,
+        "level_max": 1871.773,
+        "level_date": "2026-08-17",
         "level_type": "1W_high_PWH + 1d_extreme_peak + 1M_high_PMH",
         "level_score": 9.0,
-        "events": [],
-        "updated_at": "2026-09-19T14:49:25.225461"
+        "activated_at": "2026-09-13",
+        "events": [
+            {
+                "time": 1789836300,
+                "type": "ZONE_TOUCH",
+                "price": 1780.92
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_0.424125_0.445875__MIRROR": {
+        "coin": "LSK",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 0.424125,
+        "level_max": 0.445875,
+        "level_date": "2026-09-18",
+        "level_type": "4h_poc_standalone",
+        "level_score": 3.0,
+        "activated_at": "2026-09-18",
+        "events": [
+            {
+                "time": 1789837200,
+                "type": "ZONE_TOUCH",
+                "price": 0.42584
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_0.00560625_0.00589375__MIRROR": {
+        "coin": "SHIB1000",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 0.00560625,
+        "level_max": 0.00589375,
+        "level_date": "2026-08-30",
+        "level_type": "1W_high_PWH+4h_poc",
+        "level_score": 7.5,
+        "activated_at": "2026-09-13",
+        "events": [
+            {
+                "time": 1789837200,
+                "type": "ZONE_TOUCH",
+                "price": 0.005616
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_SHORT_95.22871428571428_96.6422857142857__MIRROR": {
+        "coin": "CL",
+        "direction": "SHORT",
+        "strategy": "BOUNCE",
+        "mode": "MIRROR",
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 0,
+        "history_log": "",
+        "level_min": 95.22871428571428,
+        "level_max": 96.6422857142857,
+        "level_date": "2026-09-18",
+        "level_type": "4h_poc_standalone",
+        "level_score": 3.0,
+        "activated_at": "2026-09-18",
+        "events": [
+            {
+                "time": 1789838100,
+                "type": "ZONE_TOUCH",
+                "price": 95.25
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
+    },
+    "BC_LONG_247.65764285714286_254.99335714285715": {
+        "coin": "BCH",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "state": "SCANNING",
+        "currently_pierced": false,
+        "climax_stage": null,
+        "breach_count": 1,
+        "history_log": "",
+        "level_min": 247.65764285714286,
+        "level_max": 254.99335714285715,
+        "level_date": "2026-09-18",
+        "level_type": "4h_poc_standalone",
+        "level_score": 3.0,
+        "activated_at": "2026-09-18",
+        "events": [
+            {
+                "time": 1789704000,
+                "type": "SWEEP_BOTTOM",
+                "price": 244.8
+            },
+            {
+                "time": 1789706700,
+                "type": "SCAN",
+                "price": 249.0
+            },
+            {
+                "time": 1789769700,
+                "type": "SCAN",
+                "price": 263.5
+            },
+            {
+                "time": 1789827300,
+                "type": "SCAN",
+                "price": 255.1
+            }
+        ],
+        "updated_at": "2026-09-19T21:08:57.923847"
     }
 }

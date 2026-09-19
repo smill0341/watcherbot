@@ -412,8 +412,8 @@ async function drawSnapshotLevels(coin, whenSec) {
     ];
     zones.forEach((z) => {
       if (z.min == null || z.max == null) return;
-      // Используем точное время снимка если есть, иначе дату уровня
-      const zoneStartSec = z.date ? dateInputToUnixSec(z.date) : null;
+      // Используем activated_at если есть, иначе дату уровня
+      const zoneStartSec = (z.activated_at || z.date) ? dateInputToUnixSec(z.activated_at || z.date) : null;
       let candlesForZone = globalCandles;
       if (zoneStartSec != null) {
         const sliced = globalCandles.filter((c) => c.time >= zoneStartSec);

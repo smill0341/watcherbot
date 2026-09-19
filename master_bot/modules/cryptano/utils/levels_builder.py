@@ -220,31 +220,40 @@ def _calculate_zone_age(df, idx, current_idx=None):
 
 
 def _build_zone(price, atr_value, base_score, zone_type, date_str,
-                 mitigated, reaction_count=0, volume_bonus=0.0):
+                 mitigated, reaction_count=0, volume_bonus=0.0, activated_at=None):
     """
     Собирает зону. mitigated-зоны тоже строятся (нужно для фильтрации выше),
     но в финальный результат build_levels() они не попадают.
-    
+
     Логика scoring:
     - base_score: find_peaks (4.0) или POC (3.0) или 0 (календарная метка без confluence)
-    - reaction_count: до 3 касаний +0.5 за каждое (подтверждение уровня), 
+    - reaction_count: до 3 касаний +0.5 за каждое (подтверждение уровня),
                       после 4+ касаний -0.5 каждое (истощение ликвидности)
     - volume_bonus: +0.5 за спайк объёма на формирующей свече
-    
+
     Freshness (возраст уровня) НЕ учитывается — по SMC теории уровень
     актуален до момента пробоя (mitigated), возраст вторичен.
-    """
+
+    activated_at — дата, когда уровень технически ПОДТВЕРДИЛСЯ (а не когда
+    сформировалась цена-экстремум, см. date_str). У большинства типов это
+    позже date_str на фиксированную задержку (см. каждый _extract_* —
+    например, MACRO-фрактал подтверждается только после 2 свечей справа
+    от центра). Если экстрактор не передал свою — по умолчанию = date_str
+    (безопасный fallback, ничего не сдвигает). Это поле определяет, с какой
+    даты уровень рисуется на графике как "рабочий" — см. паспорт в
+    swing_hunter.py (_reconcile_levels_with_registry), который копирует его
+    неизменным при повторных сканах."""
     score = base_score
-    
+
     # Reaction count логика: до 3 бонус, после 4+ штраф (истощение ликвидности)
     if reaction_count <= 3:
         score += reaction_count * 0.5
     else:
         score += 1.5  # макс бонус за 3 касания
         score -= (reaction_count - 3) * 0.5  # штраф за каждое касание свыше 3
-    
+
     score += volume_bonus
-    
+
     score = max(score, 0.0)  # score не может быть отрицательным
 
     return {
@@ -253,6 +262,7 @@ def _build_zone(price, atr_value, base_score, zone_type, date_str,
         "score": round(float(score), 2),
         "type": zone_type,
         "date": date_str,
+        "activated_at": activated_at or date_str,
         "mitigated": bool(mitigated),
         "reaction_count": int(reaction_count),
     }
@@ -352,6 +362,13 @@ def _extract_daily_extremes(df_1d, n_days_back, current_price, atr_1d,
         row = df_1d.iloc[idx]
         ts = row['timestamp']
         date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
+        # Свеча дня ещё не закрылась в момент своего экстремума — уровень
+        # подтверждается только на следующий день (см. докстринг activated_at
+        # в _build_zone).
+        if idx + 1 < len(df_1d):
+            activated_at = pd.to_datetime(df_1d['timestamp'].iloc[idx + 1], unit='ms').strftime('%Y-%m-%d')
+        else:
+            activated_at = date_str
 
         for price, is_support in [(row['high'], False), (row['low'], True)]:
             if abs(price - current_price) > max_distance:
@@ -363,10 +380,10 @@ def _extract_daily_extremes(df_1d, n_days_back, current_price, atr_1d,
 
             label = "1d_low_PDL" if is_support else "1d_high_PDH"
             base_score = 0.0  # PDH/PDL БЕЗ confluence = score 0
-            
+
             zone = _build_zone(price, atr_1d, base_score, label, date_str,
                                 mitigated=mitigated, reaction_count=reactions,
-                                volume_bonus=vol_bonus)
+                                volume_bonus=vol_bonus, activated_at=activated_at)
             zone['_is_support'] = is_support
             zones.append(zone)
 
@@ -410,19 +427,26 @@ def _extract_find_peaks_layer(df_1d, current_price, atr_1d, max_distance, curren
         lookahead = work['high'].iloc[v + 1: v + 1 + IMPULSE_LOOKAHEAD_DAYS]
         if lookahead.empty:
             continue
-        if lookahead.max() < price + (local_atr * IMPULSE_ATR_MULTIPLIER):
+        impulse_threshold = price + (local_atr * IMPULSE_ATR_MULTIPLIER)
+        if lookahead.max() < impulse_threshold:
             continue
 
         ts = work['timestamp'].iloc[v]
         date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
+        # Уровень доказан не в момент экстремума (v), а в момент, когда импульс
+        # РЕАЛЬНО пробил порог — первый день в окне lookahead, где это случилось,
+        # а не конец всего 10-дневного окна (см. докстринг activated_at в _build_zone).
+        confirm_mask = lookahead >= impulse_threshold
+        confirm_idx = confirm_mask.idxmax()
+        activated_at = pd.to_datetime(work['timestamp'].loc[confirm_idx], unit='ms').strftime('%Y-%m-%d')
 
         mitigated = _is_mitigated(df_1d, v, price, True, current_idx)
         reactions = _count_reactions(df_1d, v, price, local_atr, True, current_idx)
         vol_bonus = _volume_bonus(df_1d, v)
 
         zone = _build_zone(price, local_atr, SCORE_FIND_PEAKS, "1d_extreme_peak", date_str,
-                            mitigated=mitigated, reaction_count=reactions, 
-                            volume_bonus=vol_bonus)
+                            mitigated=mitigated, reaction_count=reactions,
+                            volume_bonus=vol_bonus, activated_at=activated_at)
         zone['_is_support'] = True
         zones.append(zone)
 
@@ -438,19 +462,25 @@ def _extract_find_peaks_layer(df_1d, current_price, atr_1d, max_distance, curren
         lookahead = work['low'].iloc[p + 1: p + 1 + IMPULSE_LOOKAHEAD_DAYS]
         if lookahead.empty:
             continue
-        if lookahead.min() > price - (local_atr * IMPULSE_ATR_MULTIPLIER):
+        impulse_threshold = price - (local_atr * IMPULSE_ATR_MULTIPLIER)
+        if lookahead.min() > impulse_threshold:
             continue
 
         ts = work['timestamp'].iloc[p]
         date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
+        # См. комментарий в зеркальной ветке valleys выше — та же логика,
+        # только импульс пробивает порог вниз, а не вверх.
+        confirm_mask = lookahead <= impulse_threshold
+        confirm_idx = confirm_mask.idxmax()
+        activated_at = pd.to_datetime(work['timestamp'].loc[confirm_idx], unit='ms').strftime('%Y-%m-%d')
 
         mitigated = _is_mitigated(df_1d, p, price, False, current_idx)
         reactions = _count_reactions(df_1d, p, price, local_atr, False, current_idx)
         vol_bonus = _volume_bonus(df_1d, p)
 
         zone = _build_zone(price, local_atr, SCORE_FIND_PEAKS, "1d_extreme_peak", date_str,
-                            mitigated=mitigated, reaction_count=reactions, 
-                            volume_bonus=vol_bonus)
+                            mitigated=mitigated, reaction_count=reactions,
+                            volume_bonus=vol_bonus, activated_at=activated_at)
         zone['_is_support'] = False
         zones.append(zone)
 
@@ -519,6 +549,10 @@ def _apply_poc_confluence(zones, poc_price, atr_4h, current_idx_date=None):
             "score": SCORE_POC,
             "type": "4h_poc_standalone",
             "date": current_idx_date or "",
+            # POC пересчитывается на каждом скане (нет "исторической правды",
+            # см. докстринг _is_poc_zone в swing_hunter.py) — activated_at = date,
+            # без задержки подтверждения, как у остальных типов.
+            "activated_at": current_idx_date or "",
             "mitigated": False,
             "reaction_count": 0,
         }
@@ -609,6 +643,13 @@ def merge_overlapping_zones(zones):
             # ещё живым.
             if current.get('date') and (not last.get('date') or current['date'] < last['date']):
                 last['date'] = current['date']
+            # activated_at — МАКСИМУМ среди слитых кандидатов (в отличие от date
+            # выше). Зона считается технически готовой не раньше момента, когда
+            # подтвердился САМЫЙ ПОЗДНИЙ из слитых в неё компонентов — если тип
+            # "разросся" (напр. find_peaks пришёл через месяц после PWH), это и
+            # есть момент, когда confluence реально сложилась.
+            if current.get('activated_at') and (not last.get('activated_at') or current['activated_at'] > last['activated_at']):
+                last['activated_at'] = current['activated_at']
         else:
             merged.append(current)
 
@@ -668,6 +709,9 @@ def _merge_nearby_macro_zones(zones, tolerance_pct=MACRO_MERGE_DISTANCE_PCT):
             # Та же логика, что в merge_overlapping_zones — самая ранняя дата.
             if current.get('date') and (not last.get('date') or current['date'] < last['date']):
                 last['date'] = current['date']
+            # activated_at — максимум (см. комментарий в merge_overlapping_zones).
+            if current.get('activated_at') and (not last.get('activated_at') or current['activated_at'] > last['activated_at']):
+                last['activated_at'] = current['activated_at']
         else:
             merged.append(current)
 
@@ -731,7 +775,14 @@ def _extract_macro_swings(df, current_price, max_distance, base_score, label_pre
     for i in range(2, len(work) - 2):
         ts = work['timestamp'].iloc[i]
         date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
-        
+        # Фрактал (window=5, center=True) подтверждается только когда закрылись
+        # ОБЕ свечи справа от центра (i+1 и i+2) — до этого is_swing_low/high
+        # физически не мог быть True. Активна зона с даты закрытия i+2
+        # (см. докстринг activated_at в _build_zone) — на месячном ТФ это
+        # может быть на 2-3 месяца позже date_str, на недельном — на 2-3 недели.
+        confirm_ts = work['timestamp'].iloc[i + 2]
+        activated_at = pd.to_datetime(confirm_ts, unit='ms').strftime('%Y-%m-%d')
+
         # --- Поддержка (LONG) ---
         if work['is_swing_low'].iloc[i]:
             price = float(work['low'].iloc[i])
@@ -741,15 +792,16 @@ def _extract_macro_swings(df, current_price, max_distance, base_score, label_pre
                 future_closes = work['close'].iloc[i + 3:]
                 if not future_closes.empty and (future_closes < price).any():
                     mitigated = True
-                    
+
                 if not mitigated:
                     # Узкая зона (1.5% от цены), так как ATR на макро слишком широкий
-                    atr_fake = price * 0.015 
-                    zone = _build_zone(price, atr_fake, base_score, f"{label_prefix}_Support", date_str, False)
+                    atr_fake = price * 0.015
+                    zone = _build_zone(price, atr_fake, base_score, f"{label_prefix}_Support", date_str, False,
+                                        activated_at=activated_at)
                     zone['_is_support'] = True
                     zone['class'] = 'MACRO'
                     zones.append(zone)
-                    
+
         # --- Сопротивление (SHORT) ---
         if work['is_swing_high'].iloc[i]:
             price = float(work['high'].iloc[i])
@@ -758,10 +810,11 @@ def _extract_macro_swings(df, current_price, max_distance, base_score, label_pre
                 future_closes = work['close'].iloc[i + 3:]
                 if not future_closes.empty and (future_closes > price).any():
                     mitigated = True
-                    
+
                 if not mitigated:
                     atr_fake = price * 0.015
-                    zone = _build_zone(price, atr_fake, base_score, f"{label_prefix}_Resistance", date_str, False)
+                    zone = _build_zone(price, atr_fake, base_score, f"{label_prefix}_Resistance", date_str, False,
+                                        activated_at=activated_at)
                     zone['_is_support'] = False
                     zone['class'] = 'MACRO'
                     zones.append(zone)

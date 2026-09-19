@@ -91,10 +91,6 @@ def _write_active_watchers_snapshot(v_bottom_mgr, bounce_mgr, level_id_meta=None
             "strategy": strategy,
             "mode": getattr(watcher, "mode", None),
             "state": getattr(watcher, "state", None),
-            # BOUNCE не отражает реальный прогресс в "state" (там всегда
-            # "SCANNING" до входа/смерти) — экспортируем эти два поля отдельно,
-            # дашборд (app.py::get_active_watchers) считает "активность" BOUNCE
-            # именно по ним, а не по state.
             "currently_pierced": getattr(watcher, "currently_pierced", False),
             "climax_stage": getattr(watcher, "climax_stage", None),
             "breach_count": getattr(watcher, "pierce_count", 0),
@@ -104,6 +100,7 @@ def _write_active_watchers_snapshot(v_bottom_mgr, bounce_mgr, level_id_meta=None
             "level_date": getattr(watcher, "level_date", None),
             "level_type": getattr(watcher, "level_type", None),
             "level_score": getattr(watcher, "level_score", None),
+            "activated_at": getattr(watcher, "activated_at", None),
             "events": getattr(watcher, "event_log", []),
             "updated_at": now_dt.isoformat(),
         }

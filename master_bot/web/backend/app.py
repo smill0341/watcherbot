@@ -339,6 +339,40 @@ def trigger_rescan(coin: str, since: Optional[int] = Query(default=None, descrip
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/rescan_watcher/{coin}")
+def trigger_single_watcher_rescan(coin: str, level_id: str = Query(..., description="level_id конкретного BOUNCE-вотчера (как в /api/watchers)")):
+    """Точечный рескан ОДНОГО существующего BOUNCE-вотчера — в отличие от
+    /api/rescan/{coin} НЕ трогает остальных живых вотчеров этой же монеты
+    (см. watcher_plan.py::rescan_single_bounce_watcher за полным объяснением
+    механизма и честным предупреждением про is_focus).
+
+    Синхронный, не через флаг-файл + фоновый поток, как у /api/rescan:
+    это прогон ОДНОГО уровня, а не всей монеты, обычно заметно короче.
+    Использует _watcher_lock — та же блокировка, что и боевой скан/рескан
+    монеты, чтобы не читать/писать вотчер параллельно с боевым циклом."""
+    coin = coin.upper().strip()
+    from modules.cryptano.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
+    from modules.cryptano.watcher_plan import rescan_single_bounce_watcher
+    from background_tasks import export_dashboard_state
+
+    _watcher_lock.acquire()
+    try:
+        result = rescan_single_bounce_watcher(coin, level_id, bounce_mgr)
+        # Без этого watcher.state меняется только в памяти bounce_mgr —
+        # active_watchers.json (тот самый файл, из которого /api/watchers
+        # отдаёт список "в работе") пересобирается ТОЛЬКО этой функцией, и
+        # без явного вызова остаётся старым до следующего боевого скан-цикла.
+        # Та же причина, по которой её вызывает run_web.py::_run_rescan
+        # после обычного рескана монеты (см. её докстринг).
+        export_dashboard_state(v_bottom_mgr, bounce_mgr)
+    finally:
+        _watcher_lock.release()
+
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
 @app.post("/api/reset_watchers")
 def trigger_reset_watchers():
     """

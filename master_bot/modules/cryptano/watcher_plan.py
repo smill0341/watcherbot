@@ -3,6 +3,7 @@
 import time
 import os
 import sys
+import datetime
 from modules.cryptano.utils.storage import load_json
 import pandas as pd
 import gc
@@ -714,3 +715,163 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr):
         print(f"\n[BOUNCE ERROR] ❌ {coin}: {e}")
         traceback.print_exc()
         return 0, [], 0
+
+
+def rescan_single_bounce_watcher(coin, level_id, bounce_mgr):
+    """Точечный рескан ОДНОГО уже существующего BOUNCE-вотчера — в отличие
+    от check_bounce()/ручного рескана по монете (см. run_web.py::_run_rescan),
+    НЕ трогает никаких других вотчеров этой же монеты. Отматывает вотчера от
+    его собственного activated_at (см. bounce_manager.py::evaluate_bounce,
+    строка activated_at копируется из level) и честно прогоняет весь его путь
+    заново.
+
+    Технически это возможно ТОЛЬКО потому, что evaluate_bounce() (в отличие
+    от evaluate_bounce_side()/process_candle()) работает строго с
+    self._watchers[level_id] — не перебирает и не видит остальных вотчеров
+    монеты. Вызывая его напрямую в обход evaluate_bounce_side, мы кормим
+    свечами ИСКЛЮЧИТЕЛЬНО этот один объект.
+
+    ЧЕСТНОСТЬ РЕПЛЕЯ — единственная разница с боевым путём: is_focus здесь
+    ВСЕГДА True. В бою is_focus решает _get_focus_level_id(), который
+    смотрит на ВСЕХ конкурирующих вотчеров той же монеты/направления/mode
+    (см. bounce_manager.py) — а мы намеренно их не трогаем и не реплеим
+    параллельно, значит честно вычислить "кому в реальности достался бы
+    фокус на каждый момент времени" здесь нечем. На практике это может
+    показать вход, которого в реальности не было бы (если фокус тогда был
+    у другого вотчера той же монеты) — держи это в уме, если у монеты
+    исторически бывает больше одного live-кандидата одновременно.
+
+    НЕ трогает bounce_mgr.last_processed_time[coin] — это общий курсор
+    монеты для обычного боевого скана/рескана, точечный рескан отдельного
+    вотчера не должен на него влиять.
+
+    Возвращает {"error": ...} либо {"level_id", "coin", "since",
+    "clamped_to_available_history", "final_state", "orders", "event_log"}.
+    """
+    watcher = bounce_mgr._watchers.get(level_id)
+    if watcher is None or getattr(watcher, 'coin', None) != coin:
+        return {"error": f"Вотчер {level_id} не найден для {coin}"}
+
+    since_str = getattr(watcher, 'activated_at', None) or getattr(watcher, 'level_date', None)
+    if not since_str:
+        return {"error": "У вотчера нет ни activated_at, ни level_date — не от чего отматывать"}
+    try:
+        since_dt = datetime.datetime.fromisoformat(since_str.replace('Z', '+00:00')).replace(tzinfo=None)
+    except Exception:
+        try:
+            since_dt = datetime.datetime.strptime(since_str[:10], '%Y-%m-%d')
+        except Exception:
+            return {"error": f"Не смог разобрать дату activated_at='{since_str}'"}
+
+    markets = load_markets_cached(exchange)
+    symbol = resolve_symbol(coin, markets)
+    if not symbol:
+        return {"error": f"Монета {coin} не найдена на бирже"}
+
+    df, fetch_err = _fetch_candles_df(symbol, coin, 52, "BOUNCE_SINGLE_RESCAN")
+    if df is None:
+        return {"error": fetch_err or "Нет доступных свечей"}
+
+    # Клэмп на глубину локальной истории — ЯВНО, не тихим прыжком к последней
+    # свече (та ловушка уже есть в check_bounce при BOUNCE_REPLAY_MAX_CANDLES,
+    # здесь сообщаем об этом вызывающему коду честно).
+    earliest_available = df.index[0].tz_localize(None) if df.index[0].tzinfo is not None else df.index[0]
+    clamped = False
+    if since_dt < earliest_available.to_pydatetime():
+        since_dt = earliest_available.to_pydatetime()
+        clamped = True
+
+    since_ts = pd.Timestamp(since_dt, tz="UTC")
+    candidate_df = df[df.index >= since_ts]
+    if candidate_df.empty:
+        return {"error": "Нет свечей с момента activated_at этого вотчера"}
+
+    trade_type = watcher.trade_type
+    mode = getattr(watcher, 'mode', None)
+    level = {
+        'min': watcher.min, 'max': watcher.max,
+        'type': getattr(watcher, 'level_type', 'UNKNOWN'),
+        'score': getattr(watcher, 'level_score', 0),
+        'date': getattr(watcher, 'level_date', None),
+        'activated_at': getattr(watcher, 'activated_at', None),
+    }
+
+    # activated_at — это дата, когда УРОВЕНЬ технически подтвердился, НЕ дата,
+    # когда цена РЕАЛЬНО впервые коснулась зоны. В бою вотчер рождается строго
+    # в момент touched (см. process_candle: touched_short = c_high >= r['min'],
+    # touched_long = c_low <= s['max']) — на этот момент цена физически не
+    # может быть "уже далеко снаружи". Если стартовать реплей прямо с
+    # activated_at, первая свеча может застать цену уже за пределами зоны —
+    # тогда сработает защита от телепорта (bounce_watcher.py, KILL_ON_TELEPORT_
+    # OPEN) и вотчер умрёт мгновенно, ни разу честно не просканировав.
+    # Поэтому ищем первую РЕАЛЬНО touched свечу начиная с activated_at и
+    # начинаем реплей именно с неё — так же, как родился бы боевой вотчер.
+    if trade_type == 'SHORT':
+        touched_mask = candidate_df['high'] >= level['min']
+    else:
+        touched_mask = candidate_df['low'] <= level['max']
+
+    if not touched_mask.any():
+        return {
+            "level_id": level_id, "coin": coin,
+            "since": since_dt.strftime('%Y-%m-%d %H:%M'),
+            "clamped_to_available_history": clamped,
+            "final_state": "NOT_TOUCHED",
+            "orders": [],
+            "event_log": [],
+            "note": "Цена ни разу не коснулась зоны с момента activated_at до сейчас — вотчеру физически неоткуда было родиться.",
+        }
+
+    first_touch_ts = candidate_df.index[touched_mask.argmax()]
+    replay_df = df[df.index >= first_touch_ts]
+
+    # Сброс ТОЛЬКО этого одного объекта — соседи в bounce_mgr._watchers не видят
+    # этот вызов вообще (identity/min/max/trade_type/mode не трогаются).
+    watcher.reset_for_rescan()
+
+    atr_series = calculate_atr(df)
+    WINDOW = 60
+    df_index = df.index
+    orders = []
+
+    for ts, row in replay_df.iterrows():
+        pos = df_index.searchsorted(ts, side="right")
+        df_slice = df.iloc[max(0, pos - WINDOW):pos]
+        if len(df_slice) < 52:
+            continue
+        c_atr = float(atr_series.loc[ts]) if ts in atr_series.index else 0.0
+
+        ts_naive = ts.tz_localize(None) if ts.tzinfo is not None else ts
+        hist_snapshot = get_levels_snapshot(ts_naive.to_pydatetime())
+        if hist_snapshot is not None:
+            hist_coin_macro = hist_snapshot.get(coin) or hist_snapshot.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
+            opp_side = hist_coin_macro.get('resistances' if trade_type == 'LONG' else 'supports', [])
+            same_side = hist_coin_macro.get('resistances', []) if trade_type == 'SHORT' else []
+        else:
+            opp_side, same_side = [], []
+
+        decision = bounce_mgr.evaluate_bounce(
+            level, df_slice, trade_type, opp_side,
+            is_focus=True, c_atr=c_atr, same_side_levels=same_side,
+            mode=mode, coin=coin,
+        )
+        if decision.get('allow'):
+            orders.append({
+                'time': ts_naive.isoformat(),
+                'entry': decision.get('entry_price'),
+                'sl': decision.get('sl'),
+                'tp': decision.get('tp'),
+                'reason': decision.get('reason', ''),
+            })
+
+    first_touch_naive = first_touch_ts.tz_localize(None) if first_touch_ts.tzinfo is not None else first_touch_ts
+    return {
+        "level_id": level_id,
+        "coin": coin,
+        "activated_at": since_dt.strftime('%Y-%m-%d %H:%M'),
+        "since": first_touch_naive.strftime('%Y-%m-%d %H:%M'),  # реальный момент первого касания — отсюда шёл реплей
+        "clamped_to_available_history": clamped,
+        "final_state": watcher.state,
+        "orders": orders,
+        "event_log": list(getattr(watcher, 'event_log', [])),
+    }

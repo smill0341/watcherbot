@@ -71,7 +71,7 @@ def _is_poc_zone(zone):
     return zone.get('type') == '4h_poc_standalone'
 
 
-def _reconcile_levels_with_registry(old_zones, fresh_zones, is_support, df_1d, current_idx=None):
+def _reconcile_levels_with_registry(old_zones, fresh_zones, is_support, df_1d, current_idx=None, scan_time=None):
     """Паспорт уровня.
 
     min/max/date уже существующей записи ("паспорт") считаются правдой по
@@ -97,9 +97,13 @@ def _reconcile_levels_with_registry(old_zones, fresh_zones, is_support, df_1d, c
     просто проходят через реконсиляцию как есть, свежими каждый раз, потому
     что у них по конструкции нет "исторической правды", с которой можно
     было бы сверяться (см. эксперимент на реальных данных AVAX/timeline —
-    дата и координаты POC меняются на каждом скане, и это ожидаемо)."""
+    дата и координаты POC меняются на каждом скане, и это ожидаемо).
+
+    scan_time — ISO-дата момента скана (для activated_at новых уровней)."""
     if current_idx is None:
         current_idx = len(df_1d) - 1
+    if scan_time is None:
+        scan_time = datetime.datetime.now().isoformat()
 
     def _mid(z):
         return (z['min'] + z['max']) / 2.0
@@ -126,13 +130,29 @@ def _reconcile_levels_with_registry(old_zones, fresh_zones, is_support, df_1d, c
                 break
         if match_i is not None:
             used_old.add(match_i)
-            merged = dict(old_zones_for_match[match_i])  # геометрия/дата — от старой записи
+            merged = dict(old_zones_for_match[match_i])  # геометрия/дата/activated_at — от старой записи
             for key in ('type', 'score', 'reaction_count', 'mitigated', 'class'):
                 if key in fresh:
                     merged[key] = fresh[key]
+            # activated_at — максимум старого и свежего. Обычно они совпадают
+            # (то же множество компонентов), но если fresh['type'] "разросся"
+            # новым confluence-компонентом (см. merge_overlapping_zones в
+            # levels_builder.py) — свежий activated_at может быть позже: зона
+            # готова не раньше момента, когда подтвердился ПОСЛЕДНИЙ из её
+            # компонентов, а не первый исторический.
+            fresh_act = fresh.get('activated_at')
+            if fresh_act and (not merged.get('activated_at') or fresh_act > merged['activated_at']):
+                merged['activated_at'] = fresh_act
             result.append(merged)
         else:
-            result.append(fresh)
+            # Новый уровень — levels_builder.py уже проставил activated_at
+            # по своей формуле (задержка подтверждения по типу зоны). scan_time
+            # тут только safety-fallback на случай, если по какой-то причине
+            # оно не пришло (старый кэш модуля, ручной вызов в обход builder).
+            fresh_with_activated = dict(fresh)
+            if 'activated_at' not in fresh_with_activated:
+                fresh_with_activated['activated_at'] = scan_time
+            result.append(fresh_with_activated)
 
     for i, old in enumerate(old_zones_for_match):
         if i in used_old:
@@ -180,7 +200,7 @@ def _reconcile_levels_with_registry(old_zones, fresh_zones, is_support, df_1d, c
     return result + poc_fresh
 
 
-def _reconcile_coin_levels(coin, fresh_levels, macro_base, df_1d):
+def _reconcile_coin_levels(coin, fresh_levels, macro_base, df_1d, scan_time=None):
     """Обёртка над _reconcile_levels_with_registry для одной монеты, отдельно
     для supports и resistances. Единственная точка, которую вызывают оба
     места сборки (build_macro_levels и build_levels_for_single_coin) — не
@@ -190,8 +210,8 @@ def _reconcile_coin_levels(coin, fresh_levels, macro_base, df_1d):
     old_supports = old_entry.get('supports', []) if isinstance(old_entry, dict) else []
     old_resistances = old_entry.get('resistances', []) if isinstance(old_entry, dict) else []
     return {
-        "supports": _reconcile_levels_with_registry(old_supports, fresh_levels["supports"], True, df_1d),
-        "resistances": _reconcile_levels_with_registry(old_resistances, fresh_levels["resistances"], False, df_1d),
+        "supports": _reconcile_levels_with_registry(old_supports, fresh_levels["supports"], True, df_1d, scan_time=scan_time),
+        "resistances": _reconcile_levels_with_registry(old_resistances, fresh_levels["resistances"], False, df_1d, scan_time=scan_time),
     }
 
 _hunter_lock = threading.Lock()
@@ -295,11 +315,12 @@ def build_macro_levels(bot=None, admin_chat_id=None):
 
                 has_any = (levels["supports"] or levels["resistances"])
                 if has_any:
-                    reconciled = _reconcile_coin_levels(coin, levels, macro_base, df_1d)
+                    scan_time = datetime.datetime.now().isoformat()
+                    reconciled = _reconcile_coin_levels(coin, levels, macro_base, df_1d, scan_time=scan_time)
                     macro_base[coin] = {
                         "supports": reconciled["supports"],
                         "resistances": reconciled["resistances"],
-                        "updated_at": datetime.datetime.now().isoformat()
+                        "updated_at": scan_time
                     }
                 else:
                     # Явно пересчитали и уровней не нашли — это не "выпал из
@@ -386,11 +407,12 @@ def build_levels_for_single_coin(coin):
         levels = build_levels(df_1M, df_1W, df_1d, df_4h, coin)
 
         macro_base = load_json(MACRO_LEVELS_FILE, default={})
-        reconciled = _reconcile_coin_levels(coin, levels, macro_base, df_1d)
+        scan_time = datetime.datetime.now().isoformat()
+        reconciled = _reconcile_coin_levels(coin, levels, macro_base, df_1d, scan_time=scan_time)
         macro_base[coin] = {
             "supports": reconciled["supports"],
             "resistances": reconciled["resistances"],
-            "updated_at": datetime.datetime.now().isoformat()
+            "updated_at": scan_time
         }
         save_json_atomic(MACRO_LEVELS_FILE, macro_base)
         try:

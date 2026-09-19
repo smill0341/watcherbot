@@ -125,20 +125,25 @@ function renderActiveWatchersFiltered(watchers) {
           ${label} · <span class="state-tag" style="display: inline-block; padding: 0; margin: 0;">${w.state}</span>${rescanBadge}
         </div>
       </div>
-      <button title="Пересчитать структуру" onclick="triggerRescan(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 8px; align-self: flex-start;">🔄</button>
+      <button title="Пересчитать структуру (вся монета)" onclick="triggerRescan(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 8px; align-self: flex-start;">🔄</button>
+      <button title="Точечный рескан ТОЛЬКО этого уровня, от его activated_at — соседей не трогает" onclick="triggerSingleWatcherRescan(event, '${w.coin}', '${w.level_id}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 4px; align-self: flex-start;">🎯</button>
     `;
     div.title = w.history_log || "";
     div.onclick = (e) => {
       // Не открывать график если кликнули на checkbox
       if (e.target.classList.contains("watcher-checkbox")) return;
       
-      loadChart(w.coin, {
+            loadChart(w.coin, {
         level_id: w.level_id,
         min: w.level_min,
         max: w.level_max,
         strategy: w.strategy,
         mode: w.mode,
-        level_date: w.level_date,  // 🔥 НОВОЕ: дата уровня для разделения истории и заливки
+        level_date: w.level_date,      // дата пика/экстремума в истории (для легенды)
+        level_type: w.level_type,      // тип зоны (PDH/PDL/MACRO/...) для легенды
+        level_score: w.level_score,    // сила уровня для легенды
+        direction: w.direction,        // LONG/SHORT — влияет на цвет зоны и Target/Stop
+        activated_at: w.activated_at,  // дата технической активации — от неё рисуется линия
       });
     };
     activeListEl.appendChild(div);
@@ -608,10 +613,10 @@ function drawSignalTradeLines(signal) {
     signalLines.push(series);
   };
 
-  // 🔥 Уровень (от level_date, зелёный LONG / красный SHORT) - как в loadLevels
+  // 🔥 Уровень (от activated_at, зелёный LONG / красный SHORT) - как в loadLevels
   if (focusedLevel && focusedLevel.min !== null && focusedLevel.max !== null) {
     const levelColor = focusedLevel.direction === "LONG" ? "#00c853" : "#ff3d3d";
-    const startDate = focusedLevel.born_at || focusedLevel.level_date;
+    const startDate = focusedLevel.activated_at || focusedLevel.level_date;
     const levelStartSec = startDate
       ? Math.floor(new Date(startDate + "T00:00:00Z").getTime() / 1000)
       : fromSec;
@@ -732,7 +737,7 @@ async function loadLevels(coin, token = chartLoadToken) {
     const drawSide = (zones, color) => {
       (zones || []).forEach((z) => {
         if (z.min == null || z.max == null) return;
-        const zoneStartSec = z.date ? Math.floor(new Date(z.date + "T00:00:00Z").getTime() / 1000) : null;
+        const zoneStartSec = (z.activated_at || z.date) ? Math.floor(new Date((z.activated_at || z.date) + "T00:00:00Z").getTime() / 1000) : null;
         const lineCandles = zoneStartSec !== null
           ? globalCandles.filter((c) => c.time >= zoneStartSec)
           : globalCandles;
@@ -892,9 +897,9 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
       // Если кликнули на вотчера - рисуем только его уровень
       if (!signal && focusedLevel && focusedLevel.min != null && focusedLevel.max != null) {
         const levelColor = focusedLevel.direction === "LONG" ? "#00c853" : "#ff3d3d";
-        // born_at - дата появления в macro_levels (когда вотчер родился)
+        // activated_at - дата активации уровня (когда он был впервые обнаружен)
         // level_date - дата пика/лоу (может быть очень старой)
-        const startDate = focusedLevel.born_at || focusedLevel.level_date;
+        const startDate = focusedLevel.activated_at || focusedLevel.level_date;
         const levelStartSec = startDate
           ? Math.floor(new Date(startDate + "T00:00:00Z").getTime() / 1000)
           : null;
@@ -1054,7 +1059,8 @@ async function loadActiveWatchers() {
           ${label} · <span class="state-tag" style="display: inline-block; padding: 0; margin: 0;">${w.state}</span>${rescanBadge}
         </div>
       </div>
-      <button title="Пересчитать структуру" onclick="triggerRescan(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 8px; align-self: flex-start;">🔄</button>
+      <button title="Пересчитать структуру (вся монета)" onclick="triggerRescan(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 8px; align-self: flex-start;">🔄</button>
+      <button title="Точечный рескан ТОЛЬКО этого уровня, от его activated_at — соседей не трогает" onclick="triggerSingleWatcherRescan(event, '${w.coin}', '${w.level_id}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 4px; align-self: flex-start;">🎯</button>
     `;
     div.title = w.history_log || "";
     div.onclick = (e) => {
@@ -1067,7 +1073,11 @@ async function loadActiveWatchers() {
         max: w.level_max,
         strategy: w.strategy,
         mode: w.mode,
-        level_date: w.level_date,  // 🔥 НОВОЕ: дата уровня для разделения истории и заливки
+        level_date: w.level_date,      // дата пика/экстремума в истории (для легенды)
+        level_type: w.level_type,      // тип зоны (PDH/PDL/MACRO/...) для легенды
+        level_score: w.level_score,    // сила уровня для легенды
+        direction: w.direction,        // LONG/SHORT — влияет на цвет зоны и Target/Stop
+        activated_at: w.activated_at,  // дата технической активации — от неё рисуется линия
       });
     };
     activeListEl.appendChild(div);
@@ -1424,6 +1434,54 @@ window.triggerRescan = async function(event, coin) {
   } catch (e) {
       console.error("Ошибка рескана", e);
       alert("Ошибка: " + e);
+  }
+};
+
+// Точечный рескан ОДНОГО вотчера (см. watcher_plan.py::rescan_single_bounce_watcher) —
+// в отличие от triggerRescan выше, ничего не спрашивает (дата берётся из
+// activated_at самого вотчера) и не трогает соседние вотчеры той же монеты.
+// Синхронный запрос — результат приходит сразу в ответе, без флага/поллинга.
+window.triggerSingleWatcherRescan = async function(event, coin, levelId) {
+  event.stopPropagation();
+  const btn = event.currentTarget;
+  const originalText = btn.textContent;
+  btn.textContent = "⏳";
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/rescan_watcher/${encodeURIComponent(coin)}?level_id=${encodeURIComponent(levelId)}`, { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.detail || "Ошибка точечного рескана");
+      return;
+    }
+    const orders = data.orders || [];
+    let msg = `Точечный рескан ${coin} / ${levelId}\n`;
+    if (data.final_state === "NOT_TOUCHED") {
+      msg += `Уровень активировался ${data.activated_at}, но цена ни разу не коснулась зоны с тех пор — вотчеру физически неоткуда было родиться.\n`;
+    } else {
+      msg += `Уровень активировался (activated_at): ${data.activated_at}\n`;
+      msg += `Цена реально коснулась зоны: ${data.since}${data.clamped_to_available_history ? " (обрезано до доступной глубины истории!)" : ""}\n`;
+      msg += `Итоговое состояние: ${data.final_state}\n`;
+      msg += `Найдено сделок: ${orders.length}\n`;
+      if (orders.length > 0) {
+        msg += "\n" + orders.map(o =>
+          `  ${o.time}  entry=${o.entry}  sl=${o.sl}  tp=${o.tp}\n  ${o.reason || ""}`
+        ).join("\n\n");
+      }
+    }
+    console.log("[SINGLE WATCHER RESCAN]", data);
+    alert(msg);
+    // Точечный рескан реально меняет state вотчера в бою (не песочница) —
+    // список "в работе" слева должен это увидеть сразу, не ждать следующего
+    // 4-секундного опроса rescan_status (см. loadRescanStatus).
+    loadActiveWatchers();
+    if (selectedCoin === coin) loadChart(coin, focusedLevel);
+  } catch (e) {
+    console.error("Ошибка точечного рескана", e);
+    alert("Ошибка: " + e);
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
   }
 };
 
