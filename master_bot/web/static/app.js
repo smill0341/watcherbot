@@ -6,6 +6,158 @@ const currentCoinEl = document.getElementById("current-coin");
 const currentSymbolEl = document.getElementById("current-symbol");
 const signalsBody = document.getElementById("signals-body");
 
+// ===== 🔥 НОВОЕ: Элементы для поиска =====
+const watchlistSearchEl = document.getElementById("watchlist-search");
+const activeSearchEl = document.getElementById("active-search");
+
+// Кэши для фильтрации
+let watchlistCache = [];
+let activeWatchersCache = [];
+
+// ===== 🔥 НОВАЯ ФУНКЦИЯ: Поиск в Watchlist =====
+function filterWatchlist(query) {
+  if (!watchlistListEl) return;
+  const q = query.toLowerCase().trim();
+  
+  if (!q) {
+    renderWatchlistFiltered(watchlistCache);
+    return;
+  }
+
+  const filtered = watchlistCache.filter(item => 
+    item.coin.toLowerCase().includes(q)
+  );
+  
+  renderWatchlistFiltered(filtered);
+}
+
+// ===== 🔥 НОВАЯ ФУНКЦИЯ: Поиск в Active Watchers =====
+function filterActiveWatchers(query) {
+  if (!activeListEl) return;
+  const q = query.toLowerCase().trim();
+  
+  if (!q) {
+    renderActiveWatchersFiltered(activeWatchersCache);
+    return;
+  }
+
+  const filtered = activeWatchersCache.filter(w => 
+    (w.coin || "").toLowerCase().includes(q)
+  );
+  
+  renderActiveWatchersFiltered(filtered);
+}
+
+// ===== 🔥 НОВАЯ ФУНКЦИЯ: Рендер отфільтрованого watchlist =====
+function renderWatchlistFiltered(entries) {
+  if (!watchlistListEl) return;
+  
+  if (entries.length === 0) {
+    watchlistListEl.innerHTML = "<div class='muted'>ничего не найдено</div>";
+    return;
+  }
+
+  const renderGroup = (items) =>
+    items
+      .map(info => `
+        <div class="list-item" data-coin="${info.coin}">
+          <span>${info.coin}</span>
+          ${info.source === 'MANUAL' ? '<span class="manual-badge" title="Добавлена вручную">✋ РУЧНО</span>' : ''}
+        </div>`)
+      .join("");
+
+  let html = "";
+  const withLevels = entries.filter(e => e.has_levels);
+  const withoutLevels = entries.filter(e => !e.has_levels);
+
+  if (withLevels.length > 0) {
+    html += `<div class="list-section-header">📊 С уровнями (${withLevels.length})</div>`;
+    html += renderGroup(withLevels);
+  }
+  if (withoutLevels.length > 0) {
+    html += `<div class="list-section-header">⏳ Без уровней (${withoutLevels.length})</div>`;
+    html += renderGroup(withoutLevels);
+  }
+
+  watchlistListEl.innerHTML = html;
+
+  watchlistListEl.querySelectorAll(".list-item").forEach((div) => {
+    div.onclick = () => loadChart(div.dataset.coin);
+  });
+}
+
+// ===== 🔥 НОВАЯ ФУНКЦИЯ: Рендер отфільтрованих Active Watchers =====
+function renderActiveWatchersFiltered(watchers) {
+  if (!activeListEl) return;
+  
+  if (watchers.length === 0) {
+    activeListEl.innerHTML = "<div class='muted'>ничего не найдено</div>";
+    return;
+  }
+
+  activeListEl.innerHTML = "";
+
+  watchers.forEach((w) => {
+    const div = document.createElement("div");
+    div.className = "list-item";
+    div.dataset.coin = w.coin;
+    const label = friendlyStrategyWithMode(w.strategy, w.mode);
+    const dotColor = STRATEGY_COLORS[w.strategy] || "#8a8f98";
+    const rescanInfo = rescanStatusCache[w.coin];
+    let rescanBadge = "";
+    if (rescanInfo && rescanInfo.status === "running") {
+      rescanBadge = `<span title="Рескан идёт — с ${rescanInfo.since ?? ""}" style="margin-left:4px;">⏳</span>`;
+    } else if (rescanInfo && rescanInfo.status === "done") {
+      rescanBadge = `<span title="Рескан завершён — с ${rescanInfo.since ?? ""}, найдено сигналов: ${rescanInfo.found ?? 0}" style="margin-left:4px;">✅</span>`;
+    }
+    
+    const manualBadge = w.source === 'MANUAL' ? '<span class="manual-badge" title="Добавлена вручную">✋</span>' : '';
+    
+    // 🔥 НОВОЕ: Checkbox для удаления
+    div.innerHTML = `
+      <input type="checkbox" class="watcher-checkbox" data-level-id="${w.level_id}" style="cursor: pointer; margin-right: 8px;">
+      <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 4px;">
+        <div style="font-weight: 600; font-size: 14px;">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};margin-right:6px;vertical-align: middle;"></span>
+          ${w.coin ?? "?"} <span class="dir-${w.direction}">${w.direction ?? ""}</span>${manualBadge}
+        </div>
+        <div style="font-size: 11px; color: #8a8f98;">
+          ${label} · <span class="state-tag" style="display: inline-block; padding: 0; margin: 0;">${w.state}</span>${rescanBadge}
+        </div>
+      </div>
+      <button title="Пересчитать структуру" onclick="triggerRescan(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 8px; align-self: flex-start;">🔄</button>
+    `;
+    div.title = w.history_log || "";
+    div.onclick = (e) => {
+      // Не открывать график если кликнули на checkbox
+      if (e.target.classList.contains("watcher-checkbox")) return;
+      
+      loadChart(w.coin, {
+        level_id: w.level_id,
+        min: w.level_min,
+        max: w.level_max,
+        strategy: w.strategy,
+        mode: w.mode,
+        level_date: w.level_date,  // 🔥 НОВОЕ: дата уровня для разделения истории и заливки
+      });
+    };
+    activeListEl.appendChild(div);
+  });
+}
+
+// ===== 🔥 НОВЫЙ СЛУШАТЕЛЬ: Добавить после инициализации =====
+if (watchlistSearchEl) {
+  watchlistSearchEl.addEventListener("input", (e) => {
+    filterWatchlist(e.target.value);
+  });
+}
+
+if (activeSearchEl) {
+  activeSearchEl.addEventListener("input", (e) => {
+    filterActiveWatchers(e.target.value);
+  });
+}
+
 let chart = null;
 let candleSeries = null;
 let volumeSeries = null;
@@ -116,11 +268,11 @@ const EVENT_MARKER_STYLE = {
   // в loadEvents ниже, сюда не входит.
   CANCEL:             { color: "#5c6370", shape: "square" },
   DEAD:               { color: "#e5654f", shape: "square" },
-  SWEEP_BOTTOM:       { color: "#9c27b0", shape: "circle" },
+  SWEEP_BOTTOM:       { color: "#9c27b0", shape: "circle" },  // фиолетовый - прокол/уход до 50%
   RUNAWAY:            { color: "#e5654f", shape: "circle" },
   CLIMAX_NEAR_BREACH: { color: "#5aa9e6", shape: "circle" },
   CLIMAX_FAR_BREACH:  { color: "#5aa9e6", shape: "circle" },
-  ZONE_TOUCH:         { color: "#5aa9e6", shape: "circle" },
+  ZONE_TOUCH:         { color: "#5aa9e6", shape: "circle" },  // синий - касание уровня
   SCAN:               { color: "#f2c14e", shape: "circle" },
 };
 
@@ -432,7 +584,7 @@ function drawSignalTradeLines(signal) {
   clearSignalLines();
   if (!globalCandles.length || signal.time == null) return;
 
-  // Определяем временные рамки сделки
+  // Временные рамки сделки (для Target/Stop)
   const fromSec = signal.time;
   const toSec = signal.closed_at ? Math.floor(new Date(signal.closed_at).getTime() / 1000) : Math.floor(Date.now() / 1000);
   const lineCandles = globalCandles.filter((c) => c.time >= fromSec && c.time <= toSec);
@@ -440,7 +592,7 @@ function drawSignalTradeLines(signal) {
   const lineTimes = lineCandles.map((c) => c.time);
 
   // Функция рисования пунктирной линии
-  const addLine = (price, color) => {
+  const addLine = (price, color, title = "") => {
     if (price === null || price === undefined || Number.isNaN(Number(price))) return;
     const series = chart.addLineSeries({
       color,
@@ -449,16 +601,32 @@ function drawSignalTradeLines(signal) {
       crosshairMarkerVisible: false,
       priceLineVisible: false,
       lastValueVisible: false,
-      title: "",
+      title: title,
       autoscaleInfoProvider: () => null,
     });
     series.setData(lineTimes.map((t) => ({ time: t, value: Number(price) })));
     signalLines.push(series);
   };
 
-  // Оставляем только Target и Stop (Entry и заливка удалены)
-  addLine(signal.target, "#4caf7d");
-  addLine(signal.stop, "#e5654f");
+  // 🔥 Уровень (от level_date, зелёный LONG / красный SHORT) - как в loadLevels
+  if (focusedLevel && focusedLevel.min !== null && focusedLevel.max !== null) {
+    const levelColor = focusedLevel.direction === "LONG" ? "#00c853" : "#ff3d3d";
+    const startDate = focusedLevel.born_at || focusedLevel.level_date;
+    const levelStartSec = startDate
+      ? Math.floor(new Date(startDate + "T00:00:00Z").getTime() / 1000)
+      : fromSec;
+    const levelCandles = globalCandles.filter((c) => c.time >= levelStartSec && c.time <= toSec);
+    if (levelCandles.length) {
+      const typeLabel = friendlyLevelType(focusedLevel.level_type);
+      const title = `${typeLabel} · ${focusedLevel.level_date || "—"} · ${focusedLevel.level_score ?? "—"}`;
+      signalLines.push(...addZoneBand(focusedLevel.min, focusedLevel.max, levelColor, levelCandles, title));
+    }
+  }
+
+  // Target и Stop - цвета зависят от направления
+  const isShortSignal = focusedLevel ? focusedLevel.direction === "SHORT" : false;
+  addLine(signal.target, isShortSignal ? "#e5654f" : "#4caf7d", "Target");
+  addLine(signal.stop,   isShortSignal ? "#4caf7d" : "#e5654f", "Stop");
 }
 
 const STRATEGY_LABELS = {
@@ -501,14 +669,14 @@ async function loadEvents(coin, token = chartLoadToken) {
     // ЖЕСТКИЙ ФИЛЬТР: Строго 1 маркер на 1 свечу (требование движка)
     const markersMap = {};
 
-    const sourceWatchers = isSignalView && !focusedLevel
-      ? []
-      : (focusedLevel && focusedLevel.fromHistory)
-        ? [focusedLevel]
-        : (data.active || []);
+    // Показываем маркеры событий только в обычном режиме (не сигнал)
+    const sourceWatchers = isSignalView
+      ? (focusedLevel && focusedLevel.events && focusedLevel.events.length ? [focusedLevel] : [])
+      : (data.active || []);
 
     sourceWatchers.forEach((w) => {
-      if (!matchesFocus(w)) return;
+      // При сигнале focusedLevel уже является нужным вотчером - не фильтруем
+      if (!isSignalView && !matchesFocus(w)) return;
       const isShort = w.direction === "SHORT";
       const entryStyle = isShort ? { color: "#e5654f", shape: "arrowDown" } : { color: "#4caf7d", shape: "arrowUp" };
       
@@ -569,8 +737,9 @@ async function loadLevels(coin, token = chartLoadToken) {
           ? globalCandles.filter((c) => c.time >= zoneStartSec)
           : globalCandles;
         if (!lineCandles.length) return;
-        const title = z.type ? `${z.type}` : "";
-        levelLines.push(...addZoneBand(z.min, z.max, color, lineCandles, title));
+        const typeLabel = friendlyLevelType(z.type);
+        const tooltipInfo = `${typeLabel}\n${z.date || "—"}\n${z.min.toFixed(6)} — ${z.max.toFixed(6)}\nВес: ${z.score ?? "—"}`;
+        levelLines.push(...addZoneBand(z.min, z.max, color, lineCandles, tooltipInfo));
       });
     };
 
@@ -717,9 +886,27 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
     }
     candleSeries.priceScale().applyOptions({ autoScale: true });
     if (!skipLiveOverlay) {
-      loadLevels(coin, myToken);
+      if (!signal && !focusedLevel) loadLevels(coin, myToken);
       loadEvents(coin, myToken);
-      loadMacroEma200(coin); 
+      loadMacroEma200(coin);
+      // Если кликнули на вотчера - рисуем только его уровень
+      if (!signal && focusedLevel && focusedLevel.min != null && focusedLevel.max != null) {
+        const levelColor = focusedLevel.direction === "LONG" ? "#00c853" : "#ff3d3d";
+        // born_at - дата появления в macro_levels (когда вотчер родился)
+        // level_date - дата пика/лоу (может быть очень старой)
+        const startDate = focusedLevel.born_at || focusedLevel.level_date;
+        const levelStartSec = startDate
+          ? Math.floor(new Date(startDate + "T00:00:00Z").getTime() / 1000)
+          : null;
+        const levelCandles = levelStartSec
+          ? globalCandles.filter((c) => c.time >= levelStartSec)
+          : globalCandles;
+        if (levelCandles.length) {
+          const typeLabel = friendlyLevelType(focusedLevel.level_type);
+          const title = `${typeLabel} · ${focusedLevel.level_date || "—"} · ${focusedLevel.level_score ?? "—"}`;
+          levelLines.push(...addZoneBand(focusedLevel.min, focusedLevel.max, levelColor, levelCandles, title));
+        }
+      }
     }
     if (signal) drawSignalTradeLines(signal);
   } catch (e) {
@@ -747,30 +934,48 @@ async function loadWatchlist() {
 
   if (total === 0) {
     watchlistListEl.innerHTML = "<div class='muted'>список пуст</div>";
+    watchlistCache = [];
     return;
   }
 
+  // --- 🔥 НОВОЕ: СОРТИРОВКА ПО ПРИОРИТЕТУ ---
+  // Сначала MANUAL (ручно добавленные) по дате, потом остальные по алфавиту
+  const sortByPriority = (arr) => {
+    const manual = arr.filter(e => e.source === 'MANUAL').sort((a, b) => 
+      new Date(b.added_at || 0) - new Date(a.added_at || 0) // Новые первыми
+    );
+    const auto = arr.filter(e => e.source !== 'MANUAL').sort((a, b) => 
+      a.coin.localeCompare(b.coin) // По алфавиту
+    );
+    return [...manual, ...auto];
+  };
+
+  const sortedWithLevels = sortByPriority(withLevels);
+  const sortedWithoutLevels = sortByPriority(withoutLevels);
+  
+  // Сохраняем в кэш для поиска
+  watchlistCache = [...sortedWithLevels, ...sortedWithoutLevels];
+
+  // --- Рендерим ---
   const renderGroup = (entries) =>
     entries
-      .slice()
-      .sort((a, b) => a.coin.localeCompare(b.coin))
-      .map(
-        (info) => `
+      .map(info => `
         <div class="list-item" data-coin="${info.coin}">
           <span>${info.coin}</span>
-        </div>`
-      )
+          ${info.source === 'MANUAL' ? '<span class="manual-badge" title="Добавлена вручную">✋ РУЧНО</span>' : ''}
+        </div>`)
       .join("");
-      
+
   let html = "";
-  if (withLevels.length > 0) {
-    html += `<div class="list-section-header">📊 С уровнями (${withLevels.length})</div>`;
-    html += renderGroup(withLevels);
+  if (sortedWithLevels.length > 0) {
+    html += `<div class="list-section-header">📊 С уровнями (${sortedWithLevels.length})</div>`;
+    html += renderGroup(sortedWithLevels);
   }
-  if (withoutLevels.length > 0) {
-    html += `<div class="list-section-header">⏳ Без уровней (${withoutLevels.length})</div>`;
-    html += renderGroup(withoutLevels);
+  if (sortedWithoutLevels.length > 0) {
+    html += `<div class="list-section-header">⏳ Без уровней (${sortedWithoutLevels.length})</div>`;
+    html += renderGroup(sortedWithoutLevels);
   }
+
   watchlistListEl.innerHTML = html;
 
   watchlistListEl.querySelectorAll(".list-item").forEach((div) => {
@@ -800,16 +1005,28 @@ async function loadActiveWatchers() {
 
   if (data.length === 0) {
     activeListEl.innerHTML = "<div class='muted'>сейчас никого нет</div>";
+    activeWatchersCache = [];
     return;
   }
 
-  activeListEl.innerHTML = "";
-  
-  // --- НОВОЕ: Сортируем список по алфавиту (по тикеру монеты) ---
-  data.sort((a, b) => (a.coin || "").localeCompare(b.coin || ""));
-  // --------------------------------------------------------------
+  // --- 🔥 НОВОЕ: СОРТИРОВКА ПО ПРИОРИТЕТУ ---
+  // Сначала MANUAL (ручно добавленные) по дате, потом остальные по алфавиту
+  const sortByPriority = (arr) => {
+    const manual = arr.filter(w => w.source === 'MANUAL').sort((a, b) => 
+      new Date(b.added_at || 0) - new Date(a.added_at || 0)
+    );
+    const auto = arr.filter(w => w.source !== 'MANUAL').sort((a, b) => 
+      (a.coin || "").localeCompare(b.coin || "")
+    );
+    return [...manual, ...auto];
+  };
 
-  data.forEach((w) => {
+  const sortedData = sortByPriority(data);
+  activeWatchersCache = sortedData; // Сохраняем в кэш
+
+  activeListEl.innerHTML = "";
+
+  sortedData.forEach((w) => {
     const div = document.createElement("div");
     div.className = "list-item";
     div.dataset.coin = w.coin;
@@ -822,22 +1039,37 @@ async function loadActiveWatchers() {
     } else if (rescanInfo && rescanInfo.status === "done") {
       rescanBadge = `<span title="Рескан завершён — с ${rescanInfo.since ?? ""}, найдено сигналов: ${rescanInfo.found ?? 0}" style="margin-left:4px;">✅</span>`;
     }
+    
+    const manualBadge = w.source === 'MANUAL' ? '<span class="manual-badge" title="Добавлена вручную">✋</span>' : '';
+    
+    // 🔥 НОВОЕ: Checkbox для удаления
     div.innerHTML = `
-      <span style="flex-grow: 1;">
-        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};margin-right:6px;"></span>
-        ${w.coin ?? "?"} <span class="dir-${w.direction}">${w.direction ?? ""}</span> <span class="muted">${label}</span>
-      </span>
-      <span class="state-tag">${w.state}</span>
-      <button title="Пересчитать структуру" onclick="triggerRescan(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 8px;">🔄</button>${rescanBadge}
+      <input type="checkbox" class="watcher-checkbox" data-level-id="${w.level_id}" style="cursor: pointer; margin-right: 8px;">
+      <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 4px;">
+        <div style="font-weight: 600; font-size: 14px;">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};margin-right:6px;vertical-align: middle;"></span>
+          ${w.coin ?? "?"} <span class="dir-${w.direction}">${w.direction ?? ""}</span>${manualBadge}
+        </div>
+        <div style="font-size: 11px; color: #8a8f98;">
+          ${label} · <span class="state-tag" style="display: inline-block; padding: 0; margin: 0;">${w.state}</span>${rescanBadge}
+        </div>
+      </div>
+      <button title="Пересчитать структуру" onclick="triggerRescan(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 14px; margin-left: 8px; align-self: flex-start;">🔄</button>
     `;
     div.title = w.history_log || "";
-    div.onclick = () => loadChart(w.coin, {
-      level_id: w.level_id,
-      min: w.level_min,
-      max: w.level_max,
-      strategy: w.strategy,
-      mode: w.mode,
-    });
+    div.onclick = (e) => {
+      // Не открывать график если кликнули на checkbox
+      if (e.target.classList.contains("watcher-checkbox")) return;
+      
+      loadChart(w.coin, {
+        level_id: w.level_id,
+        min: w.level_min,
+        max: w.level_max,
+        strategy: w.strategy,
+        mode: w.mode,
+        level_date: w.level_date,  // 🔥 НОВОЕ: дата уровня для разделения истории и заливки
+      });
+    };
     activeListEl.appendChild(div);
   });
 }
@@ -848,11 +1080,16 @@ async function buildFocusFromLevelId(coin, levelId) {
     const res = await fetch(`/api/events/${encodeURIComponent(coin)}`);
     if (!res.ok) return null;
     const data = await res.json();
+    
+    // Ищем точное совпадение в history по ключу
     const histKey = `${coin}_BOUNCE_${levelId}`;
     let w = (data.history || []).find((x) => x.key === histKey);
+    
+    // Если не нашли в history - ищем в active строго по level_id
     if (!w) {
       w = (data.active || []).find((x) => x.level_id === levelId);
     }
+    
     if (!w) return null;
     return {
       fromHistory: true,
@@ -860,6 +1097,7 @@ async function buildFocusFromLevelId(coin, levelId) {
       level_min: w.level_min, level_max: w.level_max,
       level_date: w.level_date, level_type: w.level_type, level_score: w.level_score, direction: w.direction,
       strategy: w.strategy, mode: w.mode,
+      born_at: w.born_at || null,
       events: w.events || [],
     };
   } catch (e) {
@@ -900,7 +1138,10 @@ async function loadSignals() {
     const methodText = s.method === "volume" && s.method_value != null
       ? formatVolume(s.method_value) + (s.method_mult != null ? " / x" + s.method_mult.toFixed(1) : "")
       : "—";
+    
+    // 🔥 НОВОЕ: Checkbox в начале
     tr.innerHTML = `
+      <td><input type="checkbox" class="signal-checkbox" data-time="${s.time}" style="cursor: pointer;"></td>
       <td>${s.date ?? ""}</td>
       <td>${s.coin ?? ""}</td>
       <td class="dir-${s.type}">${s.type ?? ""}</td>
@@ -917,7 +1158,10 @@ async function loadSignals() {
     if (s.coin && s.time) {
       tr.style.cursor = "pointer";
       tr.title = "Открыть график в момент сигнала";
-      tr.onclick = async () => {
+      tr.onclick = async (e) => {
+        // Не открывать график если кликнули на checkbox
+        if (e.target.classList.contains("signal-checkbox")) return;
+        
         const focus = s.level_id ? await buildFocusFromLevelId(s.coin, s.level_id) : null;
         loadChart(s.coin, focus, { time: s.time, entry: s.entry, target: s.target, stop: s.stop, closed_at: s.closed_at });
       };
@@ -925,6 +1169,70 @@ async function loadSignals() {
     signalsBody.appendChild(tr);
   });
 }
+
+// 🔥 НОВОЕ: Удаление выбранных вотчеров
+async function deleteSelectedWatchers() {
+  const checkboxes = document.querySelectorAll(".watcher-checkbox:checked");
+  if (checkboxes.length === 0) {
+    alert("Выбери вотчеры для удаления");
+    return;
+  }
+  
+  if (!confirm(`Удалить ${checkboxes.length} вотчер(ов)? Это необратимо!`)) {
+    return;
+  }
+  
+  const levelIds = Array.from(checkboxes).map(cb => cb.dataset.levelId);
+  try {
+    const res = await fetch("/api/watchers/delete", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(levelIds)
+    });
+    
+    const result = await res.json();
+    alert(`Удалено ${result.deleted} вотчер(ов)`);
+    loadActiveWatchers();
+  } catch (e) {
+    console.error("Ошибка удаления вотчеров", e);
+    alert("Ошибка при удалении");
+  }
+}
+
+// Добавляем обработчик для кнопки вотчеров
+document.getElementById("delete-selected-watchers-btn")?.addEventListener("click", deleteSelectedWatchers);
+
+// 🔥 НОВОЕ: Удаление выбранных сигналов
+async function deleteSelectedSignals() {
+  const checkboxes = document.querySelectorAll(".signal-checkbox:checked");
+  if (checkboxes.length === 0) {
+    alert("Выбери сигналы для удаления");
+    return;
+  }
+  
+  if (!confirm(`Удалить ${checkboxes.length} сигнал(ов)? Это необратимо!`)) {
+    return;
+  }
+  
+  const times = Array.from(checkboxes).map(cb => parseInt(cb.dataset.time));
+  try {
+    const res = await fetch("/api/signals/delete", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(times)
+    });
+    
+    const result = await res.json();
+    alert(`Удалено ${result.deleted} сигнал(ов)`);
+    loadSignals();
+  } catch (e) {
+    console.error("Ошибка удаления сигналов", e);
+    alert("Ошибка при удалении");
+  }
+}
+
+// Добавляем обработчик для кнопки
+document.getElementById("delete-selected-signals-btn")?.addEventListener("click", deleteSelectedSignals);
 
 async function loadGlobalHistory() {
   try {

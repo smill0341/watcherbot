@@ -412,17 +412,14 @@ async function drawSnapshotLevels(coin, whenSec) {
     ];
     zones.forEach((z) => {
       if (z.min == null || z.max == null) return;
-      // Не тянуть полосу на весь загруженный график — только с той даты,
-      // когда уровень реально появился (z.date). Без этого даже POC (у
-      // которого date вообще "сегодняшний скан", см. levels_builder.py)
-      // рисовался бы задним числом на недели назад.
+      // Используем точное время снимка если есть, иначе дату уровня
       const zoneStartSec = z.date ? dateInputToUnixSec(z.date) : null;
       let candlesForZone = globalCandles;
       if (zoneStartSec != null) {
         const sliced = globalCandles.filter((c) => c.time >= zoneStartSec);
         if (sliced.length) candlesForZone = sliced;
       }
-      simLevelLines.push(...addZoneBand(z.min, z.max, z.color, candlesForZone, friendlyLevelType(z.type)));
+      simLevelLines.push(...addZoneBand(z.min, z.max, z.color, candlesForZone, `${friendlyLevelType(z.type)} · ${z.date || "—"} · ${z.score ?? "—"}`));
     });
   } catch (e) {
     console.error("drawSnapshotLevels failed", e);
@@ -683,7 +680,8 @@ function drawTradeDetail(trade) {
   // уровень уже отработал, дальше он не торгуется, значит и рисовать его
   // как "ещё актуальный" не нужно. Для ⏳ (ещё не закрыта) — тянем до
   // "сейчас", это единственный случай, где зона реально ещё жива.
-  const zoneStartSec = group[0].level_date ? dateInputToUnixSec(group[0].level_date) : null;
+  // Рисуем от первого события в event_log - это реальный старт слежки
+  const zoneStartSec = events[0].time;
   const zoneEndSec = trade.closed_at
     ? Math.floor(new Date(trade.closed_at).getTime() / 1000)
     : Math.floor(Date.now() / 1000);
@@ -693,7 +691,7 @@ function drawTradeDetail(trade) {
     if (sliced.length) lineCandles = sliced;
   }
 
-  simLevelLines.push(...addZoneBand(zoneMin, zoneMax, color, lineCandles, `🧪 ${friendlyLevelType(group[0].level_type)}`));
+  simLevelLines.push(...addZoneBand(zoneMin, zoneMax, color, lineCandles, `🧪 ${friendlyLevelType(group[0].level_type)} · ${group[0].level_date || "—"} · ${group[0].level_score ?? "—"}`));
 
   const statusEl = document.getElementById("sim-status");
   if (statusEl) statusEl.textContent = ""; // Убрали текст с названием уровня

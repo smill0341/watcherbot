@@ -36,6 +36,19 @@ body {
   overflow: hidden;
 }
 
+/* Индивидуальная высота блоков в сайдбаре слева */
+.sidebar .panel:nth-child(1) {
+  flex: 1.7; /* «В работе» — чуть больше стандартного */
+}
+
+.sidebar .panel:nth-child(2) {
+  flex: 1.3; /* «Watchlist» — самый высокий блок */
+}
+
+.sidebar .panel:nth-child(3) {
+  flex: 0.7; /* «Последний скан» — делаем компактнее */
+}
+
 .panel:last-child { border-bottom: none; }
 
 .panel h2 {
@@ -70,12 +83,12 @@ body {
 }
 
 .list-item {
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-radius: 6px;
   cursor: pointer;
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   font-size: 13px;
   margin-bottom: 2px;
 }
@@ -450,4 +463,39 @@ th {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+/* 🔥 НОВОЕ: Стиль для значка ручно добавленных монет */
+.manual-badge {
+    background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+    color: #333;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: bold;
+    margin-left: 6px;
+    display: inline-block;
+}
+
+/* Компактный тёмный стиль для поисковой строки */
+.panel input[type="text"] {
+  background: #1b1d24;          /* Тёмный фон */
+  border: 1px solid #262832;    /* Аккуратная рамка */
+  color: #e6e6e6;               /* Цвет текста */
+  padding: 3px 6px;             /* Уменьшенные внутренние отступы */
+  height: 26px;                 /* Фиксированная уменьшенная высота */
+  border-radius: 4px;
+  outline: none;
+  font-family: inherit;
+  font-size: 12px;              /* Чуть меньший размер текста */
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+.panel input[type="text"]::placeholder {
+  color: #6c7280; 
+}
+
+.panel input[type="text"]:focus {
+  border-color: #3a4a70; 
 }

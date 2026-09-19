@@ -203,6 +203,8 @@ def get_watchlist():
     direction на это никогда не влиял). Явно вырезаем его тут, чтобы
     старые залежавшиеся записи не показывали на дашборде то, чего больше
     нет ни в одной новой записи и что реально ни на что не влияет.
+    
+    🔥 НОВОЕ: Возвращаем source и added_at, приоритет для MANUAL (ручных).
     """
     wl = _read_json(WATCHLIST_PATH, default={})
     if not isinstance(wl, dict):
@@ -213,14 +215,33 @@ def get_watchlist():
     without_levels = []
     for coin, meta in wl.items():
         if coin == "_meta":
-            continue  # служебный ключ (сюда попасть не должен, но на случай старых прогонов)
+            continue
         has_levels = coin in macro or KNOWN_TICKER_ALIASES.get(coin) in macro
         clean_meta = {k: v for k, v in (meta or {}).items() if k != "direction"}
-        entry = {"coin": coin, "has_levels": has_levels, **clean_meta}
+        
+        # 🔥 Сохраняем source и added_at
+        source = clean_meta.get("source", "SWING_HUNTER")
+        added_at = clean_meta.get("added_at", "")
+        
+        entry = {
+            "coin": coin,
+            "has_levels": has_levels,
+            "source": source,
+            "added_at": added_at,
+            **{k: v for k, v in clean_meta.items() if k not in ["source", "added_at", "direction"]}
+        }
         (with_levels if has_levels else without_levels).append(entry)
 
-    with_levels.sort(key=lambda x: x.get("added_at") or "", reverse=True)
-    without_levels.sort(key=lambda x: x.get("added_at") or "", reverse=True)
+    # 🔥 Функция сортировки: MANUAL первыми (по дате), потом остальные (по алфавиту)
+    def sort_by_priority(items):
+        manual = sorted([i for i in items if i.get("source") == "MANUAL"],
+                       key=lambda x: x.get("added_at") or "", reverse=True)
+        auto = sorted([i for i in items if i.get("source") != "MANUAL"],
+                     key=lambda x: x["coin"])
+        return manual + auto
+
+    with_levels = sort_by_priority(with_levels)
+    without_levels = sort_by_priority(without_levels)
 
     return {"with_levels": with_levels, "without_levels": without_levels}
 
@@ -252,8 +273,11 @@ def get_active_watchers(all_states: bool = Query(default=False)):
     ?all_states=true — debug-режим: показать вообще все вотчеры (включая
     SEARCHING/TRIGGERED/DEAD) с счётчиками по state, чтобы понять,
     работает ли создание вотчеров вообще, или просто нет активных.
+    
+    🔥 НОВОЕ: Добавляем source и added_at из watchlist для приоритизации ручных.
     """
     raw = _read_json(ACTIVE_WATCHERS_PATH, default={})
+    wl = _read_json(WATCHLIST_PATH, default={})  # 🔥 Загружаем watchlist
 
     if all_states:
         counts: dict = {}
@@ -269,7 +293,26 @@ def get_active_watchers(all_states: bool = Query(default=False)):
         for level_id, w in raw.items()
         if _is_active_watcher(w)
     ]
-    result.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
+    
+    # 🔥 НОВОЕ: Добавляем source и added_at из watchlist
+    for w in result:
+        coin = w.get("coin")
+        if coin and coin in wl:
+            w["source"] = wl[coin].get("source", "SWING_HUNTER")
+            w["added_at"] = wl[coin].get("added_at", "")
+        else:
+            w["source"] = "SWING_HUNTER"
+            w["added_at"] = ""
+
+    # 🔥 НОВОЕ: Функция сортировки с приоритетом для MANUAL
+    def sort_by_priority(items):
+        manual = sorted([w for w in items if w.get("source") == "MANUAL"],
+                       key=lambda x: x.get("added_at") or "", reverse=True)
+        auto = sorted([w for w in items if w.get("source") != "MANUAL"],
+                     key=lambda x: x.get("coin") or "")
+        return manual + auto
+
+    result = sort_by_priority(result)
     return result
 
 
@@ -606,7 +649,32 @@ def get_levels_at(coin: str, when: int = Query(..., description="Unix-время
     состояние уровней."""
     coin = coin.upper().strip()
     when_dt = datetime.datetime.utcfromtimestamp(when)
-    snapshot = get_levels_snapshot(when_dt)
+    
+    # Берём снимок и его точное время
+    from modules.cryptano.levels_history import _load_timeline_cached, _latest_in_timeline
+    month_label = when_dt.strftime("%Y_%m")
+    timeline = _load_timeline_cached(month_label)
+    snapshot_time = None
+    snapshot = None
+    
+    # Ищем снимок и его точное время
+    if isinstance(timeline, dict) and timeline:
+        best_time = None
+        for time_str, snap in timeline.items():
+            try:
+                ts = datetime.datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+            except (ValueError, TypeError):
+                continue
+            if ts > when_dt:
+                continue
+            if best_time is None or ts > best_time:
+                best_time = ts
+                snapshot = snap
+                snapshot_time = ts
+    
+    if snapshot is None:
+        snapshot = get_levels_snapshot(when_dt)
+    
     if snapshot is None:
         raise HTTPException(status_code=404, detail=f"No levels history for {coin} at this time")
 
@@ -617,7 +685,14 @@ def get_levels_at(coin: str, when: int = Query(..., description="Unix-время
             data = snapshot.get(alias)
     if data is None:
         raise HTTPException(status_code=404, detail=f"No levels for {coin} at this time")
-    return data
+    
+    # Добавляем snapshot_time к каждому уровню чтобы фронт знал точное время появления
+    snapshot_unix = int(snapshot_time.timestamp()) if snapshot_time else None
+    result = dict(data)
+    for side in ('supports', 'resistances'):
+        for z in result.get(side, []):
+            z['snapshot_time'] = snapshot_unix
+    return result
 
 
 @app.get("/api/macro/coins")
@@ -907,6 +982,42 @@ def get_ohlcv(
         "price_precision": price_precision,
         "candles": candles,
     }
+
+
+@app.post("/api/signals/delete")
+def delete_signals(signal_times: list = Body(...)):
+    """Удаляет сигналы по их time (unix timestamp)"""
+    signals = _read_json(SIGNALS_PATH, default=[])
+    if not isinstance(signals, list):
+        return {"deleted": 0}
+    
+    # Фильтруем - оставляем только те сигналы, time которых НЕ в списке на удаление
+    filtered = [s for s in signals if s.get('time') not in signal_times]
+    deleted_count = len(signals) - len(filtered)
+    
+    if deleted_count > 0:
+        _write_json_atomic(SIGNALS_PATH, filtered)
+    
+    return {"deleted": deleted_count}
+
+
+@app.post("/api/watchers/delete")
+def delete_watchers(level_ids: list = Body(...)):
+    """Удаляет вотчеры по level_id"""
+    watchers = _read_json(ACTIVE_WATCHERS_PATH, default={})
+    if not isinstance(watchers, dict):
+        return {"deleted": 0}
+    
+    deleted_count = 0
+    for level_id in level_ids:
+        if level_id in watchers:
+            del watchers[level_id]
+            deleted_count += 1
+    
+    if deleted_count > 0:
+        _write_json_atomic(ACTIVE_WATCHERS_PATH, watchers)
+    
+    return {"deleted": deleted_count}
 
 
 # ---------------------------------------------------------------------------

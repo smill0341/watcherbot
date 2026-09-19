@@ -31,6 +31,34 @@ from modules.cryptano.strategy.bounce_parent import BounceParent
 from modules.cryptano.strategy.bounce_watcher import BounceWatcher
 from modules.cryptano.watcher_plan import candle_store
 
+def _find_level_first_snapshot(coin: str, level_min: float, level_max: float) -> int | None:
+    """Находит unix-время первого снимка где уровень появился в macro_levels."""
+    import glob
+    from modules.cryptano.levels_history import _load_timeline_cached
+    
+    files = sorted(glob.glob(os.path.join(DATABASE_DIR, "levels_timeline_*.json")))
+    tolerance = 0.01  # 1% допуск на совпадение координат
+    
+    for f in files:
+        month_label = os.path.basename(f).replace("levels_timeline_", "").replace(".json", "")
+        timeline = _load_timeline_cached(month_label)
+        if not isinstance(timeline, dict):
+            continue
+        for time_str in sorted(timeline.keys()):
+            snap = timeline[time_str]
+            coin_data = snap.get(coin, {})
+            for side in ("supports", "resistances"):
+                for z in coin_data.get(side, []):
+                    if (abs(z.get("min", 0) - level_min) / max(abs(level_min), 1e-9) < tolerance and
+                        abs(z.get("max", 0) - level_max) / max(abs(level_max), 1e-9) < tolerance):
+                        try:
+                            ts = datetime.datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+                            return int(ts.timestamp())
+                        except Exception:
+                            return None
+    return None
+
+
 SIM_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
 LAST_RUN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_run.json")
 # Отдельный файл под результат bulk-прогона (все монеты разом) — НЕ тот же
@@ -119,6 +147,7 @@ def _episode(watcher, level_id, coin):
         "level_date": getattr(watcher, "level_date", None),
         "level_type": getattr(watcher, "level_type", None),
         "level_score": getattr(watcher, "level_score", None),
+        "born_at": getattr(watcher, "born_at", None),
         "events": list(getattr(watcher, "event_log", [])),
     }
 
@@ -278,6 +307,11 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, 
             c_low, c_high, c_close, supports, resistances, df_slice,
             allow_long=allow_long, allow_short=allow_short, c_atr=c_atr, coin=coin,
         )
+        
+        # Записываем born_at для новых вотчеров - ищем первый снимок где уровень появился
+        for watcher in bounce_mgr._watchers.values():
+            if not getattr(watcher, "born_at", None):
+                watcher.born_at = _find_level_first_snapshot(coin, watcher.min, watcher.max)
 
         for order in orders:
             d = order["decision"]

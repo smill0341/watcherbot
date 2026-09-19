@@ -6,6 +6,7 @@ BOUNCE-специфичная часть менеджера, вынесенна�
 
 import os
 import json
+import datetime
 import pandas as pd
 
 from .bounce_watcher import BounceWatcher
@@ -390,6 +391,7 @@ class BounceManager:
             self._watchers[level_id].level_type = level.get('type', 'UNKNOWN')
             self._watchers[level_id].level_date = level.get('date')
             self._watchers[level_id].level_score = level.get('score', 0)
+            self._watchers[level_id].born_at = datetime.datetime.utcnow().strftime('%Y-%m-%d')
             if level.get('_reborn'):
                 self._watchers[level_id].reborn = True
                 self._watchers[level_id]._dbg(
