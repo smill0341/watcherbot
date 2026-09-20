@@ -99,6 +99,12 @@ NBA_STATUS_PATH = os.path.join(JSONBANK_DIR, "nba_status.json")
 RESCAN_STATUS_PATH = os.path.join(JSONBANK_DIR, "rescan_status.json")
 ACTIVE_WATCHERS_PATH = os.path.join(JSONBANK_DIR, "active_watchers.json")
 WATCHER_HISTORY_PATH = os.path.join(JSONBANK_DIR, "watcher_history.json")
+# Та же лента, куда пишет Notifier (см. run_web.py) — "заглушка вместо
+# telebot", реального Telegram тут всё равно нет, просто общий JSON-список
+# последних сообщений для дашборда. Массовый рескан пишет сюда напрямую,
+# без импорта Notifier — не нужен весь его __init__, нужна только запись.
+NOTIFICATIONS_PATH = os.path.join(JSONBANK_DIR, "notifications.json")
+MAX_NOTIFICATIONS = 200  # то же число, что MAX_NOTIFICATIONS в run_web.py
 
 STATIC_DIR = os.path.join(WEB_DIR, "static")
 
@@ -386,6 +392,111 @@ def trigger_single_watcher_rescan(coin: str, level_id: str = Query(..., descript
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+
+@app.post("/api/rescan_all_watchers")
+def trigger_rescan_all_watchers():
+    """
+    Массовый точечный рескан ВСЕХ живых BOUNCE-вотчеров (всё, что сейчас
+    сидит в bounce_mgr._watchers — т.е. список "в работе" на дашборде),
+    один за другим, тем же самым rescan_single_bounce_watcher, что и
+    /api/rescan_watcher — просто в цикле, без клика по каждой монете.
+
+    Последовательно (не параллельно) — по просьбе Джека: параллельный
+    прогон бил бы по бирже кучей запросов свечей одновременно и не давал
+    бы предсказуемого порядка в итоговом уведомлении. На практике один
+    вотчер сканируется быстро, так что вся пачка всё равно укладывается
+    в разумное время (тоже его слова: "оно быстро все равно").
+
+    В отличие от /api/rescan/{coin} (флаг-файл + фоновый поток, статус
+    опрашивается отдельно) этот эндпоинт синхронный и отдаёт готовый
+    результат сразу — как и точечный /api/rescan_watcher, только на всю
+    пачку сразу.
+
+    Уведомление — ОДНО сводное на всю пачку (список того, что изменилось),
+    а не по одному на каждую монету, как раньше присылал боевой рескан —
+    здесь так же, только явным списком в тексте одного сообщения.
+    Пишем прямо в notifications.json (та же лента, что ведёт Notifier в
+    run_web.py) — реального Telegram у дашборда всё равно нет.
+    """
+    from modules.cryptano.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
+    from modules.cryptano.watcher_plan import rescan_single_bounce_watcher
+    from background_tasks import export_dashboard_state
+
+    _watcher_lock.acquire()
+    try:
+        # Снимок списка ДО начала прогона — рескан меняет .state существующих
+        # вотчеров, но не создаёт новых записей в _watchers, так что снимок
+        # ключей/монет в начале однозначно описывает "что было в работе".
+        targets = [
+            (getattr(w, "coin", None), level_id, getattr(w, "state", None))
+            for level_id, w in list(bounce_mgr._watchers.items())
+        ]
+
+        results: list[dict[str, Any]] = []
+        for coin, level_id, state_before in targets:
+            r: dict[str, Any]
+            try:
+                r = rescan_single_bounce_watcher(coin, level_id, bounce_mgr)
+            except Exception as e:
+                r = {"error": str(e)}
+            r["coin"] = coin
+            r["level_id"] = level_id
+            r["state_before"] = state_before
+            results.append(r)
+
+        # Один общий пересбор active_watchers.json в конце всей пачки —
+        # не после каждого вотчера (то же соображение, что в докстринге
+        # trigger_single_watcher_rescan, просто один раз на всех).
+        export_dashboard_state(v_bottom_mgr, bounce_mgr)
+    finally:
+        _watcher_lock.release()
+
+    ok = [r for r in results if "error" not in r]
+    failed = [r for r in results if "error" in r]
+    newly_dead = [
+        r for r in ok
+        if r.get("final_state") in ("DEAD", "TRIGGERED")
+        and r.get("state_before") not in ("DEAD", "TRIGGERED")
+    ]
+    still_active = [
+        r for r in ok
+        if r.get("final_state") not in ("DEAD", "TRIGGERED")
+    ]
+
+    lines = [f"🔄 Рескан всех BOUNCE-вотчеров: проверено {len(targets)}"]
+    if newly_dead:
+        coin_list = ", ".join(f"{r['coin']} ({r['level_id']})" for r in newly_dead)
+        lines.append(f"❌ Оказались мёртвыми ({len(newly_dead)}): {coin_list}")
+    if failed:
+        coin_list = ", ".join(f"{r['coin']} ({r['level_id']}): {r['error']}" for r in failed)
+        lines.append(f"⚠️ Ошибки рескана ({len(failed)}): {coin_list}")
+    lines.append(f"✅ Остались активными: {len(still_active)}")
+    summary_text = "\n".join(lines)
+
+    try:
+        items = _read_json(NOTIFICATIONS_PATH, default=None)
+        if not isinstance(items, list):
+            items = []
+        items.append({
+            "timestamp": datetime.datetime.now().isoformat(),
+            "chat_id": "web-dashboard",
+            "text": summary_text,
+        })
+        items = items[-MAX_NOTIFICATIONS:]
+        _write_json_atomic(NOTIFICATIONS_PATH, items)
+    except Exception as e:
+        # Уведомление — не критично для самого рескана, не роняем ответ из-за него.
+        print(f"[app.py] Не удалось записать сводное уведомление рескана: {e}")
+
+    return {
+        "status": "ok",
+        "total": len(targets),
+        "newly_dead": [{"coin": r["coin"], "level_id": r["level_id"]} for r in newly_dead],
+        "failed": [{"coin": r["coin"], "level_id": r["level_id"], "error": r["error"]} for r in failed],
+        "still_active": len(still_active),
+        "summary": summary_text,
+    }
 
 
 @app.post("/api/reset_watchers")
@@ -686,6 +797,41 @@ def add_custom_level(payload: dict = Body(...)):
     return {"status": "ok", "coin": coin, "side": side, "zone": zone}
 
 
+def _remove_custom_level_entry(coin: str, side: str, zone_min: float, zone_max: float) -> bool:
+    """Убирает ОДНУ зону из custom_levels.json по точному совпадению
+    min/max — общая логика, которую использует и /api/levels/custom/delete
+    (ручное удаление зоны из модалки), и /api/watchers/delete (автоматическая
+    подчистка, когда удаляемый BOUNCE-вотчер оказывается ручным уровнем,
+    см. её докстринг). Возвращает True, если что-то реально удалено."""
+    custom = _read_json(CUSTOM_LEVELS_PATH, default={})
+    coin_data = custom.get(coin)
+    if not coin_data:
+        return False
+
+    key = "supports" if side == "support" else "resistances"
+    zones = coin_data.get(key, [])
+
+    def _close(a, b):
+        return abs(a - b) < 1e-9
+
+    new_zones = [
+        z for z in zones
+        if not (_close(float(z.get("min", 0)), zone_min) and _close(float(z.get("max", 0)), zone_max))
+    ]
+
+    if len(new_zones) == len(zones):
+        return False
+
+    coin_data[key] = new_zones
+    if not coin_data.get("supports") and not coin_data.get("resistances"):
+        custom.pop(coin, None)
+    else:
+        custom[coin] = coin_data
+
+    _write_json_atomic(CUSTOM_LEVELS_PATH, custom)
+    return True
+
+
 @app.post("/api/levels/custom/delete")
 def delete_custom_level(payload: dict = Body(...)):
     """Удаление вручную добавленного уровня из custom_levels.json (кнопка
@@ -716,37 +862,13 @@ def delete_custom_level(payload: dict = Body(...)):
     except (KeyError, TypeError, ValueError):
         raise HTTPException(status_code=400, detail="min/max обязательны и должны быть числами")
 
-    custom = _read_json(CUSTOM_LEVELS_PATH, default={})
-    coin_data = custom.get(coin)
-    if not coin_data:
-        raise HTTPException(status_code=404, detail=f"У монеты {coin} нет ручных уровней")
-
-    key = "supports" if side == "support" else "resistances"
-    zones = coin_data.get(key, [])
-
-    def _close(a, b):
-        return abs(a - b) < 1e-9
-
-    new_zones = [
-        z for z in zones
-        if not (_close(float(z.get("min", 0)), zone_min) and _close(float(z.get("max", 0)), zone_max))
-    ]
-
-    if len(new_zones) == len(zones):
-        raise HTTPException(status_code=404, detail="Такой уровень не найден (возможно, уже удалён)")
-
-    coin_data[key] = new_zones
-    # Если у монеты не осталось ручных уровней вообще ни с одной стороны —
-    # чистим пустую запись, чтобы файл не разрастался мусором из {"supports": [], "resistances": []}.
-    if not coin_data.get("supports") and not coin_data.get("resistances"):
-        custom.pop(coin, None)
-    else:
-        custom[coin] = coin_data
-
     try:
-        _write_json_atomic(CUSTOM_LEVELS_PATH, custom)
+        removed = _remove_custom_level_entry(coin, side, zone_min, zone_max)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Не удалось сохранить custom_levels.json: {e}")
+
+    if not removed:
+        raise HTTPException(status_code=404, detail="Такой уровень не найден (возможно, уже удалён)")
 
     return {"status": "ok", "coin": coin, "side": side, "deleted": True}
 
@@ -1155,16 +1277,85 @@ def delete_watchers(level_ids: list = Body(...)):
 
     Использует тот же _watcher_lock, что и боевой скан/рескан (см.
     /api/rescan_watcher выше), чтобы не удалить вотчер ровно в момент, когда
-    его же обрабатывает боевой цикл в другом потоке."""
+    его же обрабатывает боевой цикл в другом потоке.
+
+    Перед физическим удалением BOUNCE-вотчера архивирует его в
+    watcher_history.json — тем же ключом (f"{coin}_BOUNCE_{level_id}") и
+    в том же формате, что естественная смерть (см. export_dashboard_state/
+    crypto_orchestrator). Без этого клик по СТАРОМУ сигналу в "Результаты"
+    от уже удалённого вручную вотчера ничего не находил — ни в active
+    (вотчера уже нет), ни в history (туда запись попадала ТОЛЬКО из
+    естественной смерти, а не из ручного удаления) — buildFocusFromLevelId
+    на фронте возвращал null, и зона/точки пути переставали рисоваться,
+    хотя entry/target/stop ещё оставались видны (они не зависят от
+    найденного вотчера). final_state помечаем "DELETED" — чтобы отличать
+    от честного TRIGGERED/DEAD, если это когда-то понадобится на дашборде.
+    V_BOTTOM/VGB/VRT сознательно не архивируем здесь — их сейчас никто не
+    трогает и не просил чинить.
+
+    ЕСЛИ УДАЛЯЕМЫЙ BOUNCE-ВОТЧЕР — РУЧНОЙ УРОВЕНЬ (custom_levels.json):
+    дополнительно удаляет саму зону оттуда же (см. _remove_custom_level_entry).
+    Раньше это была ловушка: level_id детерминирован от min/max/trade_type
+    (BounceParent._level_id), а ручная зона в custom_levels.json никуда не
+    девается сама по себе — стереть можно было только вотчер, а зона
+    оставалась, и ближайший же скан-цикл (или точечный/массовый рескан)
+    заново её "трогал" и пересоздавал вотчер с ТЕМ ЖЕ level_id, как будто
+    удаления и не было. Для ручного уровня "удалить вотчер" и "удалить
+    зону" теперь одно действие. Ответ содержит removed_custom_levels —
+    сколько зон подчистилось заодно (0, если среди удалённых не было
+    ручных)."""
     from modules.cryptano.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
     from background_tasks import export_dashboard_state
 
     _watcher_lock.acquire()
     try:
         deleted_count = 0
+        removed_custom_levels = 0
+        archived_bounce = {}
+        now_iso = datetime.datetime.now().isoformat()
         for level_id in level_ids:
             found = False
-            if level_id in bounce_mgr._watchers:
+            bc_watcher = bounce_mgr._watchers.get(level_id)
+            if bc_watcher is not None:
+                w_coin = getattr(bc_watcher, "coin", None)
+                if w_coin:
+                    hist_key = f"{w_coin}_BOUNCE_{level_id}"
+                    archived_bounce[hist_key] = {
+                        "coin": w_coin,
+                        "direction": getattr(bc_watcher, "trade_type", None),
+                        "strategy": "BOUNCE",
+                        "mode": getattr(bc_watcher, "mode", None),
+                        "final_state": "DELETED",
+                        "history_log": getattr(bc_watcher, "history_log", ""),
+                        "level_min": getattr(bc_watcher, "min", None),
+                        "level_max": getattr(bc_watcher, "max", None),
+                        "level_date": getattr(bc_watcher, "level_date", None),
+                        "level_type": getattr(bc_watcher, "level_type", None),
+                        "level_score": getattr(bc_watcher, "level_score", None),
+                        "events": getattr(bc_watcher, "event_log", []),
+                        "died_at": now_iso,
+                    }
+                # Если этот вотчер — ручной уровень (custom_levels.json),
+                # удаления только вотчера мало: сама зона остаётся на месте,
+                # и её же снова "тронет" ближайший скан-цикл — level_id
+                # детерминирован от min/max/trade_type (см. BounceParent.
+                # _level_id), так что вотчер тут же пересоздастся заново с
+                # тем же самым id, будто удаления и не было. Поэтому здесь
+                # же чистим и саму зону в custom_levels.json — для ручного
+                # уровня "удалить вотчер" и "удалить зону" должны быть одним
+                # действием; отдельная кнопка в модалке "Управление ручными
+                # зонами" (🎯) остаётся для случая, когда зону нужно убрать
+                # ДО того, как по ней вообще родился вотчер.
+                w_min = getattr(bc_watcher, "min", None)
+                w_max = getattr(bc_watcher, "max", None)
+                w_trade_type = getattr(bc_watcher, "trade_type", None)
+                w_side = "support" if w_trade_type == "LONG" else "resistance" if w_trade_type == "SHORT" else None
+                if w_coin and w_side and w_min is not None and w_max is not None:
+                    try:
+                        if _remove_custom_level_entry(w_coin, w_side, float(w_min), float(w_max)):
+                            removed_custom_levels += 1
+                    except Exception as e:
+                        print(f"⚠️ [WATCHERS DELETE] Не удалось проверить/удалить ручную зону {w_coin} {w_side} {w_min}-{w_max}: {e}")
                 del bounce_mgr._watchers[level_id]
                 found = True
             if level_id in v_bottom_mgr._watchers:
@@ -1172,6 +1363,14 @@ def delete_watchers(level_ids: list = Body(...)):
                 found = True
             if found:
                 deleted_count += 1
+
+        if archived_bounce:
+            try:
+                history_db = _read_json(WATCHER_HISTORY_PATH, default={})
+                history_db.update(archived_bounce)
+                _write_json_atomic(WATCHER_HISTORY_PATH, history_db)
+            except Exception as e:
+                print(f"⚠️ [WATCHERS DELETE] Не удалось заархивировать в watcher_history.json: {e}")
 
         if deleted_count > 0:
             # Пересобирает active_watchers.json из уже очищенной памяти —
@@ -1181,7 +1380,7 @@ def delete_watchers(level_ids: list = Body(...)):
     finally:
         _watcher_lock.release()
 
-    return {"deleted": deleted_count}
+    return {"deleted": deleted_count, "removed_custom_levels": removed_custom_levels}
 
 
 # ---------------------------------------------------------------------------

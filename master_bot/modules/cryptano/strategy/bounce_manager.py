@@ -465,20 +465,57 @@ class BounceManager:
         return self.parent.clear_dead_watchers(active_level_ids)
 
     def clear_graveyard_by_coin(self, coin):
-        """Чистит кладбище (graveyard) для конкретной монеты — используется
-        ручным ресканом (см. background_tasks.py). Кладбище — защита для
-        ЖИВОГО сканирования: не даёт зоне, которая только что умерла,
-        мгновенно "ожить" из ничего (клон/воскрешение, тег OD). Во время
-        реплея прошлого пути монеты эта защита не нужна и только мешает —
-        она создаёт нового вотчера-клона вместо того, чтобы обычным
-        механизмом (level_id уже в _watchers) продолжить работу С ТЕМ ЖЕ
-        объектом, которого мы только что сбросили через reset_for_rescan."""
+        """Чистит кладбище (graveyard) для конкретной монеты ЦЕЛИКОМ.
+
+        ⚠️ Больше НЕ используется ручным ресканом (см. clear_graveyard_for_ids
+        ниже) — оставлена как есть на случай, если где-то ещё понадобится
+        снести защиту по всей монете разом. Раньше именно эта функция
+        вызывалась из run_web.py::_run_rescan и ломала кладбище чужих,
+        не участвующих в рескане уровней той же монеты (см. комментарий
+        в clear_graveyard_for_ids — тот самый баг с "вчера убитые
+        пересканом вотчеры возвращаются сегодня")."""
         removed_ids = set()
         kept = []
         for entry in self.graveyard:
             if entry.get('coin') == coin:
                 base_id = self._level_id({'min': entry['min'], 'max': entry['max']}, entry['trade_type'])
                 level_id = f"{base_id}__{entry['mode']}" if entry.get('mode') else base_id
+                removed_ids.add(level_id)
+            else:
+                kept.append(entry)
+        self.graveyard = kept
+        self._graveyard_recorded -= removed_ids
+
+    def clear_graveyard_for_ids(self, level_ids):
+        """То же самое, что clear_graveyard_by_coin, но точечно — только
+        для переданных level_id (используется ручным ресканом МОНЕТЫ, см.
+        run_web.py::_run_rescan, вместо clear_graveyard_by_coin).
+
+        Почему это важно: clear_graveyard_by_coin сносил кладбище для
+        ВСЕЙ монеты, хотя защита реально нужна только тем вотчерам, которых
+        рескан прямо сейчас сбрасывает через reset_for_rescan() (иначе их
+        же собственная свежая запись в кладбище мешала бы им "воскреснуть"
+        тем же объектом). У монеты почти всегда есть и ДРУГИЕ, не
+        участвующие в этом рескане уровни, которые уже умерли естественно
+        раньше (вчера, позавчера — живым сканом или прошлым ресканом) и
+        были честно занесены в кладбище — clear_graveyard_by_coin стирал
+        и их защиту тоже. Итог: следующий же рескан этой монеты (или просто
+        совпадение по времени с плановым сканом) снова касался цены той же
+        зоны в реплей-окне и заводил "новый" вотчер на месте вчера
+        убитого — визуально неотличимо от "удаление/смерть не сработали".
+
+        Точечная версия убирает из кладбища только записи, чей level_id
+        совпадает с переданным набором — уровни монеты, не участвующие в
+        текущем рескане, остаются защищены как и были."""
+        ids = set(level_ids)
+        if not ids:
+            return
+        removed_ids = set()
+        kept = []
+        for entry in self.graveyard:
+            base_id = self._level_id({'min': entry['min'], 'max': entry['max']}, entry['trade_type'])
+            level_id = f"{base_id}__{entry['mode']}" if entry.get('mode') else base_id
+            if level_id in ids:
                 removed_ids.add(level_id)
             else:
                 kept.append(entry)
@@ -514,24 +551,33 @@ class BounceManager:
     # (json.dump их не переваривает) — переводим в ISO-строку туда-обратно.
     _TIMESTAMP_FIELDS = ('_last_time', 'last_event_time', 'last_pierce_time')
 
+    def _watcher_to_state_entry(self, watcher):
+        """Сериализует ОДНОГО вотчера в JSON-совместимый словарь — вынесено
+        из to_state_dict() отдельной функцией, чтобы save_state() могло
+        проверить каждого вотчера по отдельности (см. её докстринг)."""
+        state = dict(watcher.__dict__)
+        for ts_field in self._TIMESTAMP_FIELDS:
+            val = state.get(ts_field)
+            if val is not None and hasattr(val, 'isoformat'):
+                state[ts_field] = val.isoformat()
+        return {
+            'min': watcher.min,
+            'max': watcher.max,
+            'trade_type': watcher.trade_type,
+            'mode': getattr(watcher, 'mode', None),
+            'coin': getattr(watcher, 'coin', 'UNKNOWN'),
+            'state': state,
+        }
+
     def to_state_dict(self):
         """Сериализует вотчеров BOUNCE + состояние самого менеджера
-        в JSON-совместимый словарь."""
-        watchers_out = {}
-        for level_id, watcher in self._watchers.items():
-            state = dict(watcher.__dict__)
-            for ts_field in self._TIMESTAMP_FIELDS:
-                val = state.get(ts_field)
-                if val is not None and hasattr(val, 'isoformat'):
-                    state[ts_field] = val.isoformat()
-            watchers_out[level_id] = {
-                'min': watcher.min,
-                'max': watcher.max,
-                'trade_type': watcher.trade_type,
-                'mode': getattr(watcher, 'mode', None),
-                'coin': getattr(watcher, 'coin', 'UNKNOWN'),
-                'state': state,
-            }
+        в JSON-совместимый словарь. НЕ проверяет сериализуемость (это
+        теперь делает save_state() по каждому вотчеру отдельно) — этот
+        метод просто строит структуру."""
+        watchers_out = {
+            level_id: self._watcher_to_state_entry(watcher)
+            for level_id, watcher in self._watchers.items()
+        }
         return {
             'watchers': watchers_out,
             'pierced_count': self.pierced_count,
@@ -543,14 +589,60 @@ class BounceManager:
     def save_state(self, path):
         """Атомарно сохраняет текущее состояние BOUNCE (вотчеры + кладбище +
         счётчики) в файл. Вызывается из live_scan.py::save_watcher_state()
-        раз в скан-цикл, вместе с v_bottom_mgr."""
+        раз в скан-цикл, вместе с v_bottom_mgr.
+
+        ВАЖНО (найдено при разборе бага "удалённые/мёртвые вотчеры
+        возвращаются после рестарта бота сами по себе, без касания цены"):
+        раньше вся пачка вотчеров сериализовалась ОДНИМ json.dump() —
+        если хотя бы у ОДНОГО вотчера было несериализуемое в JSON поле
+        (например numpy/pandas-тип, случайно попавший в __dict__ мимо
+        _TIMESTAMP_FIELDS), json.dump() падал на середине, ничего не
+        писалось на диск вообще, и файл оставался на диске в состоянии
+        последнего УДАЧНОГО сохранения — возможно, многочасовой или
+        многодневной давности. В памяти всё было верно (вотчер удалён/
+        мёртв, active_watchers.json тоже верный — он сохраняется отдельно
+        и этой болячке не подвержен), но именно ЭТОТ файл, из которого
+        load_state() восстанавливает вотчеров при каждом старте бота,
+        тихо не обновлялся. Следующий рестарт честно грузил этот старый
+        снимок — и "воскрешал" из него всё, что успело измениться в
+        реальности после последнего удачного сохранения, включая уже
+        удалённые вотчеры. Ни одна out-of-band причина (кладбище/5%-уход/
+        точечный рескан) тут была ни при чём — файл на диске просто не
+        поспевал за памятью.
+
+        Теперь каждый вотчер сериализуется и валидируется ОТДЕЛЬНО: если
+        у конкретного вотчера есть проблемное поле — он логируется и
+        пропускается ТОЛЬКО в этом цикле сохранения (не навсегда — если
+        причина временная/поле потом станет валидным, следующий же
+        успешный цикл сохранит его нормально), а все остальные вотчеры
+        всё равно долетают до диска, как и должны."""
+        watchers_out = {}
+        for level_id, watcher in self._watchers.items():
+            entry = self._watcher_to_state_entry(watcher)
+            try:
+                json.dumps(entry)  # пробный прогон — только чтобы поймать несериализуемое поле ДО общего dump
+            except (TypeError, ValueError) as e:
+                print(f"[BounceManager] ⚠️ Вотчер {level_id} ({getattr(watcher, 'coin', '?')}) "
+                      f"не сохранён в состояние в этом цикле — несериализуемое поле: {e}")
+                continue
+            watchers_out[level_id] = entry
+
+        data = {
+            'watchers': watchers_out,
+            'pierced_count': self.pierced_count,
+            'graveyard': self.graveyard,
+            'graveyard_recorded': list(self._graveyard_recorded),
+            'last_processed_time': self.last_processed_time,
+        }
         try:
-            data = self.to_state_dict()
             tmp_path = f"{path}.tmp"
             with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False)
             os.replace(tmp_path, path)
         except Exception as e:
+            # Тут падать может уже только на уровне менеджера (graveyard/
+            # last_processed_time) — вотчеры к этому моменту уже все
+            # проверены по отдельности выше.
             print(f"[BounceManager] ⚠️ Не удалось сохранить состояние BOUNCE: {e}")
 
     def load_state(self, path):

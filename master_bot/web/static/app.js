@@ -5,7 +5,12 @@ const watchlistCountEl = document.getElementById("watchlist-count");
 const currentCoinEl = document.getElementById("current-coin");
 const currentSymbolEl = document.getElementById("current-symbol");
 const signalsBody = document.getElementById("signals-body");
+const toggleLevelsBtn = document.getElementById("toggle-levels-btn"); // 🔥 НОВОЕ
+let backgroundLevelLines = []; // 🔥 НОВОЕ
+let isBackgroundLevelsShowing = false; // 🔥 НОВОЕ
 
+// ===== 🔥 НОВОЕ: Элементы для поиска =====
+const showAllLevelsBtn = document.getElementById("show-all-levels-btn");
 // ===== 🔥 НОВОЕ: Элементы для поиска =====
 const watchlistSearchEl = document.getElementById("watchlist-search");
 const activeSearchEl = document.getElementById("active-search");
@@ -256,6 +261,7 @@ function addSplitLevel(zMin, zMax, color, candles, birthTime, zoneStartTime, tit
 let selectedCoin = null;
 let focusedLevel = null;
 let isSignalView = false;
+let currentSignal = null; // сигнал, по которому сейчас открыт график (для точки закрытия сделки в loadEvents)
 
 const STRATEGY_COLORS = {
   V_BOTTOM: "#4caf7d",
@@ -629,10 +635,9 @@ function drawSignalTradeLines(signal) {
     }
   }
 
-  // Target и Stop - цвета зависят от направления
-  const isShortSignal = focusedLevel ? focusedLevel.direction === "SHORT" : false;
-  addLine(signal.target, isShortSignal ? "#e5654f" : "#4caf7d", "Target");
-  addLine(signal.stop,   isShortSignal ? "#4caf7d" : "#e5654f", "Stop");
+  // Target (TP) всегда зеленый, Stop (SL) всегда красный
+  addLine(signal.target, "#4caf7d", "Target");
+  addLine(signal.stop, "#e5654f", "Stop");
 }
 
 const STRATEGY_LABELS = {
@@ -708,11 +713,75 @@ async function loadEvents(coin, token = chartLoadToken) {
       });
     });
 
+    // Точка закрытия сделки — ищем ЧЕСТНО, по факту касания TP/SL на уже
+    // загруженных свечах, а не по closed_at/result_percent из signals.json.
+    // Причина: 15-минутный фоновый чек (history.py::update_open_signals)
+    // закрывает сделку либо по касанию TP/SL, ЛИБО по истечению
+    // MAX_HOLD_DAYS — во втором случае closed_at/result_percent берутся
+    // по ТЕКУЩЕЙ цене на момент истечения таймера, вообще не обязательно
+    // связанной с линиями target/stop на графике (сделка могла закрыться
+    // "в отвал" где-то между ними). Точка на closed_at в таком случае
+    // висела в произвольном месте — не там, где линии реально пересекались
+    // ценой, отсюда и жалоба "рисует, но не по target/stop".
+    // Работает и для старых сигналов — нужны только entry/target/stop/
+    // time/type, которые есть и в старых записях, ничего нового в
+    // signals.json подкладывать не надо.
+    if (isSignalView && currentSignal && currentSignal.time != null && globalCandles.length) {
+      const target = Number(currentSignal.target);
+      const stop = Number(currentSignal.stop);
+      const hasTarget = Number.isFinite(target);
+      const hasStop = Number.isFinite(stop);
+      const isShortSignal = currentSignal.type === "SHORT" || (focusedLevel && focusedLevel.direction === "SHORT");
+
+      let actualCloseTime = null;
+      let actualWin = null;
+      if (hasTarget || hasStop) {
+        const entryIdx = findNearestCandleIndex(globalCandles, currentSignal.time);
+        for (let i = entryIdx; i < globalCandles.length; i++) {
+          const c = globalCandles[i];
+          const hitTp = hasTarget && (isShortSignal ? c.low <= target : c.high >= target);
+          const hitSl = hasStop && (isShortSignal ? c.high >= stop : c.low <= stop);
+          if (hitTp || hitSl) {
+            actualCloseTime = c.time;
+            actualWin = hitTp;
+            break;
+          }
+        }
+      }
+
+      if (actualCloseTime !== null && inRange(actualCloseTime)) {
+        markersMap[actualCloseTime] = {
+          time: actualCloseTime,
+          position: "inBar",
+          color: actualWin ? "#4caf7d" : "#e5654f",
+          shape: "square",
+          text: "",
+        };
+      } else if (currentSignal.closed_at) {
+        // Сделка формально закрыта (например, по MAX_HOLD_DAYS), но по
+        // свечам ни TP, ни SL реально не коснулась — честно показываем
+        // нейтральной серой точкой на реальном closed_at, а не врём
+        // зелёным/красным про несуществующее касание линии.
+        const closeSec = Math.floor(new Date(currentSignal.closed_at).getTime() / 1000);
+        if (inRange(closeSec)) {
+          const cIdx = findNearestCandleIndex(globalCandles, closeSec);
+          const snappedTime = globalCandles[cIdx].time;
+          markersMap[snappedTime] = {
+            time: snappedTime,
+            position: "inBar",
+            color: "#cfd3da",
+            shape: "square",
+            text: "",
+          };
+        }
+      }
+    }
+
     // TradingView требует массив, жестко отсортированный по времени
     const markers = Object.values(markersMap).sort((a, b) => a.time - b.time);
     candleSeries.setMarkers(markers);
   } catch (e) {
-    console.error("events load failed", e);   
+    console.error("events load failed", e);
   }
 }
 
@@ -806,10 +875,16 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
   const myToken = ++chartLoadToken;
   focusedLevel = focus;
   isSignalView = !!signal;
+  currentSignal = signal;
 
   selectedCoin = coin;
   currentCoinEl.textContent = coin;
   currentSymbolEl.textContent = "загрузка графика...";
+
+  // 🔥 НОВОЕ: Показываем кнопку 👁️ только если передан фокус на уровень
+  if (showAllLevelsBtn) {
+    showAllLevelsBtn.style.display = focus ? "inline-block" : "none";
+  }
 
   sessionStorage.setItem("watcher_state", JSON.stringify({
     coin, tf: currentTimeframe, focus, signal, opts
@@ -818,6 +893,17 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
 
   clearSignalLines();
   clearLevelLines();
+  
+  // 🔥 НОВОЕ: Сброс фоновых уровней при смене графика
+  if (typeof clearBackgroundLevels === 'function') clearBackgroundLevels();
+  isBackgroundLevelsShowing = false;
+  if (toggleLevelsBtn) {
+    // Показываем кнопку только если мы смотрим на рабочий вотчер (focus)
+    toggleLevelsBtn.style.display = focus ? "inline-block" : "none";
+    toggleLevelsBtn.style.background = ""; 
+    toggleLevelsBtn.style.color = "";
+    toggleLevelsBtn.style.borderColor = "";
+  }
 
   try {
     const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}`);
@@ -1181,7 +1267,7 @@ async function loadSignals() {
         if (e.target.classList.contains("signal-checkbox")) return;
         
         const focus = s.level_id ? await buildFocusFromLevelId(s.coin, s.level_id) : null;
-        loadChart(s.coin, focus, { time: s.time, entry: s.entry, target: s.target, stop: s.stop, closed_at: s.closed_at });
+        loadChart(s.coin, focus, { time: s.time, entry: s.entry, target: s.target, stop: s.stop, closed_at: s.closed_at, status: s.status, result_percent: s.result_percent, type: s.type });
       };
     }
     signalsBody.appendChild(tr);
@@ -1209,7 +1295,14 @@ async function deleteSelectedWatchers() {
     });
     
     const result = await res.json();
-    alert(`Удалено ${result.deleted} вотчер(ов)`);
+    let msg = `Удалено ${result.deleted} вотчер(ов)`;
+    // Если среди удалённых был ручной уровень — бэк заодно стёр саму зону
+    // из custom_levels.json (см. app.py::delete_watchers), иначе ближайший
+    // скан-цикл пересоздал бы вотчер с тем же level_id заново.
+    if (result.removed_custom_levels) {
+      msg += `\nЗаодно удалено ${result.removed_custom_levels} ручных уровней (иначе вотчер бы возродился на ближайшем скане)`;
+    }
+    alert(msg);
     loadActiveWatchers();
   } catch (e) {
     console.error("Ошибка удаления вотчеров", e);
@@ -1501,6 +1594,37 @@ window.triggerSingleWatcherRescan = async function(event, coin, levelId) {
     btn.disabled = false;
   }
 };
+
+// Массовый рескан ВСЕХ вотчеров из списка "в работе" — тот же
+// /api/rescan_watcher по каждому, но одним запросом на бэке (последовательно,
+// см. докстринг /api/rescan_all_watchers в app.py) и с ОДНИМ итоговым алертом
+// вместо диалога на каждую монету. Кнопка #rescan-all-btn — в index.html,
+// рядом с #reset-watchers-btn/#delete-selected-watchers-btn.
+const rescanAllBtnEl = document.getElementById("rescan-all-btn");
+if (rescanAllBtnEl) {
+  rescanAllBtnEl.onclick = async () => {
+    rescanAllBtnEl.disabled = true;
+    try {
+      const res = await fetch("/api/rescan_all_watchers", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.detail || "Ошибка массового рескана");
+        return;
+      }
+      console.log("[RESCAN ALL WATCHERS]", data);
+      // Одно сводное сообщение на всю пачку — как и попросили, без алерта
+      // на каждую монету по отдельности.
+      alert(data.summary || `Проверено: ${data.total}, мёртвых: ${(data.newly_dead || []).length}, активных: ${data.still_active}`);
+      loadActiveWatchers();
+      if (selectedCoin) loadChart(selectedCoin, focusedLevel);
+    } catch (e) {
+      console.error("Ошибка массового рескана", e);
+      alert("Ошибка: " + e);
+    } finally {
+      rescanAllBtnEl.disabled = false;
+    }
+  };
+}
 
 const STRATEGY_TOGGLE_LABELS = {
   VB: "V_BOTTOM",
@@ -1964,4 +2088,78 @@ if (isMainDashboardPage()) {
   } else {
     wireTpSlModal();
   }
+}
+
+// === Кнопка "Все уровни" (👁️) ===
+if (showAllLevelsBtn) {
+  showAllLevelsBtn.onclick = () => {
+    if (selectedCoin) {
+      // Загружаем текущую монету, но передаем focus = null (все уровни)
+      loadChart(selectedCoin, null);
+    }
+  };
+}
+
+
+// ===== 🔥 НОВОЕ: Логика быстрого переключения всех уровней =====
+function clearBackgroundLevels() {
+  backgroundLevelLines.forEach((series) => {
+    try { chart.removeSeries(series); } catch(e) {}
+  });
+  backgroundLevelLines = [];
+}
+
+async function showBackgroundLevels(coin) {
+  if (!globalCandles.length) return;
+  try {
+    const res = await fetch(`/api/levels/${encodeURIComponent(coin)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    
+    const drawSide = (zones, color) => {
+      (zones || []).forEach((z) => {
+        if (z.min == null || z.max == null) return;
+        
+        // Пропускаем рабочий уровень, чтобы не было двойной заливки и грязи
+        if (focusedLevel && Math.abs(z.min - focusedLevel.min) < 1e-9 && Math.abs(z.max - focusedLevel.max) < 1e-9) return;
+        
+        const zoneStartSec = (z.activated_at || z.date) ? Math.floor(new Date((z.activated_at || z.date) + "T00:00:00Z").getTime() / 1000) : null;
+        const lineCandles = zoneStartSec !== null ? globalCandles.filter((c) => c.time >= zoneStartSec) : globalCandles;
+        if (!lineCandles.length) return;
+        
+        const typeLabel = friendlyLevelType(z.type);
+        const tooltipInfo = `${typeLabel}\n${z.date || "—"}\n${z.min.toFixed(6)} — ${z.max.toFixed(6)}\nВес: ${z.score ?? "—"} (ФОН)`;
+        
+        // Сохраняем линии в отдельный массив, чтобы не трогать рабочий уровень вотчера
+        backgroundLevelLines.push(...addZoneBand(z.min, z.max, color, lineCandles, tooltipInfo));
+      });
+    };
+
+    drawSide(data.supports, "#00c853");
+    drawSide(data.resistances, "#ff3d3d");
+  } catch (e) {
+    console.error("Фоновые уровни не загрузились", e);
+  }
+}
+
+if (toggleLevelsBtn) {
+  toggleLevelsBtn.onclick = async () => {
+    if (!selectedCoin) return;
+    toggleLevelsBtn.disabled = true;
+    
+    if (isBackgroundLevelsShowing) {
+      clearBackgroundLevels();
+      isBackgroundLevelsShowing = false;
+      toggleLevelsBtn.style.background = "";
+      toggleLevelsBtn.style.color = "";
+      toggleLevelsBtn.style.borderColor = "";
+    } else {
+      await showBackgroundLevels(selectedCoin);
+      isBackgroundLevelsShowing = true;
+      toggleLevelsBtn.style.background = "#2a3550"; // Подсвечиваем активную кнопку
+      toggleLevelsBtn.style.color = "#9fb4e8";
+      toggleLevelsBtn.style.borderColor = "#3a4a70";
+    }
+    toggleLevelsBtn.disabled = false;
+  };
 }
