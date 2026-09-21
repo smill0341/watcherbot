@@ -191,13 +191,17 @@ def _reconcile_levels_with_registry(old_zones, fresh_zones, is_support, df_1d, c
     # исключение здесь пробросилось бы наверх и оставило бы coin вообще
     # без обновления на этот цикл). Деградация — вернуть результат ДО
     # этого прохода (дубли могут остаться), а не потерять всё.
+    # Закидываем свежий POC в общий список ДО того, как алгоритм начнет склейку
+    result = result + poc_fresh
+
     try:
         result = _merge_nearby_macro_zones(result)
         result = merge_overlapping_zones(result)
     except Exception as e:
         print(f"[PASSPORT MERGE] Не смог финально слить зоны: {e} — оставляю без этого прохода")
 
-    return result + poc_fresh
+    # Возвращаем финальный склеенный массив
+    return result
 
 
 def _reconcile_coin_levels(coin, fresh_levels, macro_base, df_1d, scan_time=None):

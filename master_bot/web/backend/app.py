@@ -99,12 +99,13 @@ NBA_STATUS_PATH = os.path.join(JSONBANK_DIR, "nba_status.json")
 RESCAN_STATUS_PATH = os.path.join(JSONBANK_DIR, "rescan_status.json")
 ACTIVE_WATCHERS_PATH = os.path.join(JSONBANK_DIR, "active_watchers.json")
 WATCHER_HISTORY_PATH = os.path.join(JSONBANK_DIR, "watcher_history.json")
-# Та же лента, куда пишет Notifier (см. run_web.py) — "заглушка вместо
-# telebot", реального Telegram тут всё равно нет, просто общий JSON-список
-# последних сообщений для дашборда. Массовый рескан пишет сюда напрямую,
-# без импорта Notifier — не нужен весь его __init__, нужна только запись.
+# Та же лента, куда пишет Notifier (см. dashboard_actions.py) — "заглушка
+# вместо telebot", реального Telegram тут всё равно нет, просто общий
+# JSON-список последних сообщений для дашборда. Массовый рескан пишет сюда
+# напрямую, без импорта Notifier — не нужен весь его __init__, нужна
+# только запись.
 NOTIFICATIONS_PATH = os.path.join(JSONBANK_DIR, "notifications.json")
-MAX_NOTIFICATIONS = 200  # то же число, что MAX_NOTIFICATIONS в run_web.py
+MAX_NOTIFICATIONS = 200  # то же число, что MAX_NOTIFICATIONS в dashboard_actions.py
 
 STATIC_DIR = os.path.join(WEB_DIR, "static")
 
@@ -294,10 +295,28 @@ def get_active_watchers(all_states: bool = Query(default=False)):
     ?all_states=true — debug-режим: показать вообще все вотчеры (включая
     SEARCHING/TRIGGERED/DEAD) с счётчиками по state, чтобы понять,
     работает ли создание вотчеров вообще, или просто нет активных.
-    
+
     🔥 НОВОЕ: Добавляем source и added_at из watchlist для приоритизации ручных.
+
+    ЧИТАЕТ НАПРЯМУЮ ИЗ ПАМЯТИ (bounce_mgr/v_bottom_mgr), а не из
+    active_watchers.json на диске. Раньше (во времена, когда дашборд был
+    отдельным процессом) этот файл был единственным честным способом
+    что-либо узнать о состоянии сканера — но он обновлялся только раз в
+    скан-цикл, поэтому список "в работе" мог на какое-то время отставать
+    от реальности (а после рескана/удаления с дашборда — расходиться с
+    ней куда серьёзнее, см. общий докстринг слияния в run_web.py). После
+    слияния дашборда и сканера в один процесс это отставание больше не
+    нужно ничем оправдывать — читаем ту же самую память, которую видит
+    сам сканер, под тем же _watcher_lock, что и любая другая мутация.
+    Сам файл active_watchers.json при этом никуда не делся — его по-прежнему
+    пишет save_watcher_state()/_write_active_watchers_snapshot() (нужен для
+    персистентности между рестартами), просто дашборд его больше не читает.
     """
-    raw = _read_json(ACTIVE_WATCHERS_PATH, default={})
+    from modules.cryptano.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
+    from background_tasks import _build_active_watchers_export
+
+    with _watcher_lock:
+        raw = _build_active_watchers_export(v_bottom_mgr, bounce_mgr)
     wl = _read_json(WATCHLIST_PATH, default={})  # 🔥 Загружаем watchlist
 
     if all_states:
@@ -338,26 +357,31 @@ def get_active_watchers(all_states: bool = Query(default=False)):
 
 
 @app.post("/api/rescan/{coin}")
-def trigger_rescan(coin: str, since: Optional[int] = Query(default=None, description="unix-секунды — честно повторить путь монеты (BOUNCE) от этой даты до сейчас. Без даты — дефолт неделя назад (см. background_tasks.py).")):
-    """Ставит флаг-заявку на рескан для боевого сканера.
-
-    Раньше флаг был просто маркером "сбрось память V_BOTTOM/VGB/VRT по
-    этой монете". Теперь несёт JSON с `since` — для BOUNCE это не "забудь
+def trigger_rescan(coin: str, since: Optional[int] = Query(default=None, description="unix-секунды — честно повторить путь монеты (BOUNCE) от этой даты до сейчас. Без даты — дефолт неделя назад (см. dashboard_actions.py::rescan_coin).")):
+    """Запускает честный рескан монеты (BOUNCE) — для BOUNCE это не "забудь
     и сканируй заново вслепую", а "убей текущих живых вотчеров (заархивируй
-    их) и честно пересобери реальный путь монеты от этой даты через уже
+    их) и честно пересобери реальный путь монеты от `since` через уже
     готовый механизм реплея (bounce_mgr.last_processed_time), как будто
-    бот сканировал её всё это время."""
+    бот сканировал её всё это время".
+
+    Вызывает dashboard_actions.py::rescan_coin() напрямую, в фоновом потоке
+    процесса — сам рескан может занять заметное время (реплей вплоть до
+    ~60 дней истории), поэтому не блокирует HTTP-ответ, а отдаёт статус
+    через /api/rescan_status (см. его же). Раньше это была заявка через
+    флаг-файл (rescan_{coin}.flag), который подхватывал ОТДЕЛЬНЫЙ процесс
+    сканера — после слияния дашборда и сканера в один процесс (см.
+    докстринг run_web.py) сообщаться через диск незачем, зовём функцию
+    напрямую."""
     coin = coin.upper().strip()
-    flag_path = os.path.join(CRYPTANO_DIR, f"rescan_{coin}.flag")
-    try:
-        with open(flag_path, "w", encoding="utf-8") as f:
-            json.dump({"since": since}, f)
-        msg = f"Rescan requested for {coin}"
-        if since is not None:
-            msg += f" (с {datetime.datetime.utcfromtimestamp(since).strftime('%Y-%m-%d %H:%M')} UTC)"
-        return {"status": "ok", "message": msg}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    import threading as _threading
+    from dashboard_actions import rescan_coin
+
+    _threading.Thread(target=rescan_coin, args=(coin, since), daemon=True).start()
+
+    msg = f"Rescan requested for {coin}"
+    if since is not None:
+        msg += f" (с {datetime.datetime.utcfromtimestamp(since).strftime('%Y-%m-%d %H:%M')} UTC)"
+    return {"status": "ok", "message": msg}
 
 
 @app.post("/api/rescan_watcher/{coin}")
@@ -383,7 +407,7 @@ def trigger_single_watcher_rescan(coin: str, level_id: str = Query(..., descript
         # active_watchers.json (тот самый файл, из которого /api/watchers
         # отдаёт список "в работе") пересобирается ТОЛЬКО этой функцией, и
         # без явного вызова остаётся старым до следующего боевого скан-цикла.
-        # Та же причина, по которой её вызывает run_web.py::_run_rescan
+        # Та же причина, по которой её вызывает dashboard_actions.py::rescan_coin
         # после обычного рескана монеты (см. её докстринг).
         export_dashboard_state(v_bottom_mgr, bounce_mgr)
     finally:
@@ -408,10 +432,10 @@ def trigger_rescan_all_watchers():
     вотчер сканируется быстро, так что вся пачка всё равно укладывается
     в разумное время (тоже его слова: "оно быстро все равно").
 
-    В отличие от /api/rescan/{coin} (флаг-файл + фоновый поток, статус
-    опрашивается отдельно) этот эндпоинт синхронный и отдаёт готовый
-    результат сразу — как и точечный /api/rescan_watcher, только на всю
-    пачку сразу.
+    В отличие от /api/rescan/{coin} (фоновый поток, статус опрашивается
+    отдельно через /api/rescan_status — сам рескан монеты может занять
+    заметное время) этот эндпоинт синхронный и отдаёт готовый результат
+    сразу — как и точечный /api/rescan_watcher, только на всю пачку сразу.
 
     Уведомление — ОДНО сводное на всю пачку (список того, что изменилось),
     а не по одному на каждую монету, как раньше присылал боевой рескан —
@@ -502,19 +526,23 @@ def trigger_rescan_all_watchers():
 @app.post("/api/reset_watchers")
 def trigger_reset_watchers():
     """
-    Полный сброс живых вотчеров (не уровней!) — ставит флаг, который
-    run_web.py проверяет КАЖДУЮ СЕКУНДУ (не привязано к 15-минутному
-    каскаду скана, см. _flag_listener в run_web.py), поэтому применяется
-    почти сразу. Чистит v_bottom_mgr/bounce_mgr (вотчеры+кладбище),
-    tracked_origin_levels(_vrt), watcher_cooldown_cache. НЕ трогает
-    macro_levels.json/watchlist.json — для пересчёта самих уровней
-    отдельная кнопка (/api/rebuild_levels).
-    """
-    flag_path = os.path.join(CRYPTANO_DIR, "reset_watchers.flag")
+    Полный сброс живых вотчеров (не уровней!). Чистит v_bottom_mgr/
+    bounce_mgr (вотчеры+кладбище), tracked_origin_levels(_vrt),
+    watcher_cooldown_cache. НЕ трогает macro_levels.json/watchlist.json —
+    для пересчёта самих уровней отдельная кнопка (/api/rebuild_levels).
+
+    Вызывает dashboard_actions.py::reset_all_watchers() напрямую и синхронно —
+    операция быстрая (только мутация словарей в памяти + один
+    save_watcher_state()), HTTP-ответ отдаётся уже по факту сброса, а не
+    "заявка принята, проверь через секунду". Раньше это была заявка через
+    reset_watchers.flag, который run_web.py проверял отдельным опросом
+    каждую секунду — тот же процесс, что и сейчас, только раньше это был
+    ОТДЕЛЬНЫЙ процесс без прямого доступа к bounce_mgr/v_bottom_mgr
+    дашборда (см. докстринг run_web.py)."""
+    from dashboard_actions import reset_all_watchers
     try:
-        with open(flag_path, "w", encoding="utf-8") as f:
-            f.write("1")
-        return {"status": "ok", "message": "Reset requested — применится в течение секунды"}
+        reset_all_watchers()
+        return {"status": "ok", "message": "Вотчеры сброшены"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -524,13 +552,13 @@ def trigger_rebuild_levels():
     """
     Полный пересчёт уровней (macro_levels.json) с нуля — то же самое, что
     команда 'rebuild' в консоли Scanner. Дольше, чем сброс вотчеров (фетчит
-    историю по ~70 монетам), поэтому отдельная кнопка, не совмещённая со
-    сбросом вотчеров.
-    """
-    flag_path = os.path.join(CRYPTANO_DIR, "rebuild_levels.flag")
+    историю по ~70 монетам), поэтому запускается в фоновом потоке, не
+    блокируя HTTP-ответ — раньше это была заявка через rebuild_levels.flag,
+    теперь dashboard_actions.py::rebuild_levels() вызывается напрямую."""
+    import threading as _threading
+    from dashboard_actions import rebuild_levels
     try:
-        with open(flag_path, "w", encoding="utf-8") as f:
-            f.write("1")
+        _threading.Thread(target=rebuild_levels, daemon=True).start()
         return {"status": "ok", "message": "Rebuild requested — может занять пару минут"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

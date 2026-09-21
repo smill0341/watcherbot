@@ -760,7 +760,7 @@ def resolve_cross_overlaps(supports, resistances):
 
 
 def _extract_macro_swings(df, current_price, max_distance, base_score, label_prefix):
-    """Ищет структурные макро-свинги (по теням) и отсеивает пробитые."""
+    """Ищет структурные макро-свинги (по теням SMC) и отсеивает пробитые."""
     if df is None or len(df) < 5:
         return []
         
@@ -775,13 +775,12 @@ def _extract_macro_swings(df, current_price, max_distance, base_score, label_pre
     for i in range(2, len(work) - 2):
         ts = work['timestamp'].iloc[i]
         date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
-        # Фрактал (window=5, center=True) подтверждается только когда закрылись
-        # ОБЕ свечи справа от центра (i+1 и i+2) — до этого is_swing_low/high
-        # физически не мог быть True. Активна зона с даты закрытия i+2
-        # (см. докстринг activated_at в _build_zone) — на месячном ТФ это
-        # может быть на 2-3 месяца позже date_str, на недельном — на 2-3 недели.
         confirm_ts = work['timestamp'].iloc[i + 2]
         activated_at = pd.to_datetime(confirm_ts, unit='ms').strftime('%Y-%m-%d')
+        
+        # Получаем данные текущей свечи для SMC
+        open_price = float(work['open'].iloc[i])
+        close_price = float(work['close'].iloc[i])
 
         # --- Поддержка (LONG) ---
         if work['is_swing_low'].iloc[i]:
@@ -794,10 +793,13 @@ def _extract_macro_swings(df, current_price, max_distance, base_score, label_pre
                     mitigated = True
 
                 if not mitigated:
-                    # Узкая зона (1.5% от цены), так как ATR на макро слишком широкий
-                    atr_fake = price * 0.015
-                    zone = _build_zone(price, atr_fake, base_score, f"{label_prefix}_Support", date_str, False,
+                    body_bottom = min(open_price, close_price)
+                    
+                    # Передаем atr=0.0, границы пропишем вручную
+                    zone = _build_zone(price, 0.0, base_score, f"{label_prefix}_Support", date_str, False,
                                         activated_at=activated_at)
+                    zone['min'] = price          # Низ зоны = абсолютный минимум (тень)
+                    zone['max'] = body_bottom    # Верх зоны = низ тела свечи
                     zone['_is_support'] = True
                     zone['class'] = 'MACRO'
                     zones.append(zone)
@@ -812,9 +814,13 @@ def _extract_macro_swings(df, current_price, max_distance, base_score, label_pre
                     mitigated = True
 
                 if not mitigated:
-                    atr_fake = price * 0.015
-                    zone = _build_zone(price, atr_fake, base_score, f"{label_prefix}_Resistance", date_str, False,
+                    body_top = max(open_price, close_price)
+
+                    # Передаем atr=0.0, границы пропишем вручную
+                    zone = _build_zone(price, 0.0, base_score, f"{label_prefix}_Resistance", date_str, False,
                                         activated_at=activated_at)
+                    zone['min'] = body_top       # Низ зоны = верх тела свечи
+                    zone['max'] = price          # Верх зоны = абсолютный пик (тень)
                     zone['_is_support'] = False
                     zone['class'] = 'MACRO'
                     zones.append(zone)
@@ -931,7 +937,49 @@ def build_levels(df_1M, df_1W, df_1d, df_4h, coin, current_idx=None):
                     resistances.append(z)
             else:
                 resistances.append(z)
+# === НОВЫЙ БЛОК: ФОЛБЭК ДЛЯ ПУСТЫХ ЗОН (ИЩЕМ МИНИМУМ 2 УРОВНЯ) ===
+    def _run_fallback(is_support_target, needed):
+        inf_dist = float('inf')  # Бесконечный радар
+        fb_all = []
+        if df_1M is not None: fb_all += _extract_macro_swings(df_1M, current_price, inf_dist, 5.0, "1M_MACRO")
+        if df_1W is not None: fb_all += _extract_macro_swings(df_1W, current_price, inf_dist, 4.0, "1W_MACRO")
+        deep_history = len(df_1d)  # Снимаем лимит в 3-4 месяца, сканируем вообще всё
+        fb_all += _extract_period_extremes(df_1d, 'ME', deep_history, current_price, atr_1d, inf_dist, "1M_high_PMH", "1M_low_PML", current_idx)
+        fb_all += _extract_period_extremes(df_1d, 'W', deep_history, current_price, atr_1d, inf_dist, "1W_high_PWH", "1W_low_PWL", current_idx)
+        fb_all += _extract_find_peaks_layer(df_1d, current_price, atr_1d, inf_dist, current_idx)
 
+        fb_filtered = []
+        for z in fb_all:
+            if z.get('mitigated'): continue
+            is_sup = z.pop('_is_support', None)
+            z.pop('mitigated', None)
+            
+            if is_sup == is_support_target:
+                # Жесткая проверка: сопротивления должны быть строго ВЫШЕ цены, поддержки строго НИЖЕ
+                if is_support_target and z['max'] >= current_price: continue
+                if not is_support_target and z['min'] <= current_price: continue
+                fb_filtered.append(z)
+                
+        merged = merge_overlapping_zones(fb_filtered)
+        merged = _merge_nearby_macro_zones(merged)
+        
+        # Сортируем по удаленности от цены (чем ближе, тем лучше)
+        merged.sort(key=lambda x: abs(((x['min'] + x['max']) / 2) - current_price))
+        return merged[:needed]
+
+    # Докидываем до 2 уровней, если не хватает
+    if len(supports) < 2:
+        missing = 2 - len(supports)
+        for z in _run_fallback(True, missing):
+            if not any(abs(z['min'] - s['min']) < 1e-9 for s in supports):
+                supports.append(z)
+
+    if len(resistances) < 2:
+        missing = 2 - len(resistances)
+        for z in _run_fallback(False, missing):
+            if not any(abs(z['min'] - r['min']) < 1e-9 for r in resistances):
+                resistances.append(z)
+    # =================================================================    
     compress_fat_zones(supports, coin)
     compress_fat_zones(resistances, coin)
     supports, resistances = resolve_cross_overlaps(supports, resistances)

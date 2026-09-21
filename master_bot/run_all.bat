@@ -44,22 +44,20 @@ if errorlevel 1 (
     pip install -r web\backend\requirements1.txt
 )
 
-echo [4/4] Starting scanner + dashboard in separate windows...
+echo [4/4] Starting scanner + dashboard (single process)...
 
-REM Окно 1: сканер без Telegram (тут же можно вводить "rebuild" для ручного пересчета уровней)
-start "Watcherbot Scanner (run_web.py)" cmd /k "call "%VENV_ACTIVATE%" && python run_web.py"
-
-REM Окно 2: веб-дашборд
-REM ВАЖНО: без --reload. candles.db лежит в той же папке, что и app.py, и
-REM обновляется постоянно (докачка истории) — с --reload uvicorn видит это
-REM как "файл изменился" и рестартует сервер, обрывая докачку на середине.
-REM Из-за этого некоторые монеты застревали на июле, пока другие (которым
-REM повезло не попасть под рестарт) доходили до августа.
-start "Watcherbot Dashboard" cmd /k "call "%VENV_ACTIVATE%" && python -m uvicorn web.backend.app:app --port 8010"
+REM Раньше тут были ДВА отдельных окна: сканер (run_web.py) и дашборд
+REM (python -m uvicorn web.backend.app:app --port 8010) — два процесса,
+REM у каждого своя, независимая копия состояния вотчеров в памяти, из-за
+REM чего дашборд то удалял, то "воскрешал" одних и тех же вотчеров сам
+REM по себе, списки расходились и т.д. После слияния run_web.py сам
+REM поднимает дашборд (uvicorn) внутри себя — один процесс, одна копия
+REM состояния, окно теперь одно.
+start "Watcherbot (scanner + dashboard)" cmd /k "call "%VENV_ACTIVATE%" && python run_web.py"
 
 echo.
-echo Готово. Открыты два окна: Scanner и Dashboard.
+echo Готово. Открыто одно окно: Watcherbot (scanner + dashboard).
 echo Дашборд:  http://localhost:8010
-echo В окне Scanner можно ввести "rebuild" + Enter для ручного пересчета уровней.
+echo В этом же окне можно ввести "rebuild" + Enter для ручного пересчета уровней.
 echo.
 pause

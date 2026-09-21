@@ -53,6 +53,10 @@ let simPlaybackTimer = null;
 let simHistory = [];  // data.history последнего прогона — для поиска эпизодов по клику на сделку
 let simTrades = [];   // data.trades последнего прогона
 
+let isViewAllTrades = false; // 🔥 НОВОЕ
+let activeTrade = null;      // 🔥 НОВОЕ
+let activeTradeSource = "sim"; // Запоминает, из какой таблицы был клик
+
 // === bulk-прогон (все монеты) — своё состояние, не пересекается с simHistory/
 // simTrades одиночного симулятора выше. bulkHistoryByCoin используется точно
 // так же, как simHistory: клик по сделке ищет в нём свой эпизод, просто ключ —
@@ -114,15 +118,37 @@ function friendlyStrategy(code) {
 }
 function friendlyLevelType(type) {
   if (!type) return "уровень";
-  if (type.includes("poc")) return "Объём (POC)";
-  if (type.includes("PMH")) return "Хай месяца";
-  if (type.includes("PML")) return "Лоу месяца";
-  if (type.includes("PWH")) return "Хай недели";
-  if (type.includes("PWL")) return "Лоу недели";
-  if (type.includes("PDH")) return "Хай дня";
-  if (type.includes("PDL")) return "Лоу дня";
-  if (type.includes("extreme_peak")) return "Экстремум";
-  return type;
+
+  // Если уровень составной (содержит плюсы), разбиваем, переводим каждую часть и склеиваем обратно
+  if (type.includes("+")) {
+    return type.split("+").map(part => _translateToken(part.trim())).join(" + ");
+  }
+  
+  // Если склеен через пробелы с плюсом
+  if (type.includes(" + ")) {
+    return type.split(" + ").map(part => _translateToken(part.trim())).join(" + ");
+  }
+
+  return _translateToken(type);
+}
+
+function _translateToken(token) {
+  const t = token.toLowerCase();
+  
+  if (t.includes("pmh")) return "Хай месяца";
+  if (t.includes("pml")) return "Лоу месяца";
+  if (t.includes("pwh")) return "Хай недели";
+  if (t.includes("pwl")) return "Лоу недели";
+  if (t.includes("pdh")) return "Хай дня";
+  if (t.includes("pdl")) return "Лоу дня";
+  if (t.includes("extreme_peak")) return "Экстремум";
+  if (t.includes("poc")) return "Объём (POC)";
+  if (t.includes("macro_support")) return "Макро Поддержка";
+  if (t.includes("macro_resistance")) return "Макро Сопротивление";
+  if (t.includes("confluence")) return "Конфлюэнция";
+
+  // Если попался редкий или кастомный тип — просто убираем технические подчеркивания
+  return token.replace(/_/g, " ");
 }
 
 // === ДУБЛИРОВАНО ИЗ app.js::computeEMA ===
@@ -429,19 +455,16 @@ async function drawSnapshotLevels(coin, whenSec) {
 function updateSimUI() {
   const status = document.getElementById("sim-status");
   const runBtn = document.getElementById("sim-run-btn");
-  const cancelBtn = document.getElementById("sim-cancel-btn");
   const bulkBtn = document.getElementById("sim-bulk-btn");
-  if (!status || !runBtn || !cancelBtn) return;
+  if (!status || !runBtn) return;
 
   if (simStartTime) {
-    status.textContent = ""; // Убрали текст с датами
+    status.textContent = ""; 
     runBtn.style.display = "";
-    cancelBtn.style.display = "";
     if (bulkBtn) bulkBtn.style.display = "";
   } else {
-    status.textContent = "Укажи дату «От» (или кликни свечу)";
+    status.textContent = "Укажи дату (или кликни свечу)";
     runBtn.style.display = "none";
-    cancelBtn.style.display = "none";
     if (bulkBtn) bulkBtn.style.display = "none";
   }
 }
@@ -661,7 +684,33 @@ function drawTradeDetail(trade) {
   if (!trade || !globalCandles.length) return;
 
   const group = findGroupEpisodes(trade);
-  if (!group.length) return;
+  
+  // БРОНЯ: Если истории нет (зеркальные сделки), рисуем просто зону по данным из таблицы
+  if (!group.length) {
+    if (trade.level_min && trade.level_max) {
+      const color = trade.type === "LONG" ? "#4caf7d" : "#e5654f";
+      const endSec = trade.closed_at ? Math.floor(new Date(trade.closed_at).getTime() / 1000) : Math.floor(Date.now() / 1000);
+      const lineCandles = globalCandles.filter(c => c.time >= (trade.time - 2*24*3600) && c.time <= endSec);
+      
+      const lvlTypeStr = trade.level_type ? friendlyLevelType(trade.level_type) : "—";
+      simLevelLines.push(...addZoneBand(trade.level_min, trade.level_max, color, lineCandles, `🧪 ${lvlTypeStr}`));
+
+      const entryStyle = trade.type === "SHORT" ? { color: "#e5654f", shape: "arrowDown" } : { color: "#4caf7d", shape: "arrowUp" };
+      const markers = [{ time: trade.time, position: trade.type === "SHORT" ? "belowBar" : "aboveBar", color: entryStyle.color, shape: entryStyle.shape, text: "" }];
+      
+      const closeM = buildCloseMarker(trade);
+      if (closeM) markers.push(closeM);
+      
+      // 🔥 Подмешиваем бледные маркеры и зоны других сделок (если глазок включен)
+      let bgMarkers = typeof drawBackgroundTradesAndGetMarkers === "function" ? drawBackgroundTradesAndGetMarkers() : [];
+      candleSeries.setMarkers([...bgMarkers, ...markers].sort((a,b) => a.time - b.time));
+      
+      centerChartOnEvents([{ time: trade.time }], endSec);
+    }
+    const statusEl = document.getElementById("sim-status");
+    if (statusEl) statusEl.textContent = "";
+    return;
+  }
 
   const mins = group.map((g) => g.level_min).filter((v) => v != null);
   const maxs = group.map((g) => g.level_max).filter((v) => v != null);
@@ -771,14 +820,15 @@ function playTradeAnimation(events, direction, closeMarker) {
     const style = ev.type === "ENTRY" ? entryStyle : (EVENT_MARKER_STYLE[ev.type] || { color: "#8a8f98", shape: "circle" });
     return { time: ev.time, position: ev.type === "ENTRY" ? (direction === "SHORT" ? "belowBar" : "aboveBar") : "inBar", color: style.color, shape: style.shape, text: "" };
   });
-  // closeMarker.time всегда >= времени последнего события (закрытие не
-  // может случиться раньше входа) — просто добавляем в конец, порядок
-  // по времени (обязателен для setMarkers) не нарушается.
   if (closeMarker) markers.push(closeMarker);
+
+  // 🔥 Получаем фоновые маркеры и рисуем их зоны
+  let bgMarkers = typeof drawBackgroundTradesAndGetMarkers === "function" ? drawBackgroundTradesAndGetMarkers() : [];
+  const combinedFinal = [...bgMarkers, ...markers].sort((a,b) => a.time - b.time);
 
   const playCandles = globalCandles.filter((c) => c.time >= events[0].time && c.time <= events[events.length - 1].time);
   if (playCandles.length < 2) {
-    candleSeries.setMarkers(markers);
+    candleSeries.setMarkers(combinedFinal);
     return;
   }
 
@@ -796,19 +846,24 @@ function playTradeAnimation(events, direction, closeMarker) {
     const cursorTime = playCandles[idx].time;
     const revealed = markers.filter((m) => m.time <= cursorTime);
     const cursorMarker = { time: cursorTime, position: "inBar", color: "#5aa9e6", shape: "circle", text: "" };
-    candleSeries.setMarkers([...revealed, cursorMarker]);
+    
+    // 🔥 Подмешиваем фон, чтобы он не пропадал при анимации
+    candleSeries.setMarkers([...bgMarkers, ...revealed, cursorMarker].sort((a,b) => a.time - b.time));
 
     if (done) {
       stopSimPlayback();
-      candleSeries.setMarkers(markers);
+      candleSeries.setMarkers(combinedFinal);
     }
   }, STEP_MS);
 }
-
 function selectTrade(trade, rowEl) {
   document.querySelectorAll("#sim-trades-body tr").forEach((tr) => tr.classList.remove("selected"));
   if (rowEl) rowEl.classList.add("selected");
-  drawTradeDetail(trade);
+  activeTrade = trade;
+  activeTradeSource = "sim"; // <--- Жестко фиксируем источник
+  const toggleBtn = document.getElementById("sim-view-toggle");
+  if (toggleBtn) toggleBtn.style.display = "inline-block";
+  drawTradeDetail(activeTrade);
 }
 
 // Разметка ОДНОЙ строки таблицы сделок — общая для одиночного симулятора
@@ -903,7 +958,11 @@ async function selectBulkTrade(trade, rowEl) {
 
   await loadFullCandlesForCoin(trade.coin);
 
-  drawTradeDetail(trade);
+  activeTrade = trade;
+  activeTradeSource = "bulk"; // <--- Жестко фиксируем источник
+  const toggleBtn = document.getElementById("sim-view-toggle");
+  if (toggleBtn) toggleBtn.style.display = "inline-block";
+  drawTradeDetail(activeTrade);
 }
 
 // Читает #sim-direction-select и превращает его в query-параметры
@@ -1220,3 +1279,59 @@ loadSimCoins();
 restoreLastBounceSimIfAny();
 restoreLastBulkSimIfAny();
 initSimTabs();
+
+// === ГЛАЗОК: ФОНОВЫЕ СДЕЛКИ ===
+let showBackgroundZones = false;
+const viewToggleBtn = document.getElementById("sim-view-toggle");
+if (viewToggleBtn) {
+  viewToggleBtn.onclick = () => {
+    showBackgroundZones = !showBackgroundZones;
+    viewToggleBtn.textContent = showBackgroundZones ? "👁️ Фон вкл" : "👁️ Фон выкл";
+    if (activeTrade) drawTradeDetail(activeTrade);
+  };
+}
+
+// Рисует бледные зоны сделок и собирает массив их маркеров (вход, старт, выход)
+function drawBackgroundTradesAndGetMarkers() {
+  if (!showBackgroundZones || !activeTrade) return [];
+  
+  // 🔥 БРОНЯ: Строго маршрутизируем по флагу источника, без "угадывания"
+  const currentTrades = (activeTradeSource === "bulk") 
+    ? bulkTrades.filter(t => t.coin === selectedCoin) 
+    : simTrades;
+    
+  let bgMarkers = [];
+
+  currentTrades.forEach(bgTrade => {
+    if (bgTrade.time === activeTrade.time) return; // Активную не трогаем, она рисуется ярко
+
+    // 1. Рисуем бледную зону сделки
+    const zMin = bgTrade.level_min;
+    const zMax = bgTrade.level_max;
+    if (zMin && zMax) {
+      const dimmedColor = bgTrade.type === "LONG" ? "#a5d7be" : "#f2b2a7";
+      const startSec = bgTrade.time - (2 * 24 * 3600);
+      const endSec = bgTrade.closed_at ? Math.floor(new Date(bgTrade.closed_at).getTime() / 1000) : Math.floor(Date.now() / 1000);
+      const lineCandles = globalCandles.filter(c => c.time >= startSec && c.time <= endSec);
+      if (lineCandles.length) simLevelLines.push(...addZoneBand(zMin, zMax, dimmedColor, lineCandles, ""));
+    }
+
+    // 2. Собираем маркеры этой сделки
+    const entryStyle = bgTrade.type === "SHORT" ? { color: "#f2b2a7", shape: "arrowDown" } : { color: "#a5d7be", shape: "arrowUp" };
+    bgMarkers.push({ time: bgTrade.time, position: bgTrade.type === "SHORT" ? "belowBar" : "aboveBar", color: entryStyle.color, shape: entryStyle.shape, text: "" });
+
+    const group = typeof findGroupEpisodes === "function" ? findGroupEpisodes(bgTrade) : [];
+    let events = [];
+    group.forEach(ep => (ep.events || []).forEach(ev => { if (ev.time) events.push(ev); }));
+    events.sort((a, b) => a.time - b.time);
+    if (events.length > 0) bgMarkers.push({ time: events[0].time, position: "inBar", color: "#a5d7be", shape: "circle", text: "" }); // бледный старт
+
+    const closeM = typeof buildCloseMarker === "function" ? buildCloseMarker(bgTrade) : null;
+    if (closeM) {
+      closeM.color = (bgTrade.result_percent ?? 0) > 0 ? "#a5d7be" : "#f2b2a7";
+      bgMarkers.push(closeM);
+    }
+  });
+  
+  return bgMarkers;
+}

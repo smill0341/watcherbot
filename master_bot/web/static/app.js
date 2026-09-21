@@ -644,21 +644,40 @@ const STRATEGY_LABELS = {
   V_BOTTOM: "V-Bottom",
   V_GREEN_BOTTOM: "V-Green",
   V_RED_TOP: "V-Red",
+  BOUNCE: "Bounce"
 };
+
 function friendlyStrategy(code) {
   return STRATEGY_LABELS[code] || code || "?";
 }
+
 function friendlyLevelType(type) {
   if (!type) return "уровень";
-  if (type.includes("poc")) return "Объём (POC)";
-  if (type.includes("PMH")) return "Хай месяца";
-  if (type.includes("PML")) return "Лоу месяца";
-  if (type.includes("PWH")) return "Хай недели";
-  if (type.includes("PWL")) return "Лоу недели";
-  if (type.includes("PDH")) return "Хай дня";
-  if (type.includes("PDL")) return "Лоу дня";
-  if (type.includes("extreme_peak")) return "Экстремум";
-  return type;
+  if (type.includes("+")) {
+    return type.split("+").map(part => _translateToken(part.trim())).join(" + ");
+  }
+  if (type.includes(" + ")) {
+    return type.split(" + ").map(part => _translateToken(part.trim())).join(" + ");
+  }
+  return _translateToken(type);
+}
+
+function _translateToken(token) {
+  const t = token.toLowerCase();
+  
+  if (t.includes("pmh")) return "Хай месяца";
+  if (t.includes("pml")) return "Лоу месяца";
+  if (t.includes("pwh")) return "Хай недели";
+  if (t.includes("pwl")) return "Лоу недели";
+  if (t.includes("pdh")) return "Хай дня";
+  if (t.includes("pdl")) return "Лоу дня";
+  if (t.includes("extreme_peak")) return "Экстремум";
+  if (t.includes("poc")) return "Объём (POC)";
+  if (t.includes("macro_support")) return "Макро Поддержка";
+  if (t.includes("macro_resistance")) return "Макро Сопротивление";
+  if (t.includes("confluence")) return "Конфлюэнция";
+
+  return token.replace(/_/g, " ");
 }
 
 async function loadEvents(coin, token = chartLoadToken) {
@@ -813,7 +832,7 @@ async function loadLevels(coin, token = chartLoadToken) {
           : globalCandles;
         if (!lineCandles.length) return;
         const typeLabel = friendlyLevelType(z.type);
-        const tooltipInfo = `${typeLabel}\n${z.date || "—"}\n${z.min.toFixed(6)} — ${z.max.toFixed(6)}\nВес: ${z.score ?? "—"}`;
+        const tooltipInfo = `${typeLabel} · ${z.date || "—"} · Вес: ${z.score ?? "—"}`;
         levelLines.push(...addZoneBand(z.min, z.max, color, lineCandles, tooltipInfo));
       });
     };
@@ -1436,7 +1455,7 @@ if (resetWatchersBtnEl) {
 const rebuildLevelsBtnEl = document.getElementById("rebuild-levels-btn");
 if (rebuildLevelsBtnEl) {
   rebuildLevelsBtnEl.onclick = async () => {
-    if (!confirm("Точно пересчитать ВСЕ уровни с нуля? Это дольше (фетч истории по ~70 монетам), может занять пару минут. Отменить нельзя.")) return;
+    if (!confirm("Точно пересчитать ВСЕ уровни с нуля?Отменить нельзя.")) return;
     rebuildLevelsBtnEl.disabled = true;
     try {
       const res = await fetch("/api/rebuild_levels", { method: "POST" });
@@ -2128,7 +2147,7 @@ async function showBackgroundLevels(coin) {
         if (!lineCandles.length) return;
         
         const typeLabel = friendlyLevelType(z.type);
-        const tooltipInfo = `${typeLabel}\n${z.date || "—"}\n${z.min.toFixed(6)} — ${z.max.toFixed(6)}\nВес: ${z.score ?? "—"} (ФОН)`;
+        const tooltipInfo = `${typeLabel} · ${z.date || "—"} · Вес: ${z.score ?? "—"} (ФОН)`;
         
         // Сохраняем линии в отдельный массив, чтобы не трогать рабочий уровень вотчера
         backgroundLevelLines.push(...addZoneBand(z.min, z.max, color, lineCandles, tooltipInfo));

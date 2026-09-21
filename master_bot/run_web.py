@@ -1,248 +1,86 @@
 """
-run_web.py — точка входа для крипто-сканера БЕЗ Telegram.
+run_web.py — единая точка входа: крипто-сканер + веб-дашборд, В ОДНОМ
+процессе (без Telegram).
 
-Крутит тот же crypto_orchestrator, что и main.py после нажатия
-"Автобот Старт" в Telegram, но без telebot/токена — чтобы веб-дашборд
-мог получать данные независимо от Telegram-процесса.
+ДО этой правки дашборд (web/backend/app.py) запускался ОТДЕЛЬНЫМ процессом
+(`uvicorn web.backend.app:app`), и у каждого процесса при импорте
+modules.cryptano.live_scan.py заводился СВОЙ, независимый bounce_mgr/
+v_bottom_mgr в памяти — оба процесса общались между собой только через
+JSON-файлы на диске. Отсюда была целая серия багов: удалённый с дашборда
+вотчер возвращался обратно через время, "Очистка BOUNCE: удалено 0" при
+явно неверном счётчике, список "в работе" расходился с тем, что реально
+видел сканер, и так далее — дашборд правил СВОЮ, замороженную с момента
+своего старта копию состояния, а следующее же сохранение реального
+сканера тихо затирало эту правку обратно.
+
+Теперь дашборд поднимается ПРЯМО ТУТ, в конце main() (см. uvicorn.run
+внизу) — один-единственный bounce_mgr/v_bottom_mgr на весь бот, дашборд и
+сканер работают с одной и той же памятью, гонка между "двумя правдами"
+исключена конструктивно, а не патчем поверх патча. Флаг-файлы
+(rescan_{coin}.flag, reset_watchers.flag, rebuild_levels.flag), которыми
+раньше дашборд "стучался" во второй процесс — тоже не нужны: web/backend/
+app.py импортирует функции из dashboard_actions.py и зовёт их напрямую,
+под тем же _watcher_lock, что и сам скан-цикл (background_tasks.py).
+
+Сами эти функции (reset_all_watchers/rebuild_levels/rescan_coin) и
+Notifier-заглушка вынесены в ОТДЕЛЬНЫЙ модуль dashboard_actions.py, а не
+живут прямо здесь — см. подробное объяснение в его докстринге: этот файл
+запускается как `python run_web.py`, из-за чего Python регистрирует его
+как "__main__", а не как "run_web", и `from run_web import ...` из app.py
+импортировал бы ВТОРУЮ, независимую копию этого модуля (со своим никогда
+не инициализированным notifier) — классическая ловушка Python. dashboard_
+actions.py же только импортируется, никогда не запускается напрямую,
+поэтому что этот файл, что app.py видят ровно один и тот же его экземпляр.
 
 Управление статусом: автоматическое.
   - Запустил скрипт  -> crypto.status = RUNNING (сканер стартует сам)
   - Ctrl+C / штатный выход -> crypto.status = STOPPED
 
 ВАЖНО: не запускать одновременно с main.py, если там включён крипто-автобот
-("Автобот Старт" в Telegram) — оба процесса пишут в одни и те же JSON-файлы
-(watchlist.json, active_watchers.json и т.д.) и будут создавать гонки.
+("Автобот Старт" в Telegram) — оба процесса писали бы в одни и те же
+JSON-файлы (watchlist.json, active_watchers.json и т.д.) и создавали бы
+гонки. main.py / football / NBA этот скрипт не трогает и не запускает —
+он только про крипту (+ дашборд).
 
-main.py / football / NBA этот скрипт не трогает и не запускает — он только
-про крипту.
+На практике main.py (Telegram-бот) сейчас вообще не используется — сайт
+единственный интерфейс, поэтому PID-guard ниже защищает в первую очередь
+от случайного повторного запуска ЭТОГО ЖЕ скрипта (например, из второго
+терминала), а не от main.py — но раз оба пишут в одни файлы, предупреждение
+в шапке оставлено как есть, на будущее.
 """
 
 import os
 import time
 import atexit
-import datetime
 import threading
 
 from modules.cryptano.utils.storage import load_json, save_json_atomic
 from background_tasks import crypto_orchestrator
-from modules.cryptano.swing_hunter import start_swing_hunter, build_macro_levels
+from modules.cryptano.swing_hunter import start_swing_hunter
+import dashboard_actions
+from dashboard_actions import NOTIFICATIONS_FILE, CONFIG_FILE, ADMIN_LABEL
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
-from modules.cryptano.utils.paths import NOTIFICATIONS_FILE
-MAX_NOTIFICATIONS = 200  # сколько последних сообщений хранить в файле
 
-ADMIN_LABEL = "web-dashboard"  # заменяет chat_id — реального Telegram-чата тут нет
+# PID-файл — не даёт запустить второй экземпляр run_web.py поверх уже
+# работающего (оба тогда независимо трогали бы одни и те же JSON-файлы
+# и объект bounce_mgr/v_bottom_mgr был бы снова не один, а два — та же
+# болезнь, от которой уходит всё слияние выше, просто с другой стороны).
+PID_FILE = os.path.join(BASE_DIR, "run_web.pid")
 
-
-class Notifier:
-    """
-    Заглушка вместо telebot.TeleBot — единственное, что от неё требуется,
-    это метод send_message(chat_id, text, parse_mode=...), потому что
-    именно так (и только так) crypto_orchestrator в background_tasks.py
-    зовёт bot внутри себя (4 места).
-
-    Вместо отправки в Telegram: печатает в консоль и копит последние
-    сообщения в notifications.json (для будущей ленты сигналов в дашборде).
-    """
-
-    def __init__(self, notifications_path, max_items=MAX_NOTIFICATIONS):
-        self._path = notifications_path
-        self._max_items = max_items
-        self._lock = threading.Lock()
-
-    def send_message(self, chat_id, text, parse_mode=None, **kwargs):
-        timestamp = datetime.datetime.now().isoformat()
-        print(f"[{timestamp}] [NOTIFY -> {chat_id}] {text}")
-        with self._lock:
-            # Получаем данные. default=None чтобы не ругался на аргумент
-            raw_items = load_json(self._path, default=None)
-            
-            # Явно указываем тип list и добавляем комментарий игнорирования типов
-            # для линтера, чтобы он забыл о том, что load_json "обещал" вернуть Dict
-            items: list = raw_items if isinstance(raw_items, list) else []  # type: ignore
-                
-            items.append({"timestamp": timestamp, "chat_id": chat_id, "text": text})
-            
-            # Теперь линтер точно знает, что items - это список, и разрешает срез
-            items = items[-self._max_items:]# type: ignore
-            save_json_atomic(self._path, items)
+# Порт/хост дашборда — раньше жили только в команде запуска
+# ("python -m uvicorn web.backend.app:app --port 8010", см. run_all.bat),
+# теперь эта команда не используется вообще (см. main() ниже), поэтому
+# параметры переехали сюда. Хост по умолчанию — 127.0.0.1, как и раньше
+# (старая команда запускалась без --host, а это и есть дефолт uvicorn) —
+# то есть дашборд виден только с этого же компьютера, не по сети. Если
+# нужен доступ с других устройств в локальной сети — задай переменную
+# окружения DASHBOARD_HOST=0.0.0.0 (или свой IP), не трогая код.
+DASHBOARD_HOST = os.environ.get("DASHBOARD_HOST", "127.0.0.1")
+DASHBOARD_PORT = int(os.environ.get("DASHBOARD_PORT", "8010"))
 
 
-def _rebuild_levels(notifier):
-    """Ручной запуск построения macro-уровней (аналог /rebuild_levels в Telegram)."""
-    print("[run_web] ⏳ Запускаю построение уровней вручную (может занять пару минут)...")
-    try:
-        result = build_macro_levels(notifier, ADMIN_LABEL)
-    except Exception as e:
-        print(f"[run_web] ❌ Ошибка при построении уровней: {e}")
-
-
-def _reset_all_watchers():
-    """
-    Полный сброс живых вотчеров в памяти — по запросу с веб-дашборда.
-    НЕ трогает macro_levels.json/watchlist.json — только состояние
-    отслеживания (кто что пробил, кто в фокусе, кулдауны), чтобы всё
-    начало отслеживаться заново с чистого листа по уже существующим
-    уровням.
-    """
-    print("[run_web] 🧹 Сброс всех вотчеров по запросу с дашборда...")
-    try:
-        from modules.cryptano.live_scan import (
-            v_bottom_mgr, bounce_mgr, tracked_origin_levels,
-            tracked_origin_levels_vrt, watcher_cooldown_cache, save_watcher_state,
-        )
-        from modules.cryptano.utils.paths import ACTIVE_WATCHERS_FILE
-        v_bottom_mgr._watchers.clear()
-        # bounce_mgr._watchers — property (parent._watchers), .clear() мутирует
-        # тот же словарь на месте, так и должно работать.
-        bounce_mgr._watchers.clear()
-        bounce_mgr.graveyard.clear()
-        bounce_mgr._graveyard_recorded.clear()
-        bounce_mgr.pierced_count = 0
-        tracked_origin_levels.clear()
-        tracked_origin_levels_vrt.clear()
-        watcher_cooldown_cache.clear()
-        save_watcher_state()  # сразу на диск, не дожидаясь обычного цикла сохранения
-        # active_watchers.json save_watcher_state() НЕ трогает вообще — этот файл
-        # обновляется только внутри 15-минутного скан-цикла в background_tasks.py.
-        # Без явной очистки тут дашборд ещё до 15 минут показывал бы старый список,
-        # хотя в памяти уже пусто.
-        save_json_atomic(ACTIVE_WATCHERS_FILE, {})
-        print("[run_web] ✅ Сброс завершён — watcher_state.json/bounce_state.json/active_watchers.json обнулены.")
-    except Exception as e:
-        print(f"[run_web] ❌ Ошибка при сбросе вотчеров: {e}")
-
-
-def _handle_rescan_flags(notifier):
-    """
-    Проверяет rescan_{coin}.flag файлы — вынесено из 15-минутного каскада
-    (background_tasks.py) в тот же быстрый 1-секундный опрос, что уже есть
-    у "Сбросить"/"Rebuild". Раньше рескан ждал, пока основной скан-цикл
-    дойдёт до watcher-секции (это происходит не чаще раза в 15 минут, на
-    границе закрытия свечи, + минимум 5 минут после старта бота) — то
-    есть ожидание могло доходить до ~15+ минут, и всё это время статус на
-    дашборде молчал (⏳ появлялся только на те несколько секунд, что реально
-    шёл сам реплей).
-
-    Мутации bounce_mgr идут под тем же _watcher_lock, что и основной
-    скан-цикл в background_tasks.py — без этого два потока могли бы
-    одновременно менять один и тот же словарь вотчеров.
-    """
-    from modules.cryptano.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
-    from modules.cryptano.utils.paths import RESCAN_STATUS_FILE
-    from modules.cryptano.watcher_plan import check_bounce
-    from background_tasks import export_dashboard_state
-
-    cryptano_dir = os.path.join(BASE_DIR, "modules", "cryptano")
-    try:
-        flag_files = [f for f in os.listdir(cryptano_dir) if f.startswith("rescan_") and f.endswith(".flag")]
-    except FileNotFoundError:
-        return
-
-    for fname in flag_files:
-        coin = fname[len("rescan_"):-len(".flag")]
-        flag_path = os.path.join(cryptano_dir, fname)
-        flag_data = load_json(flag_path, default={})
-        since = flag_data.get("since") if isinstance(flag_data, dict) else None
-        try:
-            os.remove(flag_path)
-        except Exception:
-            pass
-
-        since_val = int(since) if since is not None else int(time.time()) - 7 * 24 * 3600
-        since_label = datetime.datetime.utcfromtimestamp(since_val).strftime("%Y-%m-%d %H:%M") + " UTC"
-
-        # "running" — сразу же, ДО того как поток реально стартовал (не
-        # дожидаясь захвата лока/своей очереди) — раньше значок ⏳ появлялся
-        # только на те секунды, что шёл сам реплей, а всё время ожидания
-        # (могло быть 15+ минут) дашборд просто молчал, будто ничего не
-        # происходит.
-        try:
-            rescan_status = load_json(RESCAN_STATUS_FILE, default={})
-            rescan_status[coin] = {
-                "status": "running", "since": since_label,
-                "started_at": datetime.datetime.now().isoformat(),
-            }
-            save_json_atomic(RESCAN_STATUS_FILE, rescan_status)
-        except Exception as e:
-            print(f"[run_web] ⚠️ Не удалось записать статус старта рескана {coin}: {e}")
-
-        def _run_rescan(coin=coin, since_val=since_val, since_label=since_label):
-            print(f"[run_web] 🔄 Рескан {coin} — обрабатываю сразу, не жду 15-минутный скан-цикл...")
-            _watcher_lock.acquire()  # блокирующе — дождаться, если основной цикл сейчас держит лок
-            try:
-                v_bottom_mgr.remove_watchers_by_coin(coin)
-                bc_coin_watchers = [w for w in bounce_mgr._watchers.values() if getattr(w, "coin", None) == coin]
-                for w in bc_coin_watchers:
-                    w.reset_for_rescan()
-                bounce_mgr.clear_graveyard_by_coin(coin)
-                bounce_mgr.last_processed_time[coin] = since_val
-
-                # Читаем СВЕЖИЙ конфиг на каждый рескан — направление могло
-                # переключиться на дашборде между кликами (единая точка
-                # правды с боевым сканом и симулятором, см. app.py::
-                # get_bounce_direction). Отсутствие ключа — включено (True).
-                _cfg = load_json(CONFIG_FILE, default={})
-                _crypto_cfg = _cfg.get("crypto", {})
-                bc_count, bc_reports, bc_levels = check_bounce(
-                    coin, _crypto_cfg.get("allow_long", True), _crypto_cfg.get("allow_short", True), bounce_mgr
-                )
-                for bc_report in bc_reports:
-                    notifier.send_message(ADMIN_LABEL, bc_report, parse_mode="Markdown")
-
-                # Без этого результат реплея (точки на графике, архив
-                # сработавшей/умершей сделки, статус TRIGGERED) был бы не
-                # виден на дашборде до следующего планового 15-минутного
-                # цикла — реплей отрабатывал честно, а дашборд просто не
-                # успевал об этом узнать.
-                export_dashboard_state(v_bottom_mgr, bounce_mgr)
-            except Exception as e:
-                bc_count = 0
-                print(f"[run_web] ❌ Ошибка рескана {coin}: {e}")
-            finally:
-                _watcher_lock.release()
-
-            try:
-                status = load_json(RESCAN_STATUS_FILE, default={})
-                status[coin] = {
-                    "status": "done", "since": since_label,
-                    "finished_at": datetime.datetime.now().isoformat(), "found": bc_count,
-                }
-                save_json_atomic(RESCAN_STATUS_FILE, status)
-            except Exception as e:
-                print(f"[run_web] ⚠️ Не удалось записать статус завершения рескана {coin}: {e}")
-
-        threading.Thread(target=_run_rescan, daemon=True).start()
-
-
-def _flag_listener(notifier):
-    """
-    Проверяет флаг-файлы от веб-дашборда КАЖДУЮ СЕКУНДУ — специально
-    отдельно от 15-минутного каскада скана в background_tasks.py, чтобы
-    команды с дашборда ("сбросить всё", "rebuild", рескан монеты)
-    применялись почти мгновенно, а не ждали ближайшего цикла скана.
-    """
-    reset_flag_path = os.path.join(BASE_DIR, "modules", "cryptano", "reset_watchers.flag")
-    rebuild_flag_path = os.path.join(BASE_DIR, "modules", "cryptano", "rebuild_levels.flag")
-    while True:
-        time.sleep(1)
-        if os.path.exists(reset_flag_path):
-            try:
-                os.remove(reset_flag_path)
-            except Exception:
-                pass
-            _reset_all_watchers()
-        if os.path.exists(rebuild_flag_path):
-            try:
-                os.remove(rebuild_flag_path)
-            except Exception:
-                pass
-            threading.Thread(target=_rebuild_levels, args=(notifier,), daemon=True).start()
-        _handle_rescan_flags(notifier)
-
-
-def _console_listener(notifier):
+def _console_listener():
     """
     Слушает консоль в отдельном потоке. Команды:
       rebuild + Enter -> вручную запустить построение macro-уровней
@@ -255,7 +93,7 @@ def _console_listener(notifier):
         except EOFError:
             break
         if cmd == "rebuild":
-            threading.Thread(target=_rebuild_levels, args=(notifier,), daemon=True).start()
+            threading.Thread(target=dashboard_actions.rebuild_levels, daemon=True).start()
         elif cmd:
             print(f"[run_web] Неизвестная команда: '{cmd}'. Доступно: rebuild")
 
@@ -269,17 +107,56 @@ def _set_crypto_status(status: str):
     save_json_atomic(CONFIG_FILE, config, indent=4)
 
 
+def _release_single_instance_lock():
+    try:
+        os.remove(PID_FILE)
+    except FileNotFoundError:
+        pass
+
+
+def _acquire_single_instance_lock():
+    """Не даёт запустить run_web.py дважды одновременно — оба экземпляра
+    независимо импортировали бы modules.cryptano.live_scan и завели бы СВОЙ
+    bounce_mgr/v_bottom_mgr, то есть ту же болезнь двух несинхронных копий
+    состояния, от которой уходит всё слияние в этом файле, просто вместо
+    "сканер+дашборд" получили бы "сканер+сканер".
+
+    Это ПРОСТАЯ, не железобетонная защита: проверяется только сам факт
+    существования PID-файла, без проверки "а жив ли ещё тот процесс" (кросс-
+    платформенная проверка через os.kill(pid, 0) на Windows ведёт себя не
+    так, как на Linux/macOS, и рисковать неверно завершить чужой процесс не
+    стоит). Если предыдущий запуск упал аварийно (kill -9, обрыв питания) и
+    не подчистил за собой файл — следующий запуск честно откажется
+    стартовать и подскажет, что делать."""
+    if os.path.exists(PID_FILE):
+        try:
+            with open(PID_FILE, "r", encoding="utf-8") as f:
+                old_pid = f.read().strip()
+        except Exception:
+            old_pid = "?"
+        print(f"[run_web] ❌ Похоже, run_web.py уже запущен (PID-файл {PID_FILE}, PID {old_pid}).")
+        print("           Если это не так (предыдущий запуск упал и не подчистил за собой) —")
+        print(f"           удали файл {PID_FILE} и запусти снова.")
+        raise SystemExit(1)
+
+    with open(PID_FILE, "w", encoding="utf-8") as f:
+        f.write(str(os.getpid()))
+    atexit.register(_release_single_instance_lock)
+
+
 def main():
-    print("🪙 run_web.py — крипто-сканер без Telegram (для веб-дашборда)")
+    print("🪙 run_web.py — крипто-сканер + веб-дашборд (единый процесс)")
     print(f"   config:        {CONFIG_FILE}")
     print(f"   notifications: {NOTIFICATIONS_FILE}")
 
-    notifier = Notifier(NOTIFICATIONS_FILE)
+    _acquire_single_instance_lock()
+
+    notifier = dashboard_actions.init_notifier()
 
     # На штатный выход (Ctrl+C, sys.exit) подстрахуемся и погасим статус.
     # Не гарантия на 100%: принудительное закрытие окна крестиком/taskkill -F
     # это может не поймать — тогда status в config.json останется RUNNING,
-    # и его придётся сбросить вручную перед следующим запуском main.py.
+    # и его придётся сбросить вручную перед следующим запуском.
     atexit.register(_set_crypto_status, "STOPPED")
 
     _set_crypto_status("RUNNING")
@@ -312,14 +189,31 @@ def main():
 
     start_swing_hunter(notifier, ADMIN_LABEL)
 
-    threading.Thread(target=_console_listener, args=(notifier,), daemon=True).start()
-    threading.Thread(target=_flag_listener, args=(notifier,), daemon=True).start()
+    threading.Thread(target=_console_listener, daemon=True).start()
 
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("\n[run_web] Останов по Ctrl+C...")
+    # --- Дашборд — ПРЯМО ТУТ, в этом же процессе (см. докстринг файла) ---
+    # Раньше здесь стояли threading.Thread(target=_flag_listener, ...) +
+    # while True: time.sleep(1) — этот скрипт был просто "не Telegram"-
+    # заглушкой вокруг background_tasks, а веб-дашборд (web/backend/app.py)
+    # запускался ОТДЕЛЬНОЙ командой (uvicorn web.backend.app:app), отдельным
+    # процессом со своим собственным bounce_mgr в памяти.
+    import uvicorn
+    from web.backend.app import app as fastapi_app
+
+    print(f"[run_web] 🌐 Дашборд поднимается на http://{DASHBOARD_HOST}:{DASHBOARD_PORT} (в этом же процессе)")
+    print("           (адрес/порт можно переопределить переменными окружения DASHBOARD_HOST/DASHBOARD_PORT)")
+
+    # uvicorn.run() с ГОТОВЫМ объектом приложения (а не строкой "module:app")
+    # — это не просто удобство записи: так uvicorn физически не может включить
+    # --reload или несколько workers. Оба варианта тихо возвращают ровно ту же
+    # болезнь, от которой уходит всё слияние — reload перезапускает импорт
+    # модулей во ВТОРОМ подпроцессе, workers>1 поднимает несколько отдельных
+    # процессов — в обоих случаях снова несколько независимых bounce_mgr.
+    # Передавая готовый инстанс, а не строку, это исключается на уровне API,
+    # а не только "не забыть флаг --reload".
+    uvicorn.run(fastapi_app, host=DASHBOARD_HOST, port=DASHBOARD_PORT, log_level="info")
+
+    print("\n[run_web] Дашборд/процесс остановлен.")
 
 
 if __name__ == "__main__":
