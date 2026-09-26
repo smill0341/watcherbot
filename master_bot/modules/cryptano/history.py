@@ -10,6 +10,15 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 from modules.cryptano.utils.paths import SIGNALS_FILE
 REPORT_FILE = os.path.join(BASE_DIR, "report.txt")
 
+def _utc_now_iso():
+    """closed_at всегда пишем в UTC С ЯВНОЙ пометкой зоны (+00:00).
+    Раньше живое закрытие писало местное время без зоны, а рескан — UTC
+    без зоны. Браузер читает время без зоны как МЕСТНОЕ (Киев, +3), поэтому
+    у сделок из рескана закрытие уезжало на 3 часа раньше входа -> "0 дней"
+    и пустая полоса уровня на графике. С пометкой зоны браузер читает верно."""
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
 # ================= СОХРАНЕНИЕ СИГНАЛА =================
 def save_signal(signal: dict):
     """Сохраняет новый сигнал в signals.json"""
@@ -27,18 +36,45 @@ def save_signal(signal: dict):
         stop = signal.get("stop_loss")
         signal_type = "LONG"
 
+    # РАНЬШЕ: status/result_percent/closed_at были жёстко "⏳"/None/None для
+    # ЛЮБОГО вызова — правильно для живой сделки (родилась только что, её
+    # судьба ещё правда неизвестна), но неправильно для исторической сделки,
+    # которую задним числом вставляет рескан (см. watcher_plan.py::
+    # rescan_single_bounce_watcher) — там уже честно посчитано по реальным
+    # свечам от входа до сегодня, закрылась ли она. Раньше рескан не мог это
+    # передать, запись всегда попадала в файл как "ещё открыта", а дальше
+    # это пыталась разрулить update_open_signals() — та смотрит только на
+    # ТЕКУЩУЮ цену с биржи, свечей между историческим входом и сегодня не
+    # видит вообще, поэтому честно закрытая 3 дня назад сделка так и висела
+    # "⏳", если цена к сегодняшнему дню снова оказалась между TP и SL.
+    # Теперь вызывающий код МОЖЕТ передать уже готовый статус — если нет,
+    # поведение как раньше (новая живая сделка, статус неизвестен, "⏳").
+    status = signal.get("status", "⏳")
+    result_percent = signal.get("result_percent")
+    closed_at = signal.get("closed_at")
+
+    # Дата сигнала = время СВЕЧИ ВХОДА (если передано), а не момент записи.
+    # Раньше тут всегда было "сейчас" — для сделки, найденной ресканом
+    # задним числом, в таблице стояло время рескана, а не время сделки.
+    # fromtimestamp — местное время машины, как и было у "сейчас".
+    _t = signal.get("time")
+    try:
+        _date_dt = datetime.datetime.fromtimestamp(int(_t)) if _t else datetime.datetime.now()
+    except (TypeError, ValueError, OSError):
+        _date_dt = datetime.datetime.now()
+
     record = {
-        "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "date": _date_dt.strftime("%Y-%m-%d %H:%M"),
         "coin": signal.get("coin"),
         "type": signal_type,
-        "source": signal.get("source", "CRITICAL"), 
+        "source": signal.get("source", "CRITICAL"),
         "entry": entry,
         "target": target,
         "target_2": signal.get("target_2"), # 👈 Сохраняем TP2
         "target_3": signal.get("target_3"), # 👈 Сохраняем TP3
         "stop": stop,
-        "status": "⏳",
-        "result_percent": None,
+        "status": status,
+        "result_percent": result_percent,
         # unix-секунды реальной свечи входа + level_id вотчера, если
         # переданы (пока только BOUNCE, см. watcher_plan.py::check_bounce) —
         # нужны дашборду, чтобы по клику на сигнал перейти на график именно
@@ -54,9 +90,26 @@ def save_signal(signal: dict):
         "method": signal.get("method"),
         "method_value": signal.get("method_value"),
         "method_mult": signal.get("method_mult"),
-        # Момент закрытия (✅/❌) — заполняется в check_and_update(), когда
-        # реально проверили цену. До первой ручной проверки — None.
-        "closed_at": None,
+        # Момент закрытия (✅/❌) — заполняется в check_and_update()/
+        # update_open_signals(), когда реально проверили цену, либо сразу
+        # здесь, если вызывающий код (рескан) уже честно его посчитал.
+        "closed_at": closed_at,
+        # Снимок уровня и пути вотчера НА МОМЕНТ СДЕЛКИ — хранится прямо в
+        # сигнале. РАНЬШЕ дашборд при клике на сигнал искал уровень/кружки
+        # по level_id в watcher_history.json/active_watchers.json — а там на
+        # один level_id одна ячейка, которую перезаписывает каждая следующая
+        # жизнь вотчера на этой зоне (рестарты, ресканы, новые касания), и
+        # которая пропадает целиком при очистке "Последний скан". Итог:
+        # у сигнала рисовался чужой путь или не рисовался уровень вообще.
+        # Теперь сигнал самодостаточен: одна запись — одна правда. У старых
+        # записей этих полей нет — дашборд тогда падает на старый поиск.
+        "level_min": signal.get("level_min"),
+        "level_max": signal.get("level_max"),
+        "level_date": signal.get("level_date"),
+        "level_score": signal.get("level_score"),
+        "activated_at": signal.get("activated_at"),
+        "mode": signal.get("mode"),
+        "events": signal.get("events"),
     }
 
     signals.append(record)
@@ -111,24 +164,24 @@ def check_and_update(bot, chat_id):
                 if current_price >= target:
                     signal["status"] = "✅"
                     signal["result_percent"] = round(((target - entry) / entry) * 100, 2)
-                    signal["closed_at"] = datetime.datetime.now().isoformat()
+                    signal["closed_at"] = _utc_now_iso()
                     updated += 1
                 elif stop > 0 and current_price <= stop:
                     signal["status"] = "❌"
                     signal["result_percent"] = round(((stop - entry) / entry) * 100, 2)
-                    signal["closed_at"] = datetime.datetime.now().isoformat()
+                    signal["closed_at"] = _utc_now_iso()
                     updated += 1
 
             elif signal["type"] == "SHORT":
                 if current_price <= target:
                     signal["status"] = "✅"
                     signal["result_percent"] = round(((entry - target) / entry) * 100, 2)
-                    signal["closed_at"] = datetime.datetime.now().isoformat()
+                    signal["closed_at"] = _utc_now_iso()
                     updated += 1
                 elif stop > 0 and current_price >= stop:
                     signal["status"] = "❌"
                     signal["result_percent"] = round(((entry - stop) / entry) * 100, 2)
-                    signal["closed_at"] = datetime.datetime.now().isoformat()
+                    signal["closed_at"] = _utc_now_iso()
                     updated += 1
 
         except Exception as e:
@@ -354,9 +407,6 @@ def update_open_signals():
       - MAX_HOLD_DAYS дней прошло с входа, TP так и не достигнут —
         закрывает по ТЕКУЩЕЙ цене на этот момент (не обязательно в плюс),
         статус ✅/❌ по знаку итогового результата.
-    Stop (SL) в записи остаётся только для справки/отображения — сделку
-    НЕ закрывает (см. BounceWatcher.CONFIG['FIXED_TP_PCT']/['MAX_HOLD_DAYS']
-    и BounceWatcher.CONFIG['SL_PCT']).
 
     Честное ограничение: проверка раз в 15 минут, не по каждой свече — если
     цена пробила TP и вернулась обратно ДО следующей проверки, это не будет
@@ -425,7 +475,9 @@ def update_open_signals():
                 entry_dt = datetime.datetime.strptime(record.get("date", ""), "%Y-%m-%d %H:%M")
             except (ValueError, TypeError):
                 entry_dt = None
-        days_open = (now - entry_dt).days if entry_dt else 0
+        # entry_dt из unix-времени — это UTC, значит и "сейчас" берём в UTC
+        # (раньше было местное now — сдвиг на 3 часа в подсчёте дней).
+        days_open = ((datetime.datetime.utcnow() if entry_time else now) - entry_dt).days if entry_dt else 0
         time_expired = days_open >= max_hold_days
 
         record["result_percent"] = round(pct, 2)
@@ -438,7 +490,7 @@ def update_open_signals():
             
         # Фиксируем время закрытия для сайта, если статус изменился
         if record.get("status") in ("✅", "❌"):
-            record["closed_at"] = now.isoformat()
+            record["closed_at"] = _utc_now_iso()
             
         changed = True
 

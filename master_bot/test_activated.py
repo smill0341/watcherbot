@@ -1,107 +1,99 @@
-import ccxt
+# -*- coding: utf-8 -*-
+"""
+test_macro_atr_cap.py — берёт РЕАЛЬНЫЙ вывод lb._extract_macro_swings()
+(настоящая боевая функция, без переделок) и показывает, как выглядели бы
+эти же самые зоны, если ограничить их размах не процентом от цены (как
+сейчас compress_fat_zones), а множителем ATR(1d) — для нескольких вариантов
+множителя разом, чтобы подобрать разумный на реальных цифрах, а не на глаз.
+
+Направление зоны (от тени в сторону тела) сохраняется как есть — capped_span
+просто ограничивает, СКОЛЬКО она может пройти в эту сторону, вместо жёсткого
+процента от цены.
+
+НИЧЕГО не пишет на диск, не меняет levels_builder.py/swing_hunter.py.
+
+Запуск:
+    python test_macro_atr_cap.py AERO DASH
+    python test_macro_atr_cap.py AERO DASH BTC ETH SOL
+"""
+import sys
 import pandas as pd
-import numpy as np
 
-# Импортируем твой оригинальный метод!
-from modules.cryptano.utils.levels_builder import build_levels
+from modules.cryptano.utils.crypto_utils import exchange
+from modules.cryptano.utils.common import resolve_symbol
+from modules.cryptano.utils import levels_builder as lb
 
-SYMBOL = 'RAYDIUM/USDT:USDT'
-COIN = 'RAYDIUM'
+DEFAULT_COINS = ["zen"]
+K_CANDIDATES = [1.5, 3.0, 5.0, 8.0]  # во сколько раз ATR(1d) — варианты для сравнения
 
-def calculate_atr(df, period=14):
-    high_low = df['high'] - df['low']
-    high_close = np.abs(df['high'] - df['close'].shift())
-    low_close = np.abs(df['low'] - df['close'].shift())
-    ranges = pd.concat([high_low, high_close, low_close], axis=1)
-    return np.max(ranges, axis=1).rolling(period).mean()
 
-def run():
-    print(f"📥 Качаем данные {SYMBOL} с Bybit...")
-    exchange = ccxt.bybit()
-    
-    # Качаем данные точно как в твоем swing_hunter.py
-    ohlcv_1M = exchange.fetch_ohlcv(SYMBOL, '1M', limit=60)
-    ohlcv_1W = exchange.fetch_ohlcv(SYMBOL, '1W', limit=150)
-    ohlcv_1d = exchange.fetch_ohlcv(SYMBOL, '1d', limit=365)
-    ohlcv_4h = exchange.fetch_ohlcv(SYMBOL, '4h', limit=200)
+def main():
+    coins = sys.argv[1:] or DEFAULT_COINS
 
-    # Обязательно astype(float) чтобы не было ошибок
-    df_1M = pd.DataFrame(ohlcv_1M, columns=["timestamp", "open", "high", "low", "close", "volume"]).astype(float)
-    df_1W = pd.DataFrame(ohlcv_1W, columns=["timestamp", "open", "high", "low", "close", "volume"]).astype(float)
-    df_1d = pd.DataFrame(ohlcv_1d, columns=["timestamp", "open", "high", "low", "close", "volume"]).astype(float)
-    df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"]).astype(float)
+    if not exchange.markets:
+        exchange.load_markets(reload=False)
+    markets = exchange.markets or {}
 
-    # Считаем дневной ATR для динамического метода
-    df_1d['atr'] = calculate_atr(df_1d)
-    current_atr = df_1d['atr'].iloc[-1]
-    
-    # Добавляем даты строками, чтобы найти нужную свечу
-    df_1M['date_str'] = pd.to_datetime(df_1M['timestamp'], unit='ms').dt.strftime('%Y-%m-%d')
-    df_1W['date_str'] = pd.to_datetime(df_1W['timestamp'], unit='ms').dt.strftime('%Y-%m-%d')
-
-    print("⚙️  Вызываем твой оригинальный build_levels()...")
-    levels = build_levels(df_1M, df_1W, df_1d, df_4h, COIN)
-
-    print(f"\nТекущий дневной ATR ({COIN}): {current_atr:.2f}")
-    print("-" * 115)
-    print(f"{'ДАТА':<12} | {'ТИП':<15} | {'ЦЕНА':<8} | {'ТВОЙ МЕТОД (1.5%)':<25} | {'ДИНАМИЧЕСКИЙ (ATR)':<25} | {'ТЕНЬ (SMC)':<20}")
-    print("-" * 115)
-
-    all_zones = levels.get('resistances', []) + levels.get('supports', [])
-    
-    found_macro = False
-    for z in all_zones:
-        # Берем только макро уровни
-        if z.get('class') != 'MACRO':
+    for coin in coins:
+        print(f"\n{'=' * 100}\n{coin}\n{'=' * 100}")
+        symbol = resolve_symbol(coin, markets)
+        if not symbol:
+            print(f"  нет рынка для {coin}")
             continue
-            
-        found_macro = True
-        z_date = z.get('date')
-        
-        # Ищем эту свечу в месячном или недельном графике
-        candle = None
-        for df in [df_1M, df_1W]:
-            match = df[df['date_str'] == z_date]
-            if not match.empty:
-                candle = match.iloc[0]
-                break
-                
-        if candle is None:
+
+        try:
+            ohlcv_1M = exchange.fetch_ohlcv(symbol, timeframe="1M", limit=60)
+            ohlcv_1d = exchange.fetch_ohlcv(symbol, timeframe="1d", limit=365)
+        except Exception as e:
+            print(f"  ошибка загрузки: {e}")
             continue
-            
-        # Восстанавливаем цифры
-        if 'support' in z.get('type', '').lower():
-            peak_price = z['min']
-            
-            old_width = z['max'] - z['min']
-            old_str = f"{z['min']:.2f} - {z['max']:.2f} (ш:{old_width:.2f})"
-            
-            atr_width = current_atr * 1.5
-            atr_max = peak_price + atr_width
-            atr_str = f"{peak_price:.2f} - {atr_max:.2f} (ш:{atr_width:.2f})"
-            
-            body_bottom = min(candle['open'], candle['close'])
-            shadow_width = body_bottom - candle['low']
-            smc_str = f"{candle['low']:.2f} - {body_bottom:.2f} (ш:{shadow_width:.2f})"
-            
-        else: # resistance
-            peak_price = z['max']
-            
-            old_width = z['max'] - z['min']
-            old_str = f"{z['min']:.2f} - {z['max']:.2f} (ш:{old_width:.2f})"
-            
-            atr_width = current_atr * 1.5
-            atr_min = peak_price - atr_width
-            atr_str = f"{atr_min:.2f} - {peak_price:.2f} (ш:{atr_width:.2f})"
-            
-            body_top = max(candle['open'], candle['close'])
-            shadow_width = candle['high'] - body_top
-            smc_str = f"{body_top:.2f} - {candle['high']:.2f} (ш:{shadow_width:.2f})"
 
-        print(f"{z_date:<12} | {z.get('type'):<15} | {peak_price:<8.2f} | {old_str:<25} | {atr_str:<25} | {smc_str:<20}")
+        df_1M = pd.DataFrame(ohlcv_1M, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df_1d = pd.DataFrame(ohlcv_1d, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        if len(df_1M) < 5 or len(df_1d) < 20:
+            print("  мало данных, пропускаю")
+            continue
 
-    if not found_macro:
-        print("Твой алгоритм не нашел ни одного макро-уровня по DASH на данный момент.")
+        current_idx = len(df_1d) - 1
+        current_price = float(df_1d['close'].iloc[current_idx])
+        atr_1d = lb.calculate_atr(df_1d, 14).iloc[current_idx]
+        if pd.isna(atr_1d) or atr_1d == 0:
+            atr_1d = current_price * 0.05
+        max_distance = lb._calc_weekly_atr(df_1d, current_idx) * lb.ATR_DISTANCE_MULTIPLIER * 2.5
 
-if __name__ == '__main__':
-    run()
+        print(f"  current_price={current_price:.6g}  atr_1d={atr_1d:.6g}\n")
+
+        # РЕАЛЬНЫЙ вызов боевой функции — сырые кандидаты, без единой правки
+        raw = lb._extract_macro_swings(df_1M, current_price, max_distance, 5.0, "1M_MACRO")
+
+        if not raw:
+            print("  боевая _extract_macro_swings ничего не нашла для этой монеты")
+            continue
+
+        header = f"  {'дата':<12} {'сторона':<10} {'raw ширина%':>12}"
+        for k in K_CANDIDATES:
+            header += f"   K={k:<4}"
+        print(header)
+
+        for z in raw:
+            is_sup = z['_is_support']
+            side = "SUPPORT" if is_sup else "RESISTANCE"
+            date_str = z['date']
+            raw_min, raw_max = z['min'], z['max']
+            raw_span = raw_max - raw_min
+            raw_width_pct = raw_span / ((raw_min + raw_max) / 2) * 100
+
+            line = f"  {date_str:<12} {side:<10} {raw_width_pct:>11.2f}%"
+            for k in K_CANDIDATES:
+                cap = atr_1d * k
+                capped_span = min(raw_span, cap)
+                capped_width_pct = capped_span / ((raw_min + raw_max) / 2) * 100 if (raw_min + raw_max) else 0
+                hit = "*" if capped_span < raw_span else " "
+                line += f"   {capped_width_pct:>5.2f}%{hit}"
+            print(line)
+
+        print("\n  (* = в этом варианте K реальный размах обрезан до предела ATR*K)")
+
+
+if __name__ == "__main__":
+    main()

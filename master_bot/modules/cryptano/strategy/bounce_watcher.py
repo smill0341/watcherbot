@@ -46,6 +46,12 @@ class BounceWatcher:
         'CLIMAX_ATR_BUFFER': 2.0,      # см. SHORT_CLIMAX_MODE — множитель ATR над дальней зоной, стартовое
                                           # значение, откалибровать по логам (см. историю обсуждения проекта)
         'DEBUG': True,
+        'MANUAL_MIDPOINT_ENTRY_ENABLED': True,  # True = у вотчеров с ручной зоной (custom_levels.json,
+                                          # self.simple_entry=True) вход происходит сразу по достижению
+                                          # середины зоны, минуя пробой+подтверждающую свечу классики.
+                                          # TP/SL те же самые (FIXED_TP_PCT/SL_PCT выше) — меняется
+                                          # ТОЛЬКО точка входа. False — ручные зоны торгуются классикой
+                                          # один в один как авто-уровни (эта ветка не выполняется вообще).
     }
 
     def __init__(self, level_min: float, level_max: float, trade_type: str,
@@ -122,9 +128,28 @@ class BounceWatcher:
         self._edge_touch_logged = False  # точку/лог КРАЙ ЗОНЫ пишем только 1 раз за всю жизнь вотчера —
                                           # см. комментарий у места использования ниже
 
+        # Ручная зона (custom_levels.json) — identity-флаг, выставляется
+        # снаружи менеджером сразу после создания (см. bounce_manager.py::
+        # evaluate_bounce, level.get('type')=='MANUAL'), сюда в конструктор
+        # не передаётся, чтобы не плодить лишний параметр — level_type тоже
+        # так устроен. См. CONFIG['MANUAL_MIDPOINT_ENTRY_ENABLED'] — сам
+        # переключатель поведения, а не этот флаг (флаг просто "это ручная
+        # зона", независимо от того, включена сейчас фича или нет).
+        self.simple_entry = False
+        self._simple_entry_fired = False  # не даёт входить на КАЖДОЙ свече, пока цена сидит
+                                            # за серединой зоны — взводится один раз на "заход",
+                                            # снимается, когда цена возвращается на безопасную
+                                            # сторону (тот же принцип, что currently_pierced у классики)
+
         # --- SHORT climax mode (см. CONFIG['SHORT_CLIMAX_MODE']) ---
-        self.paired_level = None  # дальняя resistance-зона выше этой — задаётся менеджером при создании,
-                                    # None = либо LONG (не участвует), либо для SHORT нет зоны выше = не торгуем
+        # paired_level (дальняя resistance-зона выше, фиксированная при
+        # рождении вотчера) УДАЛЁН — замораживался на момент рождения и не
+        # обновлялся при пересчёте уровней, из-за чего "жёсткая смерть" не
+        # срабатывала, если структура уровней менялась уже после рождения
+        # вотчера. Вместо него — bounce_manager.py::
+        # kill_short_watchers_behind_pierced_neighbor(), которая на каждой
+        # свече сверяется с АКТУАЛЬНЫМ списком живых вотчеров, а не с
+        # заснятым при рождении снимком.
         self.climax_stage = None  # None -> 'WAIT_NEAR' -> 'WAIT_FAR' -> 'WAIT_BUFFER' -> 'SEARCHING'
         if self.trade_type == 'SHORT' and self.CONFIG.get('SHORT_CLIMAX_MODE'):
             self.climax_stage = 'WAIT_NEAR'
@@ -172,6 +197,13 @@ class BounceWatcher:
         self.currently_pierced = False
         self.currently_runaway = False
         self._last_time = None
+        # Новая жизнь — её смерть надо будет снова занести в кладбище
+        # (см. bounce_manager.py::_record_death).
+        self._death_recorded = False
+        # self.simple_entry НЕ трогаем — это identity зоны (ручная она или
+        # нет), не прогресс жизни. А вот "уже входили в этом заходе" — как
+        # раз прогресс, сбрасываем вместе со всем остальным.
+        self._simple_entry_fired = False
 
     def on_breach_start(self):
         if self.state not in ("DEAD", "TRIGGERED"):
@@ -350,6 +382,34 @@ class BounceWatcher:
                     self._dbg(f"🔴 РЕКЛЕЙМ | Закрытие вернулось ниже уровня ({c_close:.4f} < {self.max:.4f}) — с этого момента честные пробои считаются")
             return None
 
+        # --- ВХОД ДЛЯ РУЧНЫХ УРОВНЕЙ (self.simple_entry, custom_levels.json) ---
+        # По просьбе Jack: вместо всего цикла пробой+подтверждающая свеча
+        # ниже — входим сразу, как только цена дотянулась до СЕРЕДИНЫ зоны
+        # (тот же zone_mid, что классика использует как порог пробоя, просто
+        # без ожидания зелёной/красной свечи после). TP/SL считает тот же
+        # self._enter() с теми же CONFIG['FIXED_TP_PCT']/['SL_PCT'] — меняется
+        # ТОЛЬКО точка входа, остальная механика сделки (лимиты на уровень,
+        # TRIGGERED/SCANNING) не отличается от классики ни на строчку.
+        # Отключается конфигом (MANUAL_MIDPOINT_ENTRY_ENABLED=False) — тогда
+        # эта ветка просто не выполняется, и ручная зона торгуется классикой
+        # ниже один в один как авто-уровень.
+        if self.simple_entry and self.CONFIG.get('MANUAL_MIDPOINT_ENTRY_ENABLED', True):
+            reached = (c_low <= self.zone_mid) if self.trade_type == 'LONG' else (c_high >= self.zone_mid)
+            if not reached:
+                self._simple_entry_fired = False
+                return None
+            if self._simple_entry_fired:
+                # Уже входили на этом заходе — не входим повторно на каждой
+                # свече, пока цена так и сидит за серединой зоны. Новый вход
+                # возможен только после того, как цена вернётся на безопасную
+                # сторону и зайдёт заново (см. ветку "not reached" выше).
+                return None
+            self._simple_entry_fired = True
+            vol_mult = (c_vol / baseline_vol) if baseline_vol > 0 else 0.0
+            self.last_event_type = "ZONE_TOUCH"
+            self._last_event_price = self.zone_mid
+            return self._enter(self.zone_mid, vol_mult, c_vol, baseline_vol, baseline_vol)
+
         # --- СБОР СТАТИСТИКИ: Прокол дна (Sweep) ---
         if not hasattr(self, 'pierced_bottom'):
             self.pierced_bottom = False
@@ -364,29 +424,13 @@ class BounceWatcher:
         trigger_long = self.min if is_poc else self.zone_mid
         trigger_short = self.max if is_poc else self.zone_mid
 
-        # === ЖЁСТКАЯ СМЕРТЬ ПО СЛЕДУЮЩЕМУ УРОВНЮ (только SHORT — self.paired_level
-        # считается только для SHORT, см. bounce_manager.py::evaluate_bounce) ===
-        # Если цена дотянулась до СЛЕДУЮЩЕЙ resistance-зоны выше ровно ТЕМ ЖЕ
-        # порогом, которым любой уровень вообще считается "пробитым" (край для
-        # POC, середина для всех остальных — та же формула, что чуть выше для
-        # trigger_short) — следующий уровень пробит настолько же честно, как и
-        # любой другой уровень пробивается для входа. Значит этот, нижний,
-        # уровень уже позади рынка — умирает НАВСЕГДА, не мягкий сброс, как
-        # обычный ОТБОЙ ниже (тот прощает случайную тень, эта проверка — нет,
-        # раз дотянулись до середины СЛЕДУЮЩЕЙ зоны, это не случайность).
-        if self.trade_type == 'SHORT' and self.paired_level:
-            pl = self.paired_level
-            pl_is_poc = '4h_poc_standalone' in pl.get('type', '')
-            pl_trigger = pl['min'] if pl_is_poc else (pl['min'] + pl['max']) / 2.0
-            if c_high >= pl_trigger:
-                self.state = "DEAD"
-                self.last_event_type = "RUNAWAY"
-                self.history_log = (
-                    f"Цена пробила следующий уровень выше ({c_high:.4f} >= {pl_trigger:.4f}, "
-                    "той же формулой, что и обычный вход) — этот уровень позади рынка, убит навсегда."
-                )
-                self._dbg(f"🔴 СМЕРТЬ (след. уровень пробит) | {self.history_log}")
-                return None
+        # Жёсткая смерть по следующему уровню (только SHORT) переехала в
+        # bounce_manager.py::kill_short_watchers_behind_pierced_neighbor() —
+        # вызывается менеджером ДО update() отдельным проходом по всем живым
+        # SHORT-вотчерам монеты на каждой свече (см. process_candle). Здесь
+        # больше ничего не проверяем — если этот вотчер должен был умереть
+        # по этой причине, он уже DEAD к этому моменту и сюда не дойдёт
+        # (см. фильтр state in ("TRIGGERED", "DEAD") в самом начале функции).
 
         # --- НОВЫЙ ПЕРВЫЙ ШАГ: коснулись БЛИЖНЕГО КРАЯ полосы (не середины) ---
         # Для LONG цена падает сверху вниз в зону — ближний край self.max.

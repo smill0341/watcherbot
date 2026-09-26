@@ -91,6 +91,11 @@ MACRO_LEVELS_PATH = os.path.join(JSONBANK_DIR, "macro_levels.json")
 # запись там не пережила бы следующий скан). Тот же CUSTOM_LEVELS_FILE,
 # что читает движок сканера (watcher_plan.py::get_merged_levels_for_coin).
 CUSTOM_LEVELS_PATH = os.path.join(JSONBANK_DIR, "custom_levels.json")
+# Избранные монеты (звёздочка ⭐ в списке монет). ОТДЕЛЬНЫЙ файл, не поле
+# внутри watchlist.json: watchlist сам чистится/пополняется при каждом
+# пересчёте уровней, и избранное терялось бы, когда монета на время выпадает
+# из топа. Формат — просто список монет: ["BTC", "DASH"].
+FAVORITES_PATH = os.path.join(JSONBANK_DIR, "favorites.json")
 SIGNALS_PATH = os.path.join(JSONBANK_DIR, "signals.json")
 FOOTBALL_SIGNALS_PATH = os.path.join(JSONBANK_DIR, "football_signals.json")
 FOOTBALL_STATUS_PATH = os.path.join(JSONBANK_DIR, "football_status.json")
@@ -228,6 +233,8 @@ def get_watchlist():
         c = custom_db.get(coin) or custom_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
         return bool((c or {}).get("supports")) or bool((c or {}).get("resistances"))
 
+    favorites = set(_read_favorites())
+
     with_levels = []
     without_levels = []
     for coin, meta in wl.items():
@@ -246,21 +253,27 @@ def get_watchlist():
             "source": source,
             "added_at": added_at,
             "has_custom_levels": _has_custom_levels(coin),
+            "favorite": coin in favorites,
             **{k: v for k, v in clean_meta.items() if k not in ["source", "added_at", "direction"]}
         }
         (with_levels if has_levels else without_levels).append(entry)
 
-    # 🔥 Функция сортировки: сначала монеты с ручными зонами (их видно сразу,
-    # не искать глазами по всему списку), потом MANUAL по дате, потом
-    # остальные по алфавиту.
+    # ПОРЯДОК В СПИСКЕ — ЕДИНСТВЕННОЕ место, где он решается (фронт
+    # выводит как пришло, своей сортировки не делает):
+    #   1. ⭐ избранные (по алфавиту);
+    #   2. ✋ монеты с ручными зонами (свежие сверху);
+    #   3. монеты, добавленные вручную, без зон (свежие сверху);
+    #   4. остальные по алфавиту.
     def sort_by_priority(items):
-        with_custom = sorted([i for i in items if i.get("has_custom_levels")],
+        fav = sorted([i for i in items if i.get("favorite")], key=lambda x: x["coin"])
+        rest = [i for i in items if not i.get("favorite")]
+        with_custom = sorted([i for i in rest if i.get("has_custom_levels")],
                              key=lambda x: x.get("added_at") or "", reverse=True)
-        manual = sorted([i for i in items if not i.get("has_custom_levels") and i.get("source") == "MANUAL"],
-                       key=lambda x: x.get("added_at") or "", reverse=True)
-        auto = sorted([i for i in items if not i.get("has_custom_levels") and i.get("source") != "MANUAL"],
-                     key=lambda x: x["coin"])
-        return with_custom + manual + auto
+        manual = sorted([i for i in rest if not i.get("has_custom_levels") and i.get("source") == "MANUAL"],
+                        key=lambda x: x.get("added_at") or "", reverse=True)
+        auto = sorted([i for i in rest if not i.get("has_custom_levels") and i.get("source") != "MANUAL"],
+                      key=lambda x: x["coin"])
+        return fav + with_custom + manual + auto
 
     with_levels = sort_by_priority(with_levels)
     without_levels = sort_by_priority(without_levels)
@@ -334,7 +347,8 @@ def get_active_watchers(all_states: bool = Query(default=False)):
         if _is_active_watcher(w)
     ]
     
-    # 🔥 НОВОЕ: Добавляем source и added_at из watchlist
+    # 🔥 НОВОЕ: Добавляем source, added_at и favorite из watchlist/favorites.json
+    favorites = set(_read_favorites())
     for w in result:
         coin = w.get("coin")
         if coin and coin in wl:
@@ -343,51 +357,38 @@ def get_active_watchers(all_states: bool = Query(default=False)):
         else:
             w["source"] = "SWING_HUNTER"
             w["added_at"] = ""
+        w["favorite"] = coin in favorites
 
-    # 🔥 НОВОЕ: Функция сортировки с приоритетом для MANUAL
+    # Порядок — тот же принцип, что и в /api/watchlist (sort_by_priority
+    # там же): избранные всегда сверху, дальше ручные (свежие сверху),
+    # дальше остальные по алфавиту. Одна и та же логика приоритета в
+    # обоих местах, фронт больше свою копию сортировки не делает.
     def sort_by_priority(items):
-        manual = sorted([w for w in items if w.get("source") == "MANUAL"],
+        fav = sorted([w for w in items if w.get("favorite")], key=lambda x: x.get("coin") or "")
+        rest = [w for w in items if not w.get("favorite")]
+        manual = sorted([w for w in rest if w.get("source") == "MANUAL"],
                        key=lambda x: x.get("added_at") or "", reverse=True)
-        auto = sorted([w for w in items if w.get("source") != "MANUAL"],
+        auto = sorted([w for w in rest if w.get("source") != "MANUAL"],
                      key=lambda x: x.get("coin") or "")
-        return manual + auto
+        return fav + manual + auto
 
     result = sort_by_priority(result)
     return result
 
 
-@app.post("/api/rescan/{coin}")
-def trigger_rescan(coin: str, since: Optional[int] = Query(default=None, description="unix-секунды — честно повторить путь монеты (BOUNCE) от этой даты до сейчас. Без даты — дефолт неделя назад (см. dashboard_actions.py::rescan_coin).")):
-    """Запускает честный рескан монеты (BOUNCE) — для BOUNCE это не "забудь
-    и сканируй заново вслепую", а "убей текущих живых вотчеров (заархивируй
-    их) и честно пересобери реальный путь монеты от `since` через уже
-    готовый механизм реплея (bounce_mgr.last_processed_time), как будто
-    бот сканировал её всё это время".
-
-    Вызывает dashboard_actions.py::rescan_coin() напрямую, в фоновом потоке
-    процесса — сам рескан может занять заметное время (реплей вплоть до
-    ~60 дней истории), поэтому не блокирует HTTP-ответ, а отдаёт статус
-    через /api/rescan_status (см. его же). Раньше это была заявка через
-    флаг-файл (rescan_{coin}.flag), который подхватывал ОТДЕЛЬНЫЙ процесс
-    сканера — после слияния дашборда и сканера в один процесс (см.
-    докстринг run_web.py) сообщаться через диск незачем, зовём функцию
-    напрямую."""
-    coin = coin.upper().strip()
-    import threading as _threading
-    from dashboard_actions import rescan_coin
-
-    _threading.Thread(target=rescan_coin, args=(coin, since), daemon=True).start()
-
-    msg = f"Rescan requested for {coin}"
-    if since is not None:
-        msg += f" (с {datetime.datetime.utcfromtimestamp(since).strftime('%Y-%m-%d %H:%M')} UTC)"
-    return {"status": "ok", "message": msg}
+# POST /api/rescan/{coin} (старый рескан монеты, кнопка 🔄) УДАЛЁН. Он
+# откатывал монете "последнюю обработанную свечу" назад (по умолчанию на
+# неделю) и гнал всё заново внутри боевого бота. Смотреть прошлое монеты —
+# теперь только симулятор (кнопка 📈 на дашборде открывает /simulator?coin=XXX).
+# Точечный рескан вотчера (/api/rescan_watcher) и "рескан всех" остаются.
+# /api/rescan_status тоже остаётся — через него дашборд видит идущий
+# пересчёт уровней (_global_rebuild).
 
 
 @app.post("/api/rescan_watcher/{coin}")
 def trigger_single_watcher_rescan(coin: str, level_id: str = Query(..., description="level_id конкретного BOUNCE-вотчера (как в /api/watchers)")):
     """Точечный рескан ОДНОГО существующего BOUNCE-вотчера — в отличие от
-    /api/rescan/{coin} НЕ трогает остальных живых вотчеров этой же монеты
+    старого (удалённого) рескана монеты НЕ трогает остальных живых вотчеров этой же монеты
     (см. watcher_plan.py::rescan_single_bounce_watcher за полным объяснением
     механизма и честным предупреждением про is_focus).
 
@@ -407,8 +408,6 @@ def trigger_single_watcher_rescan(coin: str, level_id: str = Query(..., descript
         # active_watchers.json (тот самый файл, из которого /api/watchers
         # отдаёт список "в работе") пересобирается ТОЛЬКО этой функцией, и
         # без явного вызова остаётся старым до следующего боевого скан-цикла.
-        # Та же причина, по которой её вызывает dashboard_actions.py::rescan_coin
-        # после обычного рескана монеты (см. её докстринг).
         export_dashboard_state(v_bottom_mgr, bounce_mgr)
     finally:
         _watcher_lock.release()
@@ -432,10 +431,8 @@ def trigger_rescan_all_watchers():
     вотчер сканируется быстро, так что вся пачка всё равно укладывается
     в разумное время (тоже его слова: "оно быстро все равно").
 
-    В отличие от /api/rescan/{coin} (фоновый поток, статус опрашивается
-    отдельно через /api/rescan_status — сам рескан монеты может занять
-    заметное время) этот эндпоинт синхронный и отдаёт готовый результат
-    сразу — как и точечный /api/rescan_watcher, только на всю пачку сразу.
+    Эндпоинт синхронный и отдаёт готовый результат сразу — как и точечный
+    /api/rescan_watcher, только на всю пачку сразу.
 
     Уведомление — ОДНО сводное на всю пачку (список того, что изменилось),
     а не по одному на каждую монету, как раньше присылал боевой рескан —
@@ -452,9 +449,19 @@ def trigger_rescan_all_watchers():
         # Снимок списка ДО начала прогона — рескан меняет .state существующих
         # вотчеров, но не создаёт новых записей в _watchers, так что снимок
         # ключей/монет в начале однозначно описывает "что было в работе".
+        #
+        # Уже DEAD/TRIGGERED на момент снимка — не рескан(ир)уем вообще:
+        # rescan_single_bounce_watcher честно сбрасывает вотчера (reset_
+        # for_rescan) и прогоняет его историю заново, находит ту же самую
+        # сделку, что уже случилась и уже есть в signals.json — раньше это
+        # плодило дубль записи в "Результатах" со старой датой сделки, но
+        # новым моментом появления в списке (см. обсуждение бага). Такой
+        # вотчер и так со дня на день уберёт обычная автоматическая чистка
+        # (clear_dead_watchers, каждые 15 мин) — трогать его тут незачем.
         targets = [
             (getattr(w, "coin", None), level_id, getattr(w, "state", None))
             for level_id, w in list(bounce_mgr._watchers.items())
+            if getattr(w, "state", None) not in ("DEAD", "TRIGGERED")
         ]
 
         results: list[dict[str, Any]] = []
@@ -547,6 +554,8 @@ def trigger_reset_watchers():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+is_rebuilding = False
+
 @app.post("/api/rebuild_levels")
 def trigger_rebuild_levels():
     """
@@ -557,8 +566,18 @@ def trigger_rebuild_levels():
     теперь dashboard_actions.py::rebuild_levels() вызывается напрямую."""
     import threading as _threading
     from dashboard_actions import rebuild_levels
+    global is_rebuilding
+
+    def _worker():
+        global is_rebuilding
+        is_rebuilding = True
+        try:
+            rebuild_levels()
+        finally:
+            is_rebuilding = False
+
     try:
-        _threading.Thread(target=rebuild_levels, daemon=True).start()
+        _threading.Thread(target=_worker, daemon=True).start()
         return {"status": "ok", "message": "Rebuild requested — может занять пару минут"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -755,6 +774,99 @@ def get_levels(coin: str):
     merged["supports"] = list(data.get("supports", [])) + list(custom_supports)
     merged["resistances"] = list(data.get("resistances", [])) + list(custom_resistances)
     return merged
+
+def _read_favorites() -> list:
+    data = _read_json(FAVORITES_PATH, default=[])
+    return [str(c).upper() for c in data] if isinstance(data, list) else []
+
+
+@app.post("/api/favorites/toggle")
+def toggle_favorite(payload: dict = Body(...)):
+    """Звёздочка ⭐ у монеты в списке: добавить в избранное / убрать.
+    Тело: {"coin": "BTC"}. Ответ: {"coin", "favorite": true|false}."""
+    coin = str(payload.get("coin", "")).upper().strip()
+    if not coin:
+        raise HTTPException(status_code=400, detail="Не указана монета (coin)")
+    favs = _read_favorites()
+    if coin in favs:
+        favs = [c for c in favs if c != coin]
+        is_fav = False
+    else:
+        favs.append(coin)
+        is_fav = True
+    try:
+        _write_json_atomic(FAVORITES_PATH, favs)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Не удалось сохранить favorites.json: {e}")
+    return {"coin": coin, "favorite": is_fav}
+
+
+@app.post("/api/watchlist/remove")
+def remove_manual_coin(payload: dict = Body(...)):
+    """Убрать из списка монету, которая попала туда ТОЛЬКО из-за ручных зон
+    (source="MANUAL", см. add_custom_level) и у которой ручных зон больше
+    нет. Обычные монеты (SWING_HUNTER) так убирать нельзя — их всё равно
+    вернёт следующий пересчёт уровней. Тело: {"coin": "RAYDIUM"}."""
+    coin = str(payload.get("coin", "")).upper().strip()
+    if not coin:
+        raise HTTPException(status_code=400, detail="Не указана монета (coin)")
+    wl = _read_json(WATCHLIST_PATH, default={})
+    meta = wl.get(coin)
+    if meta is None:
+        raise HTTPException(status_code=404, detail="Монеты нет в списке")
+    if (meta or {}).get("source") != "MANUAL":
+        raise HTTPException(status_code=400, detail="Убрать можно только монету, добавленную вручную")
+    custom = _read_json(CUSTOM_LEVELS_PATH, default={})
+    c = custom.get(coin) or {}
+    if c.get("supports") or c.get("resistances"):
+        raise HTTPException(status_code=400, detail="Сначала удали ручные зоны монеты")
+    wl.pop(coin, None)
+    try:
+        _write_json_atomic(WATCHLIST_PATH, wl)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Не удалось сохранить watchlist.json: {e}")
+    return {"status": "ok", "coin": coin, "removed": True}
+
+
+@app.post("/api/levels/custom/update")
+def update_custom_level(payload: dict = Body(...)):
+    """Редактирование ОДНОЙ ручной зоны (✏️ в окне ручных зон).
+    Тело: {"coin", "side": "support"|"resistance", "old_min", "old_max",
+    "min", "max"}. Зона ищется по точным старым min/max (своего id у ручных
+    зон нет — так же ищет и удаление). Меняются границы и дата (сегодня):
+    для бота это новая зона. Живой вотчер на старых границах, если есть,
+    доживает как был — так же, как при удалении зоны."""
+    coin = str(payload.get("coin", "")).upper().strip()
+    side = str(payload.get("side", "")).lower().strip()
+    if not coin:
+        raise HTTPException(status_code=400, detail="Не указана монета (coin)")
+    if side not in ("support", "resistance"):
+        raise HTTPException(status_code=400, detail="side должен быть 'support' или 'resistance'")
+    try:
+        old_min = float(payload["old_min"]); old_max = float(payload["old_max"])
+        new_min = float(payload["min"]); new_max = float(payload["max"])
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="old_min/old_max/min/max обязательны и должны быть числами")
+    if new_min >= new_max:
+        raise HTTPException(status_code=400, detail="min должен быть меньше max")
+
+    custom = _read_json(CUSTOM_LEVELS_PATH, default={})
+    key = "supports" if side == "support" else "resistances"
+    zones = (custom.get(coin) or {}).get(key, [])
+    for z in zones:
+        if abs(float(z.get("min", 0)) - old_min) < 1e-9 and abs(float(z.get("max", 0)) - old_max) < 1e-9:
+            z["min"] = new_min
+            z["max"] = new_max
+            z["date"] = datetime.date.today().isoformat()
+            break
+    else:
+        raise HTTPException(status_code=404, detail="Такой уровень не найден (возможно, уже удалён)")
+    try:
+        _write_json_atomic(CUSTOM_LEVELS_PATH, custom)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Не удалось сохранить custom_levels.json: {e}")
+    return {"status": "ok", "coin": coin, "side": side, "min": new_min, "max": new_max}
+
 
 @app.post("/api/levels/custom")
 def add_custom_level(payload: dict = Body(...)):
@@ -1152,11 +1264,13 @@ def toggle_sport(sport: str):
 @app.get("/api/rescan_status")
 def get_rescan_status():
     """Статус ручного рескана по монетам — {coin: {status: running|done, ...}}.
-    Пишется напрямую сканером (background_tasks.py), не через
-    telegram-заглушку — файл маленький, безопасно опрашивать часто."""
+    Пишется напрямую сканером (background_tasks.py),файл маленький, безопасно опрашивать часто."""
+    global is_rebuilding
     status = _read_json(RESCAN_STATUS_PATH, default={})
     if not isinstance(status, dict):
         status = {}
+    if is_rebuilding:
+        status["_global_rebuild"] = {"status": "running"}
     return status
 
 

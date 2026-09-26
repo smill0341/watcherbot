@@ -54,6 +54,15 @@ class BounceManager:
         # считается клоном, а не честным новым сетапом. См. _find_graveyard_match.
         self.graveyard = []
         self._graveyard_recorded = set()  # level_id, уже занесённые в кладбище
+        # Сделки по уровню — ВНЕ вотчера: level_id -> [unix-время свечи входа, ...].
+        # Лимит MAX_TRADES_PER_LEVEL (BounceWatcher.CONFIG) проверяется ПО ЭТОМУ
+        # списку в evaluate_bounce. Раньше счётчик жил внутри вотчера и
+        # обнулялся: рескан (reset_for_rescan на каждой новой "жизни"),
+        # удаление TRIGGERED-вотчера с последующим созданием нового на той же
+        # зоне. Итог — "1 сделка на уровень" на деле была "1 сделка на жизнь
+        # вотчера", и один уровень торговался снова и снова. Персистится в
+        # bounce_state.json. Ключ — тот же level_id, что у вотчера.
+        self.level_trades = {}
         # Время (unix-секунды) последней СВЕЧИ, которую BOUNCE реально обработал,
         # отдельно по каждой монете. Персистится (см. to_state_dict/load_state) —
         # нужно watcher_plan.py::check_bounce(), чтобы после рестарта бота
@@ -105,18 +114,91 @@ class BounceManager:
                 entry['escaped'] = True
 
     def _record_death(self, watcher, trade_type, level_id):
-        """Заносит вотчер в кладбище один раз, в момент его смерти (DEAD/TRIGGERED)."""
-        if level_id in self._graveyard_recorded:
+        """Заносит смерть вотчера (DEAD/TRIGGERED) в кладбище — ОДИН раз на
+        каждую смерть.
+
+        РАНЬШЕ: запись делалась один раз на level_id за всё время
+        (_graveyard_recorded) — если на той же зоне вотчер умирал ВТОРОЙ раз
+        (после "воскрешения"), кладбище об этом не узнавало, старая запись
+        оставалась "цена уже ушла", и вотчер мог тут же родиться снова.
+        ТЕПЕРЬ: "уже записано" — флаг на самом вотчере (_death_recorded),
+        сбрасывается в reset_for_rescan (новая жизнь того же объекта) и
+        отсутствует у нового объекта. Повторная смерть на той же зоне
+        ОБНОВЛЯЕТ существующую запись: escaped=False (защита снова работает),
+        died_at — время этой смерти."""
+        if getattr(watcher, '_death_recorded', False):
             return
+        watcher._death_recorded = True
         self._graveyard_recorded.add(level_id)
+
+        t = getattr(watcher, '_last_time', None)
+        try:
+            if t is not None and getattr(t, 'tzinfo', None) is not None:
+                died_at = t.tz_convert('UTC').tz_localize(None).isoformat()
+            elif t is not None:
+                died_at = t.isoformat()
+            else:
+                died_at = None
+        except Exception:
+            died_at = None
+        if died_at is None:
+            died_at = datetime.datetime.utcnow().isoformat()
+
+        coin = getattr(watcher, 'coin', None)
+        mode = getattr(watcher, 'mode', None)
+        for entry in self.graveyard:
+            if (entry.get('coin') == coin and entry.get('trade_type') == trade_type
+                    and entry.get('mode') == mode
+                    and abs(float(entry['min']) - float(watcher.min)) < 1e-12
+                    and abs(float(entry['max']) - float(watcher.max)) < 1e-12):
+                entry['escaped'] = False
+                entry['died_at'] = died_at
+                entry['level_id'] = level_id
+                return
         self.graveyard.append({
-            'coin': getattr(watcher, 'coin', None),
+            'coin': coin,
             'trade_type': trade_type,
-            'mode': getattr(watcher, 'mode', None),  # CLIMAX/MIRROR/None — не путать семьи между собой
+            'mode': mode,  # CLIMAX/MIRROR/None — не путать семьи между собой
             'min': watcher.min,
             'max': watcher.max,
             'escaped': False,
+            'died_at': died_at,
+            'level_id': level_id,
         })
+
+    def prune_graveyard(self, coin, current_zones, max_age_days=14):
+        """Кладбище само по себе никогда не забывалось — росло бесконечно.
+        Теперь запись монеты удаляется, если:
+          1. её зоны больше НЕТ среди текущих уровней монеты (macro + custom)
+             — уровня нет, помнить о нём незачем;
+          2. цена от неё уже ушла (escaped) и смерть была дольше
+             max_age_days назад (столько же, сколько смотрит рескан).
+        Записи, которые ещё блокируют (escaped=False) и чья зона жива, не
+        трогаются. Вызывать раз на монету за скан (см. watcher_plan.py::
+        check_bounce)."""
+        tolerance = self.CONFIG['LEVEL_DEDUP_TOLERANCE_PCT'] / 100.0
+        mids = [(z['min'] + z['max']) / 2 for z in (current_zones or []) if 'min' in z and 'max' in z]
+        cutoff = datetime.datetime.utcnow() - datetime.timedelta(days=max_age_days)
+        kept, removed_ids = [], set()
+        for entry in self.graveyard:
+            if entry.get('coin') != coin:
+                kept.append(entry)
+                continue
+            e_mid = (entry['min'] + entry['max']) / 2
+            zone_alive = any(m > 0 and abs(e_mid - m) / m <= tolerance for m in mids)
+            too_old = False
+            if entry.get('escaped'):
+                try:
+                    too_old = datetime.datetime.fromisoformat(str(entry.get('died_at'))) < cutoff
+                except Exception:
+                    too_old = True  # старые записи без даты смерти — считаем старыми
+            if zone_alive and not too_old:
+                kept.append(entry)
+            elif entry.get('level_id'):
+                removed_ids.add(entry['level_id'])
+        self.graveyard = kept
+        self._graveyard_recorded -= removed_ids
+        return len(removed_ids)
 
     def _find_graveyard_match(self, level, trade_type, mode=None, coin="UNKNOWN"):
         """'clone'  — совпал с ещё не отпущенной мёртвой зоной, блокировать.
@@ -280,9 +362,52 @@ class BounceManager:
         else:
             return max(candidates, key=lambda item: (item[1].last_pierce_time, item[1].max))[0]
 
+    def kill_short_watchers_behind_pierced_neighbor(self, c_high, coin="UNKNOWN"):
+        """Хардовая смерть SHORT-вотчера, если цена уже пробила порог входа
+        БЛИЖАЙШЕЙ живой SHORT-зоны выше него — той же формулой, что и обычный
+        вход (край зоны для POC, середина для всех остальных). Раз порог
+        входа соседа выше уже пробит — этот, нижний, уровень точно уже
+        позади рынка, независимо от того, что дальше будет с соседом (жив
+        он, сработал, тоже умрёт) — наша смерть от его судьбы не зависит.
+
+        Раньше это была отдельная зона (paired_level), которую вотчер
+        замораживал себе ОДИН раз при рождении и больше не обновлял — если
+        уровни потом пересчитывались, сравнение шло со старой, неактуальной
+        зоной, и смерть могла не сработать, хотя по факту цена уже давно
+        пробила настоящую ближайшую зону сверху. Теперь сравниваем каждую
+        свечу напрямую с текущим списком живых вотчеров — он и так всегда
+        актуален (создаётся/удаляется по факту), запоминать и обновлять
+        отдельно нечего.
+
+        Не может быть так, что верхний уровень умер раньше нижнего по этой
+        же причине: если верхний пробил свои 50% — то и порог нижнего (он
+        ниже по цене) уже пройден ещё раньше, нижний уже мёртв к этому
+        моменту. Поэтому достаточно сравнивать каждый вотчер только с
+        БЛИЖАЙШИМ соседом сверху, дальние тут ни при чём."""
+        shorts = [w for w in self._watchers.values()
+                  if getattr(w, 'coin', None) == coin
+                  and getattr(w, 'trade_type', None) == 'SHORT'
+                  and getattr(w, 'state', None) not in ("DEAD", "TRIGGERED")]
+        for w in shorts:
+            candidates = [o for o in shorts if o is not w and o.min > w.max]
+            if not candidates:
+                continue
+            nearest = min(candidates, key=lambda o: o.min - w.max)
+            n_is_poc = '4h_poc_standalone' in getattr(nearest, 'level_type', '')
+            n_trigger = nearest.min if n_is_poc else (nearest.min + nearest.max) / 2.0
+            if c_high >= n_trigger:
+                w.state = "DEAD"
+                w.last_event_type = "RUNAWAY"
+                w.history_log = (
+                    f"Пробит вход соседней зоны выше ({c_high:.4f} >= {n_trigger:.4f}, "
+                    "той же формулой, что и обычный вход) — этот уровень позади рынка, убит навсегда."
+                )
+                w._dbg(f"🔴 СМЕРТЬ (пробит вход соседа выше) | {w.history_log}")
+
     def process_candle(self, c_low, c_high, c_close, current_supports, current_resistances,
                         df_slice, allow_long=True, allow_short=True, c_atr=0.0, coin="UNKNOWN"):
         self._update_graveyard(c_close, coin=coin)
+        self.kill_short_watchers_behind_pierced_neighbor(c_high, coin=coin)
 
         orders = []
         draw_events = []
@@ -304,9 +429,26 @@ class BounceManager:
             elif et in ("CLIMAX_NEAR_BREACH", "CLIMAX_FAR_BREACH"):
                 draw_events.append(('climax_breach', c_high))
 
+        # ================================================================
+        # ПОДХОД С ПРАВИЛЬНОЙ СТОРОНЫ — единое правило рождения вотчера
+        # (то же самое, что в watcher_plan.py::rescan_single_bounce_watcher):
+        #   LONG  — только если ПРЕДЫДУЩАЯ свеча закрылась ВЫШЕ зоны (цена
+        #           пришла сверху — зона сейчас действительно поддержка);
+        #   SHORT — только если предыдущая свеча закрылась НИЖЕ зоны (пришла
+        #           снизу — зона сейчас действительно сопротивление).
+        # Раньше касанием считалось просто c_low <= max / c_high >= min — это
+        # выполняется и когда цена ПОД поддержкой лезет в неё снизу, так и
+        # рождался LONG от зоны, которая по факту сопротивление.
+        # Касается ТОЛЬКО рождения новых вотчеров: уже живые вотчеры
+        # evaluate_bounce_side кормит свечой в любом случае.
+        # df_slice — окно свечей, последняя строка = текущая свеча.
+        # ================================================================
+        prev_close = float(df_slice['close'].iloc[-2]) if df_slice is not None and len(df_slice) >= 2 else None
+
         if allow_long:
             focus_long_id = self._get_focus_level_id('LONG', coin=coin)
-            touched_long = [s for s in current_supports if c_low <= s['max']]
+            touched_long = [s for s in current_supports
+                            if c_low <= s['max'] and prev_close is not None and prev_close > s['max']]
             for level_id, lvl, decision in self.evaluate_bounce_side(
                     'LONG', touched_long,
                     lambda lid, l: self.evaluate_bounce(
@@ -320,7 +462,8 @@ class BounceManager:
                     orders.append({'trade_type': 'LONG', 'level': actual_lvl, 'decision': decision})
 
         if allow_short:
-            touched_short = [r for r in current_resistances if c_high >= r['min']]
+            touched_short = [r for r in current_resistances
+                             if c_high >= r['min'] and prev_close is not None and prev_close < r['min']]
             # SHORT_CLIMAX_MODE (см. BounceWatcher.CONFIG) — ЕДИНЫЙ переключатель:
             # False -> CLIMAX-вотчер вообще не создаётся и не ищет вход, работает
             # только MIRROR. True -> оба, как раньше. Раньше это значение читалось
@@ -335,7 +478,7 @@ class BounceManager:
                         lambda lid, l, _mode=mode, _focus=focus_short_id: self.evaluate_bounce(
                             l, df_slice, 'SHORT', current_supports,
                             is_focus=(_focus is None or lid == _focus), c_atr=c_atr,
-                            same_side_levels=current_resistances, mode=_mode, coin=coin),
+                            mode=_mode, coin=coin),
                         mode=mode, coin=coin):
                     _collect_event(level_id, 'SHORT')
                     if decision.get('allow'):
@@ -371,12 +514,24 @@ class BounceManager:
     # BOUNCE (Отбой от макро-уровня)
     # -------------------------------------------------------------------------
     def evaluate_bounce(self, level, df, trade_type, all_opposite_levels, is_focus=True,
-                        c_atr=0.0, same_side_levels=None, mode=None, coin="UNKNOWN"):
+                        c_atr=0.0, mode=None, coin="UNKNOWN"):
         level_id = self._level_id(level, trade_type)
         if mode:
             level_id = f"{level_id}__{mode}"
         if level_id in self.burned_levels:
             return self._deny("Level already burned")
+
+        # Лимит сделок на уровень — по self.level_trades (см. __init__), а не
+        # по счётчику внутри вотчера. Исчерпан -> вотчер не создаём, а
+        # живой (если остался) закрываем, чтобы не висел "в работе".
+        max_total = BounceWatcher.CONFIG.get('MAX_TRADES_PER_LEVEL', 1)
+        if max_total > 0 and len(self.level_trades.get(level_id, [])) >= max_total:
+            w_existing = self._watchers.get(level_id)
+            if w_existing is not None and w_existing.state not in ("DEAD", "TRIGGERED"):
+                w_existing.state = "TRIGGERED"
+                w_existing.history_log = (f"По этому уровню уже была сделка "
+                                          f"({len(self.level_trades[level_id])}/{max_total}) — больше не торгуем.")
+            return self._deny("Лимит сделок на уровень исчерпан")
 
         if level_id not in self._watchers:
             config_overrides = None
@@ -391,24 +546,44 @@ class BounceManager:
             self._watchers[level_id].level_type = level.get('type', 'UNKNOWN')
             self._watchers[level_id].level_date = level.get('date')
             self._watchers[level_id].level_score = level.get('score', 0)
+            # Ручная зона (custom_levels.json) — не мержится с авто при чтении
+            # (get_merged_levels_for_coin просто конкатенирует списки), поэтому
+            # 'type' у неё ровно "MANUAL", без примесей. Вход для таких зон —
+            # см. CONFIG['MANUAL_MIDPOINT_ENTRY_ENABLED'] в bounce_watcher.py.
+            self._watchers[level_id].simple_entry = (level.get('type') == 'MANUAL')
+            # ================================================================
+            # ДВЕ РАЗНЫЕ ДАТЫ — НЕ ПУТАТЬ И НЕ ПОДМЕНЯТЬ ОДНУ ДРУГОЙ.
+            #
+            # activated_at — дата УРОВНЯ: момент, с которого уровень вообще
+            #   можно брать в работу (подтвердился технически, см.
+            #   levels_builder.py). Это НЕ касание и НЕ дата пика в прошлом.
+            #   Копируется с уровня как есть. Правило: раньше activated_at
+            #   уровень не работает, даже если цена его касалась.
+            #
+            # born_at — момент рождения ЭТОГО вотчера: время свечи (UTC,
+            #   с часами и минутами), на которой цена коснулась уже активного
+            #   уровня и вотчер был создан. Берётся из времени свечи, а не из
+            #   часов компьютера — в реплее/догоне свеча может быть в прошлом.
+            #   Рескан одного вотчера (watcher_plan.py::
+            #   rescan_single_bounce_watcher) стартует от born_at, поэтому не
+            #   доходит до старой сделки прошлого вотчера на этой же зоне.
+            #
+            # born_at никогда не раньше activated_at: вотчер рождается только
+            # на уже активном уровне.
+            # ================================================================
             self._watchers[level_id].activated_at = level.get('activated_at')
-            self._watchers[level_id].born_at = datetime.datetime.utcnow().strftime('%Y-%m-%d')
+            born_ts = df.index[-1] if len(df) else None
+            if born_ts is not None and hasattr(born_ts, 'tz_localize'):
+                born_ts = born_ts.tz_convert('UTC').tz_localize(None) if born_ts.tzinfo is not None else born_ts
+                self._watchers[level_id].born_at = born_ts.strftime('%Y-%m-%dT%H:%M:%S')
+            else:
+                self._watchers[level_id].born_at = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
             if level.get('_reborn'):
                 self._watchers[level_id].reborn = True
                 self._watchers[level_id]._dbg(
                     "🪦 ВОСКРЕС | Эта зона уже была здесь и умерла раньше, "
                     "но цена уходила и вернулась — считаем новым сетапом"
                 )
-            if trade_type == 'SHORT' and same_side_levels:
-                # Дальняя (следующая по цене выше) resistance-зона для SHORT
-                # climax-логики — считается ОДИН раз, при рождении вотчера,
-                # и дальше не меняется (как и сама зона вотчера).
-                candidates = [r for r in same_side_levels if r['min'] > level['max']]
-                if candidates:
-                    farthest_near = min(candidates, key=lambda r: r['min'] - level['max'])
-                    self._watchers[level_id].paired_level = dict(farthest_near)
-                # Если candidates пуст — paired_level остаётся None (задан в
-                # __init__ вотчера), это и есть "нет верхней зоны — не торгуем".
         watcher = self._watchers[level_id]
 
         if len(df) < 52:
@@ -443,12 +618,33 @@ class BounceManager:
 
         signal['allow'] = True
         signal['level_id'] = level_id
+        try:
+            _entry_ts = int(pd.Timestamp(df.index[-1]).timestamp())
+        except Exception:
+            _entry_ts = int(datetime.datetime.utcnow().timestamp())
+        self.level_trades.setdefault(level_id, []).append(_entry_ts)
         signal['extreme_price'] = "0.0"
         signal['is_real_sweep'] = False
         signal['overshoot_pct'] = 0.0
         signal['candles_in_sweep'] = 0
 
         return signal
+
+    def forget_level_trades_since(self, level_ids, since_unix):
+        """Для рескана: рескан заново проигрывает историю зоны с since_unix,
+        поэтому сделки по этим level_id с этого момента забываем — рескан
+        найдёт их сам (и снова запишет через evaluate_bounce). Сделки
+        РАНЬШЕ since_unix не трогаем — рескан их не видит, они остаются
+        в силе и продолжают держать лимит."""
+        for lid in level_ids:
+            times = self.level_trades.get(lid)
+            if not times:
+                continue
+            kept = [t for t in times if t < since_unix]
+            if kept:
+                self.level_trades[lid] = kept
+            else:
+                del self.level_trades[lid]
 
     # -------------------------------------------------------------------------
     # Хозяйство: количество вотчеров / уборка мёртвых (шаг 5)
@@ -584,6 +780,7 @@ class BounceManager:
             'graveyard': self.graveyard,
             'graveyard_recorded': list(self._graveyard_recorded),
             'last_processed_time': self.last_processed_time,
+            'level_trades': self.level_trades,
         }
 
     def save_state(self, path):
@@ -633,6 +830,7 @@ class BounceManager:
             'graveyard': self.graveyard,
             'graveyard_recorded': list(self._graveyard_recorded),
             'last_processed_time': self.last_processed_time,
+            'level_trades': self.level_trades,
         }
         try:
             tmp_path = f"{path}.tmp"
@@ -691,6 +889,7 @@ class BounceManager:
         self.graveyard = data.get('graveyard', [])
         self._graveyard_recorded = set(data.get('graveyard_recorded', []))
         self.last_processed_time = data.get('last_processed_time', {})
+        self.level_trades = data.get('level_trades', {}) or {}
 
         if restored:
             print(f"[BounceManager] ✅ Восстановлено {restored} BOUNCE-вотчеров из {path}")

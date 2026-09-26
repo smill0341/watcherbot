@@ -49,6 +49,9 @@ let simStartTime = null; // unix seconds — из поля "От" (или кли
 let simEndTime = null;   // unix seconds — из поля "До", null = до конца графика
 let simRunning = false;
 let simLevelLines = [];  // линии зон уровней (2 линии на уровень: min+max)
+let simSnapshotLines = []; // отдельно: уровни "на момент клика по пустому месту"
+                            // (drawSnapshotLevels) — свой массив, чтобы не стирать
+                            // simLevelLines (активная сделка + фон других сделок)
 let simPlaybackTimer = null;
 let simHistory = [];  // data.history последнего прогона — для поиска эпизодов по клику на сделку
 let simTrades = [];   // data.trades последнего прогона
@@ -134,21 +137,32 @@ function friendlyLevelType(type) {
 
 function _translateToken(token) {
   const t = token.toLowerCase();
-  
+
+  if (t.includes("pmc")) return "1M close";
   if (t.includes("pmh")) return "Хай месяца";
   if (t.includes("pml")) return "Лоу месяца";
   if (t.includes("pwh")) return "Хай недели";
   if (t.includes("pwl")) return "Лоу недели";
   if (t.includes("pdh")) return "Хай дня";
   if (t.includes("pdl")) return "Лоу дня";
-  if (t.includes("extreme_peak")) return "Экстремум";
-  if (t.includes("poc")) return "Объём (POC)";
-  if (t.includes("macro_support")) return "Макро Поддержка";
-  if (t.includes("macro_resistance")) return "Макро Сопротивление";
+  if (t.includes("extreme_peak")) return "Пик";
+  if (t.includes("poc")) return "POC";
+  if (t.includes("macro_support")) return "Macro Sup";
+  if (t.includes("macro_resistance")) return "Macro Res";
   if (t.includes("confluence")) return "Конфлюэнция";
 
   // Если попался редкий или кастомный тип — просто убираем технические подчеркивания
   return token.replace(/_/g, " ");
+}
+
+// Кусок подписи уровня "касаний: N" — то же самое, что app.js::levelTouchesLabel
+// (reaction_count, см. levels_builder.py::count_zone_touches). Дублируем
+// принцип, а не импортируем — симулятор и главный дашборд разные файлы,
+// без общего модуля между ними.
+function levelTouchesLabel(z) {
+  if (!z) return "";
+  const n = z.reaction_count;
+  return (n === undefined || n === null) ? "" : ` · Касаний: ${n}`;
 }
 
 // === ДУБЛИРОВАНО ИЗ app.js::computeEMA ===
@@ -200,6 +214,11 @@ async function loadMacroEma200(coin) {
 function clearSimLevelLines() {
   simLevelLines.forEach((series) => { try { chart.removeSeries(series); } catch (e) {} });
   simLevelLines = [];
+}
+
+function clearSimSnapshotLines() {
+  simSnapshotLines.forEach((series) => { try { chart.removeSeries(series); } catch (e) {} });
+  simSnapshotLines = [];
 }
 
 function stopSimPlayback() {
@@ -304,6 +323,7 @@ function initChart() {
       if (simEndInputEl) simEndInputEl.value = "";
       stopSimPlayback();
       clearSimLevelLines();
+      clearSimSnapshotLines();
       candleSeries.setMarkers([]);
       updateSimUI();
     };
@@ -387,16 +407,32 @@ function hexWithAlpha(hex, alphaHex) {
 // растворяется в фоне) + отдельную сплошную линию по нижней границе, чтобы
 // низ зоны тоже было видно чётко. Возвращает массив обеих серий — обе
 // нужно почистить при следующей перерисовке (см. clearSimLevelLines).
-function addZoneBand(zMin, zMax, color, candles, titleText) {
+// Рисует ОДНУ зону как закрашенную полосу между min и max
+function addZoneBand(rawMin, rawMax, color, candles, titleText, styleMode = "normal") {
+  const zMin = Math.min(rawMin, rawMax);
+  const zMax = Math.max(rawMin, rawMax);
+
+  let topAlpha = "40";
+  let bottomAlpha = "15";
+  let weight = 1; // По умолчанию всё тонкое
+
+  if (styleMode === "active") {
+    weight = 2; // Только выделенная сделка чуть толще
+  } else if (styleMode === "bg" || styleMode === "snapshot") {
+    // 1A (10%) было слишком мало для красного цвета, он сливался с белым фоном.
+    topAlpha = "33"; // Прозрачность 20%
+    bottomAlpha = "1A"; // Прозрачность 10%
+  }
+
   const bandSeries = chart.addBaselineSeries({
     baseValue: { type: "price", price: zMin },
-    topFillColor1: "#" + hexWithAlpha(color, "40"),
-    topFillColor2: "#" + hexWithAlpha(color, "15"),
+    topFillColor1: "#" + hexWithAlpha(color, topAlpha),
+    topFillColor2: "#" + hexWithAlpha(color, bottomAlpha),
     topLineColor: color,
     bottomFillColor1: "rgba(0,0,0,0)",
     bottomFillColor2: "rgba(0,0,0,0)",
     bottomLineColor: "rgba(0,0,0,0)",
-    lineWidth: 1,
+    lineWidth: weight,
     priceLineVisible: false,
     lastValueVisible: false,
     crosshairMarkerVisible: false,
@@ -407,7 +443,7 @@ function addZoneBand(zMin, zMax, color, candles, titleText) {
 
   const bottomLine = chart.addLineSeries({
     color,
-    lineWidth: 1,
+    lineWidth: weight,
     lineStyle: LightweightCharts.LineStyle.Solid,
     crosshairMarkerVisible: false,
     priceLineVisible: false,
@@ -424,9 +460,15 @@ function addZoneBand(zMin, zMax, color, candles, titleText) {
 // levels_history.get_levels_snapshot(), те же снимки раз в ~12ч, что
 // читает и рескан, и precalc_for_bot.py). Не текущий macro_levels.json —
 // то, что бот реально видел в этот момент.
+//
+// Свой массив (simSnapshotLines) и своя очистка — НЕ трогаем simLevelLines
+// (зона активной сделки + фон других сделок) и НЕ сбрасываем маркеры
+// candleSeries. Раньше это была общая перерисовка "с нуля", поэтому клик
+// по пустому месту графика стирал выбранную сделку — теперь снимок уровней
+// просто накладывается поверх того, что уже нарисовано (пунктиром, чтобы
+// не путать с сама сделкой).
 async function drawSnapshotLevels(coin, whenSec) {
-  clearSimLevelLines();
-  if (candleSeries) candleSeries.setMarkers([]);
+  clearSimSnapshotLines();
   if (!globalCandles.length) return;
   try {
     const res = await fetch(`/api/levels_at/${encodeURIComponent(coin)}?when=${whenSec}`);
@@ -445,7 +487,7 @@ async function drawSnapshotLevels(coin, whenSec) {
         const sliced = globalCandles.filter((c) => c.time >= zoneStartSec);
         if (sliced.length) candlesForZone = sliced;
       }
-      simLevelLines.push(...addZoneBand(z.min, z.max, z.color, candlesForZone, `${friendlyLevelType(z.type)} · ${z.date || "—"} · ${z.score ?? "—"}`));
+      simSnapshotLines.push(...addZoneBand(z.min, z.max, z.color, candlesForZone, `${friendlyLevelType(z.type)} · ${z.date || "—"} · ${z.score ?? "—"}${levelTouchesLabel(z)}`, "snapshot"));
     });
   } catch (e) {
     console.error("drawSnapshotLevels failed", e);
@@ -500,6 +542,9 @@ async function loadSimCoins() {
     simListEl.querySelectorAll(".list-item").forEach((div) => {
       div.onclick = () => loadChartForCoin(div.dataset.coin);
     });
+    // Монета могла быть выбрана раньше, чем пришёл список (открытие по
+    // ссылке /simulator?coin=XXX) — подсвечиваем её и в списке.
+    highlightSelection();
   } catch (e) {
     console.error("sim coins load failed", e);
     simListEl.innerHTML = "<div class='muted'>ошибка загрузки</div>";
@@ -526,6 +571,7 @@ async function loadChartForCoin(coin) {
 
   stopSimPlayback();
   clearSimLevelLines();
+  clearSimSnapshotLines();
   if (candleSeries) candleSeries.setMarkers([]);
   if (isCoinChange) {
     // Смена монеты — старая точка старта и старый результат теряют смысл.
@@ -680,6 +726,7 @@ function findGroupEpisodes(trade) {
 function drawTradeDetail(trade) {
   stopSimPlayback();
   clearSimLevelLines();
+  clearSimSnapshotLines(); // новая сделка выбрана — старый снимок уровней (от прошлого клика по графику) больше не в тему
   if (candleSeries) candleSeries.setMarkers([]);
   if (!trade || !globalCandles.length) return;
 
@@ -693,7 +740,7 @@ function drawTradeDetail(trade) {
       const lineCandles = globalCandles.filter(c => c.time >= (trade.time - 2*24*3600) && c.time <= endSec);
       
       const lvlTypeStr = trade.level_type ? friendlyLevelType(trade.level_type) : "—";
-      simLevelLines.push(...addZoneBand(trade.level_min, trade.level_max, color, lineCandles, `🧪 ${lvlTypeStr}`));
+      simLevelLines.push(...addZoneBand(trade.level_min, trade.level_max, color, lineCandles, `🧪 ${lvlTypeStr}`, "active"));
 
       const entryStyle = trade.type === "SHORT" ? { color: "#e5654f", shape: "arrowDown" } : { color: "#4caf7d", shape: "arrowUp" };
       const markers = [{ time: trade.time, position: trade.type === "SHORT" ? "belowBar" : "aboveBar", color: entryStyle.color, shape: entryStyle.shape, text: "" }];
@@ -740,7 +787,7 @@ function drawTradeDetail(trade) {
     if (sliced.length) lineCandles = sliced;
   }
 
-  simLevelLines.push(...addZoneBand(zoneMin, zoneMax, color, lineCandles, `🧪 ${friendlyLevelType(group[0].level_type)} · ${group[0].level_date || "—"} · ${group[0].level_score ?? "—"}`));
+  simLevelLines.push(...addZoneBand(zoneMin, zoneMax, color, lineCandles, `🧪 ${friendlyLevelType(group[0].level_type)} · ${group[0].level_date || "—"} · ${group[0].level_score ?? "—"}`, "active"));
 
   const statusEl = document.getElementById("sim-status");
   if (statusEl) statusEl.textContent = ""; // Убрали текст с названием уровня
@@ -1274,9 +1321,19 @@ async function restoreLastBounceSimIfAny() {
   }
 }
 
+// Открытие по ссылке с дашборда (кнопка 📈 у монеты, /simulator?coin=XXX)
+// — сразу эта монета, текущий месяц, уровни на дату старта. Последний
+// одиночный прогон в этом случае НЕ восстанавливаем: он про другую монету
+// и перебил бы ту, ради которой сюда пришли. Без ?coin= — всё как раньше.
+const urlCoin = (new URLSearchParams(window.location.search).get("coin") || "").toUpperCase().trim();
+
 initChart();
 loadSimCoins();
-restoreLastBounceSimIfAny();
+if (urlCoin) {
+  loadChartForCoin(urlCoin);
+} else {
+  restoreLastBounceSimIfAny();
+}
 restoreLastBulkSimIfAny();
 initSimTabs();
 
@@ -1313,7 +1370,7 @@ function drawBackgroundTradesAndGetMarkers() {
       const startSec = bgTrade.time - (2 * 24 * 3600);
       const endSec = bgTrade.closed_at ? Math.floor(new Date(bgTrade.closed_at).getTime() / 1000) : Math.floor(Date.now() / 1000);
       const lineCandles = globalCandles.filter(c => c.time >= startSec && c.time <= endSec);
-      if (lineCandles.length) simLevelLines.push(...addZoneBand(zMin, zMax, dimmedColor, lineCandles, ""));
+      simLevelLines.push(...addZoneBand(zMin, zMax, dimmedColor, lineCandles, "", "bg"));
     }
 
     // 2. Собираем маркеры этой сделки

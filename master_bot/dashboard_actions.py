@@ -1,6 +1,6 @@
 """
 dashboard_actions.py — действия, которые дашборд может напрямую вызвать
-у сканера (сброс вотчеров, пересчёт уровней, рескан монеты) + заглушка
+у сканера (сброс вотчеров, пересчёт уровней) + заглушка
 Notifier.
 
 ПОЧЕМУ ЭТО ОТДЕЛЬНЫЙ ФАЙЛ, А НЕ ЧАСТЬ run_web.py: run_web.py — это точка
@@ -39,7 +39,7 @@ ADMIN_LABEL = "web-dashboard"  # заменяет chat_id — реального
 # Заполняется в run_web.py::main() до старта дашборда. До этого момента
 # (то есть до полного старта процесса) остаётся None — ни одна из функций
 # этого файла не вызывается раньше, поэтому None тут не должно всплывать
-# на практике; там, где это важно (rescan_coin), проверка на None есть.
+# на практике.
 notifier: Optional["Notifier"] = None
 
 
@@ -125,6 +125,7 @@ def reset_all_watchers():
             bounce_mgr._watchers.clear()
             bounce_mgr.graveyard.clear()
             bounce_mgr._graveyard_recorded.clear()
+            bounce_mgr.level_trades.clear()  # счётчик сделок по уровням — полный сброс = с чистого листа
             bounce_mgr.pierced_count = 0
             tracked_origin_levels.clear()
             tracked_origin_levels_vrt.clear()
@@ -140,84 +141,9 @@ def reset_all_watchers():
         print(f"[dashboard_actions] ❌ Ошибка при сбросе вотчеров: {e}")
 
 
-def rescan_coin(coin, since=None):
-    """Честный повтор пути ОДНОЙ монеты (BOUNCE) от `since` до сейчас —
-    убивает (архивирует) текущих живых вотчеров этой монеты и честно
-    пересобирает реальный путь через уже готовый механизм реплея
-    (bounce_mgr.last_processed_time), как будто бот сканировал её всё это
-    время.
-
-    Вызывается из app.py (POST /api/rescan/{coin}) в отдельном потоке —
-    сама функция синхронная и блокирующая на время реплея."""
-    from modules.cryptano.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
-    from modules.cryptano.watcher_plan import check_bounce
-    from background_tasks import export_dashboard_state
-
-    coin = coin.upper().strip()
-    since_val = int(since) if since is not None else int(time.time()) - 7 * 24 * 3600
-    since_label = datetime.datetime.utcfromtimestamp(since_val).strftime("%Y-%m-%d %H:%M") + " UTC"
-
-    # "running" — сразу же, до того как реально начали: ожидание лока
-    # (если сейчас идёт полный скан-цикл) не должно выглядеть как тишина
-    # на дашборде.
-    try:
-        rescan_status = load_json(RESCAN_STATUS_FILE, default={})
-        rescan_status[coin] = {
-            "status": "running", "since": since_label,
-            "started_at": datetime.datetime.now().isoformat(),
-        }
-        save_json_atomic(RESCAN_STATUS_FILE, rescan_status)
-    except Exception as e:
-        print(f"[dashboard_actions] ⚠️ Не удалось записать статус старта рескана {coin}: {e}")
-
-    print(f"[dashboard_actions] 🔄 Рескан {coin}...")
-    bc_count = 0
-    with _watcher_lock:  # блокирующе — дождаться, если основной цикл сейчас держит лок
-        try:
-            v_bottom_mgr.remove_watchers_by_coin(coin)
-            bc_coin_ids = [lid for lid, w in bounce_mgr._watchers.items() if getattr(w, "coin", None) == coin]
-            for lid in bc_coin_ids:
-                bounce_mgr._watchers[lid].reset_for_rescan()
-            # clear_graveyard_for_ids (не clear_graveyard_by_coin!) — точечно
-            # только по уровням, которые прямо сейчас реально сбрасываем
-            # (bc_coin_ids выше). clear_graveyard_by_coin сносил защиту
-            # кладбища для ВСЕЙ монеты разом, включая уровни, умершие раньше
-            # и не участвующие в этом рескане — из-за этого следующий же
-            # скан/рескан мог "воскресить" вчера честно убитый вотчер на том
-            # же месте (см. докстринг clear_graveyard_for_ids в
-            # bounce_manager.py — тот самый описанный там баг, найден при
-            # слиянии дашборда и сканера и исправлен заодно).
-            bounce_mgr.clear_graveyard_for_ids(bc_coin_ids)
-            bounce_mgr.last_processed_time[coin] = since_val
-
-            # Читаем СВЕЖИЙ конфиг на каждый рескан — направление могло
-            # переключиться на дашборде между кликами (единая точка правды
-            # с боевым сканом и симулятором, см. app.py::get_bounce_direction).
-            # Отсутствие ключа — включено (True).
-            _cfg = load_json(CONFIG_FILE, default={})
-            _crypto_cfg = _cfg.get("crypto", {})
-            bc_count, bc_reports, bc_levels = check_bounce(
-                coin, _crypto_cfg.get("allow_long", True), _crypto_cfg.get("allow_short", True), bounce_mgr
-            )
-            for bc_report in bc_reports:
-                if notifier is not None:
-                    notifier.send_message(ADMIN_LABEL, bc_report, parse_mode="Markdown")
-
-            # Без этого результат реплея (точки на графике, архив
-            # сработавшей/умершей сделки, статус TRIGGERED) был бы не виден
-            # на дашборде до следующего планового скан-цикла — реплей
-            # отрабатывал честно, а дашборд просто не успевал об этом узнать.
-            export_dashboard_state(v_bottom_mgr, bounce_mgr)
-        except Exception as e:
-            bc_count = 0
-            print(f"[dashboard_actions] ❌ Ошибка рескана {coin}: {e}")
-
-    try:
-        status = load_json(RESCAN_STATUS_FILE, default={})
-        status[coin] = {
-            "status": "done", "since": since_label,
-            "finished_at": datetime.datetime.now().isoformat(), "found": bc_count,
-        }
-        save_json_atomic(RESCAN_STATUS_FILE, status)
-    except Exception as e:
-        print(f"[dashboard_actions] ⚠️ Не удалось записать статус завершения рескана {coin}: {e}")
+# rescan_coin() (старый рескан монеты, кнопка 🔄) УДАЛЁН. Он откатывал
+# монете bounce_mgr.last_processed_time назад (по умолчанию на неделю) и
+# гнал всю монету заново через check_bounce внутри боевого бота. Смотреть
+# прошлое монеты — теперь только симулятор (кнопка 📈 на дашборде). Сам
+# механизм догона пропущенных свечей после рестарта (last_processed_time в
+# check_bounce) НЕ тронут — он автоматический и к этой кнопке не привязан.

@@ -258,12 +258,12 @@ body {
 }
 
 .signals-panel {
-  padding: 16px;
+  padding: 0;
   border-top: 1px solid #262832;
   flex-shrink: 0;
   max-height: 260px;
-  overflow-y: auto;
-  overflow-x: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 #sim-trades-table {
@@ -275,7 +275,16 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: #9aa0ac;
-  margin: 0 0 10px 0;
+  margin: 0;
+  padding: 16px 16px 10px 16px;
+  flex-shrink: 0;
+}
+
+.signals-table-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding: 0 16px 16px 16px;
 }
 
 table {
@@ -295,6 +304,10 @@ th {
   font-weight: 500;
   font-size: 11px;
   text-transform: uppercase;
+  position: sticky;
+  top: 0;
+  background: #0e0f13;
+  z-index: 10;
 }
 
 #sim-trades-body tr,
