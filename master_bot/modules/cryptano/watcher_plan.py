@@ -4,6 +4,7 @@ import time
 import os
 import sys
 import datetime
+import uuid
 from modules.cryptano.utils.storage import load_json, save_json_atomic
 import pandas as pd
 import gc
@@ -41,10 +42,28 @@ def get_merged_levels_for_coin(coin):
     if not coin_custom:
         return coin_macro  # частый случай — без custom вообще ничего не копируем зря
 
+    if coin_custom.get("ignore_auto"):
+        # ❄️ "Заморожена" — галочка, поставленная при добавлении ручного
+        # уровня/объёма (см. app.py::add_custom_level). Монета торгует
+        # ТОЛЬКО по ручным зонам — авто-уровни из macro_levels.json (даже
+        # если whitelist их честно посчитал) сюда не подмешиваются вообще.
+        return {
+            "supports": list(coin_custom.get("supports", [])),
+            "resistances": list(coin_custom.get("resistances", [])),
+        }
+
     merged = dict(coin_macro) if coin_macro else {}
     merged["supports"] = list(coin_macro.get("supports", []) if coin_macro else []) + list(coin_custom.get("supports", []))
     merged["resistances"] = list(coin_macro.get("resistances", []) if coin_macro else []) + list(coin_custom.get("resistances", []))
     return merged
+
+# Сработавшие объёмные триггеры (custom_levels.json[coin]["volume_triggers"])
+# кладём в СВОЙ файл, а не в custom_levels.json/active_watchers.json.
+# Путь строим от CUSTOM_LEVELS_FILE (тот же jsonbank), не трогая
+# utils/paths.py лишний раз ради одной константы. Читает и чистит этот
+# файл только дашборд (app.py::get_active_watchers/delete_watchers) —
+# сам сканер сюда только ПИШЕТ при срабатывании, назад не читает.
+MANUAL_WATCHERS_FILE = os.path.join(os.path.dirname(CUSTOM_LEVELS_FILE), "manual_watchers.json")
 
 # candle_store.py лежит в web/backend/ и не является пакетом (нет __init__.py) —
 # app.py подключает его тем же способом: добавляет свою папку в sys.path и
@@ -837,6 +856,99 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr):
         traceback.print_exc()
         _log_bounce_error(coin, e)
         return 0, [], 0
+
+
+def check_volume_triggers(coin):
+    """
+    Ручные объёмные триггеры (custom_levels.json[coin]["volume_triggers"],
+    добавляются через модалку ➕ -> "Объем (Volume)" на дашборде,
+    см. app.py::add_custom_level).
+
+    СОЗНАТЕЛЬНО не похоже на check_bounce/check_v_bottom и т.д. — тут нет
+    ни зоны (min/max), ни стратегии, ни TP/SL, ни BounceManager/
+    VBottomManager. Просто: объём последней ЗАКРЫТОЙ 15m свечи >= target
+    -> кладём "ручного вотчера" в MANUAL_WATCHERS_FILE (напоминание для
+    дашборда, живёт, пока пользователь сам не нажмёт ❌ в панели "В работе",
+    см. app.py::get_active_watchers/delete_watchers) и УДАЛЯЕМ сработавший
+    триггер из custom_levels.json — капкан одноразовый, иначе плодил бы
+    дубли на каждой следующей объёмной свече.
+    """
+    try:
+        custom_db = load_json(CUSTOM_LEVELS_FILE, default={})
+        coin_data = custom_db.get(coin) or {}
+        triggers = coin_data.get("volume_triggers") or []
+        if not triggers:
+            return
+
+        markets = load_markets_cached(exchange)
+        symbol = resolve_symbol(coin, markets)
+        if not symbol:
+            return
+
+        # min_candles=2 — нужна ровно одна закрытая свеча, вторая просто
+        # чтобы было из чего выбрать (_fetch_candles_df сама подстрахуется
+        # походом на биржу, если локальной базы ещё нет вообще).
+        df, _fetch_err = _fetch_candles_df(symbol, coin, 2, "VOL_TRIGGER")
+        if df is None or df.empty:
+            return
+
+        last_ts = df.index[-1]
+        last_volume = float(df["volume"].iloc[-1])
+
+        fired = []
+        remaining = []
+        for trig in triggers:
+            try:
+                target = float(trig.get("target"))
+            except (TypeError, ValueError):
+                remaining.append(trig)  # битая запись — не теряем молча, просто не трогаем
+                continue
+            if last_volume >= target:
+                fired.append(target)
+            else:
+                remaining.append(trig)
+
+        if not fired:
+            return
+
+        for target in fired:
+            _record_manual_watcher(coin, target, last_volume, last_ts)
+
+        # Перечитываем прямо перед записью (не переиспользуем custom_db из
+        # начала функции) — между чтением в начале и этим моментом был
+        # сетевой поход за свечами, за это время пользователь мог
+        # добавить/удалить ДРУГОЙ триггер этой же монеты с дашборда.
+        # Перезаписываем только volume_triggers этой монеты.
+        fresh_db = load_json(CUSTOM_LEVELS_FILE, default={})
+        if coin in fresh_db:
+            fresh_db[coin]["volume_triggers"] = remaining
+            if not fresh_db[coin].get("supports") and not fresh_db[coin].get("resistances") and not remaining:
+                fresh_db.pop(coin, None)
+            save_json_atomic(CUSTOM_LEVELS_FILE, fresh_db)
+
+    except Exception as e:
+        print(f"\n[VOL_TRIGGER ERROR] ❌ {coin}: {e}")
+        traceback.print_exc()
+
+
+def _record_manual_watcher(coin, target, fired_volume, fired_ts):
+    """Добавляет одну запись в MANUAL_WATCHERS_FILE — см. check_volume_triggers
+    выше. level_id в своём неймспейсе ("VOL_...") — не пересекается ни с
+    "BC_"/"VB_"/"VGB_"/"VRT_" (см. _STRATEGY_BY_TAG в background_tasks.py),
+    ни с чем в bounce_mgr/v_bottom_mgr."""
+    entries = load_json(MANUAL_WATCHERS_FILE, default=[])
+    if not isinstance(entries, list):
+        entries = []
+    entries.append({
+        "level_id": f"VOL_{coin}_{uuid.uuid4().hex[:8]}",
+        "coin": coin,
+        "strategy": "VOL_SPIKE",
+        "target_volume": target,
+        "fired_volume": fired_volume,
+        "fired_at": _utc_iso(fired_ts),
+        "created_at": datetime.datetime.now().isoformat(),
+    })
+    save_json_atomic(MANUAL_WATCHERS_FILE, entries)
 
 
 def _signal_level_snapshot(watcher):

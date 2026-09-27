@@ -6,7 +6,7 @@ import os
 # Импорт базовых инструментов
 from modules.cryptano.utils.storage import load_json, save_json_atomic
 from modules.cryptano.utils.common import KNOWN_TICKER_ALIASES
-from modules.cryptano.utils.paths import MACRO_LEVELS_FILE, WATCHER_HISTORY_FILE, ACTIVE_WATCHERS_FILE, RESCAN_STATUS_FILE
+from modules.cryptano.utils.paths import MACRO_LEVELS_FILE, WATCHER_HISTORY_FILE, ACTIVE_WATCHERS_FILE, RESCAN_STATUS_FILE, CUSTOM_LEVELS_FILE
 from modules.cryptano.strategy.bounce_manager import SHORT_MODES
 from modules.cryptano.utils.coin_generators import update_momentum_watchlist
 from modules.cryptano.swing_hunter import start_swing_hunter
@@ -280,7 +280,7 @@ def crypto_orchestrator(bot, admin_chat_id):
 
                 try:
                     from modules.cryptano.live_scan import _load_watchlist, _save_watchlist, watcher_cooldown_cache, _watcher_lock, _cascade_lock, COOLDOWN_HOURS, v_bottom_mgr, bounce_mgr, tracked_origin_levels, tracked_origin_levels_vrt, save_watcher_state
-                    from modules.cryptano.watcher_plan import check_v_bottom, check_v_green_bottom, check_v_red_top, check_bounce
+                    from modules.cryptano.watcher_plan import check_v_bottom, check_v_green_bottom, check_v_red_top, check_bounce, check_volume_triggers
 
                     # Список монет для скана — watchlist.json. Синхронизация на каждом
                     # скане: любая монета из macro_levels.json, которой ещё нет в
@@ -529,6 +529,27 @@ def crypto_orchestrator(bot, admin_chat_id):
                                         # накопленного в памяти состояния, без сети.
                                         save_watcher_state()
                                     time.sleep(0.5) # Защитная пауза между монетами (было 1.2 — с ростом числа монет стало заметным тормозом)
+
+                                # 🎯 Ручные объёмные триггеры (custom_levels.json::volume_triggers) —
+                                # СОЗНАТЕЛЬНО отдельный, независимый от _scan_coins/dirs проход:
+                                # монета с одним лишь объёмным триггером (без macro/custom
+                                # support-resistance зон и без живого BOUNCE-вотчера) в цикле
+                                # выше была бы пропущена целиком (см. "if not dirs and not
+                                # bc_has_active_long and not bc_has_active_short: continue").
+                                # check_volume_triggers ничего не знает ни про одну стратегию —
+                                # см. её докстринг в watcher_plan.py.
+                                try:
+                                    custom_db_vol = load_json(CUSTOM_LEVELS_FILE, default={})
+                                    _vol_trigger_coins = [
+                                        c for c, data in custom_db_vol.items()
+                                        if c != "_meta" and isinstance(data, dict) and data.get("volume_triggers")
+                                    ]
+                                    for _vt_coin in _vol_trigger_coins:
+                                        with _watcher_lock:
+                                            check_volume_triggers(_vt_coin)
+                                        time.sleep(0.3)
+                                except Exception as e:
+                                    print(f"[DISPATCHER ERROR] Ошибка проверки объёмных триггеров: {e}")
 
                                 # Финальная очистка/архивация/экспорт после ВСЕГО прохода по монетам —
                                 # тоже под _watcher_lock (мутирует bounce_mgr/v_bottom_mgr через

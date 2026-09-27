@@ -14,6 +14,7 @@ import time
 import datetime
 import threading
 import logging
+import uuid
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Response, Body
@@ -104,6 +105,19 @@ NBA_STATUS_PATH = os.path.join(JSONBANK_DIR, "nba_status.json")
 RESCAN_STATUS_PATH = os.path.join(JSONBANK_DIR, "rescan_status.json")
 ACTIVE_WATCHERS_PATH = os.path.join(JSONBANK_DIR, "active_watchers.json")
 WATCHER_HISTORY_PATH = os.path.join(JSONBANK_DIR, "watcher_history.json")
+# Сработавшие объёмные триггеры (watcher_plan.py::check_volume_triggers) —
+# СВОЙ файл, не пересекается с bounce_mgr/v_bottom_mgr вообще: это не
+# вотчер стратегии, а просто "напоминание" без TP/SL/состояний.
+# get_active_watchers подмешивает его в общий список "В работе",
+# delete_watchers умеет удалять из него же по level_id.
+MANUAL_WATCHERS_PATH = os.path.join(JSONBANK_DIR, "manual_watchers.json")
+# Поток А (боевой)/Поток Б (радар) — см. swing_hunter.py::get_battle_symbols
+# / build_greylist_candidates. Те же физические файлы, что и там (там путь
+# строится от os.path.dirname(MACRO_LEVELS_FILE) — тот же jsonbank).
+WHITELIST_PATH = os.path.join(JSONBANK_DIR, "whitelist.json")
+BLACKLIST_PATH = os.path.join(JSONBANK_DIR, "blacklist.json")
+GREYLIST_PATH = os.path.join(JSONBANK_DIR, "greylist.json")
+GREYLIST_LEVELS_PATH = os.path.join(JSONBANK_DIR, "greylist_levels.json")
 # Та же лента, куда пишет Notifier (см. dashboard_actions.py) — "заглушка
 # вместо telebot", реального Telegram тут всё равно нет, просто общий
 # JSON-список последних сообщений для дашборда. Массовый рескан пишет сюда
@@ -231,7 +245,16 @@ def get_watchlist():
 
     def _has_custom_levels(coin):
         c = custom_db.get(coin) or custom_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
-        return bool((c or {}).get("supports")) or bool((c or {}).get("resistances"))
+        # 🎯 Объёмные триггеры (side="volume") — тоже ручные зоны, просто
+        # без min/max. Раньше тут проверялись только supports/resistances —
+        # монета с одним лишь volume-триггером не получала метку ✋ на
+        # дашборде и не поднималась в приоритете вместе с остальными
+        # ручными зонами (см. sort_by_priority ниже).
+        return bool((c or {}).get("supports")) or bool((c or {}).get("resistances")) or bool((c or {}).get("volume_triggers"))
+
+    def _is_ignore_auto(coin):
+        c = custom_db.get(coin) or custom_db.get(KNOWN_TICKER_ALIASES.get(coin, ""), {})
+        return bool((c or {}).get("ignore_auto"))
 
     favorites = set(_read_favorites())
 
@@ -253,6 +276,7 @@ def get_watchlist():
             "source": source,
             "added_at": added_at,
             "has_custom_levels": _has_custom_levels(coin),
+            "ignore_auto": _is_ignore_auto(coin),
             "favorite": coin in favorites,
             **{k: v for k, v in clean_meta.items() if k not in ["source", "added_at", "direction"]}
         }
@@ -346,7 +370,33 @@ def get_active_watchers(all_states: bool = Query(default=False)):
         for level_id, w in raw.items()
         if _is_active_watcher(w)
     ]
-    
+
+    # 🎯 Ручные объёмные триггеры — читаются напрямую из manual_watchers.json,
+    # никак не связаны с bounce_mgr/v_bottom_mgr (см. watcher_plan.py::
+    # check_volume_triggers). Подмешиваем ДО блока ниже, который проставляет
+    # source/added_at/favorite по watchlist — он отработает и для них тоже
+    # (монета уже есть в watchlist с source="MANUAL", см. add_custom_level).
+    manual_watchers = _read_json(MANUAL_WATCHERS_PATH, default=[])
+    if isinstance(manual_watchers, list):
+        for mw in manual_watchers:
+            result.append({
+                "level_id": mw.get("level_id"),
+                "coin": mw.get("coin"),
+                "direction": None,
+                "strategy": "VOL_SPIKE",
+                "mode": None,
+                "state": "MANUAL_ALERT",
+                "history_log": f"Объём {mw.get('fired_volume')} ≥ цель {mw.get('target_volume')} ({mw.get('fired_at', '')})",
+                "level_min": None,
+                "level_max": None,
+                "level_date": None,
+                "level_type": None,
+                "level_score": None,
+                "activated_at": None,
+                "events": [],
+                "updated_at": mw.get("created_at"),
+            })
+
     # 🔥 НОВОЕ: Добавляем source, added_at и favorite из watchlist/favorites.json
     favorites = set(_read_favorites())
     for w in result:
@@ -761,19 +811,448 @@ def get_levels(coin: str):
     custom_coin = custom.get(coin, {})
     custom_supports = custom_coin.get("supports", [])
     custom_resistances = custom_coin.get("resistances", [])
+    # 🎯 Объёмные триггеры — не зона (нет min/max), график их не рисует и не
+    # должен, но окно "Управление ручными зонами" (см. app.js::
+    # renderManageZonesList) должно уметь их показать/изменить/удалить —
+    # для этого отдаём их отдельным ключом, supports/resistances не трогаем.
+    custom_volume_triggers = custom_coin.get("volume_triggers", [])
 
     if data is None:
-        if not custom_supports and not custom_resistances:
+        if not custom_supports and not custom_resistances and not custom_volume_triggers:
             raise HTTPException(status_code=404, detail=f"No levels for {coin}")
         # Ручные уровни есть, а macro для монеты нет вообще (например,
         # SWING_HUNTER её пока не считал/не подхватил по объёму) —
         # честно отдаём то, что реально есть, не 404.
-        return {"supports": list(custom_supports), "resistances": list(custom_resistances)}
+        return {"supports": list(custom_supports), "resistances": list(custom_resistances), "volume_triggers": list(custom_volume_triggers)}
 
     merged = dict(data)
     merged["supports"] = list(data.get("supports", [])) + list(custom_supports)
     merged["resistances"] = list(data.get("resistances", [])) + list(custom_resistances)
+    merged["volume_triggers"] = list(custom_volume_triggers)
     return merged
+
+
+@app.get("/api/greylist")
+def get_greylist():
+    """Витрина кандидатов Потока Б (радар, см. swing_hunter.py::
+    build_greylist_candidates) — монеты, которые сканер нашёл сам по
+    объёму, но которые НЕ в бою (macro_levels.json их не содержит,
+    watcher_plan.py их физически не видит). Дашборд показывает их в
+    отдельном окне "🔭 Серый список", а не в обычном Watchlist."""
+    greylist = _read_json(GREYLIST_PATH, default={})
+    if not isinstance(greylist, dict):
+        greylist = {}
+    greylist_levels = _read_json(GREYLIST_LEVELS_PATH, default={})
+    if not isinstance(greylist_levels, dict):
+        greylist_levels = {}
+    # Ручная зона (➕ доступна и в сером списке) переводит монету на боевой
+    # рельс — см. build_macro_levels в swing_hunter.py: coin получает
+    # заглушку в macro_levels.json, а реальные уровни для вотчера идут из
+    # custom_levels.json. Тут это нужно только для значка ✋ на дашборде.
+    custom_db = _read_json(CUSTOM_LEVELS_PATH, default={})
+    if not isinstance(custom_db, dict):
+        custom_db = {}
+
+    def _has_custom_levels(coin):
+        c = custom_db.get(coin) or {}
+        return bool(c.get("supports")) or bool(c.get("resistances")) or bool(c.get("volume_triggers"))
+
+    def _is_ignore_auto(coin):
+        c = custom_db.get(coin) or {}
+        return bool(c.get("ignore_auto"))
+
+    favorites = set(_read_favorites())
+
+    result = []
+    for coin, entry in greylist.items():
+        if coin == "_meta" or not isinstance(entry, dict):
+            continue
+        lv = greylist_levels.get(coin) or {}
+        result.append({
+            "coin": coin,
+            "symbol": entry.get("symbol"),
+            "volume": entry.get("volume"),
+            "discovered_at": entry.get("discovered_at"),
+            "last_seen": entry.get("last_seen"),
+            "supports_count": len(lv.get("supports", [])),
+            "resistances_count": len(lv.get("resistances", [])),
+            "has_custom_levels": _has_custom_levels(coin),
+            "ignore_auto": _is_ignore_auto(coin),
+            "favorite": coin in favorites,
+        })
+
+    # Избранные — по алфавиту сверху, остальные — по алфавиту следом (та же
+    # схема приоритета, что и в get_watchlist()::sort_by_priority). Раньше
+    # тут была сортировка по объёму — с добавлением избранного и ручного
+    # добавления монет (без объёма вообще, см. /api/greylist/add) сортировка
+    # по объёму перестала быть осмысленной для всего списка.
+    result.sort(key=lambda r: (not r["favorite"], r["coin"]))
+    return result
+
+
+@app.get("/api/levels/greylist/{coin}")
+def get_greylist_levels(coin: str):
+    """Уровни ОДНОГО кандидата из greylist_levels.json — для графика,
+    когда пользователь кликает по монете в окне "🔭 Серый список".
+    Намеренно ОТДЕЛЬНЫЙ эндпоинт от GET /api/levels/{coin} (боевые +
+    ручные) — смешивать их в одном ответе нельзя, это была бы утечка
+    кандидата, которого watcher_plan.py не должен видеть, туда же, где
+    смотрит боевой дашборд."""
+    coin = coin.upper().strip()
+    greylist_levels = _read_json(GREYLIST_LEVELS_PATH, default={})
+    data = greylist_levels.get(coin) if isinstance(greylist_levels, dict) else None
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"No greylist levels for {coin}")
+    return data
+
+
+@app.post("/api/greylist/promote")
+def promote_greylist_coin(payload: dict = Body(...)):
+    """[✅ Белый] / [🚫 Чёрный] в окне "Серый список". Тело: {"coin",
+    "action": "whitelist"|"blacklist"}. Убирает монету из greylist.json и
+    greylist_levels.json (кандидат решён, витрину дальше захламлять не
+    нужно) и дописывает тикер в нужный список. Статус монеты официально
+    меняется на СЛЕДУЮЩЕМ скане swing_hunter.py — тут только переносим её
+    между списками, ничего не пересчитываем сразу же."""
+    coin = str(payload.get("coin", "")).upper().strip()
+    action = str(payload.get("action", "")).lower().strip()
+    if not coin:
+        raise HTTPException(status_code=400, detail="Не указана монета (coin)")
+    if action not in ("whitelist", "blacklist"):
+        raise HTTPException(status_code=400, detail="action должен быть 'whitelist' или 'blacklist'")
+
+    target_path = WHITELIST_PATH if action == "whitelist" else BLACKLIST_PATH
+    target_list = _read_json(target_path, default=[])
+    if not isinstance(target_list, list):
+        target_list = []
+    if coin not in target_list:
+        target_list.append(coin)
+        try:
+            _write_json_atomic(target_path, target_list)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Не удалось сохранить {os.path.basename(target_path)}: {e}")
+
+    greylist = _read_json(GREYLIST_PATH, default={})
+    if isinstance(greylist, dict) and coin in greylist:
+        del greylist[coin]
+        try:
+            _write_json_atomic(GREYLIST_PATH, greylist)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Не удалось сохранить greylist.json: {e}")
+
+    greylist_levels = _read_json(GREYLIST_LEVELS_PATH, default={})
+    if isinstance(greylist_levels, dict) and coin in greylist_levels:
+        del greylist_levels[coin]
+        try:
+            _write_json_atomic(GREYLIST_LEVELS_PATH, greylist_levels)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Не удалось сохранить greylist_levels.json: {e}")
+
+    return {"status": "ok", "coin": coin, "action": action}
+
+
+@app.post("/api/watchlist/demote")
+def demote_watchlist_coin(payload: dict = Body(...)):
+    """⋮-меню на строке боевого Watchlist → "В серый список" / "В чёрный
+    список". Обратная операция к /api/greylist/promote: монета уходит ИЗ
+    whitelist.json, поэтому убираем её и из macro_levels.json (иначе она
+    провисит в Watchlist до следующего боевого скана). Тело: {"coin",
+    "action": "greylist"|"blacklist"}.
+
+    Для action=greylist — сразу переносим уже посчитанные уровни из
+    macro_levels.json в greylist_levels.json (копия supports/resistances,
+    updated_at=сейчас), чтобы окно "Серый список" не показывало пустого
+    кандидата, пока его не пересчитает радар. Для action=blacklist уровни
+    просто отбрасываем — чёрному списку они не нужны.
+
+    Активные вотчеры (active_watchers.json) и ручные зоны
+    (custom_levels.json) НЕ трогаем — они живут своей жизнью независимо
+    от того, боевая монета сейчас или нет."""
+    coin = str(payload.get("coin", "")).upper().strip()
+    action = str(payload.get("action", "")).lower().strip()
+    if not coin:
+        raise HTTPException(status_code=400, detail="Не указана монета (coin)")
+    if action not in ("greylist", "blacklist"):
+        raise HTTPException(status_code=400, detail="action должен быть 'greylist' или 'blacklist'")
+
+    # 1) Убираем из whitelist.json
+    whitelist = _read_json(WHITELIST_PATH, default=[])
+    if not isinstance(whitelist, list):
+        whitelist = []
+    if coin in whitelist:
+        whitelist = [c for c in whitelist if str(c).upper().strip() != coin]
+        try:
+            _write_json_atomic(WHITELIST_PATH, whitelist)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Не удалось сохранить whitelist.json: {e}")
+
+    # 2) Забираем (и удаляем) уровни монеты из macro_levels.json — общие
+    # для обеих веток, дальше решаем, куда их деть.
+    macro = _read_json(MACRO_LEVELS_PATH, default={})
+    if not isinstance(macro, dict):
+        macro = {}
+    coin_levels = macro.pop(coin, None)
+    if coin_levels is not None:
+        try:
+            _write_json_atomic(MACRO_LEVELS_PATH, macro)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Не удалось сохранить macro_levels.json: {e}")
+
+    if action == "blacklist":
+        blacklist = _read_json(BLACKLIST_PATH, default=[])
+        if not isinstance(blacklist, list):
+            blacklist = []
+        if coin not in blacklist:
+            blacklist.append(coin)
+            try:
+                _write_json_atomic(BLACKLIST_PATH, blacklist)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Не удалось сохранить blacklist.json: {e}")
+        # На всякий случай чистим и возможную старую запись в greylist —
+        # blacklist побеждает везде (см. get_battle_symbols/
+        # build_greylist_candidates), но витрина не должна её всё равно показывать.
+        greylist = _read_json(GREYLIST_PATH, default={})
+        if isinstance(greylist, dict) and coin in greylist:
+            del greylist[coin]
+            try:
+                _write_json_atomic(GREYLIST_PATH, greylist)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Не удалось сохранить greylist.json: {e}")
+        greylist_levels = _read_json(GREYLIST_LEVELS_PATH, default={})
+        if isinstance(greylist_levels, dict) and coin in greylist_levels:
+            del greylist_levels[coin]
+            try:
+                _write_json_atomic(GREYLIST_LEVELS_PATH, greylist_levels)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Не удалось сохранить greylist_levels.json: {e}")
+
+    else:  # action == "greylist"
+        try:
+            symbol = resolve_symbol(coin, exchange.markets) or resolve_symbol(KNOWN_TICKER_ALIASES.get(coin, ""), exchange.markets)
+        except Exception:
+            symbol = None
+
+        scan_time = datetime.datetime.now().isoformat()
+
+        greylist = _read_json(GREYLIST_PATH, default={})
+        if not isinstance(greylist, dict):
+            greylist = {}
+        existing = greylist.get(coin) or {}
+        greylist[coin] = {
+            "symbol": symbol,
+            "volume": existing.get("volume"),
+            "discovered_at": existing.get("discovered_at", scan_time),
+            "last_seen": scan_time,
+        }
+        try:
+            _write_json_atomic(GREYLIST_PATH, greylist)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Не удалось сохранить greylist.json: {e}")
+
+        if coin_levels is not None:
+            greylist_levels = _read_json(GREYLIST_LEVELS_PATH, default={})
+            if not isinstance(greylist_levels, dict):
+                greylist_levels = {}
+            greylist_levels[coin] = {
+                "supports": coin_levels.get("supports", []),
+                "resistances": coin_levels.get("resistances", []),
+                "updated_at": scan_time,
+            }
+            try:
+                _write_json_atomic(GREYLIST_LEVELS_PATH, greylist_levels)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Не удалось сохранить greylist_levels.json: {e}")
+
+    return {"status": "ok", "coin": coin, "action": action}
+
+
+@app.get("/api/blacklist")
+def get_blacklist():
+    """Чёрный список (blacklist.json) — плоский список тикеров, которые
+    swing_hunter.py игнорирует и в Потоке А (боевом), и в Потоке Б (радаре),
+    см. get_battle_symbols/build_greylist_candidates. Дашборд показывает
+    его как одну из трёх сворачиваемых секций в левой панели."""
+    blacklist = _read_json(BLACKLIST_PATH, default=[])
+    if not isinstance(blacklist, list):
+        blacklist = []
+    return sorted({str(c).upper().strip() for c in blacklist if str(c).strip()})
+
+
+@app.post("/api/blacklist/add")
+def add_to_blacklist(payload: dict = Body(...)):
+    """Добавить тикер в чёрный список вручную (➕ в заголовке секции
+    "Чёрный список"). НЕ трогает whitelist.json/greylist.json — если монета
+    уже была там, следующий скан swing_hunter.py сам её вычистит оттуда
+    (blacklist — абсолютный приоритет, см. get_battle_symbols/
+    build_greylist_candidates), тут форсировать это незачем."""
+    coin = str(payload.get("coin", "")).upper().strip()
+    if not coin:
+        raise HTTPException(status_code=400, detail="Не указана монета (coin)")
+    blacklist = _read_json(BLACKLIST_PATH, default=[])
+    if not isinstance(blacklist, list):
+        blacklist = []
+    if coin not in blacklist:
+        blacklist.append(coin)
+        try:
+            _write_json_atomic(BLACKLIST_PATH, blacklist)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Не удалось сохранить blacklist.json: {e}")
+    return {"status": "ok", "coin": coin, "added": True}
+
+
+@app.post("/api/whitelist/add")
+def add_to_whitelist(payload: dict = Body(...)):
+    """Быстрое добавление тикера в whitelist.json вручную (➕ в заголовке,
+    режим Watchlist) — БЕЗ указания уровней/объёма, просто "монета теперь в
+    бою".
+
+    Уровни считаются СРАЗУ ЖЕ, синхронно (build_levels_for_single_coin —
+    та же функция, что и для любых других разовых добавлений), а не
+    откладываются до ближайшего 🏗️/rebuild — иначе монета molча висела бы
+    в whitelist.json, ничем не отличаясь для пользователя от "ничего не
+    произошло": rebuild гоняет ~70+ монет и может не случиться ещё долго,
+    а обычный скан-цикл синхронизирует watchlist.json (то, что реально
+    видно на дашборде) из macro_levels.json ТОЛЬКО в background_tasks.py,
+    отдельно от rebuild. Тут делаем и то, и другое сами, за один запрос:
+    честная пауза в несколько секунд (реальный поход на биржу за свечами),
+    зато монета появляется в Watchlist сразу по ответу этого эндпоинта, а
+    не когда-то потом.
+
+    Blacklist — абсолютный приоритет (см. get_battle_symbols): если монета
+    там, добавление в whitelist ничего не изменит в бою, поэтому отказываем
+    сразу, а не молча добавляем бесполезную запись."""
+    coin = str(payload.get("coin", "")).upper().strip()
+    if not coin:
+        raise HTTPException(status_code=400, detail="Не указана монета (coin)")
+
+    blacklist = _read_json(BLACKLIST_PATH, default=[])
+    if isinstance(blacklist, list) and coin in {str(c).upper().strip() for c in blacklist}:
+        raise HTTPException(status_code=400, detail=f"{coin} в чёрном списке — сначала уберите её оттуда")
+
+    whitelist = _read_json(WHITELIST_PATH, default=[])
+    if not isinstance(whitelist, list):
+        whitelist = []
+    if coin not in whitelist:
+        whitelist.append(coin)
+        try:
+            _write_json_atomic(WHITELIST_PATH, whitelist)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Не удалось сохранить whitelist.json: {e}")
+
+    # Если монета уже была кандидатом радара — витрину дальше не захламляем,
+    # она теперь боевая (та же чистка, что и в promote_greylist_coin).
+    greylist = _read_json(GREYLIST_PATH, default={})
+    if isinstance(greylist, dict) and coin in greylist:
+        del greylist[coin]
+        try:
+            _write_json_atomic(GREYLIST_PATH, greylist)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Не удалось сохранить greylist.json: {e}")
+    greylist_levels = _read_json(GREYLIST_LEVELS_PATH, default={})
+    if isinstance(greylist_levels, dict) and coin in greylist_levels:
+        del greylist_levels[coin]
+        try:
+            _write_json_atomic(GREYLIST_LEVELS_PATH, greylist_levels)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Не удалось сохранить greylist_levels.json: {e}")
+
+    # watchlist.json — ОТДЕЛЬНЫЙ от whitelist.json файл, тот самый, что
+    # реально читает дашборд (GET /api/watchlist). source="SWING_HUNTER" —
+    # ЭТО НЕ ручная зона/уровень (то, что помечается "MANUAL"), а обычная
+    # боевая монета из whitelist.json, просто без уровней технического
+    # анализа до этого момента. С source="SWING_HUNTER" на неё действуют
+    # обычные правила: чистка "призраков" в background_tasks.py уберёт её
+    # из watchlist.json сама, если монету потом уберут из whitelist.json
+    # (⋮-меню/правка файла руками) — никакой отдельной кнопки/пометки
+    # "убрать монету из списка" ей не нужно, она не особенная.
+    try:
+        wl = _read_json(WATCHLIST_PATH, default={})
+        if not isinstance(wl, dict):
+            wl = {}
+        if coin not in wl:
+            wl[coin] = {"source": "SWING_HUNTER", "added_at": datetime.datetime.now().isoformat()}
+            _write_json_atomic(WATCHLIST_PATH, wl)
+    except Exception as e:
+        print(f"[whitelist/add] не удалось обновить watchlist.json для {coin}: {e}")
+
+    levels_built = False
+    try:
+        from modules.cryptano.swing_hunter import build_levels_for_single_coin
+        levels_built = bool(build_levels_for_single_coin(coin))
+    except Exception as e:
+        print(f"[whitelist/add] не удалось построить уровни для {coin}: {e}")
+
+    return {"status": "ok", "coin": coin, "added": True, "levels_built": levels_built}
+
+
+@app.post("/api/greylist/add")
+def add_to_greylist(payload: dict = Body(...)):
+    """Быстрое добавление тикера-кандидата в greylist.json вручную (➕ в
+    заголовке, режим Greylist) — БЕЗ объёма/уровней, просто "хочу видеть эту
+    монету в серой витрине". supports_count/resistances_count будут 0, пока
+    её не подхватит ближайший радар (build_greylist_candidates) — либо пока
+    не нарисовать ей ручную зону (➕ "Добавить уровень"), тогда она сразу
+    станет торгуемой (см. build_macro_levels в swing_hunter.py).
+
+    Отказываем, если монета уже боевая (whitelist) или в чёрном списке —
+    в обоих случаях запись в greylist была бы бессмысленной/противоречивой."""
+    coin = str(payload.get("coin", "")).upper().strip()
+    if not coin:
+        raise HTTPException(status_code=400, detail="Не указана монета (coin)")
+
+    blacklist = _read_json(BLACKLIST_PATH, default=[])
+    if isinstance(blacklist, list) and coin in {str(c).upper().strip() for c in blacklist}:
+        raise HTTPException(status_code=400, detail=f"{coin} в чёрном списке — сначала уберите её оттуда")
+
+    whitelist = _read_json(WHITELIST_PATH, default=[])
+    if isinstance(whitelist, list) and coin in {str(c).upper().strip() for c in whitelist}:
+        raise HTTPException(status_code=400, detail=f"{coin} уже в Watchlist (whitelist)")
+
+    try:
+        symbol = resolve_symbol(coin, exchange.markets) or resolve_symbol(KNOWN_TICKER_ALIASES.get(coin, ""), exchange.markets)
+    except Exception:
+        symbol = None
+
+    greylist = _read_json(GREYLIST_PATH, default={})
+    if not isinstance(greylist, dict):
+        greylist = {}
+    existing = greylist.get(coin) or {}
+    now = datetime.datetime.now().isoformat()
+    greylist[coin] = {
+        "symbol": symbol,
+        "volume": existing.get("volume"),
+        "discovered_at": existing.get("discovered_at", now),
+        "last_seen": now,
+    }
+    try:
+        _write_json_atomic(GREYLIST_PATH, greylist)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Не удалось сохранить greylist.json: {e}")
+
+    return {"status": "ok", "coin": coin, "added": True}
+
+
+@app.post("/api/blacklist/remove")
+def remove_from_blacklist(payload: dict = Body(...)):
+    """Убрать тикер из чёрного списка (🗑 у строки в секции "Чёрный
+    список"). Монета просто становится снова видимой для радара — попадёт
+    ли она в серый список заново, решит следующий скан по факту объёма,
+    тут ничего форсом не переносим."""
+    coin = str(payload.get("coin", "")).upper().strip()
+    if not coin:
+        raise HTTPException(status_code=400, detail="Не указана монета (coin)")
+    blacklist = _read_json(BLACKLIST_PATH, default=[])
+    if not isinstance(blacklist, list):
+        blacklist = []
+    if coin not in blacklist:
+        raise HTTPException(status_code=404, detail="Монеты нет в чёрном списке")
+    blacklist = [c for c in blacklist if str(c).upper().strip() != coin]
+    try:
+        _write_json_atomic(BLACKLIST_PATH, blacklist)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Не удалось сохранить blacklist.json: {e}")
+    return {"status": "ok", "coin": coin, "removed": True}
+
 
 def _read_favorites() -> list:
     data = _read_json(FAVORITES_PATH, default=[])
@@ -806,7 +1285,15 @@ def remove_manual_coin(payload: dict = Body(...)):
     """Убрать из списка монету, которая попала туда ТОЛЬКО из-за ручных зон
     (source="MANUAL", см. add_custom_level) и у которой ручных зон больше
     нет. Обычные монеты (SWING_HUNTER) так убирать нельзя — их всё равно
-    вернёт следующий пересчёт уровней. Тело: {"coin": "RAYDIUM"}."""
+    вернёт следующий пересчёт уровней. Тело: {"coin": "RAYDIUM"}.
+
+    Заодно чистим whitelist.json, если монета там есть (см. add_to_whitelist
+    — "➕ Просто добавить монету" кладёт её и туда, и в watchlist.json с
+    source="MANUAL"). Раньше это было не нужно — MANUAL-монеты в
+    whitelist.json никогда не попадали, их держала в бою только ручная зона
+    через _add_manual_zone_coins. Теперь попадают, и без этой чистки монета
+    молча возвращалась бы обратно на ближайшем 🏗️/скан-цикле — "удаление"
+    было бы только на вид."""
     coin = str(payload.get("coin", "")).upper().strip()
     if not coin:
         raise HTTPException(status_code=400, detail="Не указана монета (coin)")
@@ -825,23 +1312,74 @@ def remove_manual_coin(payload: dict = Body(...)):
         _write_json_atomic(WATCHLIST_PATH, wl)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Не удалось сохранить watchlist.json: {e}")
+
+    whitelist = _read_json(WHITELIST_PATH, default=[])
+    if isinstance(whitelist, list) and coin in whitelist:
+        whitelist = [c for c in whitelist if str(c).upper().strip() != coin]
+        try:
+            _write_json_atomic(WHITELIST_PATH, whitelist)
+        except Exception as e:
+            return {"status": "partial", "coin": coin, "removed": True,
+                    "detail": f"Убрана с дашборда, но не удалось почистить whitelist.json: {e}"}
+
     return {"status": "ok", "coin": coin, "removed": True}
 
 
 @app.post("/api/levels/custom/update")
 def update_custom_level(payload: dict = Body(...)):
     """Редактирование ОДНОЙ ручной зоны (✏️ в окне ручных зон).
-    Тело: {"coin", "side": "support"|"resistance", "old_min", "old_max",
-    "min", "max"}. Зона ищется по точным старым min/max (своего id у ручных
-    зон нет — так же ищет и удаление). Меняются границы и дата (сегодня):
-    для бота это новая зона. Живой вотчер на старых границах, если есть,
-    доживает как был — так же, как при удалении зоны."""
+    Тело для support/resistance: {"coin", "side": "support"|"resistance",
+    "old_min", "old_max", "min", "max"}. Зона ищется по точным старым
+    min/max (своего id у ручных зон нет — так же ищет и удаление). Меняются
+    границы и дата (сегодня): для бота это новая зона. Живой вотчер на
+    старых границах, если есть, доживает как был — так же, как при
+    удалении зоны.
+
+    Тело для side="volume": {"coin", "side": "volume", "id", "target_volume"} —
+    матчится по id (см. add_custom_level), "old_target" вместо "id" остаётся
+    фолбэком для триггеров, добавленных до этой правки."""
     coin = str(payload.get("coin", "")).upper().strip()
     side = str(payload.get("side", "")).lower().strip()
     if not coin:
         raise HTTPException(status_code=400, detail="Не указана монета (coin)")
-    if side not in ("support", "resistance"):
-        raise HTTPException(status_code=400, detail="side должен быть 'support' или 'resistance'")
+    if side not in ("support", "resistance", "volume"):
+        raise HTTPException(status_code=400, detail="side должен быть 'support', 'resistance' или 'volume'")
+
+    if side == "volume":
+        trigger_id = payload.get("id")
+        try:
+            new_target = float(payload["target_volume"])
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="target_volume обязателен и должен быть числом")
+        if new_target <= 0:
+            raise HTTPException(status_code=400, detail="target_volume должен быть больше нуля")
+        old_target = payload.get("old_target")
+        try:
+            old_target = float(old_target) if old_target is not None else None
+        except (TypeError, ValueError):
+            old_target = None
+        if not trigger_id and old_target is None:
+            raise HTTPException(status_code=400, detail="Нужен 'id' (или, для старых записей, 'old_target')")
+
+        custom = _read_json(CUSTOM_LEVELS_PATH, default={})
+        triggers = (custom.get(coin) or {}).get("volume_triggers", [])
+        found = None
+        for t in triggers:
+            if trigger_id and t.get("id") == trigger_id:
+                found = t
+                break
+            if not trigger_id and old_target is not None and abs(float(t.get("target", 0)) - old_target) < 1e-9:
+                found = t
+                break
+        if found is None:
+            raise HTTPException(status_code=404, detail="Такой триггер не найден (возможно, уже удалён/сработал)")
+        found["target"] = new_target
+        try:
+            _write_json_atomic(CUSTOM_LEVELS_PATH, custom)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Не удалось сохранить custom_levels.json: {e}")
+        return {"status": "ok", "coin": coin, "side": side, "target_volume": new_target}
+
     try:
         old_min = float(payload["old_min"]); old_max = float(payload["old_max"])
         new_min = float(payload["min"]); new_max = float(payload["max"])
@@ -890,37 +1428,65 @@ def add_custom_level(payload: dict = Body(...)):
     side = str(payload.get("side", "")).lower().strip()
     if not coin:
         raise HTTPException(status_code=400, detail="Не указана монета (coin)")
-    if side not in ("support", "resistance"):
-        raise HTTPException(status_code=400, detail="side должен быть 'support' или 'resistance'")
-    try:
-        zone_min = float(payload["min"])
-        zone_max = float(payload["max"])
-    except (KeyError, TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="min/max обязательны и должны быть числами")
-    if zone_min >= zone_max:
-        raise HTTPException(status_code=400, detail="min должен быть меньше max")
-    score = payload.get("score", 10.0)
-    try:
-        score = float(score)
-    except (TypeError, ValueError):
-        score = 10.0
+    if side not in ("support", "resistance", "volume"):
+        raise HTTPException(status_code=400, detail="side должен быть 'support', 'resistance' или 'volume'")
 
-    zone = {
-        "min": zone_min,
-        "max": zone_max,
-        "score": score,
-        "type": "MANUAL",
-        "date": datetime.date.today().isoformat(),
-        "reaction_count": 0,
-    }
+    # ❄️ "Заморозка" — галочка в той же модалке добавления уровня/объёма:
+    # монета переходит на торговлю ТОЛЬКО по ручным зонам/объёму, авто-уровни
+    # (whitelist/macro_levels.json) для неё игнорируются полностью, даже если
+    # они посчитаны и лежат в macro_levels.json — см.
+    # watcher_plan.py::get_merged_levels_for_coin. Флаг ставится/снимается
+    # при КАЖДОМ добавлении уровня — отдельного переключателя нет специально,
+    # чтобы не плодить лишний UI (см. обсуждение с пользователем).
+    ignore_auto = bool(payload.get("ignore_auto", False))
 
     try:
         custom = _read_json(CUSTOM_LEVELS_PATH, default={})
         if coin not in custom:
-            custom[coin] = {"supports": [], "resistances": []}
-        key = "supports" if side == "support" else "resistances"
-        custom[coin].setdefault(key, []).append(zone)
-        _write_json_atomic(CUSTOM_LEVELS_PATH, custom)
+            custom[coin] = {"supports": [], "resistances": [], "volume_triggers": []}
+        custom[coin]["ignore_auto"] = ignore_auto
+
+        if side == "volume":
+            try:
+                target_vol = float(payload["target_volume"])
+            except (KeyError, TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="target_volume обязателен и должен быть числом")
+
+            custom[coin].setdefault("volume_triggers", []).append({
+                "id": uuid.uuid4().hex[:10],
+                "target": target_vol,
+                "added_at": datetime.datetime.now().isoformat(),
+                "timeframe": "15m"
+            })
+            _write_json_atomic(CUSTOM_LEVELS_PATH, custom)
+            zone = {"target_volume": target_vol}
+        else:
+            try:
+                zone_min = float(payload["min"])
+                zone_max = float(payload["max"])
+            except (KeyError, TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="min/max обязательны и должны быть числами")
+            if zone_min >= zone_max:
+                raise HTTPException(status_code=400, detail="min должен быть меньше max")
+            score = payload.get("score", 10.0)
+            try:
+                score = float(score)
+            except (TypeError, ValueError):
+                score = 10.0
+
+            zone = {
+                "min": zone_min,
+                "max": zone_max,
+                "score": score,
+                "type": "MANUAL",
+                "date": datetime.date.today().isoformat(),
+                "reaction_count": 0,
+            }
+            key = "supports" if side == "support" else "resistances"
+            custom[coin].setdefault(key, []).append(zone)
+            _write_json_atomic(CUSTOM_LEVELS_PATH, custom)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Не удалось сохранить custom_levels.json: {e}")
 
@@ -972,19 +1538,62 @@ def _remove_custom_level_entry(coin: str, side: str, zone_min: float, zone_max: 
     return True
 
 
+def _remove_custom_volume_trigger(coin: str, trigger_id: Optional[str] = None, target: Optional[float] = None) -> bool:
+    """Убирает ОДИН объёмный триггер из custom_levels.json[coin]["volume_triggers"].
+
+    Матчит по id, если он есть (все триггеры, добавленные ПОСЛЕ этой
+    правки, его имеют — см. add_custom_level). Если id не передан
+    (старые записи без id, добавленные до этой правки) — фолбэк на
+    точное совпадение target. Возвращает True, если что-то реально
+    удалено."""
+    custom = _read_json(CUSTOM_LEVELS_PATH, default={})
+    coin_data = custom.get(coin)
+    if not coin_data:
+        return False
+
+    triggers = coin_data.get("volume_triggers", [])
+
+    def _close(a, b):
+        return abs(a - b) < 1e-9
+
+    if trigger_id:
+        new_triggers = [t for t in triggers if t.get("id") != trigger_id]
+    elif target is not None:
+        new_triggers = [t for t in triggers if not _close(float(t.get("target", 0)), target)]
+    else:
+        return False
+
+    if len(new_triggers) == len(triggers):
+        return False
+
+    coin_data["volume_triggers"] = new_triggers
+    if not coin_data.get("supports") and not coin_data.get("resistances") and not new_triggers:
+        custom.pop(coin, None)
+    else:
+        custom[coin] = coin_data
+
+    _write_json_atomic(CUSTOM_LEVELS_PATH, custom)
+    return True
+
+
 @app.post("/api/levels/custom/delete")
 def delete_custom_level(payload: dict = Body(...)):
     """Удаление вручную добавленного уровня из custom_levels.json (кнопка
-    "✕" у зоны в модалке "Управление ручными зонами" на дашборде).
+    "✕"/🗑 у зоны в модалке "Управление ручными зонами" на дашборде).
 
-    Тело запроса: {"coin": "RAYDIUM", "side": "support"|"resistance",
-    "min": 1.05, "max": 1.10} — те же min/max, что были при добавлении
+    Тело запроса для support/resistance: {"coin", "side": "support"|
+    "resistance", "min", "max"} — те же min/max, что были при добавлении
     (их отдаёт GET /api/levels/{coin}, там ручные зоны помечены
     "type": "MANUAL"). У ручных зон нет своего id, поэтому ищем зону по
     точному совпадению min/max в указанных монете и стороне — этого
     достаточно, дублей с одинаковыми min/max для одной монеты в UI не
     заводится (кнопка "+" не запрещает завести две одинаковые зоны, но
     это уже осознанный выбор пользователя, а не баг этого эндпоинта).
+
+    Тело запроса для side="volume": {"coin", "side": "volume", "id"} —
+    объёмные триггеры, в отличие от зон, СВОЙ id имеют (см. add_custom_level),
+    поэтому матчатся по нему, а не по значению; "target_volume" вместо
+    "id" остаётся фолбэком для триггеров, добавленных до этой правки.
 
     НЕ трогает watchlist.json — монета остаётся в списке наблюдения (у
     неё вполне может быть ещё один ручной уровень или обычные уровни от
@@ -994,8 +1603,26 @@ def delete_custom_level(payload: dict = Body(...)):
     side = str(payload.get("side", "")).lower().strip()
     if not coin:
         raise HTTPException(status_code=400, detail="Не указана монета (coin)")
-    if side not in ("support", "resistance"):
-        raise HTTPException(status_code=400, detail="side должен быть 'support' или 'resistance'")
+    if side not in ("support", "resistance", "volume"):
+        raise HTTPException(status_code=400, detail="side должен быть 'support', 'resistance' или 'volume'")
+
+    if side == "volume":
+        trigger_id = payload.get("id")
+        target = payload.get("target_volume")
+        try:
+            target = float(target) if target is not None else None
+        except (TypeError, ValueError):
+            target = None
+        if not trigger_id and target is None:
+            raise HTTPException(status_code=400, detail="Нужен 'id' (или, для старых записей, 'target_volume')")
+        try:
+            removed = _remove_custom_volume_trigger(coin, trigger_id=trigger_id, target=target)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Не удалось сохранить custom_levels.json: {e}")
+        if not removed:
+            raise HTTPException(status_code=404, detail="Такой триггер не найден (возможно, уже удалён/сработал)")
+        return {"status": "ok", "coin": coin, "side": side, "deleted": True}
+
     try:
         zone_min = float(payload["min"])
         zone_max = float(payload["max"])
@@ -1187,14 +1814,19 @@ def simulate_bounce_bulk_last():
 
 
 @app.get("/api/signals")
-def get_signals(limit: int = Query(default=50, ge=1, le=500)):
-    """Последние сработавшие сигналы, свежие сверху."""
+def get_signals(limit: int = Query(default=50, ge=1, le=500), offset: int = Query(default=0, ge=0)):
+    """Сработавшие сигналы, свежие сверху, страницей limit/offset (таблица
+    "Последние сигналы" — страничная пагинация, см. app.js::loadSignals).
+
+    Раньше отдавала голый список (последние `limit`) — теперь объект
+    {"items": [...], "total": N}: total нужен фронту, чтобы посчитать
+    число страниц и знать, когда листать дальше некуда."""
     signals = _read_json(SIGNALS_PATH, default=[])
     if not isinstance(signals, list):
         signals = []
     # date хранится как "YYYY-MM-DD HH:MM" — сортируется лексикографически верно
     signals_sorted = sorted(signals, key=lambda s: s.get("date") or "", reverse=True)
-    return signals_sorted[:limit]
+    return {"items": signals_sorted[offset:offset + limit], "total": len(signals_sorted)}
 
 
 @app.get("/api/sports/football")
@@ -1505,6 +2137,19 @@ def delete_watchers(level_ids: list = Body(...)):
                 found = True
             if found:
                 deleted_count += 1
+
+        # 🎯 Ручные объёмные триггеры (manual_watchers.json) — не в
+        # bounce_mgr/v_bottom_mgr вообще, поэтому отдельная независимая
+        # чистка тем же списком level_ids — тот же "❌ Удалить" в панели
+        # "В работе" одинаково работает и для них.
+        manual_watchers = _read_json(MANUAL_WATCHERS_PATH, default=[])
+        if isinstance(manual_watchers, list) and manual_watchers:
+            level_ids_set = set(level_ids)
+            new_manual = [mw for mw in manual_watchers if mw.get("level_id") not in level_ids_set]
+            removed_manual = len(manual_watchers) - len(new_manual)
+            if removed_manual:
+                _write_json_atomic(MANUAL_WATCHERS_PATH, new_manual)
+                deleted_count += removed_manual
 
         if archived_bounce:
             try:

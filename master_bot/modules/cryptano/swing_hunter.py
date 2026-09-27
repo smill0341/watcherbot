@@ -37,6 +37,16 @@ from modules.cryptano.utils.paths import MACRO_LEVELS_FILE, CUSTOM_LEVELS_FILE
 from modules.cryptano.utils.levels_builder import MACRO_LAYER_STATS
 from modules.cryptano.levels_history import save_levels_snapshot
 
+# Списки Потока А (боевой)/Потока Б (радар) — whitelist/blacklist/greylist.
+# Путь строим от MACRO_LEVELS_FILE (тот же jsonbank), не трогая
+# utils/paths.py лишний раз ради четырёх констант (тот же приём, что уже
+# использован для MANUAL_WATCHERS_FILE в watcher_plan.py).
+_JSONBANK_DIR = os.path.dirname(MACRO_LEVELS_FILE)
+WHITELIST_FILE = os.path.join(_JSONBANK_DIR, "whitelist.json")
+BLACKLIST_FILE = os.path.join(_JSONBANK_DIR, "blacklist.json")
+GREYLIST_FILE = os.path.join(_JSONBANK_DIR, "greylist.json")
+GREYLIST_LEVELS_FILE = os.path.join(_JSONBANK_DIR, "greylist_levels.json")
+
 # candle_store.py (локальная SQLite-база свечей) лежит в web/backend/, а не
 # в modules/cryptano/ — раньше её использовал только дашборд (15m). Ничего
 # в самом candle_store.py не меняем, просто тоже её читаем — тем же
@@ -66,6 +76,14 @@ _CONFIG_FILE = os.path.normpath(os.path.join(BASE_DIR, "..", "..", "config.json"
 _config = load_json(_CONFIG_FILE, default={})
 MIN_VOLUME_USD = _config.get("crypto", {}).get("min_volume_usd", 10_000_000)
 MAX_COINS = _config.get("crypto", {}).get("max_coins", 80)
+
+# 🔭 Поток Б (радар) — свой потолок числа кандидатов (не путать с MAX_COINS,
+# который теперь ни на что не влияет в этом файле — см. get_battle_symbols)
+# и свой срок "протухания" (короче, чем MACRO_STALE_DAYS: кандидат, который
+# перестал проходить порог объёма, должен исчезнуть из греylist быстрее,
+# чем боевая монета из macro_levels.json — это просто витрина, не позиция).
+GREYLIST_MAX_COINS = _config.get("crypto", {}).get("greylist_max_coins", 50)
+GREYLIST_STALE_DAYS = _config.get("crypto", {}).get("greylist_stale_days", 4)
 
 # Порог "это тот же уровень или новый" для паспорта уровня (см. обсуждение
 # дрожания min/max и пропадания-появления зон из-за того, что ATR, от
@@ -441,6 +459,44 @@ def _safe_fetch_ohlcv(sym, tf, lim):
     raise Exception("Биржа заблокировала запросы после 5 попыток")
 
 
+def _fetch_and_build_levels(symbol, coin):
+    """Общий для боевого потока (build_macro_levels, build_levels_for_single_coin)
+    и радара (build_greylist_candidates) кусок: скачать 1M/1W/1d/4h свечи
+    (через _safe_fetch_ohlcv — сначала локальная БД, потом биржа) и
+    построить сырые зоны через build_levels(). Раньше был продублирован в
+    build_macro_levels() и build_levels_for_single_coin() по отдельности —
+    с появлением радара получился бы уже третий дубль (та же ловушка, о
+    которой уже предупреждают комментарии в этом файле — см.
+    _reconcile_coin_levels выше).
+
+    Возвращает (levels, df_1d), или None, если по монете меньше 50 дневных
+    свечей (недостаточно истории — та же проверка, что была в обоих местах
+    раньше). НЕ занимается ни паспортом/reconcile (см. _reconcile_coin_levels),
+    ни сохранением — куда положить результат, решает вызывающий код (у
+    боевого/одиночного/радара это РАЗНЫЕ файлы: macro_levels.json или
+    greylist_levels.json)."""
+    _t0 = time.time()
+    ohlcv_1M = _safe_fetch_ohlcv(symbol, "1M", 60)
+    ohlcv_1W = _safe_fetch_ohlcv(symbol, "1W", 150)
+    ohlcv_1d = _safe_fetch_ohlcv(symbol, "1d", 365)
+    ohlcv_4h = _safe_fetch_ohlcv(symbol, "4h", 200)
+    _FETCH_TIME["candles"] += time.time() - _t0
+
+    if len(ohlcv_1d) < 50:
+        return None
+
+    df_1M = pd.DataFrame(ohlcv_1M, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_1M) >= 5 else None
+    df_1W = pd.DataFrame(ohlcv_1W, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_1W) >= 5 else None
+    df_1d = pd.DataFrame(ohlcv_1d, columns=["timestamp", "open", "high", "low", "close", "volume"])
+    df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_4h) >= 50 else None
+
+    _t1 = time.time()
+    levels = build_levels(df_1M, df_1W, df_1d, df_4h, coin)
+    _FETCH_TIME["levels"] += time.time() - _t1
+
+    return levels, df_1d
+
+
 def get_top_symbols():
     """Единая точка правды для списка торговых символов, прошедших фильтр
     по объёму (:USDT свопы, объём >= MIN_VOLUME_USD, топ-MAX_COINS по
@@ -524,24 +580,217 @@ def _add_manual_zone_coins(valid_symbols: list) -> int:
     return added
 
 
+def get_battle_symbols():
+    """Поток А (боевой). ЗАМЕНЯЕТ прежний отбор "топ-N по объёму"
+    (get_top_symbols() выше остаётся БЕЗ ИЗМЕНЕНИЙ — её отдельно
+    использует precalc_for_bot.py/bulk-симулятор для СВОЕЙ, исторической
+    задачи, ломать её нельзя). Источник теперь только whitelist.json +
+    монеты с ручными зонами (custom_levels.json, через уже готовую
+    _add_manual_zone_coins) — объём здесь больше вообще не участвует в
+    отборе, дальше объём решает только Поток Б (радар, см.
+    build_greylist_candidates), какие кандидаты вообще ПОКАЗАТЬ.
+
+    Blacklist — абсолютный приоритет: даже если тикер оказался в
+    whitelist.json ПО ОШИБКЕ (руками), а сам при этом в blacklist.json,
+    блэклист побеждает — монета не попадёт в бой ни через whitelist, ни
+    через ручную зону."""
+    if not exchange.markets:
+        exchange.load_markets(reload=False)
+    markets = exchange.markets or {}
+
+    whitelist = load_json(WHITELIST_FILE, default=[])
+    if not isinstance(whitelist, list):
+        whitelist = []
+
+    valid_symbols = []
+    seen = set()
+    for coin in whitelist:
+        coin = str(coin).upper().strip()
+        if not coin:
+            continue
+        symbol = resolve_symbol(coin, markets) or resolve_symbol(KNOWN_TICKER_ALIASES.get(coin, ""), markets)
+        if not symbol or symbol in seen:
+            continue
+        valid_symbols.append(symbol)
+        seen.add(symbol)
+
+    print(f"⚪ [БОЙ] Whitelist: {len(valid_symbols)}/{len(whitelist)} монет(ы) резолвнулись в реальный символ на бирже.")
+
+    manual_added = _add_manual_zone_coins(valid_symbols)
+    if manual_added:
+        print(f"✋ [БОЙ] Монет с ручными зонами добавлено сверх whitelist: {manual_added}")
+
+    blacklist = load_json(BLACKLIST_FILE, default=[])
+    blacklist_set = {str(c).upper().strip() for c in blacklist} if isinstance(blacklist, list) else set()
+    if blacklist_set:
+        before = len(valid_symbols)
+        valid_symbols = [s for s in valid_symbols if s.split("/")[0].replace(":USDT", "") not in blacklist_set]
+        removed = before - len(valid_symbols)
+        if removed:
+            print(f"⛔ [БОЙ] Blacklist перекрыл {removed} монет(у) даже из whitelist/ручных зон.")
+
+    return valid_symbols
+
+
+def build_greylist_candidates(exclude_symbols):
+    """Поток Б (радар). exclude_symbols — то, что уже целиком обработал
+    Поток А (get_battle_symbols(), уже прогнан через blacklist) — эти
+    монеты радару смотреть незачем, они и так боевые.
+
+    Отбор кандидата такой же, как в get_top_symbols() (тикеры + объём >=
+    MIN_VOLUME_USD), но БЕЗ отсечки "топ-N по объёму, дальше не смотрим" —
+    вместо неё явный blacklist (которого в get_top_symbols() нет вообще —
+    там просто топ по объёму без разбора) и свой, отдельный потолок
+    GREYLIST_MAX_COINS.
+
+    Кандидаты, честно прошедшие фильтр, получают полный расчёт уровней —
+    ту же build_levels()+паспорт (_reconcile_coin_levels), что и боевые —
+    но результат уходит ТОЛЬКО в greylist_levels.json. macro_levels.json
+    этот проход не трогает вообще — watcher_plan.py физически не видит
+    ни один из этих уровней."""
+    if not exchange.markets:
+        exchange.load_markets(reload=False)
+    tickers = exchange.fetch_tickers()
+
+    blacklist = load_json(BLACKLIST_FILE, default=[])
+    blacklist_set = {str(c).upper().strip() for c in blacklist} if isinstance(blacklist, list) else set()
+    exclude_set = set(exclude_symbols)
+
+    candidates = []
+    for sym, tick in tickers.items():
+        if not sym.endswith(':USDT') or sym in exclude_set:
+            continue
+        coin = sym.split("/")[0].replace(":USDT", "")
+        if coin in blacklist_set:
+            continue
+        vol = float(tick.get('quoteVolume') or 0)
+        if vol >= MIN_VOLUME_USD:
+            candidates.append((sym, coin, vol))
+
+    candidates.sort(key=lambda x: x[2], reverse=True)
+    candidates = candidates[:GREYLIST_MAX_COINS]
+    print(f"🔭 [РАДАР] Кандидатов сверх боевого списка и blacklist: {len(candidates)} (потолок {GREYLIST_MAX_COINS}).")
+
+    greylist = load_json(GREYLIST_FILE, default={})
+    if not isinstance(greylist, dict):
+        greylist = {}
+    greylist_levels = load_json(GREYLIST_LEVELS_FILE, default={})
+    if not isinstance(greylist_levels, dict):
+        greylist_levels = {}
+
+    scan_time = datetime.datetime.now().isoformat()
+    seen_coins = set()
+
+    for sym, coin, vol in candidates:
+        seen_coins.add(coin)  # реально дошли до расчёта — точка отсчёта для "протухания"
+        net_before = _network_calls()
+        try:
+            result = _fetch_and_build_levels(sym, coin)
+            if result is None:
+                continue
+            levels, df_1d = result
+
+            has_any = (levels["supports"] or levels["resistances"])
+            if has_any:
+                reconciled = _reconcile_coin_levels(coin, levels, greylist_levels, df_1d, scan_time=scan_time)
+                greylist_levels[coin] = {
+                    "supports": reconciled["supports"],
+                    "resistances": reconciled["resistances"],
+                    "updated_at": scan_time,
+                }
+            else:
+                greylist_levels.pop(coin, None)
+
+            existing = greylist.get(coin) or {}
+            greylist[coin] = {
+                "symbol": sym,
+                "volume": vol,
+                "discovered_at": existing.get("discovered_at", scan_time),
+                "last_seen": scan_time,
+            }
+        except Exception as e:
+            print(f"[RADAR ERROR] ❌ {coin}: {e}")
+            continue
+        finally:
+            # Пауза ТОЛЬКО если реально ходили на биржу за этой монетой —
+            # тот же приём, что и в основном боевом цикле (build_macro_levels).
+            if _network_calls() > net_before:
+                time.sleep(0.3)
+
+    # Протухшие кандидаты — не встречены радаром GREYLIST_STALE_DAYS подряд
+    # (объём упал ниже порога, монета попала в exclude_symbols раз уже стала
+    # боевой/ручной, или вообще пропала с биржи). Порог короче, чем у
+    # macro_levels.json (MACRO_STALE_DAYS) — это витрина, не позиция.
+    cutoff = datetime.datetime.now() - datetime.timedelta(days=GREYLIST_STALE_DAYS)
+    stale = []
+    for coin, entry in list(greylist.items()):
+        if coin == "_meta" or coin in seen_coins:
+            continue
+        last_seen = entry.get("last_seen") if isinstance(entry, dict) else None
+        try:
+            if not last_seen or datetime.datetime.fromisoformat(last_seen) < cutoff:
+                stale.append(coin)
+        except Exception:
+            stale.append(coin)  # битая/непонятная дата — тоже протухшая
+    for coin in stale:
+        greylist.pop(coin, None)
+        greylist_levels.pop(coin, None)
+    if stale:
+        print(f"🧹 [РАДАР] Убраны протухшие кандидаты (>{GREYLIST_STALE_DAYS} дн. не видели): {stale}")
+
+    greylist_levels["_meta"] = {
+        "last_build": scan_time,
+        "coins_count": len([k for k in greylist_levels if k != "_meta"]),
+    }
+
+    save_json_atomic(GREYLIST_FILE, greylist)
+    save_json_atomic(GREYLIST_LEVELS_FILE, greylist_levels)
+    print(f"✅ [РАДАР] Готово. В сером списке: {len([k for k in greylist if k != '_meta'])} монет.")
+
+
 def build_macro_levels(bot=None, admin_chat_id=None):
     print(f"[SWING HUNTER] Запуск генерации зон интереса...")
     _fetch_stats_reset()
     scan_started_at = time.time()
     try:
-        valid_symbols = get_top_symbols()
+        valid_symbols = get_battle_symbols()
 
-        # МЕРДЖ вместо полной перезаписи: если монета в этот раз не попала
-        # в топ-70 (или биржа моргнула ошибкой на fetch_tickers) — её старая
-        # запись остаётся как есть, а не пропадает из файла. Иначе вотчер,
-        # который на неё завязан, замирает (check_v_* видит coin_macro=None
-        # и выходит рано) и на дашборде превращается в "?", хотя формально
-        # ещё жив в памяти — см. cleanup_ghost_watchers.py и обсуждение бага.
+        # МЕРДЖ вместо полной перезаписи: если по монете из whitelist в этот
+        # раз не удалось сходить на биржу (сбой fetch_tickers и т.п.) — её
+        # старая запись остаётся как есть, а не пропадает из файла. Иначе
+        # вотчер, который на неё завязан, замирает (check_v_* видит
+        # coin_macro=None и выходит рано) и на дашборде превращается в "?",
+        # хотя формально ещё жив в памяти — см. cleanup_ghost_watchers.py и
+        # обсуждение бага. Монеты, которых нет в whitelist ВООБЩЕ (явно
+        # убрали руками), мердж не защищает — см. чистку ниже.
         macro_base = load_json(MACRO_LEVELS_FILE, default={})
-        seen_coins = set()
+
+        # Монеты, которые попали в valid_symbols НЕ через whitelist.json, а
+        # только ручной зоной (custom_levels.json, см. _add_manual_zone_coins) —
+        # например, серая монета, которой явно нарисовали зону, но в
+        # whitelist так и не занесли. Для таких — никакого авто-анализа
+        # радара: вотчер должен заходить строго по ручной зоне, а не по
+        # тому, что тут насчитает технический анализ. Пустая заглушка
+        # {"supports": [], "resistances": []} — реальные уровни возьмутся
+        # из custom_levels.json через уже существующий мердж в
+        # watcher_plan.py::get_merged_levels_for_coin. Заглушка нужна как
+        # сам ключ в macro_levels.json — иначе монету не подхватит синк в
+        # watchlist.json (background_tasks.py) и её снесёт чистка "не в
+        # бою" ниже, как будто она вообще выпала из valid_symbols.
+        whitelist_raw = load_json(WHITELIST_FILE, default=[])
+        whitelist_coins = {str(c).upper().strip() for c in whitelist_raw} if isinstance(whitelist_raw, list) else set()
 
         for symbol in valid_symbols:
             coin = symbol.split("/")[0].replace(":USDT", "")
+
+            if coin not in whitelist_coins:
+                existing = macro_base.get(coin) or {}
+                macro_base[coin] = {
+                    "supports": [],
+                    "resistances": [],
+                    "updated_at": existing.get("updated_at") or datetime.datetime.now().isoformat(),
+                }
+                continue
 
             # Пауза 0.3 сек — защита от rate-limit биржи. Нужна ТОЛЬКО если
             # по этой монете реально ходили на биржу (докачка хвоста/полная
@@ -549,30 +798,15 @@ def build_macro_levels(bot=None, admin_chat_id=None):
             # нужна, она раньше просто добавляла ~30 сек на 100 монет.
             net_before = _network_calls()
             try:
-                _t0 = time.time()
                 # === АНАЛИЗ через новый levels_builder ===
-                # 1M/1W добавлены для нового макро-слоя (_extract_macro_swings)
-                # в levels_builder.py — build_levels() теперь их требует первыми
-                # двумя аргументами. limit=60/150 — тот же запас, что в тестовой
-                # версии (60 месяцев / 150 недель истории).
-                ohlcv_1M = _safe_fetch_ohlcv(symbol, "1M", 60)
-                ohlcv_1W = _safe_fetch_ohlcv(symbol, "1W", 150)
-                ohlcv_1d = _safe_fetch_ohlcv(symbol, "1d", 365)
-                ohlcv_4h = _safe_fetch_ohlcv(symbol, "4h", 200)
-                _FETCH_TIME["candles"] += time.time() - _t0
-
-                if len(ohlcv_1d) < 50:
+                # Скачивание свечей + build_levels() — общий кусок, вынесен
+                # в _fetch_and_build_levels (см. её докстринг) — тот же он
+                # переиспользуется build_levels_for_single_coin() и радаром
+                # (build_greylist_candidates).
+                result = _fetch_and_build_levels(symbol, coin)
+                if result is None:
                     continue
-
-                seen_coins.add(coin)  # реально дошли до расчёта — точка отсчёта для "протухания"
-
-                df_1M = pd.DataFrame(ohlcv_1M, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_1M) >= 5 else None
-                df_1W = pd.DataFrame(ohlcv_1W, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_1W) >= 5 else None
-                df_1d = pd.DataFrame(ohlcv_1d, columns=["timestamp", "open", "high", "low", "close", "volume"])
-                df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_4h) >= 50 else None
-
-                _t1 = time.time()
-                levels = build_levels(df_1M, df_1W, df_1d, df_4h, coin)
+                levels, df_1d = result
 
                 has_any = (levels["supports"] or levels["resistances"])
                 if has_any:
@@ -587,7 +821,6 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                     # Явно пересчитали и уровней не нашли — это не "выпал из
                     # топ-70", а честный пустой результат, тут можно смело убрать.
                     macro_base.pop(coin, None)
-                _FETCH_TIME["levels"] += time.time() - _t1
 
             except Exception as e:
                 print(f"[HUNTER ERROR] Ошибка для {coin}: {e}")
@@ -600,24 +833,30 @@ def build_macro_levels(bot=None, admin_chat_id=None):
                     time.sleep(0.3)
                     _FETCH_TIME["pauses"] += time.time() - _tp
 
-        # Чистим только по-настоящему протухшие записи — монеты, которые
-        # не сканировались (не в топ-70) уже дольше STALE_DAYS. Если монета
-        # просто на пару циклов выпала и вернулась — её данные спокойно ждут.
-        cutoff = datetime.datetime.now() - datetime.timedelta(days=MACRO_STALE_DAYS)
-        stale_coins = []
-        for coin, entry in macro_base.items():
-            if coin == "_meta" or coin in seen_coins:
-                continue
-            updated_at = entry.get("updated_at") if isinstance(entry, dict) else None
-            try:
-                if not updated_at or datetime.datetime.fromisoformat(updated_at) < cutoff:
-                    stale_coins.append(coin)
-            except Exception:
-                stale_coins.append(coin)  # битая/непонятная дата — тоже протухшая
+        # Чистим записи монет, которых больше нет в бою. Раньше (когда
+        # источником был "топ-70 по объёму", менявшийся день ото дня сам по
+        # себе) тут был отсчёт в днях (MACRO_STALE_DAYS) — монета не должна
+        # была пропадать из-за одного случайного выпадения из топа. Теперь
+        # источник — whitelist.json, который меняется только руками
+        # (whitelist/demote), поэтому "выпадение из боя" — это не шум,
+        # а явное решение, и ждать несколько дней, чтобы его отразить,
+        # незачем: монета, которой нет в valid_symbols (whitelist,
+        # прошедший resolve_symbol, + ручные зоны — см. get_battle_symbols/
+        # _add_manual_zone_coins), убирается из macro_levels.json сразу же.
+        #
+        # Монеты ИЗ valid_symbols, у которых fetch просто не удался в этом
+        # конкретном прогоне (сбой биржи и т.п.) — по-прежнему не трогаем,
+        # их старые уровни остаются (см. merge выше, macro_base[coin]
+        # перезаписывается только при успешном result).
+        battle_coins = {sym.split("/")[0].replace(":USDT", "") for sym in valid_symbols}
+        stale_coins = [
+            coin for coin in macro_base
+            if coin != "_meta" and coin not in battle_coins
+        ]
         for coin in stale_coins:
             del macro_base[coin]
         if stale_coins:
-            print(f"🧹 Убраны протухшие (>{MACRO_STALE_DAYS} дн. вне топ-70): {stale_coins}")
+            print(f"🧹 Убраны из боя (нет в whitelist/ручных зонах): {stale_coins}")
 
         # 🕒 Метаданные всего файла — чтобы одним взглядом видеть, когда последний раз обновлялось
         macro_base["_meta"] = {
@@ -637,6 +876,16 @@ def build_macro_levels(bot=None, admin_chat_id=None):
             save_levels_snapshot(macro_base)
         except Exception as e:
             print(f"⚠️ [SWING HUNTER] Не удалось сохранить снимок в историю уровней: {e}")
+
+        # 🔭 Поток Б (радар) — тем же прогоном, сразу после боевого потока
+        # (общий fetch_tickers дешевле, чем два отдельных прохода по
+        # расписанию). Отдельный try/except: сбой радара не должен стоить
+        # уже посчитанного и сохранённого боевого результата (macro_base
+        # уже сохранён и заснапшочен строками выше).
+        try:
+            build_greylist_candidates(valid_symbols)
+        except Exception as e:
+            print(f"❌ [РАДАР] КРИТИЧЕСКАЯ ОШИБКА: {e}")
 
         return macro_base
 
@@ -662,20 +911,10 @@ def build_levels_for_single_coin(coin):
             print(f"[HUNTER SKIP] {coin}: нет рынка ни SPOT, ни FUTURES на Bybit — пропускаю.")
             return None
 
-        ohlcv_1M = _safe_fetch_ohlcv(symbol, "1M", 60)
-        ohlcv_1W = _safe_fetch_ohlcv(symbol, "1W", 150)
-        ohlcv_1d = _safe_fetch_ohlcv(symbol, "1d", 365)
-        ohlcv_4h = _safe_fetch_ohlcv(symbol, "4h", 200)
-
-        if len(ohlcv_1d) < 50:
+        result = _fetch_and_build_levels(symbol, coin)
+        if result is None:
             return None
-
-        df_1M = pd.DataFrame(ohlcv_1M, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_1M) >= 5 else None
-        df_1W = pd.DataFrame(ohlcv_1W, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_1W) >= 5 else None
-        df_1d = pd.DataFrame(ohlcv_1d, columns=["timestamp", "open", "high", "low", "close", "volume"])
-        df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_4h) >= 50 else None
-
-        levels = build_levels(df_1M, df_1W, df_1d, df_4h, coin)
+        levels, df_1d = result
 
         macro_base = load_json(MACRO_LEVELS_FILE, default={})
         scan_time = datetime.datetime.now().isoformat()

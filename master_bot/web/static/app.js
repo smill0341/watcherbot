@@ -19,6 +19,16 @@ const activeSearchEl = document.getElementById("active-search");
 let watchlistCache = [];
 let activeWatchersCache = [];
 
+// Единая панель списков (Watchlist/Серый/Чёрный) — состояние объявлено
+// здесь, а не рядом с функциями рендера внизу файла, потому что
+// loadWatchlist() (вызывается уже в refreshAll() почти сразу при загрузке
+// страницы) читает currentListMode — будь оно объявлено через `let` ниже
+// по файлу, до того момента, как интерпретатор дойдёт до той строки,
+// обращение попало бы в temporal dead zone (ReferenceError).
+let currentListMode = "whitelist"; // "whitelist" | "greylist" | "blacklist"
+let greylistCache = [];
+let blacklistCache = [];
+
 // Чистый CSS для неоновой загрузки (блокирует клики и убивает конфликты транзишенов)
 const neonStyle = document.createElement('style');
 neonStyle.innerHTML = `
@@ -49,20 +59,25 @@ function toggleNeon(btn, isActive) {
 }
 
 // ===== Поиск в Watchlist =====
+// Поиск работает в любом из трёх режимов (Watchlist/Серый/Чёрный) — какой
+// сейчас выбран (currentListMode), тот массив и фильтруется, но только
+// СТРОКИ перерисовываются; счётчик в заголовке при этом не трогаем — он
+// всегда должен показывать размер полного списка, не отфильтрованного
+// (та же логика, что была для обычного Watchlist раньше).
 function filterWatchlist(query) {
   if (!watchlistListEl) return;
   const q = query.toLowerCase().trim();
-  
-  if (!q) {
-    renderWatchlistFiltered(watchlistCache);
-    return;
-  }
 
-  const filtered = watchlistCache.filter(item => 
-    item.coin.toLowerCase().includes(q)
-  );
-  
-  renderWatchlistFiltered(filtered);
+  if (currentListMode === "whitelist") {
+    const filtered = !q ? watchlistCache : watchlistCache.filter(item => item.coin.toLowerCase().includes(q));
+    renderWatchlistFiltered(filtered);
+  } else if (currentListMode === "greylist") {
+    const filtered = !q ? greylistCache : greylistCache.filter(c => (c.coin || "").toLowerCase().includes(q));
+    renderGreylistRows(filtered);
+  } else {
+    const filtered = !q ? blacklistCache : blacklistCache.filter(coin => (coin || "").toLowerCase().includes(q));
+    renderBlacklistRows(filtered);
+  }
 }
 
 // ===== Поиск в Active Watchers =====
@@ -96,16 +111,60 @@ function watchlistRowHtml(info) {
   const fav = !!info.favorite;
   const showHand = info.has_custom_levels || info.source === "MANUAL";
   const isManual = info.source === "MANUAL" ? "true" : "false";
+  const frozen = !!info.ignore_auto;
   return `
     <div class="list-item" data-coin="${info.coin}" style="display:flex;align-items:center;">
       <span class="fav-star" title="${fav ? "Убрать из избранного" : "В избранное"}"
             onclick="event.stopPropagation(); toggleFavorite('${info.coin}');"
             style="cursor:pointer;margin-right:6px;font-size:14px;line-height:1;color:${fav ? "#f2c14e" : "#9aa0a6"};">${fav ? "★" : "☆"}</span>
       <span style="flex-grow:1;">${info.coin}</span>
-      ${showHand ? `<span class="manual-hand" title="Ручные зоны — изменить / удалить"
+      ${showHand ? `<span class="manual-hand" title="${frozen ? "❄️ Заморожена — торгует только по ручному, авто-уровни игнорируются" : "Ручные зоны — изменить / удалить"}"
             onclick="event.stopPropagation(); openManageZonesModal('${info.coin}', ${isManual});"
-            style="cursor:pointer;font-size:13px;line-height:1;margin-left:6px;">✋</span>` : ""}
+            style="cursor:pointer;font-size:13px;line-height:1;margin-left:6px;${frozen ? "filter:grayscale(1) sepia(1) hue-rotate(175deg) saturate(4) brightness(1.35);" : ""}">✋</span>` : ""}
+      <span class="wl-menu-wrap" style="position:relative;margin-left:6px;">
+        <span class="wl-menu-btn" title="Действия"
+              onclick="event.stopPropagation(); toggleWlMenu(this);"
+              style="cursor:pointer;font-size:14px;line-height:1;color:#9aa0a6;padding:0 2px;">⋮</span>
+        <div class="wl-menu-dropdown" style="display:none;position:absolute;top:100%;right:0;z-index:60;background:#1e1e1e;border:1px solid #3f3f4e;border-radius:6px;margin-top:2px;min-width:170px;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
+          <div style="padding:7px 10px;cursor:pointer;font-size:12px;font-weight:normal;"
+               onclick="event.stopPropagation(); demoteWatchlistCoin('${info.coin}', 'greylist');">🔘 В серый список</div>
+          <div style="padding:7px 10px;cursor:pointer;font-size:12px;font-weight:normal;color:#e5654f;"
+               onclick="event.stopPropagation(); demoteWatchlistCoin('${info.coin}', 'blacklist');">⚫ В чёрный список</div>
+        </div>
+      </span>
     </div>`;
+}
+
+// Открыть/закрыть ⋮-меню строки Watchlist. Одновременно открыто не больше
+// одного меню — закрываем остальные, а также по клику вне меню.
+function toggleWlMenu(btn) {
+  const dropdown = btn.nextElementSibling;
+  const wasOpen = dropdown.style.display === "block";
+  document.querySelectorAll(".wl-menu-dropdown").forEach(d => { d.style.display = "none"; });
+  if (!wasOpen) {
+    dropdown.style.display = "block";
+    const closeOnOutsideClick = (e) => {
+      if (!dropdown.contains(e.target)) {
+        dropdown.style.display = "none";
+        document.removeEventListener("click", closeOnOutsideClick);
+      }
+    };
+    setTimeout(() => document.addEventListener("click", closeOnOutsideClick), 0);
+  }
+}
+
+// ⋮ → "В серый список" / "В чёрный список" на строке боевого Watchlist.
+// Монета уходит из whitelist.json, её уровни в macro_levels.json — либо
+// переносятся в greylist_levels.json (серый), либо отбрасываются (чёрный).
+// См. POST /api/watchlist/demote в app.py.
+async function demoteWatchlistCoin(coin, action) {
+  const label = action === "greylist" ? "серый список" : "чёрный список";
+  if (!confirm(`Убрать ${coin} из боевого Watchlist в ${label}?`)) return;
+  const ok = await _postJson("/api/watchlist/demote", { coin, action });
+  if (!ok) return;
+  await loadWatchlist();
+  if (action === "greylist") greylistCache = [];
+  else blacklistCache = [];
 }
 
 function renderWatchlistEntries(entries) {
@@ -147,7 +206,9 @@ window.toggleFavorite = async function(coin) {
     alert("Ошибка запроса: " + e.message);
     return;
   }
-  await Promise.all([loadWatchlist(), loadActiveWatchers()]);
+  // 🔥 loadGreylist() тоже — звёздочка есть и в сером списке, favorites.json
+  // общий для всех списков (см. /api/favorites/toggle).
+  await Promise.all([loadWatchlist(), loadActiveWatchers(), loadGreylist()]);
   const q = watchlistSearchEl ? watchlistSearchEl.value : "";
   if (q) filterWatchlist(q);
   const aq = activeSearchEl ? activeSearchEl.value : "";
@@ -176,6 +237,7 @@ function renderActiveWatchersFiltered(watchers) {
     const label = friendlyStrategyWithMode(w.strategy, w.mode);
     const dotColor = STRATEGY_COLORS[w.strategy] || "#8a8f98";
     const fav = !!w.favorite;
+    const isVolSpike = w.strategy === "VOL_SPIKE";
 
     const manualBadge = w.source === 'MANUAL' ? '<span class="manual-badge" title="Добавлена вручную">✋</span>' : '';
 
@@ -199,7 +261,7 @@ function renderActiveWatchersFiltered(watchers) {
         </div>
       </div>
       <button title="Открыть монету в симуляторе (история, прошлые сделки)" onclick="openInSimulator(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 13px; margin-left: 4px; align-self: center; flex-shrink:0;">📈</button>
-      <button title="Точечный рескан ТОЛЬКО этого уровня, от его activated_at — соседей не трогает" onclick="triggerSingleWatcherRescan(event, '${w.coin}', '${w.level_id}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 13px; margin-left: 2px; align-self: center; flex-shrink:0;">🎯</button>
+      ${isVolSpike ? '' : `<button title="Точечный рескан ТОЛЬКО этого уровня, от его activated_at — соседей не трогает" onclick="triggerSingleWatcherRescan(event, '${w.coin}', '${w.level_id}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 13px; margin-left: 2px; align-self: center; flex-shrink:0;">🎯</button>`}
     `;
     // Полная строка (монета/направление/режим/статус) в title — если текст
     // где-то обрежется многоточием, при наведении видно целиком; если есть
@@ -209,7 +271,14 @@ function renderActiveWatchersFiltered(watchers) {
     div.onclick = (e) => {
       // Не открывать график если кликнули на checkbox
       if (e.target.classList.contains("watcher-checkbox")) return;
-      
+
+      // 🎯 VOL_SPIKE — не зона, нечего фокусировать на графике, просто
+      // открываем монету как есть (без level_id/min/max — их и нет).
+      if (isVolSpike) {
+        loadChart(w.coin);
+        return;
+      }
+
             loadChart(w.coin, {
         level_id: w.level_id,
         min: w.level_min,
@@ -339,6 +408,7 @@ const STRATEGY_COLORS = {
   V_GREEN_BOTTOM: "#26a69a",
   V_RED_TOP: "#ff9800",
   BOUNCE: "#29b6f6",
+  VOL_SPIKE: "#f2c14e",
 };
 
 // Стиль маркеров событий вотчера на графике (loadEvents). Та же самая
@@ -715,7 +785,8 @@ const STRATEGY_LABELS = {
   V_BOTTOM: "V-Bottom",
   V_GREEN_BOTTOM: "V-Green",
   V_RED_TOP: "V-Red",
-  BOUNCE: "Bounce"
+  BOUNCE: "Bounce",
+  VOL_SPIKE: "Объём"
 };
 
 function friendlyStrategy(code) {
@@ -885,7 +956,7 @@ function levelTouchesLabel(z) {
   return (n === undefined || n === null) ? "" : ` · Касаний: ${n}`;
 }
 
-async function loadLevels(coin, token = chartLoadToken) {
+async function loadLevels(coin, token = chartLoadToken, source = null) {
   // Эта функция была ПОЛНОСТЬЮ утеряна при более раннем изменении файла —
   // вызов остался (loadChart/submitAddLevel), само тело исчезло, отсюда
   // "loadLevels is not defined". addZoneBand/addSplitLevel (см. верх
@@ -894,8 +965,16 @@ async function loadLevels(coin, token = chartLoadToken) {
   // принципом, что уже проверен в симуляторе (sim.js::drawSnapshotLevels):
   // support — зелёным, resistance — красным, полоса от даты уровня, не
   // от начала графика.
+  //
+  // 🔭 source === "greylist" — клик по кандидату в сворачиваемой секции
+  // "Серый список" (см. loadGreylist): уровни для него лежат ОТДЕЛЬНО, в
+  // greylist_levels.json, а не в обычном macro_levels.json/custom_levels.json —
+  // поэтому и эндпоинт другой (см. app.py::get_greylist_levels).
   try {
-    const res = await fetch(`/api/levels/${encodeURIComponent(coin)}`);
+    const url = source === "greylist"
+      ? `/api/levels/greylist/${encodeURIComponent(coin)}`
+      : `/api/levels/${encodeURIComponent(coin)}`;
+    const res = await fetch(url);
     if (token !== chartLoadToken) return;
     clearLevelLines();
     if (!res.ok) return; // 404 — у монеты просто нет уровней, это не ошибка
@@ -1078,7 +1157,7 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
     }
     candleSeries.priceScale().applyOptions({ autoScale: true });
     if (!skipLiveOverlay) {
-      if (!signal && !focusedLevel) loadLevels(coin, myToken);
+      if (!signal && !focusedLevel) loadLevels(coin, myToken, opts.source);
       loadEvents(coin, myToken);
       loadMacroEma200(coin);
       // Если кликнули на вотчера - рисуем только его уровень
@@ -1124,17 +1203,14 @@ async function loadWatchlist() {
   // дашборд их больше не показывает.
   const withLevels = data.with_levels || [];
 
-  watchlistCountEl.textContent = withLevels.length;
-
-  if (withLevels.length === 0) {
-    watchlistListEl.innerHTML = "<div class='muted'>список пуст</div>";
-    watchlistCache = [];
-    return;
-  }
-
-  // Порядок уже решён на бэкенде (sort_by_priority в app.py) — не сортируем.
+  // Кэш обновляем всегда, а перерисовываем список/счётчик только если
+  // сейчас реально выбран режим "Watchlist" — иначе фоновое обновление
+  // (см. refreshAll, раз в минуту) перетирало бы серый/чёрный список,
+  // который пользователь смотрит в данный момент, данными белого.
   watchlistCache = withLevels;
-  renderWatchlistEntries(watchlistCache);
+  if (currentListMode === "whitelist") {
+    renderCurrentList();
+  }
 }
 
 let rescanStatusCache = {};
@@ -1225,13 +1301,27 @@ function formatPrice(v) {
   return str;
 }
 
-async function loadSignals() {
+// Пагинация таблицы "Последние сигналы" — страницами по SIGNALS_PAGE_SIZE,
+// а не всё сразу (сигналов может быть сотни). signalsPage — 0-based.
+const SIGNALS_PAGE_SIZE = 50;
+let signalsPage = 0;
+let signalsTotal = 0;
+
+async function loadSignals(page = signalsPage) {
   if (!signalsBody) return;
-  const res = await fetch("/api/signals?limit=50");
-  const data = await res.json();
+  signalsPage = Math.max(0, page);
+  const offset = signalsPage * SIGNALS_PAGE_SIZE;
+  const res = await fetch(`/api/signals?limit=${SIGNALS_PAGE_SIZE}&offset=${offset}`);
+  const resp = await res.json();
+  const data = resp.items || [];
+  signalsTotal = resp.total || 0;
+
+  const selectAllEl = document.getElementById("signals-select-all");
+  if (selectAllEl) selectAllEl.checked = false;
+  renderSignalsPagination();
 
   if (data.length === 0) {
-    signalsBody.innerHTML = "<tr><td colspan='12'>нет сигналов</td></tr>";
+    signalsBody.innerHTML = "<tr><td colspan='13'>нет сигналов</td></tr>";
     return;
   }
 
@@ -1294,6 +1384,26 @@ async function loadSignals() {
     signalsBody.appendChild(tr);
   });
 }
+
+function renderSignalsPagination() {
+  const label = document.getElementById("signals-page-label");
+  const prevBtn = document.getElementById("signals-prev-btn");
+  const nextBtn = document.getElementById("signals-next-btn");
+  const totalPages = Math.max(1, Math.ceil(signalsTotal / SIGNALS_PAGE_SIZE));
+  const currentPage = signalsPage + 1;
+  if (label) label.textContent = `${currentPage}/${totalPages} (${signalsTotal})`;
+  if (prevBtn) prevBtn.disabled = signalsPage <= 0;
+  if (nextBtn) nextBtn.disabled = currentPage >= totalPages;
+}
+
+document.getElementById("signals-prev-btn")?.addEventListener("click", () => loadSignals(signalsPage - 1));
+document.getElementById("signals-next-btn")?.addEventListener("click", () => loadSignals(signalsPage + 1));
+
+// "Выбрать все" — только среди строк ТЕКУЩЕЙ страницы (условные 50), не
+// вообще всех сигналов — удалять тоже можно только то, что видно на экране.
+document.getElementById("signals-select-all")?.addEventListener("change", (e) => {
+  document.querySelectorAll(".signal-checkbox").forEach((cb) => { cb.checked = e.target.checked; });
+});
 
 // 🔥 НОВОЕ: Удаление выбранных вотчеров
 async function deleteSelectedWatchers() {
@@ -1365,7 +1475,11 @@ async function deleteSelectedSignals() {
     
     const result = await res.json();
     alert(`Удалено ${result.deleted} сигнал(ов)`);
-    loadSignals();
+    // Если удалили всё, что было на последней странице — шагаем на
+    // страницу назад, а не показываем пустую таблицу с рабочей кнопкой
+    // "Пред".
+    const remainingPages = Math.max(1, Math.ceil((signalsTotal - result.deleted) / SIGNALS_PAGE_SIZE));
+    await loadSignals(Math.min(signalsPage, remainingPages - 1));
   } catch (e) {
     console.error("Ошибка удаления сигналов", e);
     alert("Ошибка при удалении");
@@ -1387,7 +1501,7 @@ async function loadGlobalHistory() {
 }
 
 async function refreshAll() {
-  await Promise.all([loadWatchlist(), loadActiveWatchers(), loadSignals(), loadGlobalHistory()]);
+  await Promise.all([loadWatchlist(), loadActiveWatchers(), loadSignals(), loadGlobalHistory(), loadGreylist(), loadBlacklist()]);
 }
 
 initChart();
@@ -1764,16 +1878,56 @@ function openAddLevelModal() {
   const errEl = document.getElementById("add-level-error");
   if (!overlay) return;
   if (errEl) { errEl.style.display = "none"; errEl.textContent = ""; }
-  // Если сейчас выбрана монета на графике — подставляем её сразу, чтобы
-  // не перепечатывать вручную самый частый случай "добавить уровень ТУТ".
   const coinInput = document.getElementById("add-level-coin");
-  if (coinInput && selectedCoin) coinInput.value = selectedCoin;
+  // В Blacklist поле "Монета" не подставляем из selectedCoin — обычно
+  // блэклистят монету ИЗ другого списка (грей/белый), а не открытую сейчас.
+  if (coinInput) coinInput.value = (currentListMode !== "blacklist" && selectedCoin) ? selectedCoin : "";
+
+  const ignoreAutoCb = document.getElementById("add-level-ignore-auto");
+  if (ignoreAutoCb) ignoreAutoCb.checked = false;
+
+  const sideSelect = document.getElementById("add-level-side");
+  const sideField = document.getElementById("add-level-side-field");
+  if (sideSelect) {
+    if (currentListMode === "blacklist") {
+      // В чёрном списке уровням/объёму взяться неоткуда — только тикер.
+      sideSelect.value = "add_only";
+      toggleAddLevelFields("add_only");
+      if (sideField) sideField.style.display = "none";
+    } else {
+      if (sideField) sideField.style.display = "";
+      sideSelect.value = "support";
+      toggleAddLevelFields("support");
+    }
+  }
   overlay.style.display = "flex";
 }
 
 function closeAddLevelModal() {
   const overlay = document.getElementById("add-level-overlay");
   if (overlay) overlay.style.display = "none";
+}
+
+function toggleAddLevelFields(side) {
+  const priceGroup = document.getElementById("price-fields-group");
+  const volGroup = document.getElementById("volume-fields-group");
+  const ignoreAutoField = document.getElementById("add-level-ignore-auto-field");
+  if (!priceGroup || !volGroup) return;
+  if (side === "volume") {
+    priceGroup.style.display = "none";
+    volGroup.style.display = "block";
+  } else if (side === "add_only") {
+    // "Просто добавить монету" — ни зона, ни объёмный триггер не нужны, и
+    // нечего игнорировать — галочка заморозки тут смысла не имеет.
+    priceGroup.style.display = "none";
+    volGroup.style.display = "none";
+  } else {
+    priceGroup.style.display = "block";
+    volGroup.style.display = "none";
+  }
+  // ❄️ Галочка "игнорировать авто" — только там, где реально добавляется
+  // ручной уровень/объём (support/resistance/volume), не для add_only.
+  if (ignoreAutoField) ignoreAutoField.style.display = side === "add_only" ? "none" : "";
 }
 
 async function submitAddLevel() {
@@ -1784,20 +1938,62 @@ async function submitAddLevel() {
 
   const coin = (document.getElementById("add-level-coin").value || "").trim().toUpperCase();
   const side = document.getElementById("add-level-side").value;
-  const minVal = parseFloat(document.getElementById("add-level-min").value);
-  const maxVal = parseFloat(document.getElementById("add-level-max").value);
-  const scoreRaw = document.getElementById("add-level-score").value;
-  const score = scoreRaw ? parseFloat(scoreRaw) : undefined;
 
   if (!coin) return showError("Укажи монету");
-  if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) return showError("min/max должны быть числами");
-  if (minVal >= maxVal) return showError("min должен быть меньше max");
 
   const submitBtn = document.getElementById("add-level-submit-btn");
+
+  // "Просто добавить монету" — ни зона, ни триггер, просто тикер в текущий
+  // список (Watchlist/Greylist/Blacklist). Свой, отдельный от /api/levels/
+  // custom эндпоинт на каждый список (см. app.py: add_to_whitelist/
+  // add_to_greylist/add_to_blacklist).
+  if (side === "add_only") {
+    const url = currentListMode === "blacklist" ? "/api/blacklist/add"
+      : currentListMode === "greylist" ? "/api/greylist/add"
+      : "/api/whitelist/add";
+    submitBtn.disabled = true;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ coin }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showError(data.detail || "Не удалось сохранить"); return; }
+      closeAddLevelModal();
+      if (currentListMode === "blacklist") await loadBlacklist();
+      else if (currentListMode === "greylist") await loadGreylist();
+      else await loadWatchlist();
+    } catch (e) {
+      showError("Ошибка запроса: " + e.message);
+    } finally {
+      submitBtn.disabled = false;
+    }
+    return;
+  }
+
+  const ignoreAutoCb = document.getElementById("add-level-ignore-auto");
+  let body = { coin, side, ignore_auto: !!(ignoreAutoCb && ignoreAutoCb.checked) };
+
+  if (side === "volume") {
+    const targetVol = parseFloat(document.getElementById("add-level-vol-target").value);
+    if (!Number.isFinite(targetVol) || targetVol <= 0) return showError("Укажи корректный целевой объем (> 0)");
+    body.target_volume = targetVol;
+  } else {
+    const minVal = parseFloat(document.getElementById("add-level-min").value);
+    const maxVal = parseFloat(document.getElementById("add-level-max").value);
+    const scoreRaw = document.getElementById("add-level-score").value;
+    const score = scoreRaw ? parseFloat(scoreRaw) : undefined;
+
+    if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) return showError("min/max должны быть числами");
+    if (minVal >= maxVal) return showError("min должен быть меньше max");
+    body.min = minVal;
+    body.max = maxVal;
+    if (score !== undefined) body.score = score;
+  }
+
   submitBtn.disabled = true;
   try {
-    const body = { coin, side, min: minVal, max: maxVal };
-    if (score !== undefined) body.score = score;
     const res = await fetch("/api/levels/custom", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1805,14 +2001,16 @@ async function submitAddLevel() {
     });
     const data = await res.json();
     if (!res.ok) {
-      showError(data.detail || "Не удалось добавить уровень");
+      showError(data.detail || "Не удалось сохранить");
       return;
     }
     closeAddLevelModal();
-    // Обновляем список слева (новая монета появится сама, если её там не
-    // было) и перерисовываем график, если сейчас смотрим именно эту монету.
     await loadWatchlist();
-    if (selectedCoin === coin) {
+    // Ручная зона могла быть добавлена и монете из серого списка (см.
+    // build_macro_levels — переводит её на боевой рельс) — обновляем и
+    // грей-кэш, иначе ✋ на строке не появится без полной перезагрузки.
+    if (currentListMode === "greylist") await loadGreylist();
+    if (selectedCoin === coin && side !== "volume") {
       await loadLevels(coin);
     }
   } catch (e) {
@@ -1827,11 +2025,19 @@ function wireAddLevelModal() {
   const overlay = document.getElementById("add-level-overlay");
   const cancelBtn = document.getElementById("add-level-cancel-btn");
   const submitBtn = document.getElementById("add-level-submit-btn");
+  const sideSelect = document.getElementById("add-level-side");
   if (!btn || !overlay || !cancelBtn || !submitBtn) return;
 
   btn.onclick = openAddLevelModal;
   cancelBtn.onclick = closeAddLevelModal;
   submitBtn.onclick = submitAddLevel;
+  // БАГ (был и до правок с объёмными триггерами): toggleAddLevelFields()
+  // вызывалась только один раз при ОТКРЫТИИ модалки (openAddLevelModal,
+  // всегда со значением "support") — переключение селекта на "Объем"
+  // никак не слушалось, поля min/max так и оставались показанными.
+  if (sideSelect) {
+    sideSelect.onchange = () => toggleAddLevelFields(sideSelect.value);
+  }
   // Клик по затемнённому фону (не по самой плашке) — тоже закрывает.
   overlay.onclick = (e) => {
     if (e.target === overlay) closeAddLevelModal();
@@ -1938,39 +2144,79 @@ async function renderManageZonesList(coin, bodyEl, isManualSource = false) {
   let data;
   try {
     const res = await fetch(`/api/levels/${encodeURIComponent(coin)}`);
-    data = res.ok ? await res.json() : { supports: [], resistances: [] };
+    data = res.ok ? await res.json() : { supports: [], resistances: [], volume_triggers: [] };
   } catch (e) {
     bodyEl.textContent = "Ошибка запроса: " + e.message;
     return;
   }
   // Ручные зоны помечены сервером как type: "MANUAL" (см. add_custom_level).
   const zones = [
-    ...(data.supports || []).filter(z => z.type === "MANUAL").map(z => ({ ...z, side: "support" })),
-    ...(data.resistances || []).filter(z => z.type === "MANUAL").map(z => ({ ...z, side: "resistance" })),
+    ...(data.supports || []).filter(z => z.type === "MANUAL").map(z => ({ ...z, side: "support", kind: "zone" })),
+    ...(data.resistances || []).filter(z => z.type === "MANUAL").map(z => ({ ...z, side: "resistance", kind: "zone" })),
   ];
+  // 🎯 Объёмные триггеры — своя, отдельная от зон сущность (нет min/max,
+  // зато есть id и target), но в этом же окне должны точно так же
+  // редактироваться/удаляться, а не только "добавляться и всё".
+  const volTriggers = (data.volume_triggers || []).map(v => ({ ...v, kind: "volume" }));
+  const items = [...zones, ...volTriggers];
 
   const btnStyle = "cursor:pointer;background:none;border:1px solid #444;color:#ddd;border-radius:4px;padding:2px 8px;margin-left:6px;font-size:12px;";
   let html = "";
-  if (zones.length === 0) {
+  if (items.length === 0) {
     html += `<div style="opacity:0.8;margin:6px 0;">Ручных зон нет.</div>`;
   } else {
-    html += zones.map((z, i) => `
+    html += items.map((z, i) => `
       <div class="mz-row" data-i="${i}" style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #333;">
-        <span class="mz-text">${z.side === "support" ? "🟢 Поддержка" : "🔴 Сопротивление"}: ${formatPrice(z.min)} — ${formatPrice(z.max)}</span>
+        <span class="mz-text">${z.kind === "volume"
+          ? `🔊 Объём ≥ ${formatVolume(z.target)}`
+          : `${z.side === "support" ? "🟢 Поддержка" : "🔴 Сопротивление"}: ${formatPrice(z.min)} — ${formatPrice(z.max)}`}</span>
         <span style="white-space:nowrap;">
-          <button class="mz-edit" style="${btnStyle}" title="Изменить границы">✏️</button>
+          <button class="mz-edit" style="${btnStyle}" title="Изменить">✏️</button>
           <button class="mz-del" style="${btnStyle}color:#e55;" title="Удалить">🗑</button>
         </span>
       </div>`).join("");
   }
   html += `<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
       <button id="mz-add" style="${btnStyle}margin-left:0;">+ добавить зону</button>
-      ${zones.length === 0 && isManualSource ? `<button id="mz-remove-coin" style="${btnStyle}margin-left:0;color:#e55;">убрать монету из списка</button>` : ""}
+      ${items.length === 0 && isManualSource ? `<button id="mz-remove-coin" style="${btnStyle}margin-left:0;color:#e55;">убрать монету из списка</button>` : ""}
     </div>`;
   bodyEl.innerHTML = html;
 
   bodyEl.querySelectorAll(".mz-row").forEach((row) => {
-    const z = zones[Number(row.dataset.i)];
+    const z = items[Number(row.dataset.i)];
+
+    // 🎯 Объёмный триггер — свои тело запроса и рендер редактирования
+    // (одно поле target, а не пара min/max).
+    if (z.kind === "volume") {
+      _armedClick(row.querySelector(".mz-del"), "🗑", "точно?", async () => {
+        const body = z.id ? { coin, side: "volume", id: z.id } : { coin, side: "volume", target_volume: z.target };
+        const ok = await _postJson("/api/levels/custom/delete", body);
+        if (ok) await _afterManualZonesChanged(coin, isManualSource);
+        return ok;
+      });
+
+      row.querySelector(".mz-edit").onclick = () => {
+        row.innerHTML = `
+          <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            🔊 <input class="mz-target" type="number" step="any" value="${z.target}" style="width:140px;">
+          </span>
+          <span style="white-space:nowrap;">
+            <button class="mz-save" style="${btnStyle}" title="Сохранить">✔</button>
+            <button class="mz-cancel" style="${btnStyle}" title="Отмена">✕</button>
+          </span>`;
+        row.querySelector(".mz-cancel").onclick = () => renderManageZonesList(coin, bodyEl, isManualSource);
+        row.querySelector(".mz-save").onclick = async () => {
+          const newTarget = parseFloat(row.querySelector(".mz-target").value);
+          if (!Number.isFinite(newTarget) || newTarget <= 0) { alert("Целевой объём должен быть числом больше нуля"); return; }
+          const body = z.id
+            ? { coin, side: "volume", id: z.id, target_volume: newTarget }
+            : { coin, side: "volume", old_target: z.target, target_volume: newTarget };
+          const ok = await _postJson("/api/levels/custom/update", body);
+          if (ok) await _afterManualZonesChanged(coin, isManualSource);
+        };
+      };
+      return;
+    }
 
     _armedClick(row.querySelector(".mz-del"), "🗑", "точно?", async () => {
       const ok = await _postJson("/api/levels/custom/delete", { coin, side: z.side, min: z.min, max: z.max });
@@ -2018,6 +2264,203 @@ async function renderManageZonesList(coin, bodyEl, isManualSource = false) {
     return ok;
   });
 }
+
+// === Единая панель списков (одна строка "Watchlist" вместо трёх кривых
+// панелей разом). Клик по слову открывает выпадающее меню (⚪ Watchlist /
+// 🔘 Серый список / ⚫ Чёрный список), выбор переключает содержимое ТОГО
+// ЖЕ #watchlist-list на выбранный список — один список монет на экране,
+// та же вёрстка (h2+input+list как прямые дети .panel), что и была
+// изначально, поэтому скролл/отступы снова работают как у остальных
+// панелей ("В работе" и т.д.), а не через отдельную обёртку, которая их
+// ломала. currentListMode/greylistCache/blacklistCache объявлены наверху
+// файла — см. комментарий там.
+
+const LIST_MODE_LABELS = {
+  whitelist: "Watchlist",
+  greylist: "Greylist",
+  blacklist: "Blacklist",
+};
+
+function applyListModeUI() {
+  const textEl = document.getElementById("list-mode-text");
+  if (textEl) textEl.textContent = LIST_MODE_LABELS[currentListMode];
+
+  const addLevelBtn = document.getElementById("add-level-btn");
+  const rebuildBtn = document.getElementById("rebuild-levels-btn");
+  // ➕ теперь одна на все три режима — модалка сама подстраивается
+  // (см. openAddLevelModal/submitAddLevel): в Watchlist/Greylist доступен
+  // весь выбор (support/resistance/volume/просто тикер), в Blacklist —
+  // только "просто добавить тикер" (уровням там взяться неоткуда).
+  if (addLevelBtn) {
+    addLevelBtn.style.display = "";
+    addLevelBtn.title = currentListMode === "blacklist"
+      ? "Добавить монету в чёрный список"
+      : "Добавить уровень вручную / добавить монету";
+  }
+  if (rebuildBtn) rebuildBtn.style.display = currentListMode === "whitelist" ? "" : "none";
+
+  if (watchlistSearchEl) watchlistSearchEl.value = "";
+}
+
+// 🔘 Серый список — кандидаты Потока Б (радар, см. swing_hunter.py::
+// build_greylist_candidates). Чистый рендер строк в переданный контейнер —
+// без установки счётчика (счётчик всегда = размер ПОЛНОГО кэша, см.
+// renderCurrentList, а не отфильтрованного при поиске подсписка).
+function renderGreylistRows(data) {
+  if (!watchlistListEl) return;
+  if (data.length === 0) {
+    watchlistListEl.innerHTML = `<div class="muted">Кандидатов пока нет — радар ещё не нашёл ничего сверх боевого списка.</div>`;
+    return;
+  }
+  watchlistListEl.innerHTML = data.map((c, i) => `
+    <div class="list-item gl-row" data-i="${i}" style="display:flex;align-items:center;justify-content:space-between;">
+      <span class="fav-star" title="${c.favorite ? "Убрать из избранного" : "В избранное"}"
+            onclick="event.stopPropagation(); toggleFavorite('${c.coin}');"
+            style="cursor:pointer;margin-right:6px;font-size:14px;line-height:1;color:${c.favorite ? "#f2c14e" : "#9aa0a6"};">${c.favorite ? "★" : "☆"}</span>
+      <span style="flex-grow:1;min-width:0;">
+        <span>${c.coin}</span>
+        <span style="opacity:0.7;font-size:11px;display:block;">
+          ${formatVolume(c.volume)}
+        </span>
+      </span>
+      ${c.has_custom_levels ? `<span class="manual-hand" title="${c.ignore_auto ? "❄️ Заморожена — торгует только по ручному, авто-уровни игнорируются" : "Ручные зоны — изменить / удалить"}"
+            onclick="event.stopPropagation(); openManageZonesModal('${c.coin}', false);"
+            style="cursor:pointer;font-size:13px;line-height:1;margin-left:6px;${c.ignore_auto ? "filter:grayscale(1) sepia(1) hue-rotate(175deg) saturate(4) brightness(1.35);" : ""}">✋</span>` : ""}
+      <span class="wl-menu-wrap" style="position:relative;margin-left:6px;">
+        <span class="wl-menu-btn" title="Действия"
+              onclick="event.stopPropagation(); toggleWlMenu(this);"
+              style="cursor:pointer;font-size:14px;line-height:1;color:#9aa0a6;padding:0 2px;">⋮</span>
+        <div class="wl-menu-dropdown" style="display:none;position:absolute;top:100%;right:0;z-index:60;background:#1e1e1e;border:1px solid #3f3f4e;border-radius:6px;margin-top:2px;min-width:170px;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
+          <div style="padding:7px 10px;cursor:pointer;font-size:12px;font-weight:normal;"
+               onclick="event.stopPropagation(); promoteGreylistCoin('${c.coin}', 'whitelist');">✅ В белый список</div>
+          <div style="padding:7px 10px;cursor:pointer;font-size:12px;font-weight:normal;color:#e5654f;"
+               onclick="event.stopPropagation(); promoteGreylistCoin('${c.coin}', 'blacklist');">🗑 Убрать из списка</div>
+        </div>
+      </span>
+    </div>`).join("");
+
+  watchlistListEl.querySelectorAll(".gl-row").forEach((row) => {
+    const c = data[Number(row.dataset.i)];
+
+    // Клик по строке (не по ⋮/меню) — график кандидата, уровни из
+    // greylist_levels.json (см. loadLevels: source="greylist").
+    row.onclick = (e) => {
+      if (e.target.closest(".wl-menu-wrap")) return;
+      loadChart(c.coin, null, null, { source: "greylist" });
+    };
+  });
+}
+
+// ⋮ на строке серого списка — "В белый список" / "Убрать из списка"
+// (снимает с радара насовсем, через blacklist — см. /api/greylist/promote).
+async function promoteGreylistCoin(coin, action) {
+  const ok = await _postJson("/api/greylist/promote", { coin, action });
+  if (ok) { await loadGreylist(); await loadBlacklist(); }
+}
+
+// ⚫ Чёрный список — плоский список тикеров (blacklist.json), которые
+// сканер игнорирует на всех этапах (Поток А и Поток Б оба его читают,
+// см. swing_hunter.py::get_battle_symbols/build_greylist_candidates).
+// Монета попадает сюда либо кнопкой 🚫 из серого списка, либо вручную
+// (➕ в заголовке при выборе этого режима) — снять её отсюда тоже можно
+// вручную (🗑).
+function renderBlacklistRows(data) {
+  if (!watchlistListEl) return;
+  if (data.length === 0) {
+    watchlistListEl.innerHTML = `<div class="muted">Чёрный список пуст.</div>`;
+    return;
+  }
+  const btnStyle = "cursor:pointer;background:none;border:1px solid #444;color:#ddd;border-radius:4px;padding:2px 8px;margin-left:6px;font-size:12px;";
+  watchlistListEl.innerHTML = data.map((coin, i) => `
+    <div class="list-item bl-row" data-i="${i}" style="display:flex;align-items:center;justify-content:space-between;">
+      <span>${coin}</span>
+      <button class="bl-remove" style="${btnStyle}" title="Убрать из чёрного списка">🗑</button>
+    </div>`).join("");
+
+  watchlistListEl.querySelectorAll(".bl-row").forEach((row) => {
+    const coin = data[Number(row.dataset.i)];
+    row.querySelector(".bl-remove").onclick = async () => {
+      const ok = await _postJson("/api/blacklist/remove", { coin });
+      if (ok) await loadBlacklist();
+    };
+  });
+}
+
+// Полная (неотфильтрованная) перерисовка текущего режима — вызывается при
+// переключении режима и после фоновой подгрузки данных. Счётчик в
+// заголовке всегда берётся тут, из ПОЛНОГО кэша — поиск (filterWatchlist)
+// рисует поверх строки списка напрямую, самого счётчика не трогая (так
+// же вело себя старое поведение для обычного Watchlist).
+function renderCurrentList() {
+  if (!watchlistListEl) return;
+  if (currentListMode === "whitelist") {
+    watchlistCountEl.textContent = watchlistCache.length;
+    if (watchlistCache.length === 0) {
+      watchlistListEl.innerHTML = "<div class='muted'>список пуст</div>";
+    } else {
+      renderWatchlistEntries(watchlistCache);
+    }
+  } else if (currentListMode === "greylist") {
+    watchlistCountEl.textContent = greylistCache.length;
+    renderGreylistRows(greylistCache);
+  } else {
+    watchlistCountEl.textContent = blacklistCache.length;
+    renderBlacklistRows(blacklistCache);
+  }
+}
+
+async function loadGreylist() {
+  let data;
+  try {
+    const res = await fetch("/api/greylist");
+    data = res.ok ? await res.json() : [];
+  } catch (e) {
+    console.error("greylist load failed", e);
+    return;
+  }
+  greylistCache = Array.isArray(data) ? data : [];
+  if (currentListMode === "greylist") renderCurrentList();
+}
+
+async function loadBlacklist() {
+  let data;
+  try {
+    const res = await fetch("/api/blacklist");
+    data = res.ok ? await res.json() : [];
+  } catch (e) {
+    console.error("blacklist load failed", e);
+    return;
+  }
+  blacklistCache = Array.isArray(data) ? data : [];
+  if (currentListMode === "blacklist") renderCurrentList();
+}
+
+// Выпадающее меню выбора списка (клик по "Watchlist" в заголовке панели).
+function wireListModeDropdown() {
+  const label = document.getElementById("list-mode-label");
+  const dropdown = document.getElementById("list-mode-dropdown");
+  if (!label || !dropdown) return;
+
+  label.onclick = (e) => {
+    e.stopPropagation();
+    dropdown.style.display = dropdown.style.display === "none" ? "block" : "none";
+  };
+  dropdown.onclick = (e) => e.stopPropagation(); // клик внутри меню не должен закрывать его раньше выбора
+  document.addEventListener("click", () => { dropdown.style.display = "none"; });
+
+  dropdown.querySelectorAll(".list-mode-option").forEach((opt) => {
+    opt.onclick = () => {
+      currentListMode = opt.dataset.mode;
+      dropdown.style.display = "none";
+      applyListModeUI();
+      renderCurrentList();
+    };
+  });
+}
+
+applyListModeUI();
+wireListModeDropdown();
+
 
 // === Настройки TP/SL для BOUNCE (#tpsl-btn / #tpsl-overlay) ===
 function openTpSlModal() {
