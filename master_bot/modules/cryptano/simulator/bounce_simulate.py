@@ -63,7 +63,8 @@ BULK_MAX_WORKERS = int(os.environ.get("BOUNCE_BULK_WORKERS", "4"))
 
 def _reset_sim_log(coin):
     """Чистит лог этой монеты в SIM_LOG_DIR перед КАЖДЫМ новым прогоном
-    симуляции — не ждём рестарта процесса. BounceWatcher._dbg() сам
+    симуляции ЛЮБОЙ стратегии (BOUNCE и V-семейство делят один файл {coin}.log;
+    её же зовёт simulate_engine.run_simulation) — не ждём рестарта процесса. BounceWatcher._dbg() сам
     ротирует/обрезает лог, но только один раз за жизнь процесса (по
     (log_dir, coin) в BounceWatcher._initialized_log_coins) — сервер
     симулятора не перезапускается между прогонами, поэтому без этой
@@ -77,6 +78,11 @@ def _reset_sim_log(coin):
         os.makedirs(SIM_LOG_DIR, exist_ok=True)
         with open(log_path, "w", encoding="utf-8") as f:
             f.write(f"=== Новый прогон симуляции {coin} — {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC ===\n")
+        # Старый отдельный лог V_BOTTOM ({coin}_V.log) больше не пишется —
+        # одна монета = один лог {coin}.log. Подчищаем остаток прошлых версий.
+        legacy = os.path.join(SIM_LOG_DIR, f"{coin}_V.log")
+        if os.path.exists(legacy):
+            os.remove(legacy)
     except Exception as e:
         print(f"⚠️ [BOUNCE SIM] Не удалось очистить лог {coin}: {e}")
 
@@ -127,65 +133,12 @@ def _episode(watcher, level_id, coin):
     }
 
 
-def _compute_trade_outcome(entry_ts, entry_price, target_price, trade_type, df_full, max_hold_days):
-    """Честный проход ВПЕРЁД по свечам от входа — определяет исход сделки.
-
-    Закрывает сделку только TP либо дедлайн (MAX_HOLD_DAYS) — тот же самый
-    принцип, что уже описан в BounceWatcher.CONFIG['SL_PCT']: "держим для
-    отображения/справки — НЕ закрывает сделку, на тестах реального
-    стоп-лосса не было". Это не отдельное решение для симулятора, это
-    honest-копия того, как боевая система вообще считает исход.
-
-    Заодно считает MAE (худшую просадку от входа до момента разрешения) —
-    entry_ts должен быть tz-aware (тот же индекс, что у df_full)."""
-    deadline_ts = entry_ts + pd.Timedelta(days=max_hold_days)
-    future = df_full[(df_full.index > entry_ts) & (df_full.index <= deadline_ts)]
-
-    worst_adverse_pct = 0.0
-    for _, row in future.iterrows():
-        if trade_type == "LONG":
-            adverse_pct = (float(row["low"]) - entry_price) / entry_price * 100.0
-        else:
-            adverse_pct = (entry_price - float(row["high"])) / entry_price * 100.0
-        if adverse_pct < worst_adverse_pct:
-            worst_adverse_pct = adverse_pct
-
-        hit = (float(row["high"]) >= target_price) if trade_type == "LONG" else (float(row["low"]) <= target_price)
-        if hit:
-            result_pct = (target_price - entry_price) / entry_price * 100.0 if trade_type == "LONG" \
-                else (entry_price - target_price) / entry_price * 100.0
-            return {
-                "status": "✅",
-                "result_percent": round(result_pct, 2),
-                "closed_at": row.name.isoformat(),
-                "mae_pct": round(worst_adverse_pct, 2),
-            }
-
-    have_full_window = not df_full.empty and df_full.index[-1] >= deadline_ts
-    if have_full_window and not future.empty:
-        # Дошли до дедлайна, TP так и не случился — закрываем по последней
-        # доступной цене периода (тот же принцип, что history.py::
-        # check_and_update при MAX_HOLD_DAYS, просто честно по истории,
-        # а не по текущему тикеру биржи).
-        last_close = float(future.iloc[-1]["close"])
-        result_pct = (last_close - entry_price) / entry_price * 100.0 if trade_type == "LONG" \
-            else (entry_price - last_close) / entry_price * 100.0
-        return {
-            "status": "🕐",
-            "result_percent": round(result_pct, 2),
-            "closed_at": future.index[-1].isoformat(),
-            "mae_pct": round(worst_adverse_pct, 2),
-        }
-
-    # Данных пока не хватает до дедлайна (сделка случилась слишком близко к
-    # концу доступной истории) — честно показываем как ещё открытую, а не
-    # выдумываем закрытие раньше времени.
-    return {
-        "status": "⏳",
-        "result_percent": None,
-        "closed_at": None,
-        "mae_pct": round(worst_adverse_pct, 2) if not future.empty else None,
-    }
+# Честный подсчёт исхода сделки — вынесен в общий outcome.py, чтобы
+# V-семья в simulate_engine.py считала исход ТЕМ ЖЕ способом, а не своей
+# копией (см. докстринг outcome.py). Алиас оставлен под старым именем
+# (было "_compute_trade_outcome") — в этом файле больше ничего не менял,
+# только тело функции переехало.
+from modules.cryptano.simulator.outcome import compute_trade_outcome as _compute_trade_outcome, make_ema_dist_fn
 
 
 def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, save_last_run=True,
@@ -231,6 +184,7 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, 
         raise ValueError(f"Нет свечей в диапазоне {start_time_str} .. {end_time_str or 'сейчас'} для {coin}")
 
     atr_series = calculate_atr(df_full)
+    ema_dist_fn = make_ema_dist_fn(df_full)  # расстояние входа от EMA200(4h), % — см. outcome.py
 
     # Свой, полностью изолированный менеджер — ничего общего с боевым
     # bounce_mgr (модуль modules.cryptano.live_scan), ничего не пишет в
@@ -334,6 +288,7 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, 
                 "result_percent": outcome["result_percent"],
                 "closed_at": outcome["closed_at"],
                 "mae_pct": outcome["mae_pct"],
+                "ema_dist_pct": ema_dist_fn(ts, entry),
                 "method": "volume",
                 "method_value": d.get("volume", float(row["volume"])),
                 "method_mult": d.get("volume_mult"),
@@ -568,10 +523,15 @@ def _simulate_one_coin_worker(task):
         return coin, None, str(e)
 
 
-def run_bulk_bounce_simulation(start_time_str, end_time_str=None, allow_long=True, allow_short=True):
+def run_bulk_bounce_simulation(start_time_str, end_time_str=None, allow_long=True, allow_short=True, coin_filter=None):
     """Гоняет run_bounce_simulation по КАЖДОЙ монете из list_coins_with_levels
     за период, без перезаписи LAST_RUN_FILE одиночного симулятора
     (save_last_run=False — свой файл, LAST_ALL_RUN_FILE).
+
+    coin_filter — необязательное множество тикеров (см. app.py::
+    _coin_source_filter_set). Если задано, из coins остаются только те,
+    что входят и в историю за период, И в этот набор — второй режим bulk
+    ("по выбранному списку"), не по всем монетам сразу.
 
     Монеты считаются ПАРАЛЛЕЛЬНО, отдельными процессами (ProcessPoolExecutor,
     BULK_MAX_WORKERS штук одновременно) — не потоками: в Python потоки не
@@ -618,6 +578,8 @@ def run_bulk_bounce_simulation(start_time_str, end_time_str=None, allow_long=Tru
     повторного прогона симуляции.
     """
     coins, coverage = list_coins_with_levels(start_time_str, end_time_str)
+    if coin_filter is not None:
+        coins = [c for c in coins if c in coin_filter]
     total = len(coins)
     markets = load_markets_cached(exchange)
 

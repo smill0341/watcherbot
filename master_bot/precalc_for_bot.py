@@ -1,18 +1,46 @@
 """
 precalc_for_bot.py
 ===================
-Массовый пересчёт исторических уровней ДЛЯ БОЕВОГО БОТА — тот же принцип,
+Массовый пересчёт исторических уровней ДЛЯ СИМУЛЯТОРА — тот же принцип,
 что test/precalc.py у тестера, только результат кладётся прямо в
 modules/cryptano/database/levels_timeline_YYYY_MM.json — ровно туда и в
 том же формате, откуда его читает levels_history.py::get_levels_snapshot()
 (см. докстринг levels_history.py: "уже посчитанные тестером файлы можно
 класть в database/ как есть — этот модуль читает их как свои").
 
-Значит: bounce_simulate.py (боевой симулятор) и watcher_plan.py::check_bounce
-(рескан) сразу начнут пользоваться СВЕЖЕ пересчитанной историей — с
-паспортом (см. modules/cryptano/swing_hunter.py::_reconcile_coin_levels) и
-с фиксом "самая старая дата побеждает при слиянии" (levels_builder.py) —
-вместо старых снимков, накопленных ДО этих правок.
+⚠️ ТОЛЬКО ДЛЯ СИМУЛЯТОРА. Боевой бот (watcher_plan.py::check_bounce и
+check_v_bottom/check_v_green_bottom/check_v_red_top) историю уровней НЕ
+читает вообще — только свежий macro_levels.json/custom_levels.json/
+greylist_levels.json напрямую (см. комментарий в swing_hunter.py::
+build_macro_levels, где раньше стояла запись в эту же историю — убрана,
+потому что бою она была не нужна, а держать её вредно: снимок пишется
+раз в 12ч и НЕ обновляется до следующего окна, бой часами работал бы по
+старым уровням). Значит: запускаешь этот файл САМ, когда хочешь свежую
+историю для теста — бой её никогда не трогает и не зависит от неё.
+
+ДВА СПИСКА МОНЕТ — переключаются константой COIN_SOURCE ниже, и ОБА теперь
+ровно те же списки, что использует боевой бот (никакой самодеятельности
+по объёму — это была моя ошибка в прошлой версии файла, см. ниже):
+  "whitelist" — get_battle_symbols() из swing_hunter.py, ТА ЖЕ функция,
+    которой бой строит macro_levels.json (whitelist.json + ручные зоны,
+    минус blacklist) — то же самое число монет, что в счётчике на
+    странице симулятора слева.
+  "greylist"  — текущие кандидаты Потока Б (greylist_levels.json), те же,
+    что видны в окне "🔭 Серый список" на дашборде.
+  "both"      — оба списка разом, объединены (объединение, не дубли).
+
+⚠️ Раньше "whitelist" здесь означал get_top_symbols() — совсем другой,
+волатильный список (топ-N по СЕГОДНЯШНЕМУ объёму на бирже, вообще не
+смотрит в whitelist.json). Из-за этого прогон "по whitelist" молча считал
+историю для другого набора монет, чем реально в бою — отсюда расхождение
+в счётчиках (боевых монет 74, а с историей после прогона — 61 и т.п.).
+get_top_symbols() сама по себе никуда не делась (бой её по-прежнему
+использует для Потока Б/радара), просто precalc её больше не путает с
+"whitelist".
+
+Пишет СЛИЯНИЕМ в те же файлы, что уже могли накопиться раньше (в том
+числе от старой боевой автозаписи, если она уже что-то туда положила) —
+ничего не затирает, только добавляет/обновляет посчитанные даты.
 
 Ничего не дублирует: build_levels берётся из уже пропатченного
 modules/cryptano/utils/levels_builder.py, паспорт — из уже пропатченного
@@ -30,68 +58,173 @@ import time
 import datetime
 import pandas as pd
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 if CURRENT_DIR not in sys.path:
     sys.path.insert(0, CURRENT_DIR)
 
 from modules.cryptano.utils.crypto_utils import exchange
+from modules.cryptano.utils.common import resolve_symbol, KNOWN_TICKER_ALIASES
+from modules.cryptano.utils.storage import load_json
 from modules.cryptano.utils.levels_builder import build_levels
 from modules.cryptano.utils.paths import DATABASE_DIR
-# get_top_symbols/MIN_VOLUME_USD/MAX_COINS — ОДНА точка правды, из swing_hunter.py
-# (тот же порог/потолок, что и в бою, а не отдельная копия, которая рано
-# или поздно расходится молча — ровно так родился баг с RAYDIUM: правили
-# порог в одном месте, он не подхватывался в другом).
+# get_battle_symbols — ОДНА точка правды, из swing_hunter.py: та же функция,
+# которой бой строит macro_levels.json. "whitelist" в этом файле теперь
+# означает ровно то же самое, что и в бою — не отдельная копия логики,
+# которая рано или поздно расходится молча (ровно так родился баг с
+# RAYDIUM: правили порог в одном месте, он не подхватывался в другом).
+# GREYLIST_LEVELS_FILE — те же ключи (тикеры), что видны в "🔭 Серый список".
 from modules.cryptano.swing_hunter import (
     _reconcile_coin_levels,  # тот же паспорт, что уже стоит в бою
-    get_top_symbols, MIN_VOLUME_USD, MAX_COINS,
+    _safe_fetch_ohlcv,  # тот же "сначала база, потом биржа", что уже стоит в бою
+    get_battle_symbols,
+    GREYLIST_LEVELS_FILE,
 )
+
+# --- КАКОЙ СПИСОК МОНЕТ СЧИТАТЬ ---
+# "whitelist" | "greylist" | "both"
+COIN_SOURCE = "whitelist"
+
+# Сколько монет параллелить на фазе "сборка кэша" (build_full_history_cache,
+# фаза 2/2) — это уже чистое чтение локальной базы, без сети, поэтому можно
+# смело гонять в несколько потоков. Фаза 1 (докачка недостающего с биржи)
+# потоки НЕ использует — там по-прежнему строго по одной монете с паузой,
+# чтобы не словить лок/рейт-лимит биржи.
+CACHE_BUILD_THREADS = 4
 
 # --- ДИАПАЗОН ДАТ ДЛЯ ПЕРЕСЧЁТА ---
 # Можно указать несколько периодов подряд, как в test/precalc.py.
 MONTHS_TO_CALC = [
-
-    {"start": "2026-09-01", "end": "2026-09-24"},
+    {"start": "2026-08-01", "end": "2026-08-31"},
+    {"start": "2026-09-01", "end": "2026-09-28"},
 ]
 
 
-def _safe_fetch_ohlcv(symbol, tf, lim):
-    for attempt in range(5):
+def _greylist_symbols():
+    """Текущие кандидаты Потока Б (ключи greylist_levels.json), переведённые
+    в биржевые символы — та же монета может быть в списке только один раз
+    (сюда же попадают тикеры уже из whitelist, если COIN_SOURCE="both" —
+    дубли убираются в get_valid_symbols())."""
+    if not exchange.markets:
+        exchange.load_markets(reload=False)
+    markets = exchange.markets or {}
+
+    greylist_levels = load_json(GREYLIST_LEVELS_FILE, default={})
+    if not isinstance(greylist_levels, dict):
+        greylist_levels = {}
+
+    symbols = []
+    for coin in greylist_levels.keys():
+        if coin == "_meta":
+            continue
+        coin = str(coin).upper().strip()
+        symbol = resolve_symbol(coin, markets) or resolve_symbol(KNOWN_TICKER_ALIASES.get(coin, ""), markets)
+        if symbol:
+            symbols.append(symbol)
+    return symbols
+
+
+def get_valid_symbols():
+    """Список символов для пересчёта — по COIN_SOURCE выше. whitelist —
+    get_battle_symbols(), ТА ЖЕ функция, что строит боевой macro_levels.json
+    (whitelist.json + ручные зоны, минус blacklist) — те же монеты, что в
+    счётчике на странице симулятора слева, один в один, без расхождений.
+    greylist — текущие кандидаты Потока Б. both — объединение, без дублей
+    (один и тот же символ мог попасть в оба списка сразу)."""
+    if COIN_SOURCE == "whitelist":
+        symbols = get_battle_symbols()
+    elif COIN_SOURCE == "greylist":
+        symbols = _greylist_symbols()
+    elif COIN_SOURCE == "both":
+        seen = set()
+        symbols = []
+        for symbol in list(get_battle_symbols()) + list(_greylist_symbols()):
+            if symbol not in seen:
+                seen.add(symbol)
+                symbols.append(symbol)
+    else:
+        raise ValueError(f"Неизвестный COIN_SOURCE={COIN_SOURCE!r} — ожидается 'whitelist'/'greylist'/'both'")
+
+    print(f"📋 COIN_SOURCE={COIN_SOURCE!r} -> {len(symbols)} символов.")
+    return symbols
+
+
+def _ensure_fresh(valid_symbols, extra_candles):
+    """ФАЗА 1/2 — докачка. Идём по монетам СТРОГО ПО ОДНОЙ, с паузой, как
+    было всегда — здесь биржа ещё в игре, ей нужна очередь, а не толпа
+    запросов разом (она и так иногда лочит на такое).
+
+    Результат самих свечей тут не нужен — просто дёргаем _safe_fetch_ohlcv
+    по всем 4 тф для монеты, он сам решает, брать из базы или докачивать
+    (хвост/полностью). Побочный эффект — после этого прохода локальная
+    база candle_store гарантированно свежая по всем монетам (кто вообще
+    смог докачаться). Дальше в дело вступает фаза 2, которая уже с биржей
+    не общается вообще."""
+    total = len(valid_symbols)
+    print(f"📡 Фаза 1/2: проверяю/докачиваю базу по {total} монетам (по одной, с паузой — бережём биржу)...")
+    for i, symbol in enumerate(valid_symbols, 1):
+        time.sleep(0.3)
         try:
-            return exchange.fetch_ohlcv(symbol, timeframe=tf, limit=lim)
+            _safe_fetch_ohlcv(symbol, "1M", 60)
+            _safe_fetch_ohlcv(symbol, "1W", 150)
+            _safe_fetch_ohlcv(symbol, "1d", max(365, extra_candles // 4))
+            _safe_fetch_ohlcv(symbol, "4h", extra_candles)
         except Exception as e:
-            if "10006" in str(e) or "Rate Limit" in str(e) or "Too many visits" in str(e):
-                print(f"⚠️ Rate limit, жду 4 сек (попытка {attempt+1}/5)...")
-                time.sleep(4.0)
-            else:
-                raise e
-    raise Exception("Биржа заблокировала запросы по Rate Limit после 5 попыток.")
+            print(f"[FRESH ERROR] {symbol}: {e}")
+        if i % 10 == 0 or i == total:
+            print(f"   …{i}/{total}")
+    print("✅ Фаза 1 готова — база свежая по всем монетам (кто докачался).")
+
+
+def _build_cache_entry(symbol, extra_candles):
+    """ФАЗА 2/2, одна монета. База уже свежая (см. _ensure_fresh выше),
+    поэтому _safe_fetch_ohlcv тут читает чисто из локальной базы, сеть не
+    трогает вообще — можно смело гонять параллельно в несколько потоков
+    (см. CACHE_BUILD_THREADS)."""
+    coin = symbol.split("/")[0].replace(":USDT", "")
+    ohlcv_1M = _safe_fetch_ohlcv(symbol, "1M", 60)
+    ohlcv_1W = _safe_fetch_ohlcv(symbol, "1W", 150)
+    ohlcv_1d = _safe_fetch_ohlcv(symbol, "1d", max(365, extra_candles // 4))
+    ohlcv_4h = _safe_fetch_ohlcv(symbol, "4h", extra_candles)
+
+    cols = ["timestamp", "open", "high", "low", "close", "volume"]
+    entry = {
+        "1M": pd.DataFrame(ohlcv_1M, columns=cols) if len(ohlcv_1M) >= 5 else None,
+        "1W": pd.DataFrame(ohlcv_1W, columns=cols) if len(ohlcv_1W) >= 5 else None,
+        "1d": pd.DataFrame(ohlcv_1d, columns=cols) if len(ohlcv_1d) >= 50 else None,
+        "4h": pd.DataFrame(ohlcv_4h, columns=cols) if len(ohlcv_4h) >= 50 else None,
+    }
+    return coin, entry
 
 
 def build_full_history_cache(valid_symbols, extra_candles=1500):
     """Качает всю нужную историю ОДИН раз — дальше все даты режутся из неё
-    локально, без сети под каждую дату (тот же приём, что в test/swing_hunter.py)."""
-    print(f"📥 Качаю историю по {len(valid_symbols)} монетам...")
-    cache = {}
-    for symbol in valid_symbols:
-        time.sleep(0.3)
-        coin = symbol.split("/")[0].replace(":USDT", "")
-        try:
-            ohlcv_1M = _safe_fetch_ohlcv(symbol, "1M", 60)
-            ohlcv_1W = _safe_fetch_ohlcv(symbol, "1W", 150)
-            ohlcv_1d = _safe_fetch_ohlcv(symbol, "1d", max(365, extra_candles // 4))
-            ohlcv_4h = _safe_fetch_ohlcv(symbol, "4h", extra_candles)
+    локально, без сети под каждую дату. Раньше это был один проход, где
+    докачка и чтение базы были перемешаны по одной монете за раз — теперь
+    чётко два прохода:
+      1) _ensure_fresh — докачка недостающего/устаревшего, последовательно,
+         с паузой (бирже нужна очередь);
+      2) сборка кэша — база уже гарантированно свежая, читаем её в
+         CACHE_BUILD_THREADS потоков (чистый локальный диск, сети нет)."""
+    _ensure_fresh(valid_symbols, extra_candles)
 
-            cols = ["timestamp", "open", "high", "low", "close", "volume"]
-            cache[coin] = {
-                "1M": pd.DataFrame(ohlcv_1M, columns=cols) if len(ohlcv_1M) >= 5 else None,
-                "1W": pd.DataFrame(ohlcv_1W, columns=cols) if len(ohlcv_1W) >= 5 else None,
-                "1d": pd.DataFrame(ohlcv_1d, columns=cols) if len(ohlcv_1d) >= 50 else None,
-                "4h": pd.DataFrame(ohlcv_4h, columns=cols) if len(ohlcv_4h) >= 50 else None,
-            }
-        except Exception as e:
-            print(f"[CACHE ERROR] {coin}: {e}")
-            continue
+    total = len(valid_symbols)
+    print(f"📥 Фаза 2/2: собираю кэш из базы в {CACHE_BUILD_THREADS} поток(а/ов)...")
+    cache = {}
+    done = 0
+    with ThreadPoolExecutor(max_workers=CACHE_BUILD_THREADS) as pool:
+        futures = {pool.submit(_build_cache_entry, symbol, extra_candles): symbol for symbol in valid_symbols}
+        for future in as_completed(futures):
+            symbol = futures[future]
+            done += 1
+            try:
+                coin, entry = future.result()
+                cache[coin] = entry
+            except Exception as e:
+                print(f"[CACHE ERROR] {symbol}: {e}")
+            if done % 10 == 0 or done == total:
+                print(f"   …{done}/{total}")
     print(f"✅ Кэш готов: {len(cache)} монет.")
     return cache
 
@@ -155,7 +288,8 @@ def build_timeline_for_month(start_date, end_date, cache):
     os.makedirs(DATABASE_DIR, exist_ok=True)
 
     # Если файл этого месяца уже существует в database/ (например, частично
-    # накоплен боевым swing_hunter'ом) — начинаем паспорт с него, а не с
+    # накоплен раньше — своим же прошлым прогоном, или ещё старой боевой
+    # автозаписью, пока её не убрали) — начинаем паспорт с него, а не с
     # пустого места, чтобы не потерять уже правильно зафиксированные даты.
     existing_timeline = {}
     if os.path.exists(output_path):
@@ -177,15 +311,18 @@ def build_timeline_for_month(start_date, end_date, cache):
         print(f"⏳ Сбор уровней на момент: {time_str}")
         levels_dict = build_snapshot_for_date(time_str, cache, running_macro_base)
         # СЛИЯНИЕ, не замена: valid_symbols фиксируется ОДИН раз на весь прогон
-        # (по объёму ПРЯМО СЕЙЧАС) и одинаков для всех дат обоих месяцев —
-        # монета, которая сегодня не прошла порог объёма (например, RAYDIUM
-        # на границе $10M), просто не попадает в cache и, соответственно, в
-        # levels_dict ни на одну дату. Раньше `timeline[time_str] = levels_dict`
-        # ЗАМЕНЯЛО весь снимок на эту дату целиком — и стирало уже посчитанные
-        # ранее (в прошлом прогоне, когда монета проходила порог) уровни для
-        # монет, которых нет в ЭТОМ прогоне. Теперь — сохраняем старую запись
-        # для тех монет, кого сегодня не пересчитывали, и обновляем только тех,
-        # кого реально пересчитали.
+        # (по объёму ПРЯМО СЕЙЧАС, для выбранного COIN_SOURCE) и одинаков для
+        # всех дат обоих месяцев — монета, которая сегодня не прошла отбор
+        # (например, выпала из топа по объёму или из greylist), просто не
+        # попадает в cache и, соответственно, в levels_dict ни на одну дату.
+        # Раньше `timeline[time_str] = levels_dict` ЗАМЕНЯЛО весь снимок на
+        # эту дату целиком — и стирало уже посчитанные ранее (в прошлом
+        # прогоне, когда монета проходила порог) уровни для монет, которых
+        # нет в ЭТОМ прогоне. Теперь — сохраняем старую запись для тех монет,
+        # кого сегодня не пересчитывали, и обновляем только тех, кого реально
+        # пересчитали. Это же слияние позволяет спокойно гонять сначала
+        # COIN_SOURCE="whitelist", потом отдельным прогоном "greylist" — оба
+        # результата уживаются в одном файле, не перетирая друг друга.
         old_snapshot = timeline.get(time_str, {})
         merged_snapshot = dict(old_snapshot)
         merged_snapshot.update(levels_dict)
@@ -199,9 +336,9 @@ def build_timeline_for_month(start_date, end_date, cache):
 
 
 if __name__ == "__main__":
-    print("🚀 СТАРТ ПЕРЕСЧЁТА ИСТОРИИ УРОВНЕЙ ДЛЯ БОЕВОГО БОТА...")
+    print(f"🚀 СТАРТ ПЕРЕСЧЁТА ИСТОРИИ УРОВНЕЙ ДЛЯ СИМУЛЯТОРА (COIN_SOURCE={COIN_SOURCE!r})...")
 
-    valid_symbols = get_top_symbols()
+    valid_symbols = get_valid_symbols()
 
     earliest_start = min(pd.to_datetime(p["start"]) for p in MONTHS_TO_CALC)
     days_span = max((pd.Timestamp.now() - earliest_start).days, 0)
@@ -215,4 +352,4 @@ if __name__ == "__main__":
         print("==============================================")
         build_timeline_for_month(period['start'], period['end'], cache)
 
-    print("🎉 ГОТОВО! bounce_simulate.py и рескан теперь увидят пересчитанную историю.")
+    print("🎉 ГОТОВО! Симулятор (simulate_engine.py / bounce_simulate.py) увидит пересчитанную историю.")

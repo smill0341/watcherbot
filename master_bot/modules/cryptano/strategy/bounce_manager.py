@@ -752,6 +752,7 @@ class BounceManager:
         из to_state_dict() отдельной функцией, чтобы save_state() могло
         проверить каждого вотчера по отдельности (см. её докстринг)."""
         state = dict(watcher.__dict__)
+        state.pop('debug_ring', None)  # deque — только память для лога, в JSON не сохраняем
         for ts_field in self._TIMESTAMP_FIELDS:
             val = state.get(ts_field)
             if val is not None and hasattr(val, 'isoformat'):

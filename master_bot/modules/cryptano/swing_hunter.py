@@ -35,7 +35,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 from modules.cryptano.utils.paths import MACRO_LEVELS_FILE, CUSTOM_LEVELS_FILE
 from modules.cryptano.utils.levels_builder import MACRO_LAYER_STATS
-from modules.cryptano.levels_history import save_levels_snapshot
 
 # Списки Потока А (боевой)/Потока Б (радар) — whitelist/blacklist/greylist.
 # Путь строим от MACRO_LEVELS_FILE (тот же jsonbank), не трогая
@@ -868,14 +867,14 @@ def build_macro_levels(bot=None, admin_chat_id=None):
         print(f"✅ [SWING HUNTER] Сбор завершен! Зоны сохранены: {MACRO_LEVELS_FILE}")
         _fetch_stats_report(total_sec=time.time() - scan_started_at)
 
-        # История уровней — отдельно от живого macro_levels.json (см.
-        # modules/cryptano/levels_history.py). Нужна реплею/рескану, чтобы
-        # честно проверять прошлые свечи против уровней, актуальных В ТОТ
-        # МОМЕНТ, а не против сегодняшних.
-        try:
-            save_levels_snapshot(macro_base)
-        except Exception as e:
-            print(f"⚠️ [SWING HUNTER] Не удалось сохранить снимок в историю уровней: {e}")
+        # ⚠️ Раньше тут писался снимок в историю уровней (levels_history.py::
+        # save_levels_snapshot) "для рескана" — но check_bounce давно уже НЕ
+        # читает историю вообще (см. комментарий в watcher_plan.py::
+        # check_bounce: "боевой бот туда не смотрит", там же объяснение,
+        # почему раньше это было даже вредно — бот часами работал по старым
+        # уровням из 12-часового снимка). История уровней нужна ТОЛЬКО
+        # симулятору, и теперь заполняется ТОЛЬКО вручную через
+        # precalc_for_bot.py, когда сам решишь — бой в неё больше не пишет.
 
         # 🔭 Поток Б (радар) — тем же прогоном, сразу после боевого потока
         # (общий fetch_tickers дешевле, чем два отдельных прохода по
@@ -925,10 +924,9 @@ def build_levels_for_single_coin(coin):
             "updated_at": scan_time
         }
         save_json_atomic(MACRO_LEVELS_FILE, macro_base)
-        try:
-            save_levels_snapshot(macro_base)
-        except Exception as e:
-            print(f"⚠️ [SWING HUNTER] Не удалось сохранить снимок в историю уровней: {e}")
+        # ⚠️ Снимок в историю уровней больше не пишем — см. комментарий в
+        # build_macro_levels() выше, история уровней теперь только через
+        # precalc_for_bot.py вручную, бой её не читает и не пишет.
 
         return levels
     except Exception as e:

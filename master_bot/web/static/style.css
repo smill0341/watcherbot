@@ -18,7 +18,9 @@ body {
 }
 
 .sidebar {
-  width: 270px;
+  width: 290px; /* было 270px — не хватало буквально пары px под 5 закладок
+                    стратегий в одну строку с нормальными (не ужатыми)
+                    чипами, см. .strategy-tabs ниже */
   flex-shrink: 0;
   border-right: 1px solid #262832;
   display: flex;
@@ -167,6 +169,16 @@ body {
   padding: 4px 10px;
   border-radius: 5px;
   cursor: pointer;
+  /* "← Дашборд" (и любой другой .sim-btn с пробелом в тексте) — по
+     умолчанию <a> это inline-элемент, значит текст с пробелом может
+     перенестись на два слова, если в момент рендера (особенно на самом
+     F5, пока страница ещё не "устоялась" — шрифт/иконки могут подгрузиться
+     чуть позже) контейнеру не хватает ширины хоть на миг. Кнопка при этом
+     становится вдвое выше на один кадр — экран дёргается по высоте шапки.
+     nowrap гарантирует, что текст кнопки никогда не переносится, сколько
+     бы места ни было. */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .sim-btn:hover { color: #e6e6e6; }
@@ -510,5 +522,105 @@ th {
 }
 
 .panel input[type="text"]:focus {
-  border-color: #3a4a70; 
+  border-color: #3a4a70;
 }
+
+/* === Закладки стратегий в "В работе" (см. renderActiveStrategyTabs в
+   app.js) — маленькие чипы под полем поиска: VB/VGB/VRT/BO/H, цветная
+   точка под цвет стратегии (STRATEGY_COLORS), счётчик текущих вотчеров.
+   Нет закладки "Все" — повторный клик по активной снимает фильтр.
+   Три прошлые попытки не подошли: nowrap+overflow-x давал уродливый
+   скроллбар, flex-wrap — перенос на вторую строку, ужатые чипы — "не
+   вариант, было норм". Решили проще: чипы вернули как были (11px, паддинг
+   3px 6px, точка 6px), сайдбар чуть шире (270px -> 290px, см. .sidebar) и
+   гап между чипами чуть уже (4px -> 3px) — этого хватает, чтобы все 5
+   помещались в одну строку без скролла/переноса/ужатия. overflow-x:auto
+   оставлен только подстраховкой на редкий край (3-значный счётчик,
+   будущая 6-я стратегия) — тонкая едва заметная полоса, не системный
+   скроллбар. Активная закладка — лёгкая неоновая подсветка (тот же
+   синий #5aa9e6, что уже используется в приложении, например EMA50/
+   ORIENTIR), не пульсирующая — тут это статичный "выбрано", а не
+   индикатор процесса (см. .sim-neon-on в Simulator.html — та же логика
+   разделения "включено" vs "идёт загрузка"). */
+.strategy-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 3px;
+  margin-bottom: 6px;
+  scrollbar-width: thin; /* Firefox — тонкий скроллбар вместо жирного системного */
+}
+.strategy-tabs::-webkit-scrollbar {
+  height: 3px;
+}
+.strategy-tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+.strategy-tabs::-webkit-scrollbar-thumb {
+  background: #333744;
+  border-radius: 3px;
+}
+
+.strategy-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #1b1d24;
+  border: 1px solid #262832;
+  color: #9aa0ac;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.strategy-tab:hover {
+  color: #e6e6e6;
+  border-color: #333744;
+}
+
+.strategy-tab.active {
+  background: #262832;
+  color: #e6e6e6;
+  border-color: #5aa9e6;
+  box-shadow: 0 0 5px rgba(90, 169, 230, 0.55);
+}
+
+.strategy-tab .st-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.strategy-tab .st-count {
+  color: #6c7280;
+}
+
+.strategy-tab.active .st-count {
+  color: #9aa0ac;
+}
+
+/* Кнопки индикаторов под графиком */
+.indicator-bar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  padding: 6px 12px; background: #ffffff; border-top: 1px solid #e6e8eb;
+}
+.indicator-bar-title { font-size: 11px; color: #8a8f98; margin-right: 4px; }
+.ind-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; line-height: 1; padding: 4px 9px; cursor: pointer;
+  color: #555b66; background: #f3f4f6; border: 1px solid #dfe2e6; border-radius: 4px;
+}
+.ind-btn i { width: 8px; height: 8px; border-radius: 50%; background: var(--ind-color, #888); opacity: .45; }
+.ind-btn:hover { background: #eceef1; }
+.ind-btn.active { color: #1b1d24; background: #fff; border-color: var(--ind-color, #888); box-shadow: 0 0 0 1px var(--ind-color, #888) inset; }
+.ind-btn.active i { opacity: 1; }
+
+/* Панель ADX под графиком */
+.adx-panel { position: relative; height: 36px; overflow: hidden; background: #ffffff; border-top: 1px solid #e6e8eb; }
+.adx-panel-label { position: absolute; top: 2px; left: 8px; z-index: 5; font-size: 10px; line-height: 1; color: #374151; background: rgba(255,255,255,.8); padding: 1px 4px; border-radius: 2px; pointer-events: none; }

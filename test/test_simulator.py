@@ -54,7 +54,7 @@ GLOBAL_SKIPPED_COINS = []
 # =========================================================
 # 1. ОСНОВНЫЕ НАСТРОЙКИ БЭКТЕСТА (ЕДИНЫЙ ПУЛЬТ)
 # =========================================================
-TARGET_COIN = "APT"  # "ALL" для всего портфеля, или имя монеты для детального теста
+TARGET_COIN = "ALL"  # "ALL" для всего портфеля, или имя монеты для детального теста
 
 TIMEFRAME = "15m"
 LIMIT_CANDLES = 4500
@@ -65,7 +65,7 @@ MIN_LEVEL_SCORE = 1.0
 
 # STRATEGY "V_BOTTOM" "V_GREEN_BOTTOM" "V_RED_TOP" "V_RED_CASCADE" "BOUNCE"
 #  или "VOLUME_REVERSAL" или "PIT_CLIMAX" или "PANIC_TRAP"  "BREAKOUT_RETEST"
-STRATEGY = "BOUNCE"
+STRATEGY = "V_RED_TOP"
 VBOTTOM_BREATH_BUFFER_PCT = 3.0  # должно совпадать с CONFIG['BREATH_BUFFER_PCT'] в v_bottom_watcher.py
 
 # --- DIAGNOSTIC: проверка качества точки входа без SL ---
@@ -74,7 +74,7 @@ DISABLE_SL_DIAGNOSTIC = True
 DIAGNOSTIC_DEADLINE_DAYS = 12
 
 ALLOW_LONG_TRADES = True
-ALLOW_SHORT_TRADES = True
+ALLOW_SHORT_TRADES = False
 
 USE_CONTEXT_FILTER = False  
 USE_LEVEL_BURN = False # Сжигать ли уровень после успешной сделки

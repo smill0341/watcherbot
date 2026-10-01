@@ -199,7 +199,16 @@ class VBottomManager:
         # Если это новый уровень — создаём вотчер
         is_new_watcher = False
         if level_id not in self._watchers:
-            self._watchers[level_id] = VBottomWatcher(level['min'], level['max'], trade_type, coin=coin, level_date=level.get('date'))
+            # candle_time — текущая свеча ДО того, как _replay_watcher ниже
+            # начнёт проигрывать историю: нужна конструктору только затем,
+            # чтобы у самой первой строки лога ("🔻 [ПРОБИТИЕ]") сразу было
+            # время, а не пусто (см. v_bottom_watcher.py::__init__).
+            birth_candle_time = df.index[-1] if hasattr(df, 'index') and len(df) else None
+            self._watchers[level_id] = VBottomWatcher(
+                level['min'], level['max'], trade_type, coin=coin,
+                level_date=level.get('date'), level_type=level.get('type'), level_score=level.get('score'),
+                candle_time=birth_candle_time,
+            )
             is_new_watcher = True
 
         watcher = self._watchers[level_id]
@@ -275,7 +284,15 @@ class VBottomManager:
 
         is_new_watcher = False
         if level_id not in self._watchers:
-            self._watchers[level_id] = VGreenBottomWatcher(level['min'], level['max'], trade_type, coin=coin)
+            # level_date/type/score — тот же пробел, что чинили у VBottomWatcher:
+            # VGreenBottomWatcher.__init__ теперь их принимает, но тут их не
+            # передавали, поэтому "В работе" на дашборде показывало дефолт
+            # "уровень"/"—" вместо реального типа/score (см. getattr в
+            # background_tasks.py::_build_active_watchers_export).
+            self._watchers[level_id] = VGreenBottomWatcher(
+                level['min'], level['max'], trade_type, coin=coin,
+                level_date=level.get('date'), level_type=level.get('type'), level_score=level.get('score'),
+            )
             is_new_watcher = True
 
         watcher = self._watchers[level_id]
@@ -347,7 +364,11 @@ class VBottomManager:
 
         is_new_watcher = False
         if level_id not in self._watchers:
-            self._watchers[level_id] = VRedTopWatcher(level['min'], level['max'], trade_type, coin=coin)
+            # level_date/type/score — тот же пробел, что чинили у VB/VGB выше.
+            self._watchers[level_id] = VRedTopWatcher(
+                level['min'], level['max'], trade_type, coin=coin,
+                level_date=level.get('date'), level_type=level.get('type'), level_score=level.get('score'),
+            )
             is_new_watcher = True
 
         watcher = self._watchers[level_id]
@@ -405,6 +426,7 @@ class VBottomManager:
         result = {}
         for level_id, watcher in self._watchers.items():
             state = dict(watcher.__dict__)
+            state.pop('debug_ring', None)  # deque — только память для лога, в JSON не сохраняем
             # pandas.Timestamp не сериализуется json.dump — переводим в ISO-строку.
             # last_event_time — копия _last_time (см. log() в *_watcher.py), тоже сырой Timestamp.
             for ts_field in ('_last_time', 'last_event_time'):

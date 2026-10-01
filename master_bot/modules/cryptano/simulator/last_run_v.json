@@ -1,0 +1,405 @@
+{
+  "coin": "SEI",
+  "start_time": "2026-08-31 21:00",
+  "end_time": "2026-09-29 21:00",
+  "strategies": [
+    "VB"
+  ],
+  "active": [],
+  "history": [
+    {
+      "level_id": "VB_LONG_0.041837250000000006_0.04398275",
+      "coin": "SEI",
+      "strategy": "V_BOTTOM",
+      "direction": "LONG",
+      "state": "TRIGGERED",
+      "level_min": 0.041837250000000006,
+      "level_max": 0.04398275,
+      "level_date": "2026-07-31",
+      "level_type": "1M_close_PMC + 1W_low_PWL",
+      "level_score": 9.0,
+      "events": [
+        {
+          "time": 1789545600,
+          "type": "ORIENTIR",
+          "price": 0.04164
+        },
+        {
+          "time": 1789567200,
+          "type": "START",
+          "price": 0.04139
+        },
+        {
+          "time": 1789569900,
+          "type": "PEAK",
+          "price": 0.04131
+        },
+        {
+          "time": 1789579800,
+          "type": "PEAK",
+          "price": 0.04119
+        },
+        {
+          "time": 1789580700,
+          "type": "ENTRY",
+          "price": 0.04145
+        }
+      ]
+    }
+  ],
+  "levels": [
+    {
+      "min": 0.037245,
+      "max": 0.039154999999999995,
+      "type": "1W_low_PWL + 1d_extreme_peak",
+      "score": 7.5,
+      "is_support": true
+    },
+    {
+      "min": 0.041325375,
+      "max": 0.043444625,
+      "type": "1M_close_PMC + 1W_low_PWL+4h_poc",
+      "score": 10.0,
+      "is_support": true
+    },
+    {
+      "min": 0.048257625,
+      "max": 0.050732374999999996,
+      "type": "1M_close_PMC + 1W_high_PWH + 1d_extreme_peak + 1M_high_PMH",
+      "score": 9.0,
+      "is_support": false
+    },
+    {
+      "min": 0.057180964285714286,
+      "max": 0.060113321428571426,
+      "type": "1W_MACRO_Resistance + 1M_close_PMC + 1d_extreme_peak",
+      "score": 7.5,
+      "is_support": false
+    },
+    {
+      "min": 0.0723207142857143,
+      "max": 0.07981,
+      "type": "1M_MACRO_Resistance",
+      "score": 5.0,
+      "is_support": false
+    },
+    {
+      "min": 0.037245,
+      "max": 0.039154999999999995,
+      "type": "1M_low_PML + 1W_low_PWL + 1d_extreme_peak + 1W_MACRO_Support",
+      "score": 9.0,
+      "is_support": true
+    },
+    {
+      "min": 0.07053142857142858,
+      "max": 0.07981,
+      "type": "1M_MACRO_Resistance",
+      "score": 5.0,
+      "is_support": false
+    },
+    {
+      "min": 0.04677075,
+      "max": 0.04916925,
+      "type": "1M_close_PMC + 1W_high_PWH + 1W_MACRO_Resistance + 1M_high_PMH + 1d_extreme_peak",
+      "score": 9.0,
+      "is_support": false
+    },
+    {
+      "min": 0.057035584821428564,
+      "max": 0.05996048660714286,
+      "type": "1W_MACRO_Resistance + 1M_close_PMC + 1d_extreme_peak",
+      "score": 7.5,
+      "is_support": false
+    },
+    {
+      "min": 0.0421188254296875,
+      "max": 0.04427876519531249,
+      "type": "1M_low_PML + 1W_low_PWL + 1d_extreme_peak + 1W_MACRO_Support + 1M_close_PMC + 4h_poc",
+      "score": 12.0,
+      "is_support": true
+    },
+    {
+      "min": 0.049452,
+      "max": 0.051988,
+      "type": "1W_MACRO_Resistance + 1M_close_PMC + 1M_high_PMH + 1W_high_PWH + 1d_extreme_peak",
+      "score": 9.0,
+      "is_support": false
+    },
+    {
+      "min": 0.043324125000000005,
+      "max": 0.045545875,
+      "type": "1M_close_PMC + 1W_low_PWL+4h_poc",
+      "score": 10.0,
+      "is_support": true
+    },
+    {
+      "min": 0.041837250000000006,
+      "max": 0.04398275,
+      "type": "1M_close_PMC + 1W_low_PWL",
+      "score": 9.0,
+      "is_support": true
+    },
+    {
+      "min": 0.048257625,
+      "max": 0.050732374999999996,
+      "type": "1M_close_PMC + 1W_MACRO_Resistance + 1M_high_PMH + 1W_high_PWH + 1d_extreme_peak+4h_poc",
+      "score": 10.0,
+      "is_support": false
+    },
+    {
+      "min": 0.0462345,
+      "max": 0.048605499999999996,
+      "type": "1M_close_PMC+4h_poc",
+      "score": 7.5,
+      "is_support": true
+    },
+    {
+      "min": 0.049452,
+      "max": 0.051988,
+      "type": "1W_MACRO_Resistance + 1M_close_PMC + 1W_high_PWH + 1M_high_PMH + 1d_extreme_peak",
+      "score": 9.0,
+      "is_support": false
+    },
+    {
+      "min": 0.048257625,
+      "max": 0.050732374999999996,
+      "type": "1M_close_PMC + 1W_MACRO_Resistance + 1W_high_PWH + 1M_high_PMH + 1d_extreme_peak+4h_poc",
+      "score": 10.0,
+      "is_support": false
+    },
+    {
+      "min": 0.05576025,
+      "max": 0.05861975,
+      "type": "1W_MACRO_Resistance + 1M_close_PMC",
+      "score": 5.5,
+      "is_support": false
+    },
+    {
+      "min": 0.04831125,
+      "max": 0.050788749999999994,
+      "type": "1M_close_PMC + 1W_high_PWH + 1M_high_PMH + 1d_extreme_peak+4h_poc",
+      "score": 10.0,
+      "is_support": false
+    },
+    {
+      "min": 0.04041375,
+      "max": 0.04248625,
+      "type": "1M_close_PMC",
+      "score": 6.0,
+      "is_support": true
+    },
+    {
+      "min": 0.04326075,
+      "max": 0.04547925,
+      "type": "1M_close_PMC",
+      "score": 5.5,
+      "is_support": false
+    },
+    {
+      "min": 0.05447,
+      "max": 0.05969,
+      "type": "1W_MACRO_Resistance",
+      "score": 4.0,
+      "is_support": false
+    },
+    {
+      "min": 0.05591142857142857,
+      "max": 0.058468571428571425,
+      "type": "1W_MACRO_Resistance + 1M_close_PMC",
+      "score": 5.5,
+      "is_support": false
+    },
+    {
+      "min": 0.04326075,
+      "max": 0.04547925,
+      "type": "1M_close_PMC",
+      "score": 5.5,
+      "is_support": true
+    },
+    {
+      "min": 0.049505625,
+      "max": 0.052044375000000004,
+      "type": "1M_close_PMC + 1W_high_PWH + 1M_high_PMH + 1d_extreme_peak",
+      "score": 9.0,
+      "is_support": false
+    },
+    {
+      "min": 0.05714196428571429,
+      "max": 0.060072321428571426,
+      "type": "1W_MACRO_Resistance + 1M_close_PMC + 1d_extreme_peak",
+      "score": 7.5,
+      "is_support": false
+    },
+    {
+      "min": 0.040281254464285716,
+      "max": 0.042346959821428574,
+      "type": "1d_extreme_peak + 1M_close_PMC",
+      "score": 8.0,
+      "is_support": true
+    },
+    {
+      "min": 0.042934125,
+      "max": 0.045135875,
+      "type": "1M_low_PML + 1d_extreme_peak + 1W_MACRO_Support + 1W_low_PWL + 1M_close_PMC+4h_poc",
+      "score": 10.0,
+      "is_support": true
+    },
+    {
+      "min": 0.05565996428571428,
+      "max": 0.05851432142857142,
+      "type": "1W_high_PWH + 1W_MACRO_Resistance + 1M_close_PMC + 1d_extreme_peak",
+      "score": 9.0,
+      "is_support": false
+    },
+    {
+      "min": 0.06662175000000001,
+      "max": 0.07003825,
+      "type": "1M_close_PMC",
+      "score": 6.5,
+      "is_support": false
+    },
+    {
+      "min": 0.04435275,
+      "max": 0.04662725,
+      "type": "1W_MACRO_Support + 1W_low_PWL + 1M_close_PMC + 1d_extreme_peak+4h_poc",
+      "score": 10.0,
+      "is_support": true
+    },
+    {
+      "min": 0.05576025,
+      "max": 0.05861975,
+      "type": "1M_close_PMC",
+      "score": 6.5,
+      "is_support": true
+    },
+    {
+      "min": 0.05819775,
+      "max": 0.06118225,
+      "type": "1d_extreme_peak",
+      "score": 4.5,
+      "is_support": false
+    },
+    {
+      "min": 0.06886007142857144,
+      "max": 0.07239135714285715,
+      "type": "1M_close_PMC + 1M_MACRO_Resistance + 1M_high_PMH + 1d_extreme_peak",
+      "score": 8.5,
+      "is_support": false
+    },
+    {
+      "min": 0.0758,
+      "max": 0.07981,
+      "type": "1W_MACRO_Resistance",
+      "score": 4.0,
+      "is_support": false
+    },
+    {
+      "min": 0.0382,
+      "max": 0.03939,
+      "type": "1W_MACRO_Support",
+      "score": 4.0,
+      "is_support": true
+    },
+    {
+      "min": 0.045942,
+      "max": 0.048297999999999994,
+      "type": "1M_close_PMC+4h_poc",
+      "score": 7.0,
+      "is_support": true
+    },
+    {
+      "min": 0.07799285714285714,
+      "max": 0.08162714285714287,
+      "type": "1W_MACRO_Resistance + 1d_extreme_peak",
+      "score": 4.5,
+      "is_support": false
+    },
+    {
+      "min": 0.04435275,
+      "max": 0.04662725,
+      "type": "1W_MACRO_Support + 1W_low_PWL + 1M_close_PMC + 1d_extreme_peak",
+      "score": 9.0,
+      "is_support": true
+    },
+    {
+      "min": 0.05987892857142857,
+      "max": 0.062021071428571425,
+      "type": "4h_poc_standalone",
+      "score": 3.0,
+      "is_support": true
+    },
+    {
+      "min": 0.04862325,
+      "max": 0.051116749999999996,
+      "type": "1M_close_PMC",
+      "score": 5.0,
+      "is_support": true
+    },
+    {
+      "min": 0.059670714285714285,
+      "max": 0.062429285714285715,
+      "type": "4h_poc_standalone",
+      "score": 3.0,
+      "is_support": true
+    },
+    {
+      "min": 0.06662175000000001,
+      "max": 0.07003825,
+      "type": "1M_close_PMC",
+      "score": 6.0,
+      "is_support": true
+    },
+    {
+      "min": 0.07799285714285714,
+      "max": 0.08162714285714287,
+      "type": "1M_MACRO_Resistance + 1W_MACRO_Resistance + 1d_extreme_peak",
+      "score": 5.0,
+      "is_support": false
+    },
+    {
+      "min": 0.08535150000000001,
+      "max": 0.0897285,
+      "type": "1M_close_PMC",
+      "score": 6.0,
+      "is_support": false
+    },
+    {
+      "min": 0.052191749999999995,
+      "max": 0.05486824999999999,
+      "type": "1M_close_PMC + 1W_low_PWL+4h_poc",
+      "score": 10.0,
+      "is_support": true
+    },
+    {
+      "min": 0.07730775,
+      "max": 0.08127225,
+      "type": "1M_MACRO_Resistance + 1W_MACRO_Resistance + 1W_high_PWH + 1d_extreme_peak",
+      "score": 8.0,
+      "is_support": false
+    }
+  ],
+  "trades": [
+    {
+      "date": "2026-09-16 17:45",
+      "time": 1789580700,
+      "coin": "SEI",
+      "type": "LONG",
+      "source": "V_BOTTOM",
+      "entry": 0.04145,
+      "target": 0.045595000000000004,
+      "stop": 0.040780636777,
+      "rr": 6.19,
+      "level_id": "VB_LONG_0.041837250000000006_0.04398275",
+      "level_min": 0.041837250000000006,
+      "level_max": 0.04398275,
+      "level_type": "1M_close_PMC + 1W_low_PWL",
+      "status": "✅",
+      "result_percent": 10.0,
+      "closed_at": "2026-09-18T03:15:00+00:00",
+      "mae_pct": -0.48,
+      "method": null,
+      "method_value": null,
+      "method_mult": null
+    }
+  ]
+}

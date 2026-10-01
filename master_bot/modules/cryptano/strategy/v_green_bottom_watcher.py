@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 import os
+from collections import deque
 from ..utils.risk_calc import calc_tp_and_rr
 
 class VGreenBottomWatcher:
+    _DEBUG_RING_SIZE = 400  # см. BounceWatcher._DEBUG_RING_SIZE — буфер debug-строк
+                             # В ПАМЯТИ на КАЖДЫЙ вотчер отдельно (окошко на дашборде).
+
     CONFIG = {
         'RED_TRIGGER_MULT': 2.0,      # Во сколько раз объем первой красной свечи должен превысить средний (avg_vol), чтобы капкан активировался и засчитал старт Ямы №1.
         'MIN_BODY_PCT': 60.0,         # Минимальная плотность тела зеленой свечи. Тело (от Open до Close) должно занимать не менее 60% от всей длины свечи (от Low до High). Отсекает доджи и свечи с огромными тенями сверху.
@@ -33,12 +37,31 @@ class VGreenBottomWatcher:
         'DEBUG': True,
     }
 
-    def __init__(self, level_min: float, level_max: float, trade_type: str, coin: str = "UNKNOWN"):
+    def __init__(self, level_min: float, level_max: float, trade_type: str, coin: str = "UNKNOWN",
+                 level_date=None, level_type=None, level_score=None, log_dir_override=None):
         self.min = level_min
         self.max = level_max
         self.trade_type = trade_type
         self.coin = coin
-        
+
+        # Дата/тип/сила уровня — раньше конструктор их вообще не принимал
+        # (тот же пробел, что чинили у VBottomWatcher: дашборд читает их
+        # через getattr в background_tasks.py::_build_active_watchers_export
+        # и без них "В работе" показывает дефолт "уровень"/"—" вместо
+        # реального типа/score). Пока не подключено в vbottom_manager.py
+        # (VGB) — там конструктор всё ещё зовётся без этих аргументов,
+        # но сам класс теперь их принимает, когда их передадут.
+        self.level_date = level_date
+        self.level_type = level_type
+        self.level_score = level_score
+
+        # log_dir_override — куда писать debug-лог вместо боевого
+        # logs/watchers/ (см. _dbg ниже). Симулятору нужен свой путь
+        # (SIM_LOG_DIR), не боевые логи — simulate_engine.py передаёт этот
+        # параметр при создании вотчера, а тут его просто не было в
+        # сигнатуре, отсюда и падение "unexpected keyword argument".
+        self._log_dir_override = log_dir_override
+
         self.state = "WAIT_FIRST_DUMP"
         
         # --- Чистая макро-структура (ChoCh) ---
@@ -75,6 +98,7 @@ class VGreenBottomWatcher:
         self.last_event_msg = None
         self.last_event_type = None  # Для раскраски свечей на графике (red, yellow, blue)
         self.event_log = []  # [{time, type, price}, ...] — путь вотчера для дашборда
+        self.debug_ring = deque(maxlen=VGreenBottomWatcher._DEBUG_RING_SIZE)  # см. _dbg ниже
 
     def _tp(self):
         return f"{self._last_time} " if self._last_time is not None else ""
@@ -82,11 +106,15 @@ class VGreenBottomWatcher:
     def _dbg(self, msg):
         self.last_event_time = self._last_time
         self.last_event_msg = msg
+        line = f"{self._tp()}[V_GREEN_BOTTOM][{self.max:.4f}] {msg}"
+        # Кольцевой буфер В ПАМЯТИ на ЭТОТ вотчер — для окошка "лог вотчера"
+        # на дашборде, независимо от CONFIG['DEBUG'] и файла ниже.
+        self.debug_ring.append(line)
         if self.CONFIG.get('DEBUG'):
-            log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "logs", "watchers")
+            log_dir = self._log_dir_override or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "logs", "watchers")
             os.makedirs(log_dir, exist_ok=True)
             with open(os.path.join(log_dir, f"{self.coin}.log"), "a", encoding="utf-8") as f:
-                f.write(f"{self._tp()}[V_GREEN_BOTTOM][{self.max:.4f}] {msg}\n")
+                f.write(line + "\n")
 
     @staticmethod
     def _fmt(v):

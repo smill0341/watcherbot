@@ -12,40 +12,27 @@
         ],
         "resistances": []
     },
-    "BTC": {
-        "supports": [
-            {
-                "min": 82500.0,
-                "max": 84000.0,
-                "score": 10.0,
-                "type": "MANUAL",
-                "date": "2026-09-27",
-                "reaction_count": 0
-            }
-        ],
-        "resistances": [],
-        "volume_triggers": []
-    },
-    "AERO": {
-        "supports": [],
-        "resistances": [],
-        "volume_triggers": [
-            {
-                "id": "039320d173",
-                "target": 1000000.0,
-                "added_at": "2026-09-27T18:12:13.799291",
-                "timeframe": "15m"
-            }
-        ]
-    },
     "AKE": {
         "supports": [],
         "resistances": [],
         "volume_triggers": [
             {
                 "id": "be7be34bdb",
-                "target": 400000000.0,
+                "target": 200000000.0,
                 "added_at": "2026-09-27T19:18:30.316453",
+                "timeframe": "15m"
+            }
+        ],
+        "ignore_auto": true
+    },
+    "LSK": {
+        "supports": [],
+        "resistances": [],
+        "volume_triggers": [
+            {
+                "id": "f3c219811d",
+                "target": 2500000.0,
+                "added_at": "2026-09-30T12:13:58.924584",
                 "timeframe": "15m"
             }
         ],

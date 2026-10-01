@@ -57,6 +57,34 @@ def get_merged_levels_for_coin(coin):
     merged["resistances"] = list(coin_macro.get("resistances", []) if coin_macro else []) + list(coin_custom.get("resistances", []))
     return merged
 
+
+# {coin: (date, coin_macro)} — ТОЛЬКО для check_v_bottom (см. ниже). Все
+# остальные стратегии (check_v_green_bottom/check_v_red_top/check_bounce)
+# по-прежнему зовут get_merged_levels_for_coin() напрямую и продолжают
+# видеть уровни сразу, как только swing_hunter их пересчитает (~раз в
+# 12ч) — этот кэш их не касается вообще.
+_vb_levels_cache = {}
+
+
+def _get_levels_for_vbottom(coin):
+    """То же самое, что get_merged_levels_for_coin(coin), но обновляется НЕ
+    ЧАЩЕ раза в календарные сутки (UTC) — специально для V_BOTTOM, без
+    изменения общего расписания пересчёта уровней (оно общее для всех
+    стратегий, трогать его значило бы менять и VGB/VRT/BOUNCE тоже, а
+    просили именно и только VB).
+
+    Раз в сутки — тот же выбор, что в симуляторе (simulate_engine.py::
+    _refresh_levels_if_needed), сделано это тут отдельным кэшем НАД
+    get_merged_levels_for_coin(), а не правкой самого swing_hunter/
+    расписания сканов."""
+    today = datetime.datetime.utcnow().date()
+    cached = _vb_levels_cache.get(coin)
+    if cached is not None and cached[0] == today:
+        return cached[1]
+    coin_macro = get_merged_levels_for_coin(coin)
+    _vb_levels_cache[coin] = (today, coin_macro)
+    return coin_macro
+
 # Сработавшие объёмные триггеры (custom_levels.json[coin]["volume_triggers"])
 # кладём в СВОЙ файл, а не в custom_levels.json/active_watchers.json.
 # Путь строим от CUSTOM_LEVELS_FILE (тот же jsonbank), не трогая
@@ -264,8 +292,10 @@ def check_v_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None):
         if df is None:
             return False, fetch_err, 0
 
-        # Загружаем макро-уровни
-        coin_macro = get_merged_levels_for_coin(coin)  # macro + custom (см. get_merged_levels_for_coin)
+        # Загружаем макро-уровни — ТОЛЬКО для V_BOTTOM обновляются не чаще
+        # раза в сутки (см. _get_levels_for_vbottom выше), остальные
+        # стратегии по-прежнему видят уровни сразу после пересчёта.
+        coin_macro = _get_levels_for_vbottom(coin)
 
         if not coin_macro:
             return False, f"⚠️ Нет уровней для {coin} (ни macro, ни custom).", 0
@@ -321,6 +351,11 @@ def check_v_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None):
 
         # save_signal() кладёт запись в signals.json (общий список "Результаты") —
         # раньше вотчерные входы туда вообще не попадали, только шли сообщением.
+        # level_id/level_min/level_max/level_date/level_score/time — раньше
+        # отсутствовали (в отличие от BOUNCE), из-за чего клик по сигналу в
+        # дашборде (app.js) не мог найти зону уровня для отрисовки (ни
+        # напрямую по level_min/max, ни через buildFocusFromLevelId по
+        # level_id) — сигнал открывался без подсветки уровня на графике.
         save_signal({
             "type": "WATCHER_LONG",
             "coin": coin,
@@ -329,6 +364,12 @@ def check_v_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None):
             "take_profit": tp,
             "stop_loss": sl,
             "level_type": tracked.get("type"),
+            "level_id": level_id,
+            "level_min": tracked.get("min"),
+            "level_max": tracked.get("max"),
+            "level_date": tracked.get("date"),
+            "level_score": tracked.get("score"),
+            "time": int(df.index[-1].timestamp()),
         })
 
         report = (
@@ -432,6 +473,8 @@ def check_v_green_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None)
         history_log = result.get('history_log', '')
         level_id = result.get('level_id', 'unknown')
 
+        # См. комментарий у save_signal() в check_v_bottom() — тот же пробел
+        # (не хватало level_id/level_min/max/date/score/time).
         save_signal({
             "type": "WATCHER_LONG",
             "coin": coin,
@@ -440,6 +483,12 @@ def check_v_green_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None)
             "take_profit": tp,
             "stop_loss": sl,
             "level_type": tracked.get("type"),
+            "level_id": level_id,
+            "level_min": tracked.get("min"),
+            "level_max": tracked.get("max"),
+            "level_date": tracked.get("date"),
+            "level_score": tracked.get("score"),
+            "time": int(df.index[-1].timestamp()),
         })
 
         report = (
@@ -565,7 +614,9 @@ def check_v_red_top(coin, direction, vbottom_mgr=None, tracked_levels=None):
         history_log = result.get('history_log', '')
         level_id = result.get('level_id', 'unknown')
 
-        # "type": "SHORT_PUMP" -> save_signal() трактует именно как SHORT-запись
+        # "type": "SHORT_PUMP" -> save_signal() трактует именно как SHORT-запись.
+        # level_id/level_min/max/date/score/time — тот же пробел, что и у
+        # check_v_bottom()/check_v_green_bottom() (см. комментарий там).
         save_signal({
             "type": "SHORT_PUMP",
             "coin": coin,
@@ -574,6 +625,12 @@ def check_v_red_top(coin, direction, vbottom_mgr=None, tracked_levels=None):
             "take_profit": tp,
             "stop_loss": sl,
             "level_type": tracked.get("type"),
+            "level_id": level_id,
+            "level_min": tracked.get("min"),
+            "level_max": tracked.get("max"),
+            "level_date": tracked.get("date"),
+            "level_score": tracked.get("score"),
+            "time": int(df.index[-1].timestamp()),
         })
 
         report = (

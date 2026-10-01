@@ -80,21 +80,62 @@ function filterWatchlist(query) {
   }
 }
 
-// ===== Поиск в Active Watchers =====
+// ===== Поиск + закладки стратегий в Active Watchers =====
+// Закладки (см. renderActiveStrategyTabs ниже) — чисто фронтовый фильтр,
+// activeWatchersCache и так весь целиком лежит в памяти (см. loadActiveWatchers),
+// backend трогать незачем: поле w.strategy уже есть в каждой записи.
+const STRATEGY_TAB_DEFS = [
+  { tag: "VB", strategy: "V_BOTTOM" },
+  { tag: "VGB", strategy: "V_GREEN_BOTTOM" },
+  { tag: "VRT", strategy: "V_RED_TOP" },
+  { tag: "BO", strategy: "BOUNCE" },
+  { tag: "H", strategy: "VOL_SPIKE", fullName: "Ручные (объёмные триггеры)" },
+];
+// null = ни одна закладка не выбрана -> показываем все стратегии разом
+// (по решению Jack закладки "Все" нет — повторный клик по активной снимает
+// фильтр сам).
+let activeStrategyTab = null;
+
 function filterActiveWatchers(query) {
   if (!activeListEl) return;
-  const q = query.toLowerCase().trim();
-  
-  if (!q) {
-    renderActiveWatchersFiltered(activeWatchersCache);
-    return;
+  const q = (query || "").toLowerCase().trim();
+
+  let filtered = activeWatchersCache;
+  if (activeStrategyTab) {
+    filtered = filtered.filter((w) => w.strategy === activeStrategyTab);
+  }
+  if (q) {
+    filtered = filtered.filter((w) => (w.coin || "").toLowerCase().includes(q));
   }
 
-  const filtered = activeWatchersCache.filter(w => 
-    (w.coin || "").toLowerCase().includes(q)
-  );
-  
   renderActiveWatchersFiltered(filtered);
+}
+
+// Рисует ряд закладок под полем поиска "В работе" — по одной на стратегию
+// (плюс "Ручные" для VOL_SPIKE), с цветной точкой (тот же STRATEGY_COLORS,
+// что и у самих строк списка) и счётчиком текущих вотчеров этой стратегии.
+// Зовётся при каждой загрузке activeWatchersCache (см. loadActiveWatchers),
+// чтобы счётчики не отставали от реальности.
+function renderActiveStrategyTabs() {
+  const el = document.getElementById("active-strategy-tabs");
+  if (!el) return;
+  el.innerHTML = STRATEGY_TAB_DEFS.map(({ tag, strategy, fullName }) => {
+    const count = activeWatchersCache.filter((w) => w.strategy === strategy).length;
+    const color = STRATEGY_COLORS[strategy] || "#8a8f98";
+    const isActive = activeStrategyTab === strategy;
+    const titleText = (fullName || tag) + (count ? ` — ${count}` : "");
+    return `<span class="strategy-tab${isActive ? " active" : ""}" data-strategy="${strategy}" title="${titleText}">
+      <span class="st-dot" style="background:${color};"></span>${tag}${count ? ` <span class="st-count">${count}</span>` : ""}
+    </span>`;
+  }).join("");
+  el.querySelectorAll(".strategy-tab").forEach((chip) => {
+    chip.onclick = () => {
+      const strategy = chip.dataset.strategy;
+      activeStrategyTab = activeStrategyTab === strategy ? null : strategy;
+      renderActiveStrategyTabs();
+      filterActiveWatchers(activeSearchEl ? activeSearchEl.value : "");
+    };
+  });
 }
 
 // ===== Список монет (watchlist) — ЕДИНСТВЕННАЯ функция отрисовки =====
@@ -112,12 +153,19 @@ function watchlistRowHtml(info) {
   const showHand = info.has_custom_levels || info.source === "MANUAL";
   const isManual = info.source === "MANUAL" ? "true" : "false";
   const frozen = !!info.ignore_auto;
+  const hasOwnTpSl = !!(info.coin_tp_sl && (info.coin_tp_sl.tp != null || info.coin_tp_sl.sl != null));
+  const ownTpSlTitle = hasOwnTpSl
+    ? `Свой TP/SL: TP ${info.coin_tp_sl.tp != null ? info.coin_tp_sl.tp : "—"}% / SL ${info.coin_tp_sl.sl != null ? info.coin_tp_sl.sl : "—"}%`
+    : "";
   return `
     <div class="list-item" data-coin="${info.coin}" style="display:flex;align-items:center;">
       <span class="fav-star" title="${fav ? "Убрать из избранного" : "В избранное"}"
             onclick="event.stopPropagation(); toggleFavorite('${info.coin}');"
             style="cursor:pointer;margin-right:6px;font-size:14px;line-height:1;color:${fav ? "#f2c14e" : "#9aa0a6"};">${fav ? "★" : "☆"}</span>
       <span style="flex-grow:1;">${info.coin}</span>
+      ${hasOwnTpSl ? `<span class="own-tpsl-badge" title="${ownTpSlTitle}"
+            onclick="event.stopPropagation(); openCoinTpSlModal('${info.coin}');"
+            style="cursor:pointer;font-size:12px;line-height:1;margin-left:6px;">⚖️</span>` : ""}
       ${showHand ? `<span class="manual-hand" title="${frozen ? "❄️ Заморожена — торгует только по ручному, авто-уровни игнорируются" : "Ручные зоны — изменить / удалить"}"
             onclick="event.stopPropagation(); openManageZonesModal('${info.coin}', ${isManual});"
             style="cursor:pointer;font-size:13px;line-height:1;margin-left:6px;${frozen ? "filter:grayscale(1) sepia(1) hue-rotate(175deg) saturate(4) brightness(1.35);" : ""}">✋</span>` : ""}
@@ -126,6 +174,8 @@ function watchlistRowHtml(info) {
               onclick="event.stopPropagation(); toggleWlMenu(this);"
               style="cursor:pointer;font-size:14px;line-height:1;color:#9aa0a6;padding:0 2px;">⋮</span>
         <div class="wl-menu-dropdown" style="display:none;position:absolute;top:100%;right:0;z-index:60;background:#1e1e1e;border:1px solid #3f3f4e;border-radius:6px;margin-top:2px;min-width:170px;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
+          <div style="padding:7px 10px;cursor:pointer;font-size:12px;font-weight:normal;"
+               onclick="event.stopPropagation(); openCoinTpSlModal('${info.coin}');">⚖️ Свой TP/SL${hasOwnTpSl ? " ✓" : ""}</div>
           <div style="padding:7px 10px;cursor:pointer;font-size:12px;font-weight:normal;"
                onclick="event.stopPropagation(); demoteWatchlistCoin('${info.coin}', 'greylist');">🔘 В серый список</div>
           <div style="padding:7px 10px;cursor:pointer;font-size:12px;font-weight:normal;color:#e5654f;"
@@ -209,10 +259,10 @@ window.toggleFavorite = async function(coin) {
   // 🔥 loadGreylist() тоже — звёздочка есть и в сером списке, favorites.json
   // общий для всех списков (см. /api/favorites/toggle).
   await Promise.all([loadWatchlist(), loadActiveWatchers(), loadGreylist()]);
+  // loadActiveWatchers() теперь сама вызывает filterActiveWatchers() в конце
+  // (сохраняет и поиск, и закладку стратегии) — тут остаётся только watchlist.
   const q = watchlistSearchEl ? watchlistSearchEl.value : "";
   if (q) filterWatchlist(q);
-  const aq = activeSearchEl ? activeSearchEl.value : "";
-  if (aq) filterActiveWatchers(aq);
 };
 
 // ===== Активные ватчеры — ЕДИНСТВЕННАЯ функция отрисовки =====
@@ -261,6 +311,7 @@ function renderActiveWatchersFiltered(watchers) {
         </div>
       </div>
       <button title="Открыть монету в симуляторе (история, прошлые сделки)" onclick="openInSimulator(event, '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 13px; margin-left: 4px; align-self: center; flex-shrink:0;">📈</button>
+      ${isVolSpike ? '' : `<button title="Лог этого вотчера — что видит код (скан/пропуски/входы), отдельно от других уровней монеты" onclick="openWatcherLogModal(event, '${w.level_id}', '${w.coin}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 13px; margin-left: 2px; align-self: center; flex-shrink:0;">📜</button>`}
       ${isVolSpike ? '' : `<button title="Точечный рескан ТОЛЬКО этого уровня, от его activated_at — соседей не трогает" onclick="triggerSingleWatcherRescan(event, '${w.coin}', '${w.level_id}')" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 13px; margin-left: 2px; align-self: center; flex-shrink:0;">🎯</button>`}
     `;
     // Полная строка (монета/направление/режим/статус) в title — если текст
@@ -427,6 +478,14 @@ const EVENT_MARKER_STYLE = {
   CLIMAX_FAR_BREACH:  { color: "#5aa9e6", shape: "circle" },
   ZONE_TOUCH:         { color: "#5aa9e6", shape: "circle" },  // синий - касание уровня
   SCAN:               { color: "#f2c14e", shape: "circle" },
+  // V_BOTTOM (v_bottom_watcher.py::_record_event) — ORIENTIR/START это
+  // самое первое движение под уровнем, визуально то же, что ZONE_TOUCH/
+  // CLIMAX выше. PEAK (Пик 1, Пик 2, Пик 3...) — жёлтый, тот же, что SCAN
+  // у BOUNCE (не пересекаются на одном графике). ДУБЛИРОВАНО ИЗ
+  // sim.js::EVENT_MARKER_STYLE — держать в синхроне при правках.
+  ORIENTIR:           { color: "#5aa9e6", shape: "circle" },
+  START:              { color: "#5aa9e6", shape: "circle" },
+  PEAK:               { color: "#f2c14e", shape: "circle" },
 };
 
 function friendlyStrategyWithMode(strategy, mode) {
@@ -439,9 +498,6 @@ function friendlyStrategyWithMode(strategy, mode) {
 let currentPrecision = 4;
 let globalCandles = []; 
 
-const ema20ValueEl = document.getElementById("ema20-value");
-const ema50ValueEl = document.getElementById("ema50-value");
-const ema200ValueEl = document.getElementById("ema200-value");
 
 // Глубину истории теперь целиком задаёт candle_store.BACKFILL_DAYS_MAP на
 // бэкенде (и держит её постоянной cleanup_old() — скользящее окно). Фронт
@@ -471,36 +527,270 @@ function formatDuration(fromUnixSec, toDate) {
 }
 
 let ohlcvLegendTextEl = null;
-let bottomMarksLegendCreated = false;
+
+// ── Индикаторы под графиком (только отображение, к торговле не привязаны) ──
+const INDICATOR_DEFS = [
+  { key: "supertrend", label: "Supertrend", color: "#26a69a", hint: "Supertrend (14, 3): зелёная линия — тренд вверх, красная — вниз" },
+  { key: "adx",        label: "ADX",        color: "#8e24aa", hint: "ADX (14): сила тренда. <20 — флэт, >25 — тренд. Показывается отдельной панелью под графиком" },
+  { key: "hma",        label: "HMA",        color: "#ff9800", hint: "Hull MA (21): быстрая сглаженная средняя" },
+  { key: "vwap",       label: "VWAP",       color: "#2962ff", hint: "VWAP: средневзвешенная по объёму цена, сбрасывается каждый день (UTC)" },
+  { key: "env",        label: "UB/LB",      color: "#ab47bc", hint: "Envelope: SMA(20) ± 1.4% — верхняя/нижняя граница" },
+];
+// EMA — тоже кнопки в этой панели (по умолчанию включены, как было раньше).
+const EMA_DEFS = [
+  { key: "ema20",  label: "EMA20",       color: "#f2c14e", hint: "EMA 20" },
+  { key: "ema50",  label: "EMA50",       color: "#5aa9e6", hint: "EMA 50" },
+  { key: "ema200", label: "EMA200 (4H)", color: "#7e57c2", hint: "EMA 200 по 4-часовым свечам" },
+];
+let indicatorState = {};
+try { indicatorState = JSON.parse(localStorage.getItem("chart_indicators") || "{}") || {}; } catch (e) { indicatorState = {}; }
+function isEmaOn(key) { return indicatorState[key] !== false; }  // не задано = включено
+let indicatorBarCreated = false;
+let indicatorCache = { key: null, data: null };
+let indSeries = {};
+
+function ensureIndicatorBar() {
+  if (indicatorBarCreated) return;
+  const chartBox = document.getElementById("chart");
+  if (!chartBox) return;
+  const bar = document.createElement("div");
+  bar.id = "indicator-bar";
+  bar.className = "indicator-bar";
+  const mkBtn = (d, on, isEma) =>
+    `<button type="button" class="ind-btn${on ? " active" : ""}" data-ind="${d.key}" data-ema="${isEma ? 1 : 0}" title="${d.hint}" style="--ind-color:${d.color}"><i></i>${d.label}</button>`;
+  bar.innerHTML = '<span class="indicator-bar-title">EMA:</span>' + EMA_DEFS.map((d) => mkBtn(d, isEmaOn(d.key), true)).join("")
+    + '<span class="indicator-bar-title" style="margin-left:8px;">Индикаторы:</span>' + INDICATOR_DEFS.map((d) => mkBtn(d, !!indicatorState[d.key], false)).join("");
+  chartBox.parentElement.insertBefore(bar, chartBox.nextSibling);
+  bar.querySelectorAll(".ind-btn").forEach((btn) => {
+    btn.onclick = () => {
+      const k = btn.dataset.ind;
+      if (btn.dataset.ema === "1") {
+        indicatorState[k] = !isEmaOn(k);
+        btn.classList.toggle("active", isEmaOn(k));
+        applyEmaVisibility();
+      } else {
+        indicatorState[k] = !indicatorState[k];
+        btn.classList.toggle("active", !!indicatorState[k]);
+      }
+      try { localStorage.setItem("chart_indicators", JSON.stringify(indicatorState)); } catch (e) {}
+      if (btn.dataset.ema !== "1") refreshIndicators();
+    };
+  });
+  applyEmaVisibility();
+  indicatorBarCreated = true;
+}
+
+function applyEmaVisibility() {
+  if (ema20Series) ema20Series.applyOptions({ visible: isEmaOn("ema20") });
+  if (ema50Series) ema50Series.applyOptions({ visible: isEmaOn("ema50") });
+  if (emaMacroSeries) emaMacroSeries.applyOptions({ visible: isEmaOn("ema200") });
+}
+
+// ── Панель ADX под графиком (второй маленький график, синхронный с основным) ──
+const ADX_PANEL_H = 33;
+let adxChart = null;
+let adxSeries = null;
+let adxPanelEl = null;
+let adxValueMap = new Map();
+let _adxRangeSyncing = false;
+let _adxXhSyncing = false;
+
+function ensureAdxPanel() {
+  if (adxChart || !chart) return;
+  const chartBox = document.getElementById("chart");
+  if (!chartBox) return;
+  adxPanelEl = document.createElement("div");
+  adxPanelEl.id = "adx-panel";
+  adxPanelEl.className = "adx-panel";
+  adxPanelEl.style.display = "none";
+  adxPanelEl.innerHTML = '<div class="adx-panel-label">ADX (14)</div>';
+  const bar = document.getElementById("indicator-bar");
+  chartBox.parentElement.insertBefore(adxPanelEl, bar || chartBox.nextSibling);
+
+  // одинаковая ширина правой шкалы — чтобы свечи стояли строго друг под другом
+  chart.applyOptions({ rightPriceScale: { minimumWidth: 70 } });
+  adxChart = LightweightCharts.createChart(adxPanelEl, {
+    width: chartBox.clientWidth,
+    height: ADX_PANEL_H,
+    layout: { background: { color: "#ffffff" }, textColor: "#1b1d24" },
+    grid: { vertLines: { color: "#e6e8eb" }, horzLines: { color: "#e6e8eb" } },
+    rightPriceScale: { minimumWidth: 70 },
+    timeScale: { visible: false },
+  });
+  // Заливка столбиками от нуля, цвет по зоне: <20 флэт (серый), 20–25 переход (жёлтый), >25 тренд (фиолетовый)
+  adxSeries = adxChart.addHistogramSeries({
+    priceLineVisible: false, lastValueVisible: true,
+    priceFormat: { type: "price", precision: 1, minMove: 0.1 },
+    autoscaleInfoProvider: (orig) => {
+      const r = orig();
+      const hi = r && r.priceRange ? Math.max(r.priceRange.maxValue, 30) : 50;
+      return { priceRange: { minValue: 0, maxValue: hi } };
+    },
+  });
+  adxSeries.createPriceLine({ price: 20, color: "#6b7280", lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: "" });
+  adxSeries.createPriceLine({ price: 25, color: "#ff9800", lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: "" });
+
+  // прокрутка/зум — синхронно в обе стороны (по индексам свечей; данные ADX
+  // содержат все времена свечей, поэтому индексы совпадают)
+  chart.timeScale().subscribeVisibleLogicalRangeChange((r) => {
+    if (_adxRangeSyncing || !r || !adxChart || adxPanelEl.style.display === "none") return;
+    _adxRangeSyncing = true;
+    try { adxChart.timeScale().setVisibleLogicalRange(r); } catch (e) {}
+    _adxRangeSyncing = false;
+  });
+  adxChart.timeScale().subscribeVisibleLogicalRangeChange((r) => {
+    if (_adxRangeSyncing || !r) return;
+    _adxRangeSyncing = true;
+    try { chart.timeScale().setVisibleLogicalRange(r); } catch (e) {}
+    _adxRangeSyncing = false;
+  });
+
+  // перекрестие — синхронно в обе стороны
+  chart.subscribeCrosshairMove((param) => {
+    if (_adxXhSyncing || !adxChart || adxPanelEl.style.display === "none") return;
+    _adxXhSyncing = true;
+    try {
+      const v = param && param.time ? adxValueMap.get(param.time) : undefined;
+      if (v !== undefined) adxChart.setCrosshairPosition(v, param.time, adxSeries);
+      else adxChart.clearCrosshairPosition();
+    } catch (e) {}
+    _adxXhSyncing = false;
+  });
+  adxChart.subscribeCrosshairMove((param) => {
+    if (_adxXhSyncing) return;
+    _adxXhSyncing = true;
+    try {
+      if (param && param.time) {
+        const c = globalCandles.find((x) => x.time === param.time);
+        if (c) chart.setCrosshairPosition(c.close, param.time, candleSeries);
+      } else {
+        chart.clearCrosshairPosition();
+      }
+    } catch (e) {}
+    _adxXhSyncing = false;
+  });
+
+  // ширина панели всегда = ширине основного графика; после любого ресайза
+  // заново выравниваем видимый диапазон (иначе линия "съезжает" в сторону)
+  new ResizeObserver(() => {
+    if (!chartBox.clientWidth || adxPanelEl.style.display === "none") return;
+    adxChart.applyOptions({ width: chartBox.clientWidth });
+    const r = chart.timeScale().getVisibleLogicalRange();
+    if (r) { _adxRangeSyncing = true; try { adxChart.timeScale().setVisibleLogicalRange(r); } catch (e) {} _adxRangeSyncing = false; }
+  }).observe(chartBox);
+}
+
+function _showAdxPanel(adxPts) {
+  ensureAdxPanel();
+  if (!adxChart) return;
+  adxPanelEl.style.display = "block";
+  adxChart.applyOptions({ width: document.getElementById("chart").clientWidth });
+  adxValueMap = new Map();
+  (adxPts || []).forEach((p) => { if (p.value !== undefined) adxValueMap.set(_indTime(p.time), p.value); });
+  // все времена свечей (прогрев индикатора — пустые точки), чтобы индексы совпадали с основным графиком
+  adxSeries.setData(globalCandles.map((c) => {
+    const v = adxValueMap.get(c.time);
+    if (v === undefined) return { time: c.time };
+    return { time: c.time, value: v, color: v < 20 ? "#b8bcc4" : (v <= 25 ? "#ffb74d" : "#8e24aa") };
+  }));
+  const _sync = () => {
+    const r = chart.timeScale().getVisibleLogicalRange();
+    if (r) { _adxRangeSyncing = true; try { adxChart.timeScale().setVisibleLogicalRange(r); } catch (e) {} _adxRangeSyncing = false; }
+  };
+  _sync();
+  requestAnimationFrame(_sync);
+}
+
+function _hideAdxPanel() {
+  if (adxPanelEl) adxPanelEl.style.display = "none";
+}
+
+// Точки вне окна загруженных свечей растягивают общую шкалу времени графика и
+// сбивают синхронизацию с панелью ADX (например EMA200 4H тянется дальше свечей 15m).
+function _clipToCandles(arr) {
+  if (!globalCandles.length) return arr;
+  const lo = globalCandles[0].time;
+  const hi = globalCandles[globalCandles.length - 1].time;
+  return arr.filter((p) => p.time >= lo && p.time <= hi);
+}
+
+function _indTime(t) { return t > 9999999999 ? Math.floor(t / 1000) : t; }
+function _indPts(arr) {
+  // Линии в lightweight-charts не рвутся на пустых точках, поэтому разрыв делаем
+  // прозрачным цветом: отрезок рисуется цветом ПЕРВОЙ из двух точек — последнюю точку
+  // перед разрывом красим в прозрачный. Заодно режем точки по окну загруженных свечей.
+  const lo = globalCandles.length ? globalCandles[0].time : -Infinity;
+  const hi = globalCandles.length ? globalCandles[globalCandles.length - 1].time : Infinity;
+  const out = [];
+  (arr || []).forEach((p) => {
+    const t = _indTime(p.time);
+    if (t < lo || t > hi) return;
+    if (p.value === undefined) {
+      if (out.length) out[out.length - 1].color = "rgba(0,0,0,0)";
+    } else {
+      out.push({ time: t, value: p.value });
+    }
+  });
+  return out;
+}
+
+function _ensureIndSeries() {
+  if (!chart || indSeries.created) return;
+  const base = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
+  indSeries.stUp = chart.addLineSeries({ ...base, color: "#26a69a", lineWidth: 2, visible: false });
+  indSeries.stDn = chart.addLineSeries({ ...base, color: "#ef5350", lineWidth: 2, visible: false });
+  indSeries.hma = chart.addLineSeries({ ...base, color: "#ff9800", lineWidth: 2, visible: false });
+  indSeries.vwap = chart.addLineSeries({ ...base, color: "#2962ff", lineWidth: 2, visible: false });
+  indSeries.envUp = chart.addLineSeries({ ...base, color: "#ab47bc", lineWidth: 1, lineStyle: 2, visible: false });
+  indSeries.envLo = chart.addLineSeries({ ...base, color: "#ab47bc", lineWidth: 1, lineStyle: 2, visible: false });
+  indSeries.created = true;
+}
+
+function _applyIndicators(ind) {
+  _ensureIndSeries();
+  const on = indicatorState;
+  const setS = (s, visible, arr) => {
+    if (!s) return;
+    if (visible && arr && arr.length) { s.setData(_indPts(arr)); s.applyOptions({ visible: true }); }
+    else { s.applyOptions({ visible: false }); }
+  };
+  ind = ind || {};
+  setS(indSeries.stUp, on.supertrend, ind.supertrend_up);
+  setS(indSeries.stDn, on.supertrend, ind.supertrend_dn);
+  if (on.adx && ind.adx && ind.adx.length) _showAdxPanel(ind.adx);
+  else _hideAdxPanel();
+  setS(indSeries.hma, on.hma, ind.hma);
+  setS(indSeries.vwap, on.vwap, ind.vwap);
+  setS(indSeries.envUp, on.env, ind.env_up);
+  setS(indSeries.envLo, on.env, ind.env_lo);
+}
+
+function _hideAllIndicators() {
+  _hideAdxPanel();
+  if (!indSeries.created) return;
+  ["stUp", "stDn", "hma", "vwap", "envUp", "envLo"].forEach((k) => indSeries[k].applyOptions({ visible: false }));
+}
+
+async function refreshIndicators(coin, token) {
+  coin = coin || selectedCoin;
+  if (!coin || !chart) return;
+  if (!INDICATOR_DEFS.some((d) => indicatorState[d.key])) { _hideAllIndicators(); return; }
+  const key = coin + "|" + currentTimeframe;
+  if (indicatorCache.key !== key) {
+    try {
+      const res = await fetch(`/api/indicators/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}`);
+      if (token !== undefined && token !== chartLoadToken) return;
+      if (!res.ok) { _hideAllIndicators(); return; }
+      const j = await res.json();
+      indicatorCache = { key, data: j.indicators || {} };
+    } catch (e) { _hideAllIndicators(); return; }
+  }
+  if (coin !== selectedCoin) return;
+  _applyIndicators(indicatorCache.data);
+}
 
 function ensureOhlcvLegend() {
-  if (!bottomMarksLegendCreated) {
-    const chartBox = document.getElementById("chart");
-    const marksLegend = document.createElement("div");
-    marksLegend.style.cssText = "padding: 10px 15px; font-size:12px; color:#555b66; background: #ffffff; border-top: 1px solid #e6e8eb; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;";
-    const bar = (color) => `<span style="display:inline-block;width:14px;height:3px;background:${color};margin-right:4px;vertical-align:middle;border-radius:1px;"></span>`;
-    marksLegend.innerHTML = `
-      <span>
-        <b>Маркеры:</b>
-        <span style="color:#8a8f98">⚪️ Старт</span> |
-        <span style="color:#f2c14e">🟡 Кандидат</span> |
-        <span style="color:#5aa9e6">🔵 Структура</span> |
-        <span style="color:#9c27b0">🟣 Старт поиска</span> |
-        <span style="color:#4caf7d">🟢 Вход</span> |
-        <span style="color:#e5654f">🔴 Сброс/Стоп</span>
-      </span>
-      <span>
-        ${bar("#5aa9e6")}Entry &nbsp;
-        ${bar("#4caf7d")}Target &nbsp;
-        ${bar("#e5654f")}Stop &nbsp;
-        ${bar("#00c853")}Уровень (LONG) &nbsp;
-        ${bar("#ff3d3d")}Уровень (SHORT)
-      </span>
-    `;
-    chartBox.parentElement.insertBefore(marksLegend, chartBox.nextSibling);
-    bottomMarksLegendCreated = true;
-  }
-
+  ensureIndicatorBar();
   if (ohlcvLegendTextEl) return ohlcvLegendTextEl;
   const container = document.querySelector(".chart-legend");
   if (!container) return null;
@@ -516,7 +806,7 @@ function ensureOhlcvLegend() {
   return ohlcvLegendTextEl;
 }
 
-function setOhlcvLegend(candle, vol, rsiVal) {
+function setOhlcvLegend(candle, vol, rsiVal, emaTxt) {
   const el = ensureOhlcvLegend();
   if (!el) return;
   if (!candle) {
@@ -531,7 +821,7 @@ function setOhlcvLegend(candle, vol, rsiVal) {
   const volTxt = vol ? formatVolume(vol.value) : "—";
   const rsiTxt = rsiVal !== null ? rsiVal : "—";
   
-  el.innerHTML = `O ${o} &nbsp; H ${h} &nbsp; L ${l} &nbsp; C ${c} &nbsp; Vol ${volTxt} &nbsp; <b style="color:#555b66;">RSI: ${rsiTxt}</b>`;
+  el.innerHTML = `O ${o} &nbsp; H ${h} &nbsp; L ${l} &nbsp; C ${c} &nbsp; Vol ${volTxt} &nbsp; <b style="color:#555b66;">RSI: ${rsiTxt}</b>${emaTxt || ""}`;
 }
 
 function computeEMA(candles, period) {
@@ -674,28 +964,27 @@ function initChart() {
 
   chart.subscribeCrosshairMove((param) => {
     if (!param || !param.time) {
-      ema20ValueEl.textContent = "—";
-      ema50ValueEl.textContent = "—";
-      if (ema200ValueEl) ema200ValueEl.textContent = "—";
       setOhlcvLegend(null, null, null);
       return;
     }
-    const e20 = param.seriesData.get(ema20Series);
-    const e50 = param.seriesData.get(ema50Series);
-    ema20ValueEl.textContent = e20 ? e20.value.toFixed(currentPrecision) : "—";
-    ema50ValueEl.textContent = e50 ? e50.value.toFixed(currentPrecision) : "—";
-    if (ema200ValueEl) {
-      const eMacro = param.seriesData.get(emaMacroSeries);
-      ema200ValueEl.textContent = eMacro ? eMacro.value.toFixed(currentPrecision) : "—";
-    }
+    const emaTxt = [
+      [ema20Series, "ema20", "EMA20", "#c99a1c"],
+      [ema50Series, "ema50", "EMA50", "#2f80c9"],
+      [emaMacroSeries, "ema200", "EMA200", "#7e57c2"],
+    ].map(([ser, key, name, col]) => {
+      const d = isEmaOn(key) ? param.seriesData.get(ser) : null;
+      return d ? ` &nbsp; <span style="color:${col}">${name} ${d.value.toFixed(currentPrecision)}</span>` : "";
+    }).join("");
 
     const candle = param.seriesData.get(candleSeries);
     const vol = param.seriesData.get(volumeSeries);
     const rsiData = param.seriesData.get(rsiSeries);
     const rsiVal = rsiData ? rsiData.value.toFixed(1) : null;
-    
-    setOhlcvLegend(candle, vol, rsiVal);
+
+    setOhlcvLegend(candle, vol, rsiVal, emaTxt);
   });
+
+  ensureIndicatorBar();
 
   // 14.09 (рабочая версия) это делал ручной ResizeObserver, не встроенный
   // autoSize: true у createChart — при более поздней правке ResizeObserver
@@ -824,6 +1113,9 @@ function _translateToken(token) {
 }
 
 async function loadEvents(coin, token = chartLoadToken) {
+  // Обычный график монеты (клик в Watchlist/Greylist) — только уровни, без точек вотчеров.
+  // Точки пути и входа показываем, когда открыт конкретный вотчер («В работе») или сигнал.
+  if (!focusedLevel && !isSignalView) { candleSeries.setMarkers([]); return; }
   try {
     const res = await fetch(`/api/events/${encodeURIComponent(coin)}`);
     if (token !== chartLoadToken) return; 
@@ -853,7 +1145,12 @@ async function loadEvents(coin, token = chartLoadToken) {
       const isShort = w.direction === "SHORT";
       const entryStyle = isShort ? { color: "#e5654f", shape: "arrowDown" } : { color: "#4caf7d", shape: "arrowUp" };
       
+      let _prevEvType = null;
       (w.events || []).forEach((ev) => {
+        // Подряд идущие CANCEL (старые вотчеры писали их на каждую свечу после сброса) — рисуем только первый
+        const _dupCancel = ev.type === "CANCEL" && _prevEvType === "CANCEL";
+        _prevEvType = ev.type;
+        if (_dupCancel) return;
         if (!ev.time || !inRange(ev.time)) return;
         
         // Примагничиваем событие к точной свече
@@ -956,7 +1253,21 @@ function levelTouchesLabel(z) {
   return (n === undefined || n === null) ? "" : ` · Касаний: ${n}`;
 }
 
+// Кнопка "👁️ Уровни" в режиме обычного графика (watchlist/greylist, не фокус на вотчере
+// и не сигнал): показать/скрыть авто-уровни монеты. По умолчанию показаны, выбор запоминается.
+let levelsVisible = true;
+try { levelsVisible = localStorage.getItem("chart_levels_visible") !== "0"; } catch (e) { levelsVisible = true; }
+let lastLevelsSource = null;
+
+function setLevelsBtnActive(on) {
+  if (!toggleLevelsBtn) return;
+  toggleLevelsBtn.style.background = on ? "#2a3550" : "";
+  toggleLevelsBtn.style.color = on ? "#9fb4e8" : "";
+  toggleLevelsBtn.style.borderColor = on ? "#3a4a70" : "";
+}
+
 async function loadLevels(coin, token = chartLoadToken, source = null) {
+  if (!levelsVisible) { clearLevelLines(); return; }
   // Эта функция была ПОЛНОСТЬЮ утеряна при более раннем изменении файла —
   // вызов остался (loadChart/submitAddLevel), само тело исчезло, отсюда
   // "loadLevels is not defined". addZoneBand/addSplitLevel (см. верх
@@ -1029,7 +1340,7 @@ async function loadMacroEma200(coin) {
       
     if (coin !== selectedCoin) return;
     
-    emaMacroSeries.setData(computeEMA(candles, 200));
+    emaMacroSeries.setData(_clipToCandles(computeEMA(candles, 200)));
   } catch (e) {
     console.error("macro EMA200(4H) load failed", e);
   }
@@ -1070,6 +1381,7 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
   }));
   highlightSelection();
 
+  lastLevelsSource = opts.source || null;
   clearSignalLines();
   clearLevelLines();
   
@@ -1077,11 +1389,18 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
   if (typeof clearBackgroundLevels === 'function') clearBackgroundLevels();
   isBackgroundLevelsShowing = false;
   if (toggleLevelsBtn) {
-    // Показываем кнопку только если мы смотрим на рабочий вотчер (focus)
-    toggleLevelsBtn.style.display = focus ? "inline-block" : "none";
-    toggleLevelsBtn.style.background = ""; 
-    toggleLevelsBtn.style.color = "";
-    toggleLevelsBtn.style.borderColor = "";
+    // Фокус на вотчере: кнопка показывает фоновые уровни монеты (выкл. по умолчанию).
+    // Обычный график монеты (не сигнал): кнопка скрывает/показывает авто-уровни (вкл. по умолчанию).
+    // Просмотр сигнала: кнопки нет.
+    if (focus) {
+      toggleLevelsBtn.style.display = "inline-block";
+      setLevelsBtnActive(false);
+    } else if (!signal) {
+      toggleLevelsBtn.style.display = "inline-block";
+      setLevelsBtnActive(levelsVisible);
+    } else {
+      toggleLevelsBtn.style.display = "none";
+    }
   }
 
   try {
@@ -1096,6 +1415,7 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
       ema50Series.setData([]);
       emaMacroSeries.setData([]);
       rsiSeries.setData([]);
+      _hideAllIndicators();
       clearLevelLines();
       return;
     }
@@ -1138,6 +1458,8 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
     ema20Series.setData(computeEMA(formattedCandles, 20));
     ema50Series.setData(computeEMA(formattedCandles, 50));
     rsiSeries.setData(computeRSI(formattedCandles, 14)); 
+    indicatorCache = { key: null, data: null };
+    refreshIndicators(coin, myToken);
 
     // Клик по сигналу — не обрезаем данные, грузим ВСЮ историю как обычно,
     // просто ставим видимое окно (viewport) вокруг момента сигнала. Данные
@@ -1245,6 +1567,7 @@ async function loadActiveWatchers() {
   const data = await res.json();
   activeCountEl.textContent = data.length;
   activeWatchersCache = data;
+  renderActiveStrategyTabs(); // счётчики на закладках — всегда актуальные
 
   if (data.length === 0) {
     activeListEl.innerHTML = "<div class='muted'>сейчас никого нет</div>";
@@ -1253,9 +1576,10 @@ async function loadActiveWatchers() {
 
   // Порядок уже решён на бэкенде (sort_by_priority в app.py: избранные ->
   // ручные -> остальные по алфавиту) — своей сортировки тут больше нет,
-  // как и в watchlist. Отрисовка — через renderActiveWatchersFiltered,
-  // ту же функцию, что и при поиске, дублировать разметку не нужно.
-  renderActiveWatchersFiltered(activeWatchersCache);
+  // как и в watchlist. filterActiveWatchers (не прямой рендер) — чтобы
+  // после каждой перезагрузки (периодический опрос, рескан, избранное...)
+  // сохранялись и текущий текст поиска, и выбранная закладка стратегии.
+  filterActiveWatchers(activeSearchEl ? activeSearchEl.value : "");
 }
 
 async function buildFocusFromLevelId(coin, levelId) {
@@ -1321,7 +1645,7 @@ async function loadSignals(page = signalsPage) {
   renderSignalsPagination();
 
   if (data.length === 0) {
-    signalsBody.innerHTML = "<tr><td colspan='13'>нет сигналов</td></tr>";
+    signalsBody.innerHTML = "<tr><td colspan='14'>нет сигналов</td></tr>";
     return;
   }
 
@@ -1352,6 +1676,7 @@ async function loadSignals(page = signalsPage) {
       <td style="color:${pct > 0 ? '#4caf7d' : pct < 0 ? '#e5654f' : 'inherit'}">${pctText}</td>
       <td>${durationText}</td>
       <td>${methodText}</td>
+      <td>${s.level_id ? `<button title="Лог вотчера этого сигнала — что видел код (скан/пропуски/вход), из архива, если вотчер уже умер" onclick="event.stopPropagation(); openWatcherLogModal(event, '${s.level_id}', '${s.coin ?? ""}');" style="background:none; border:none; cursor:pointer; color:#8a8f98; font-size: 13px;">📜</button>` : ""}</td>
     `;
     if (s.coin && s.time) {
       tr.style.cursor = "pointer";
@@ -1374,7 +1699,14 @@ async function loadSignals(page = signalsPage) {
               min: s.level_min, max: s.level_max,
               level_min: s.level_min, level_max: s.level_max,
               level_date: s.level_date, level_type: s.level_type, level_score: s.level_score,
-              direction: s.type, strategy: "BOUNCE", mode: s.mode,
+              // strategy раньше был жёстко "BOUNCE" — не мешало, пока только
+              // у BOUNCE в сигнале были level_min/max. Теперь VB/VGB/VRT
+              // (watcher_plan.py::check_v_bottom/check_v_green_bottom/
+              // check_v_red_top) тоже их присылают — берём реальный
+              // источник (s.source: "V_BOTTOM"/"V_GREEN_BOTTOM"/"V_RED_TOP"/
+              // "BOUNCE", см. save_signal(...) в watcher_plan.py), иначе
+              // зона V-семьи красилась/подписывалась бы как BOUNCE.
+              direction: s.type, strategy: s.source || "BOUNCE", mode: s.mode,
               events: s.events || [],
             }
           : (s.level_id ? await buildFocusFromLevelId(s.coin, s.level_id) : null);
@@ -2463,12 +2795,27 @@ wireListModeDropdown();
 
 
 // === Настройки TP/SL для BOUNCE (#tpsl-btn / #tpsl-overlay) ===
+// Одна и та же модалка работает в двух режимах:
+//  - общие (глобальные) TP/SL — tpSlModalCoin === null, кнопка ⚙️ TP/SL в
+//    шапке графика, читает/пишет /api/config/bounce_tpsl;
+//  - свой TP/SL монеты — tpSlModalCoin = "BTCUSDT" и т.п., открывается из
+//    ⋮-меню строки watchlist (openCoinTpSlModal), читает/пишет
+//    /api/config/coin_tpsl. Пустые поля при сохранении = сброс на общий.
+let tpSlModalCoin = null;
+
 function openTpSlModal() {
+  tpSlModalCoin = null;
   const overlay = document.getElementById("tpsl-overlay");
   const errEl = document.getElementById("tpsl-error");
+  const titleEl = document.getElementById("tpsl-title");
+  const hintEl = document.getElementById("tpsl-hint");
+  const resetBtn = document.getElementById("tpsl-reset-btn");
   if (!overlay) return;
   if (errEl) { errEl.style.display = "none"; errEl.textContent = ""; }
-  
+  if (titleEl) titleEl.textContent = "Настройки BOUNCE TP/SL";
+  if (hintEl) hintEl.style.display = "none";
+  if (resetBtn) resetBtn.style.display = "none";
+
   // Подтягиваем текущие значения с бэкенда
   fetch("/api/config/bounce_tpsl")
     .then(r => r.json())
@@ -2480,9 +2827,39 @@ function openTpSlModal() {
     .catch(e => console.error("Ошибка загрузки TP/SL:", e));
 }
 
+// ⋮ → "⚖️ Свой TP/SL" на строке watchlist. Поля пустые = своего override нет
+// (используется общий) — специально НЕ подставляем сюда общие значения,
+// чтобы не путать "нет своего" с "свой = как общий".
+function openCoinTpSlModal(coin) {
+  tpSlModalCoin = coin;
+  const overlay = document.getElementById("tpsl-overlay");
+  const errEl = document.getElementById("tpsl-error");
+  const titleEl = document.getElementById("tpsl-title");
+  const hintEl = document.getElementById("tpsl-hint");
+  const resetBtn = document.getElementById("tpsl-reset-btn");
+  if (!overlay) return;
+  if (errEl) { errEl.style.display = "none"; errEl.textContent = ""; }
+  if (titleEl) titleEl.textContent = `TP/SL — ${coin}`;
+  if (hintEl) {
+    hintEl.textContent = "Пусто — используется общий TP/SL. Свой — общий для этой монеты игнорируется.";
+    hintEl.style.display = "block";
+  }
+
+  fetch(`/api/config/coin_tpsl/${encodeURIComponent(coin)}`)
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById("tpsl-tp").value = data.tp != null ? data.tp : "";
+      document.getElementById("tpsl-sl").value = data.sl != null ? data.sl : "";
+      if (resetBtn) resetBtn.style.display = (data.tp != null || data.sl != null) ? "" : "none";
+      overlay.style.display = "flex";
+    })
+    .catch(e => console.error("Ошибка загрузки TP/SL монеты:", e));
+}
+
 function closeTpSlModal() {
   const overlay = document.getElementById("tpsl-overlay");
   if (overlay) overlay.style.display = "none";
+  tpSlModalCoin = null;
 }
 
 async function submitTpSl() {
@@ -2491,13 +2868,30 @@ async function submitTpSl() {
     if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
   };
 
-  const tpVal = parseFloat(document.getElementById("tpsl-tp").value);
-  const slVal = parseFloat(document.getElementById("tpsl-sl").value);
+  const tpRaw = document.getElementById("tpsl-tp").value.trim();
+  const slRaw = document.getElementById("tpsl-sl").value.trim();
 
+  const submitBtn = document.getElementById("tpsl-submit-btn");
+
+  if (tpSlModalCoin) {
+    // Свой TP/SL монеты: оба поля пустые -> сброс на общий, разрешено.
+    // Иначе оба должны быть заданы (валидные числа > 0) — не даём
+    // половинчатый override.
+    if (tpRaw === "" && slRaw === "") {
+      return await _saveCoinTpSl(tpSlModalCoin, null, null, submitBtn, showError);
+    }
+    const tpVal = parseFloat(tpRaw);
+    const slVal = parseFloat(slRaw);
+    if (!Number.isFinite(tpVal) || !Number.isFinite(slVal)) return showError("Заполните оба поля или оставьте оба пустыми");
+    if (tpVal <= 0 || slVal <= 0) return showError("Значения должны быть больше 0");
+    return await _saveCoinTpSl(tpSlModalCoin, tpVal, slVal, submitBtn, showError);
+  }
+
+  const tpVal = parseFloat(tpRaw);
+  const slVal = parseFloat(slRaw);
   if (!Number.isFinite(tpVal) || !Number.isFinite(slVal)) return showError("Значения должны быть числами");
   if (tpVal <= 0 || slVal <= 0) return showError("Значения должны быть больше 0");
 
-  const submitBtn = document.getElementById("tpsl-submit-btn");
   submitBtn.disabled = true;
   try {
     const res = await fetch("/api/config/bounce_tpsl", {
@@ -2518,21 +2912,154 @@ async function submitTpSl() {
   }
 }
 
+async function _saveCoinTpSl(coin, tp, sl, submitBtn, showError) {
+  submitBtn.disabled = true;
+  try {
+    const res = await fetch("/api/config/coin_tpsl", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ coin, tp, sl }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showError(data.detail || "Не удалось сохранить настройки");
+      return;
+    }
+    closeTpSlModal();
+    if (typeof loadWatchlist === "function") loadWatchlist();
+  } catch (e) {
+    showError("Ошибка запроса: " + e.message);
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+function resetTpSl() {
+  document.getElementById("tpsl-tp").value = "";
+  document.getElementById("tpsl-sl").value = "";
+  submitTpSl();
+}
+
 function wireTpSlModal() {
   const btn = document.getElementById("tpsl-btn");
   const overlay = document.getElementById("tpsl-overlay");
   const cancelBtn = document.getElementById("tpsl-cancel-btn");
   const submitBtn = document.getElementById("tpsl-submit-btn");
-  
+  const resetBtn = document.getElementById("tpsl-reset-btn");
+
   if (!btn || !overlay || !cancelBtn || !submitBtn) return;
 
   btn.onclick = openTpSlModal;
   cancelBtn.onclick = closeTpSlModal;
   submitBtn.onclick = submitTpSl;
-  
+  if (resetBtn) resetBtn.onclick = resetTpSl;
+
   overlay.onclick = (e) => {
     if (e.target === overlay) closeTpSlModal();
   };
+}
+
+// === Лог одного вотчера (#watcher-log-overlay), кнопка 📜 в "В работе" ===
+// Показывает watcher.debug_ring с бэкенда (см. /api/watcher_debug_log/{level_id})
+// — то, что реально видит код этого КОНКРЕТНОГО вотчера, а не общий файл на
+// монету, где вперемешку пишут все уровни/режимы сразу. Пока окно открыто —
+// раз в 2с само подтягивает свежие строки (если включено "Автообновление"),
+// чтобы можно было следить за живым сканом, не переоткрывая руками.
+// coin передаём вторым параметром query — бэкенду он нужен, чтобы найти
+// АРХИВНУЮ запись умершего вотчера в watcher_history.json (ключ там
+// {coin}_{strategy}_{level_id}, level_id сам по себе координаты уровня без
+// монеты не гарантирует уникальность). Для ЖИВОГО вотчера coin не нужен —
+// он и так один в _watchers по одному level_id — но передаём всегда, вреда
+// нет, а для сигналов (архив) без него работать не будет.
+let watcherLogLevelId = null;
+let watcherLogCoin = null;
+let watcherLogTimer = null;
+
+async function _fetchWatcherLog() {
+  if (!watcherLogLevelId) return;
+  const textEl = document.getElementById("watcher-log-text");
+  const errEl = document.getElementById("watcher-log-error");
+  const hintEl = document.getElementById("watcher-log-hint");
+  const autoWrapEl = document.getElementById("watcher-log-autorefresh")?.closest("label");
+  try {
+    const url = `/api/watcher_debug_log/${encodeURIComponent(watcherLogLevelId)}` +
+      (watcherLogCoin ? `?coin=${encodeURIComponent(watcherLogCoin)}` : "");
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) {
+      if (errEl) { errEl.textContent = data.detail || "Лог не найден — вотчер умер и в архиве этого уровня ещё нет"; errEl.style.display = "block"; }
+      return;
+    }
+    if (errEl) errEl.style.display = "none";
+    if (textEl) {
+      const wasAtBottom = textEl.scrollTop + textEl.clientHeight >= textEl.scrollHeight - 4;
+      textEl.textContent = (data.lines || []).join("\n") || "(пока пусто)";
+      if (wasAtBottom) textEl.scrollTop = textEl.scrollHeight;
+    }
+    // Архивная запись (вотчер уже умер) — статична, дальше опрашивать
+    // нечего, останавливаем автообновление и прячем переключатель, чтобы
+    // не путать: "Автообновление" имеет смысл только для живого вотчера.
+    if (data.source === "archive") {
+      if (watcherLogTimer) { clearInterval(watcherLogTimer); watcherLogTimer = null; }
+      if (autoWrapEl) autoWrapEl.style.display = "none";
+      if (hintEl) hintEl.textContent = "Архив — вотчер уже умер, это его полная история до смерти.";
+    } else {
+      if (autoWrapEl) autoWrapEl.style.display = "";
+      if (hintEl) hintEl.textContent = "Последние строки — то, что реально видит код этого вотчера, отдельно от других уровней/режимов той же монеты.";
+    }
+  } catch (e) {
+    if (errEl) { errEl.textContent = "Ошибка запроса: " + e.message; errEl.style.display = "block"; }
+  }
+}
+
+function openWatcherLogModal(e, levelId, coin) {
+  if (e) e.stopPropagation();
+  const overlay = document.getElementById("watcher-log-overlay");
+  const titleEl = document.getElementById("watcher-log-title");
+  const textEl = document.getElementById("watcher-log-text");
+  const errEl = document.getElementById("watcher-log-error");
+  const autoWrapEl = document.getElementById("watcher-log-autorefresh")?.closest("label");
+  if (!overlay) return;
+  watcherLogLevelId = levelId;
+  watcherLogCoin = coin || null;
+  if (titleEl) titleEl.textContent = `Лог вотчера — ${coin || ""}`;
+  if (textEl) textEl.textContent = "Загрузка…";
+  if (errEl) errEl.style.display = "none";
+  if (autoWrapEl) autoWrapEl.style.display = "";
+  overlay.style.display = "flex";
+  _fetchWatcherLog();
+  if (watcherLogTimer) clearInterval(watcherLogTimer);
+  watcherLogTimer = setInterval(() => {
+    const autoEl = document.getElementById("watcher-log-autorefresh");
+    if (autoEl && !autoEl.checked) return;
+    _fetchWatcherLog();
+  }, 2000);
+}
+
+function closeWatcherLogModal() {
+  const overlay = document.getElementById("watcher-log-overlay");
+  if (overlay) overlay.style.display = "none";
+  if (watcherLogTimer) { clearInterval(watcherLogTimer); watcherLogTimer = null; }
+  watcherLogLevelId = null;
+  watcherLogCoin = null;
+}
+
+function wireWatcherLogModal() {
+  const overlay = document.getElementById("watcher-log-overlay");
+  const closeBtn = document.getElementById("watcher-log-close-btn");
+  if (!overlay || !closeBtn) return;
+  closeBtn.onclick = closeWatcherLogModal;
+  overlay.onclick = (e) => {
+    if (e.target === overlay) closeWatcherLogModal();
+  };
+}
+
+if (isMainDashboardPage()) {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wireWatcherLogModal);
+  } else {
+    wireWatcherLogModal();
+  }
 }
 
 if (isMainDashboardPage()) {
@@ -2598,6 +3125,15 @@ async function showBackgroundLevels(coin) {
 if (toggleLevelsBtn) {
   toggleLevelsBtn.onclick = async () => {
     if (!selectedCoin) return;
+    if (!focusedLevel && !isSignalView) {
+      // Обычный график: скрыть/показать авто-уровни
+      levelsVisible = !levelsVisible;
+      try { localStorage.setItem("chart_levels_visible", levelsVisible ? "1" : "0"); } catch (e) {}
+      setLevelsBtnActive(levelsVisible);
+      if (levelsVisible) await loadLevels(selectedCoin, chartLoadToken, lastLevelsSource);
+      else clearLevelLines();
+      return;
+    }
     toggleLevelsBtn.disabled = true;
     
     if (isBackgroundLevelsShowing) {

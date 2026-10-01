@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 import os
+from collections import deque
 from ..utils.risk_calc import calc_tp_and_rr
 
 class VRedTopWatcher:
+    _DEBUG_RING_SIZE = 400  # см. BounceWatcher._DEBUG_RING_SIZE — буфер debug-строк
+                             # В ПАМЯТИ на КАЖДЫЙ вотчер отдельно (окошко на дашборде).
+
     CONFIG = {
         # ==========================================
         # [0] МАКРО-ФИЛЬТР (Старт)
@@ -10,7 +14,7 @@ class VRedTopWatcher:
         'MIN_PUMP_HEIGHT_PCT': 8.0,  # Памп от уровня: рост минимум на 12% для старта работы
         'MIN_EMA_DIST_PCT': 8.0,     # Цена должна быть минимум на 10% выше EMA
         'EMA_MUST_BE_ABOVE_LEVEL': False, # Искать шорт ТОЛЬКО если EMA физически выше уровня
-        'MAX_TRADES_PER_LEVEL': 4,    # Лимит сделок на уровень (0 = без ограничений)
+        'MAX_TRADES_PER_LEVEL': 1,    # Лимит сделок на уровень (0 = без ограничений)
         
         'PAUSE_PUMP_PCT': 5.0,  # Пауза, если цена упала ниже 5% от уровня (от EMA не зависим!)
         
@@ -84,11 +88,26 @@ class VRedTopWatcher:
         'USE_RR_FILTER': False,
         'DEBUG': True,
     }
-    def __init__(self, level_min: float, level_max: float, trade_type: str, coin: str = "UNKNOWN"):
+    def __init__(self, level_min: float, level_max: float, trade_type: str, coin: str = "UNKNOWN",
+                 level_date=None, level_type=None, level_score=None, log_dir_override=None):
         self.min = level_min
         self.max = level_max
         self.trade_type = trade_type
         self.coin = coin
+
+        # Тот же пробел, что чинили у VBottomWatcher/VGreenBottomWatcher:
+        # конструктор их вообще не принимал — дашборд ("В работе", см.
+        # background_tasks.py::_build_active_watchers_export, читает через
+        # getattr) показывал дефолт "уровень"/"—" вместо реального типа/score.
+        self.level_date = level_date
+        self.level_type = level_type
+        self.level_score = level_score
+
+        # log_dir_override — та же причина падения симулятора, что была у
+        # VGB ("unexpected keyword argument 'log_dir_override'"): без этого
+        # параметра в сигнатуре simulate_engine.py::_pre_register не мог
+        # создать VRedTopWatcher вообще. См. _dbg ниже, где он используется.
+        self._log_dir_override = log_dir_override
 
         self.state = "WAIT_PUMP"
         self.peak_high = 0.0
@@ -117,9 +136,10 @@ class VRedTopWatcher:
         self.last_event_msg = None
         self.last_event_type = None
         self.event_log = []  # [{time, type, price}, ...] — путь вотчера для дашборда
+        self.debug_ring = deque(maxlen=VRedTopWatcher._DEBUG_RING_SIZE)  # см. _dbg ниже
 
         self.trades_count = 0
-          
+
     def _tp(self): return f"{self._last_time} " if self._last_time else ""
 
     def _record_event(self, event_type, price):
@@ -128,6 +148,11 @@ class VRedTopWatcher:
         unix-секунды сразу тут (pandas.Timestamp не сериализуется в json.dump),
         лимит 100 точек на вотчер."""
         self.last_event_type = event_type
+        # CANCEL подряд не копим: после макро-сброса (IDLE) update() на каждой свече
+        # снова попадает в ту же ветку и писал по CANCEL на КАЖДУЮ свечу — на графике
+        # ряд серых квадратов, а лимит 100 точек вытеснял важные (ENTRY, пики).
+        if event_type == "CANCEL" and self.event_log and self.event_log[-1].get("type") == "CANCEL":
+            return
         t = self._last_time
         if t is not None and hasattr(t, "timestamp"):
             t = int(t.timestamp())
@@ -143,11 +168,15 @@ class VRedTopWatcher:
     def _dbg(self, msg):
         self.last_event_time = self._last_time
         self.last_event_msg = msg
+        line = f"{self._tp()}[V_RED_TOP][{self.min:.4f}] {msg}"
+        # Кольцевой буфер В ПАМЯТИ на ЭТОТ вотчер — для окошка "лог вотчера"
+        # на дашборде, независимо от CONFIG['DEBUG'] и файла ниже.
+        self.debug_ring.append(line)
         if self.CONFIG.get('DEBUG'):
-            log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "logs", "watchers")
+            log_dir = self._log_dir_override or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "logs", "watchers")
             os.makedirs(log_dir, exist_ok=True)
             with open(os.path.join(log_dir, f"{self.coin}.log"), "a", encoding="utf-8") as f:
-                f.write(f"{self._tp()}[V_RED_TOP][{self.min:.4f}] {msg}\n")
+                f.write(line + "\n")
 
     def on_breach_start(self):
         # 1. Если уже идет поиск точек входа или сделка завершена — игнорируем повторный вызов
@@ -280,8 +309,9 @@ class VRedTopWatcher:
             if not is_above_pause_pump:
                 # 1. Полная отмена (цена ушла под уровень <= 0%)
                 if float(c_close) <= self.min * 0.98:
-                    self._record_event("CANCEL", float(c_close))
-                    self._dbg(f"🛑 [МАКРО-СБРОС] Цена ушла под уровень. Уровень отвязан (IDLE). {m_log}")
+                    if self.state != "IDLE":  # пишем событие и лог только в момент самого сброса, не на каждой свече
+                        self._record_event("CANCEL", float(c_close))
+                        self._dbg(f"🛑 [МАКРО-СБРОС] Цена ушла под уровень. Уровень отвязан (IDLE). {m_log}")
                     self.state = "IDLE"       
                     self.trades_count = 0
                     self.c1, self.c2, self.route = None, None, "NONE"

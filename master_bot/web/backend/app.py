@@ -257,6 +257,10 @@ def get_watchlist():
         return bool((c or {}).get("ignore_auto"))
 
     favorites = set(_read_favorites())
+    # Свой TP/SL монеты (меню "⋮" -> ⚖️) — только для бейджа/подсказки на
+    # дашборде, реально применяется в BounceWatcher.__init__ (см. app.py::
+    # /api/config/coin_tpsl). Пусто у монеты -> используется общий.
+    coin_tp_sl_cfg = _read_json(CONFIG_FILE, default={}).get("crypto", {}).get("coin_tp_sl", {}) or {}
 
     with_levels = []
     without_levels = []
@@ -278,6 +282,7 @@ def get_watchlist():
             "has_custom_levels": _has_custom_levels(coin),
             "ignore_auto": _is_ignore_auto(coin),
             "favorite": coin in favorites,
+            "coin_tp_sl": coin_tp_sl_cfg.get(coin) or None,
             **{k: v for k, v in clean_meta.items() if k not in ["source", "added_at", "direction"]}
         }
         (with_levels if has_levels else without_levels).append(entry)
@@ -424,6 +429,63 @@ def get_active_watchers(all_states: bool = Query(default=False)):
 
     result = sort_by_priority(result)
     return result
+
+
+# level_id всегда "{TAG}_{trade_type}_{min}_{max}" (см. тот же словарь в
+# background_tasks.py::_STRATEGY_BY_TAG) — по TAG однозначно восстанавливаем
+# strategy, не таская сюда импорт всего background_tasks.py ради одной строки.
+_TAG_TO_STRATEGY = {"VB": "V_BOTTOM", "VGB": "V_GREEN_BOTTOM", "VRT": "V_RED_TOP", "BC": "BOUNCE"}
+
+
+@app.get("/api/watcher_debug_log/{level_id}")
+def get_watcher_debug_log(level_id: str, coin: str = Query(default=None, description="Монета сигнала — нужна только для архивного фолбэка (умерший вотчер), для живого не обязательна")):
+    """Лог ОДНОГО вотчера — то, что реально видит код (все _dbg() события:
+    скан/пропуски с причинами/проколы/вход), не смешанный с другими
+    уровнями/режимами той же монеты, как в общем файле на диске
+    (bounce_logs/{coin}.log, logs/watchers/{coin}.log).
+
+    Два источника, в этом порядке:
+    1. ЖИВОЙ вотчер — кольцевой буфер watcher.debug_ring в памяти (см.
+       _DEBUG_RING_SIZE в BounceWatcher/VBottomWatcher/VGreenBottomWatcher/
+       VRedTopWatcher), последние ~400 строк. level_id ищем и в
+       v_bottom_mgr._watchers (VB/VGB/VRT), и в bounce_mgr._watchers
+       (BOUNCE) — один и тот же id не может быть сразу в обоих.
+    2. АРХИВ (вотчер уже умер) — снимок debug_log, который
+       background_tasks.py::export_dashboard_state/crypto_orchestrator
+       сохраняет в watcher_history.json в момент смерти, под ключом
+       "{coin}_{strategy}_{level_id}" (BOUNCE) или тем же форматом у
+       V-семейства (см. комментарий там же). Тут нужен coin — level_id сам
+       по себе (координаты уровня) не гарантирует уникальность без монеты,
+       а strategy восстанавливаем из TAG в самом level_id.
+    """
+    from modules.cryptano.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
+
+    with _watcher_lock:
+        watcher = v_bottom_mgr._watchers.get(level_id) or bounce_mgr._watchers.get(level_id)
+        if watcher is not None:
+            ring = getattr(watcher, "debug_ring", None)
+            lines = list(ring) if ring is not None else []
+            w_coin = getattr(watcher, "coin", None)
+            return {"level_id": level_id, "coin": w_coin, "lines": lines, "source": "live"}
+
+    # Вотчер не живой — пробуем архив, но только если знаем монету.
+    if coin:
+        tag = level_id.split("_", 1)[0]
+        strategy = _TAG_TO_STRATEGY.get(tag)
+        if strategy:
+            history_db = _read_json(WATCHER_HISTORY_PATH, default={})
+            hist_key = f"{coin}_{strategy}_{level_id}"
+            record = history_db.get(hist_key)
+            if record:
+                return {
+                    "level_id": level_id,
+                    "coin": coin,
+                    "lines": record.get("debug_log", []),
+                    "source": "archive",
+                    "died_at": record.get("died_at"),
+                }
+
+    raise HTTPException(status_code=404, detail="Лог не найден — вотчер умер и в архиве этого уровня ещё нет (записан только с момента обновления)")
 
 
 # POST /api/rescan/{coin} (старый рескан монеты, кнопка 🔄) УДАЛЁН. Он
@@ -758,6 +820,45 @@ def set_bounce_tpsl(payload: TpSlRequest):
         return {"status": "ok"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+class CoinTpSlRequest(BaseModel):
+    coin: str
+    tp: Optional[float] = None
+    sl: Optional[float] = None
+
+@app.get("/api/config/coin_tpsl/{coin}")
+def get_coin_tpsl(coin: str):
+    """Свой TP/SL монеты (watchlist, меню "⋮"). Пусто = используется общий
+    bounce_tp_pct/bounce_sl_pct (см. /api/config/bounce_tpsl)."""
+    config = _read_json(CONFIG_FILE, default={})
+    coin_cfg = config.get("crypto", {}).get("coin_tp_sl", {}).get(coin)
+    if not coin_cfg:
+        return {"coin": coin, "tp": None, "sl": None}
+    return {"coin": coin, "tp": coin_cfg.get("tp"), "sl": coin_cfg.get("sl")}
+
+@app.post("/api/config/coin_tpsl")
+def set_coin_tpsl(payload: CoinTpSlRequest):
+    """Установить или сбросить свой TP/SL для монеты. tp/sl оба null (или
+    оба отсутствуют) -> запись для монеты удаляется, монета возвращается на
+    общий TP/SL."""
+    try:
+        config = _read_json(CONFIG_FILE, default={})
+        if "crypto" not in config:
+            config["crypto"] = {}
+        if "coin_tp_sl" not in config["crypto"]:
+            config["crypto"]["coin_tp_sl"] = {}
+        if payload.tp is None and payload.sl is None:
+            config["crypto"]["coin_tp_sl"].pop(payload.coin, None)
+        else:
+            config["crypto"]["coin_tp_sl"][payload.coin] = {
+                "tp": payload.tp,
+                "sl": payload.sl,
+            }
+        _write_json_atomic(CONFIG_FILE, config)
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 class DirectionSetRequest(BaseModel):
     allow_long: bool
     allow_short: bool
@@ -1698,20 +1799,69 @@ def get_levels_at(coin: str, when: int = Query(..., description="Unix-время
     return result
 
 
+def _macro_coin_set():
+    data = _read_json(MACRO_LEVELS_PATH, default={})
+    return {c for c in data.keys() if c != "_meta"}
+
+
+def _greylist_coin_set():
+    data = _read_json(GREYLIST_LEVELS_PATH, default={})
+    return {c for c in data.keys() if c != "_meta"}
+
+
 @app.get("/api/macro/coins")
-def get_macro_coins():
+def get_macro_coins(source: str = Query(default="whitelist", description="'whitelist' | 'greylist' | 'both' — какой список монет отдать панели SimList")):
     """
-    Список монет, прошедших фильтр по обороту (те же тикеры, что лежат
-    ключами в macro_levels.json — их туда кладёт swing_hunter.build_macro_levels,
-    топ-70 по объёму). Для панели "Симуляция" — просто список, без расчётов.
-    """
-    macro = _read_json(MACRO_LEVELS_PATH, default={})
-    coins = sorted(c for c in macro.keys() if c != "_meta")
-    return {"coins": coins, "count": len(coins)}
+    Список монет для левой панели "🧪 SimList" (бывш. "Монеты для симуляции").
+
+    source=whitelist (по умолчанию, старое поведение без параметра) — те же
+    тикеры, что лежат ключами в macro_levels.json (их туда кладёт
+    swing_hunter.build_macro_levels, топ-70 по объёму) — боевой список.
+
+    source=greylist — кандидаты Потока Б (см. /api/greylist), ключи
+    greylist_levels.json — те же монеты, что видны в окне "🔭 Серый
+    список" на дашборде, но НЕ в бою. Даёт потестить стратегию на монетах,
+    которые ещё не взяты в работу, до того как их туда брать.
+
+    source=both — объединение обоих множеств (без дублей).
+
+    Во всех случаях — просто список тикеров, без расчётов, само тестирование
+    (свечи/уровни) не зависит от того, откуда взят список."""
+    if source == "both":
+        coins_set = _macro_coin_set() | _greylist_coin_set()
+    elif source == "greylist":
+        coins_set = _greylist_coin_set()
+    else:
+        source = "whitelist"
+        coins_set = _macro_coin_set()
+    coins = sorted(coins_set)
+    return {"coins": coins, "count": len(coins), "source": source}
+
+
+def _coin_source_filter_set(coin_source: Optional[str]):
+    """None/"" -> None (без фильтра — все монеты с историей, старое
+    поведение bulk до появления SimList). "whitelist"/"greylist"/"both" ->
+    множество ТЕКУЩИХ тикеров этого списка (те же ключи, что отдаёт
+    /api/macro/coins) — bulk потом пересекает его со списком монет, у
+    которых реально есть уровни в истории за период (list_coins_with_levels),
+    так что монета должна пройти оба фильтра: быть в выбранном списке
+    СЕЙЧАС и иметь историю уровней ЗА ПЕРИОД."""
+    if not coin_source:
+        return None
+    if coin_source == "both":
+        return _macro_coin_set() | _greylist_coin_set()
+    if coin_source == "greylist":
+        return _greylist_coin_set()
+    return _macro_coin_set()
 
 
 @app.post("/api/simulate/{coin}")
-def simulate_watcher(coin: str, start: str = Query(..., description="Дата/время старта симуляции, UTC. 'YYYY-MM-DD' или 'YYYY-MM-DD HH:MM'")):
+def simulate_watcher(
+    coin: str,
+    start: str = Query(..., description="Дата/время старта симуляции, UTC. 'YYYY-MM-DD' или 'YYYY-MM-DD HH:MM'"),
+    end: Optional[str] = Query(default=None, description="Конец периода, по умолчанию — самая свежая доступная свеча"),
+    strategies: Optional[str] = Query(default=None, description="VB,VGB,VRT через запятую — какие из V-стратегий гонять. Пусто = все три (как раньше)"),
+):
     """
     Прогоняет боевые классы вотчеров (VBottomManager + evaluate_v_bottom/
     v_green_bottom/v_red_top — те же, что использует бот, без отдельной
@@ -1727,12 +1877,23 @@ def simulate_watcher(coin: str, start: str = Query(..., description="Дата/в
     не трогаются.
     """
     from modules.cryptano.simulator.simulate_engine import run_simulation
+    tags = [t.strip().upper() for t in strategies.split(",") if t.strip()] if strategies else None
     try:
-        return run_simulation(coin, start)
+        return run_simulation(coin, start, end, strategies=tags)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка симуляции: {e}")
+
+
+@app.get("/api/simulate/last")
+def simulate_watcher_last():
+    """Последний сохранённый результат V-симуляции (V_BOTTOM/VGB/VRT) —
+    фронт дёргает это при открытии /simulator, чтобы результат пережил F5,
+    тот же принцип, что и у /api/simulate_bounce/last, свой файл (см.
+    simulate_engine.py::LAST_RUN_FILE)."""
+    from modules.cryptano.simulator.simulate_engine import get_last_run
+    return get_last_run() or {}
 
 
 @app.post("/api/simulate_bounce/{coin}")
@@ -1774,12 +1935,16 @@ def simulate_bounce_bulk(
     end: Optional[str] = Query(default=None, description="Конец периода, по умолчанию — сейчас"),
     allow_long: bool = Query(default=True, description="Искать LONG-сделки"),
     allow_short: bool = Query(default=True, description="Искать SHORT-сделки"),
+    coin_source: Optional[str] = Query(default=None, description="'whitelist' | 'greylist' — ограничить прогон только монетами этого списка (сейчас, на момент запуска). Пусто/не задано = все монеты с историей за период, как раньше."),
 ):
     """
     Прогоняет BOUNCE-симуляцию по ВСЕМ монетам, у которых были уровни
     хоть в одном снимке таймлайна за указанный период (см.
     bounce_simulate.list_coins_with_levels) — НЕ по сегодняшнему топ-70
     из /api/macro/coins, это разные списки для исторического периода.
+    coin_source дополнительно пересекает этот список с текущим
+    whitelist/greylist (см. _coin_source_filter_set) — два режима сразу:
+    "по всем" (coin_source не задан) и "по выбранному списку".
 
     Без сетевой докачки свечей (top_up=False на каждую монету) и без
     перезаписи last_run.json одиночного симулятора (свой файл,
@@ -1789,8 +1954,9 @@ def simulate_bounce_bulk(
     в results[coin]['error'], остальные монеты считаются как обычно.
     """
     from modules.cryptano.simulator.bounce_simulate import run_bulk_bounce_simulation
+    coin_filter = _coin_source_filter_set(coin_source)
     try:
-        return run_bulk_bounce_simulation(start, end, allow_long=allow_long, allow_short=allow_short)
+        return run_bulk_bounce_simulation(start, end, allow_long=allow_long, allow_short=allow_short, coin_filter=coin_filter)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка bulk-симуляции BOUNCE: {e}")
 
@@ -1810,6 +1976,50 @@ def simulate_bounce_bulk_last():
     """Последний сохранённый результат bulk-прогона — свой файл
     (last_all_run.json), не пересекается с одиночным /api/simulate_bounce/last."""
     from modules.cryptano.simulator.bounce_simulate import get_last_all_run
+    return get_last_all_run() or {}
+
+
+@app.post("/api/simulate_bulk")
+def simulate_bulk(
+    start: str = Query(..., description="Дата/время старта периода, UTC. 'YYYY-MM-DD' или 'YYYY-MM-DD HH:MM'"),
+    end: Optional[str] = Query(default=None, description="Конец периода, по умолчанию — сейчас"),
+    strategies: Optional[str] = Query(default=None, description="VB,VGB,VRT через запятую — какие из V-стратегий гонять. Пусто = все три"),
+    coin_source: Optional[str] = Query(default=None, description="'whitelist' | 'greylist' — ограничить прогон только монетами этого списка (сейчас, на момент запуска). Пусто/не задано = все монеты с историей за период, как раньше."),
+):
+    """
+    Bulk-прогон V-семьи (V_BOTTOM/V_GREEN_BOTTOM/V_RED_TOP) по ВСЕМ
+    монетам, у которых были уровни хоть в одном снимке периода — тот же
+    принцип, что и /api/simulate_bounce_bulk, свой файл прогресса/
+    результата (см. simulate_engine.py), друг другу не мешают. coin_source
+    — тот же необязательный фильтр по текущему whitelist/greylist, что и
+    у /api/simulate_bounce_bulk (см. _coin_source_filter_set).
+
+    Уровни для каждой монеты читаются из локальной базы снимков
+    (levels_history.py), сеть не трогают — см. докстринг simulate_engine.py.
+    """
+    from modules.cryptano.simulator.simulate_engine import run_bulk_v_simulation
+    tags = [t.strip().upper() for t in strategies.split(",") if t.strip()] if strategies else None
+    coin_filter = _coin_source_filter_set(coin_source)
+    try:
+        return run_bulk_v_simulation(start, end, strategies=tags, coin_filter=coin_filter)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка bulk-симуляции V: {e}")
+
+
+@app.get("/api/simulate_bulk/progress")
+def simulate_bulk_progress():
+    """Прогресс идущего сейчас (или последнего завершённого) bulk-прогона
+    V-семьи — фронт опрашивает раз в секунду, пока ждёт основной POST.
+    {} если bulk ещё ни разу не запускали."""
+    from modules.cryptano.simulator.simulate_engine import get_bulk_progress
+    return get_bulk_progress() or {}
+
+
+@app.get("/api/simulate_bulk/last")
+def simulate_bulk_last():
+    """Последний сохранённый результат bulk-прогона V-семьи — свой файл,
+    не пересекается с /api/simulate_bounce_bulk/last."""
+    from modules.cryptano.simulator.simulate_engine import get_last_all_run
     return get_last_all_run() or {}
 
 
@@ -1992,6 +2202,27 @@ def get_ohlcv(
         "price_precision": price_precision,
         "candles": candles,
     }
+
+
+@app.get("/api/indicators/{coin}")
+def get_indicators(coin: str, timeframe: str = "15m"):
+    """Индикаторы для графика (Supertrend/ADX/HMA/VWAP/Envelope) — только
+    отображение, торговой логики не касается. Считаются по тем же свечам из
+    candle_store, что и /api/ohlcv, поэтому времена точек совпадают со свечами.
+    Любая ошибка здесь возвращает пустой набор — график не страдает."""
+    coin = coin.upper().strip()
+    try:
+        symbol = resolve_symbol(coin, exchange.markets)
+    except Exception:
+        return {"indicators": {}}
+    if not symbol or timeframe not in candle_store.TIMEFRAME_MS:
+        return {"indicators": {}}
+    try:
+        from chart_indicators import compute_indicators  # type: ignore
+        candles = candle_store.get_candles(symbol, timeframe, limit=None, around=None)
+        return {"indicators": compute_indicators(candles)}
+    except Exception as e:
+        return {"indicators": {}, "error": str(e)}
 
 
 @app.post("/api/signals/delete")
