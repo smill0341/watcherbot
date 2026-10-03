@@ -1,0 +1,84 @@
+{
+    "STRK_VRT_SHORT": {
+        "min": 0.04372,
+        "max": 0.044589785714285714,
+        "score": 5.0,
+        "type": "4h_extreme_peak+4h_poc",
+        "date": "2026-09-29",
+        "activated_at": "2026-09-30",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-09-29"
+    },
+    "RAYDIUM_VRT_SHORT": {
+        "min": 2.0569,
+        "max": 2.099307857142857,
+        "score": 4.5,
+        "type": "4h_extreme_peak",
+        "date": "2026-09-30",
+        "activated_at": "2026-10-01",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-09-30"
+    },
+    "MORPHO_VRT_SHORT": {
+        "min": 2.67,
+        "max": 2.713964285714286,
+        "score": 3.5,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-02",
+        "activated_at": "2026-10-03",
+        "reaction_count": 0,
+        "level_id": "R|4h_extreme_peak|2026-10-02"
+    },
+    "XMR_VRT_SHORT": {
+        "min": 549.21,
+        "max": 554.6345,
+        "score": 4.0,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-01",
+        "activated_at": "2026-10-02",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-10-01"
+    },
+    "ZRO_VRT_SHORT": {
+        "min": 2.0291160714285716,
+        "max": 2.0818735714285714,
+        "score": 5.0,
+        "type": "1d_extreme_peak",
+        "date": "2026-04-14",
+        "activated_at": "2026-04-19",
+        "reaction_count": 2,
+        "level_id": "R|1d_extreme_peak|2026-04-14"
+    },
+    "MON_VRT_SHORT": {
+        "min": 0.0315,
+        "max": 0.03251121428571429,
+        "score": 4.5,
+        "type": "1W_MACRO_Resistance",
+        "date": "2026-08-24",
+        "activated_at": "2026-09-07",
+        "reaction_count": 1,
+        "class": "MACRO",
+        "level_id": "R|1W_MACRO_Resistance|2026-08-24"
+    },
+    "BNB_VRT_SHORT": {
+        "min": 765.8,
+        "max": 783.2278571428571,
+        "score": 4.5,
+        "type": "1W_MACRO_Resistance + 4h_extreme_peak",
+        "date": "2026-08-31",
+        "activated_at": "2026-09-14",
+        "reaction_count": 1,
+        "class": "MACRO",
+        "level_id": "R|1W_MACRO_Resistance|2026-08-31"
+    },
+    "JTO_VRT_SHORT": {
+        "min": 0.5566,
+        "max": 0.5746085714285715,
+        "score": 4.5,
+        "type": "4h_extreme_peak",
+        "date": "2026-09-30",
+        "activated_at": "2026-10-01",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-09-30"
+    }
+}

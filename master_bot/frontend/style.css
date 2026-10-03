@@ -1,0 +1,639 @@
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+  background: #0e0f13;
+  color: #e6e6e6;
+}
+
+.layout {
+  display: flex;
+  height: 100vh;
+  min-height: 480px;
+}
+
+.sidebar {
+  width: 290px; /* было 270px — не хватало буквально пары px под 5 закладок
+                    стратегий в одну строку с нормальными (не ужатыми)
+                    чипами, см. .strategy-tabs ниже */
+  flex-shrink: 0;
+  border-right: 1px solid #262832;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  border-bottom: 1px solid #1b1d24;
+  overflow: hidden;
+}
+
+/* Индивидуальная высота блоков в сайдбаре слева */
+.sidebar .panel:nth-child(1) {
+  flex: 1.7; /* «В работе» — чуть больше стандартного */
+}
+
+.sidebar .panel:nth-child(2) {
+  flex: 1.3; /* «Watchlist» — самый высокий блок */
+}
+
+.sidebar .panel:nth-child(3) {
+  flex: 0.7; /* «Последний скан» — делаем компактнее */
+}
+
+.panel:last-child { border-bottom: none; }
+
+.panel h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9aa0ac;
+  margin: 0 0 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.list, .history-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.history-panel-body {
+  font-size: 12px;
+  color: #cfd3da;
+}
+
+.badge {
+  background: #262832;
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 11px;
+  color: #cfd3da;
+}
+
+.list-item {
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: 0px;
+}
+
+.list-item:hover { background: #1b1d24; }
+.list-item.selected { background: #1f2e22; outline: 1px solid #3a5c3f; }
+
+.dir-LONG { color: #4caf7d; }
+.dir-SHORT { color: #e5654f; }
+.dir-ANY { color: #9aa0ac; }
+
+.state-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #2a3550;
+  color: #9fb4e8;
+}
+
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.chart-header {
+  padding: 10px 16px;
+  border-bottom: 1px solid #262832;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tf-switch {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+
+.tf-btn {
+  background: #1b1d24;
+  border: 1px solid #262832;
+  color: #9aa0ac;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.tf-btn:hover { color: #e6e6e6; }
+.tf-btn.active { background: #2a3550; color: #9fb4e8; border-color: #3a4a70; }
+
+.sim-controls {
+  margin-left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sim-btn {
+  background: #1b1d24;
+  border: 1px solid #262832;
+  color: #9aa0ac;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  /* "← Дашборд" (и любой другой .sim-btn с пробелом в тексте) — по
+     умолчанию <a> это inline-элемент, значит текст с пробелом может
+     перенестись на два слова, если в момент рендера (особенно на самом
+     F5, пока страница ещё не "устоялась" — шрифт/иконки могут подгрузиться
+     чуть позже) контейнеру не хватает ширины хоть на миг. Кнопка при этом
+     становится вдвое выше на один кадр — экран дёргается по высоте шапки.
+     nowrap гарантирует, что текст кнопки никогда не переносится, сколько
+     бы места ни было. */
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sim-btn:hover { color: #e6e6e6; }
+#sim-mode-btn.active { background: #3a2f1f; color: #e8b978; border-color: #6e4f28; }
+.sim-run { background: #1f3a26; color: #6fd699; border-color: #2f5c3a; }
+.sim-run:disabled { opacity: 0.5; cursor: default; }
+
+.muted { color: #6c7280; margin-left: 8px; font-size: 12px; }
+
+.chart-box {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.chart-legend {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  z-index: 5;
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: #333a45;
+  pointer-events: none;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dot-ema20 { background: #f2c14e; }
+.dot-ema50 { background: #5aa9e6; }
+.dot-ema200 { background: #7e57c2; }
+
+.ohlcv-legend-item {
+  font-variant-numeric: tabular-nums;
+}
+
+.history-card {
+  background: #1b1d24;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.history-card:last-child { margin-bottom: 0; }
+
+.history-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.history-state {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.history-state-TRIGGERED { background: #1f3a26; color: #6fd699; }
+.history-state-DEAD { background: #3a2020; color: #e5928a; }
+
+.history-log-text {
+  color: #9aa0ac;
+  font-size: 11px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.history-empty { color: #6c7280; font-size: 12px; }
+
+.list-section-header {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #6c7280;
+  padding: 8px 4px 4px;
+}
+
+.signals-panel {
+  padding: 0;
+  border-top: 1px solid #262832;
+  flex-shrink: 0;
+  max-height: 260px;
+  display: flex;
+  flex-direction: column;
+}
+
+#sim-trades-table {
+  min-width: 1150px;
+}
+
+.signals-panel h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9aa0ac;
+  margin: 0;
+  padding: 16px 16px 10px 16px;
+  flex-shrink: 0;
+}
+
+.signals-table-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding: 0 16px 16px 16px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th, td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid #1b1d24;
+}
+
+th {
+  color: #9aa0ac;
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  position: sticky;
+  top: 0;
+  background: #0e0f13;
+  z-index: 10;
+}
+
+#sim-trades-body tr,
+#sim-bulk-trades-body tr {
+  cursor: pointer;
+}
+#sim-trades-body tr:hover,
+#sim-bulk-trades-body tr:hover {
+  background: #1b1d24;
+}
+#sim-trades-body tr.selected,
+#sim-bulk-trades-body tr.selected {
+  background: #1f2e22;
+  outline: 1px solid #3a5c3f;
+}
+/* === Вкладки под графиком (Сделки / Все сделки / Отчёт по монетам) === */
+.sim-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #1b1d24;
+}
+.sim-bulk-progress {
+  margin-left: auto;
+  color: #9aa0ac;
+  font-size: 12px;
+  padding-right: 4px;
+  white-space: nowrap;
+}
+.sim-tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #9aa0ac;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.sim-tab-btn:hover {
+  color: #e6e6e6;
+}
+.sim-tab-btn.active {
+  color: #e6e6e6;
+  border-bottom-color: #3a4a70;
+}
+.sim-tab-panel {
+  display: none;
+}
+.sim-tab-panel.active {
+  display: block;
+}
+
+/* === Bulk-отчёт по всем монетам (см. sim.js::renderBulkReport) === */
+.bulk-summary {
+  color: #9aa0ac;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.bulk-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.bulk-table th {
+  text-align: left;
+  color: #9aa0ac;
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-bottom: 1px solid #2a2d38;
+}
+.bulk-table td {
+  padding: 4px 8px;
+}
+
+/* Выравнивание элементов управления в симуляторе */
+.sim-controls select,
+.sim-controls input[type="date"] {
+  background: #1b1d24;
+  border: 1px solid #262832;
+  color: #e6e6e6;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  height: 26px;
+  outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.sim-controls select:focus,
+.sim-controls input[type="date"]:focus {
+  border-color: #3a4a70;
+}
+
+.sim-date-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #9aa0ac;
+  height: 26px;
+}
+
+.sim-controls .sim-btn {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+/* === Модалка ручного добавления уровня (index.html, #add-level-overlay) === */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal-box {
+  background: #15161c;
+  border: 1px solid #2a2d38;
+  border-radius: 8px;
+  padding: 20px 24px;
+  width: 320px;
+  max-width: 90vw;
+}
+.modal-box h3 {
+  margin: 0 0 14px 0;
+  font-size: 15px;
+  color: #e6e6e6;
+}
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #9aa0ac;
+  margin-bottom: 10px;
+}
+.modal-field input,
+.modal-field select {
+  background: #1b1d24;
+  border: 1px solid #262832;
+  color: #e6e6e6;
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  outline: none;
+  font-family: inherit;
+}
+.modal-field input:focus,
+.modal-field select:focus {
+  border-color: #3a4a70;
+}
+.modal-error {
+  color: #e5654f;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+/* 🔥 НОВОЕ: Стиль для значка ручно добавленных монет */
+.manual-badge {
+    background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+    color: #333;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: bold;
+    margin-left: 6px;
+    display: inline-block;
+}
+
+/* Компактный тёмный стиль для поисковой строки */
+.panel input[type="text"] {
+  background: #1b1d24;          /* Тёмный фон */
+  border: 1px solid #262832;    /* Аккуратная рамка */
+  color: #e6e6e6;               /* Цвет текста */
+  padding: 3px 6px;             /* Уменьшенные внутренние отступы */
+  height: 26px;                 /* Фиксированная уменьшенная высота */
+  border-radius: 4px;
+  outline: none;
+  font-family: inherit;
+  font-size: 12px;              /* Чуть меньший размер текста */
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+.panel input[type="text"]::placeholder {
+  color: #6c7280; 
+}
+
+.panel input[type="text"]:focus {
+  border-color: #3a4a70;
+}
+
+/* === Закладки стратегий в "В работе" (см. renderActiveStrategyTabs в
+   app.js) — маленькие чипы под полем поиска: VB/VGB/VRT/BO/H, цветная
+   точка под цвет стратегии (STRATEGY_COLORS), счётчик текущих вотчеров.
+   Нет закладки "Все" — повторный клик по активной снимает фильтр.
+   Три прошлые попытки не подошли: nowrap+overflow-x давал уродливый
+   скроллбар, flex-wrap — перенос на вторую строку, ужатые чипы — "не
+   вариант, было норм". Решили проще: чипы вернули как были (11px, паддинг
+   3px 6px, точка 6px), сайдбар чуть шире (270px -> 290px, см. .sidebar) и
+   гап между чипами чуть уже (4px -> 3px) — этого хватает, чтобы все 5
+   помещались в одну строку без скролла/переноса/ужатия. overflow-x:auto
+   оставлен только подстраховкой на редкий край (3-значный счётчик,
+   будущая 6-я стратегия) — тонкая едва заметная полоса, не системный
+   скроллбар. Активная закладка — лёгкая неоновая подсветка (тот же
+   синий #5aa9e6, что уже используется в приложении, например EMA50/
+   ORIENTIR), не пульсирующая — тут это статичный "выбрано", а не
+   индикатор процесса (см. .sim-neon-on в Simulator.html — та же логика
+   разделения "включено" vs "идёт загрузка"). */
+.strategy-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 3px;
+  margin-bottom: 6px;
+  scrollbar-width: thin; /* Firefox — тонкий скроллбар вместо жирного системного */
+}
+.strategy-tabs::-webkit-scrollbar {
+  height: 3px;
+}
+.strategy-tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+.strategy-tabs::-webkit-scrollbar-thumb {
+  background: #333744;
+  border-radius: 3px;
+}
+
+.strategy-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #1b1d24;
+  border: 1px solid #262832;
+  color: #9aa0ac;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.strategy-tab:hover {
+  color: #e6e6e6;
+  border-color: #333744;
+}
+
+.strategy-tab.active {
+  background: #262832;
+  color: #e6e6e6;
+  border-color: #5aa9e6;
+  box-shadow: 0 0 5px rgba(90, 169, 230, 0.55);
+}
+
+.strategy-tab .st-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.strategy-tab .st-count {
+  color: #6c7280;
+}
+
+.strategy-tab.active .st-count {
+  color: #9aa0ac;
+}
+
+/* Кнопки индикаторов под графиком */
+.indicator-bar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  padding: 6px 12px; background: #ffffff; border-top: 1px solid #e6e8eb;
+}
+.indicator-bar-title { font-size: 11px; color: #8a8f98; margin-right: 4px; }
+.ind-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; line-height: 1; padding: 4px 9px; cursor: pointer;
+  color: #555b66; background: #f3f4f6; border: 1px solid #dfe2e6; border-radius: 4px;
+}
+.ind-btn i { width: 8px; height: 8px; border-radius: 50%; background: var(--ind-color, #888); opacity: .45; }
+.ind-btn:hover { background: #eceef1; }
+.ind-btn.active { color: #1b1d24; background: #fff; border-color: var(--ind-color, #888); box-shadow: 0 0 0 1px var(--ind-color, #888) inset; }
+.ind-btn.active i { opacity: 1; }
+
+/* Панель ADX под графиком */
+.adx-panel { position: relative; height: 34px; overflow: hidden; background: #ffffff; border-top: 1px solid #e6e8eb; }
+.adx-panel-label { position: absolute; top: 2px; left: 8px; z-index: 5; font-size: 10px; line-height: 1; color: #374151; background: rgba(255,255,255,.8); padding: 1px 4px; border-radius: 2px; pointer-events: none; }
+
+/* Кнопка "Методы" (тест уровней другим методом) */
+.lm-wrap { position: relative; display: inline-flex; }
+.lm-pop {
+  position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 60; min-width: 230px;
+  padding: 8px 10px; background: #fff; border: 1px solid #dfe2e6; border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.14); font-size: 12px; color: #1b1d24;
+}
+.lm-pop-title { font-size: 11px; color: #8a8f98; margin-bottom: 6px; }
+.lm-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; cursor: pointer; }
+.lm-row i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.lm-top { margin-top: 4px; padding-top: 6px; border-top: 1px solid #eceef1; cursor: default; color: #555b66; }
+.lm-top select { font-size: 12px; margin-left: 4px; }
