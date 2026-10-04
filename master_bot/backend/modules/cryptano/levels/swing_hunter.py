@@ -6,12 +6,11 @@ import pandas as pd
 import numpy as np
 from scipy.signal import find_peaks
 import schedule
-from backend.modules.cryptano.utils.crypto_utils import exchange
-from backend.modules.cryptano.utils.common import resolve_symbol, KNOWN_TICKER_ALIASES
+from backend.modules.cryptano.utils.bybit import exchange, resolve_symbol, KNOWN_TICKER_ALIASES
 from backend.modules.cryptano.utils.storage import load_json, save_json_atomic
 from backend.modules.cryptano.levels.levels_builder import (
     build_levels, _is_mitigated, merge_overlapping_zones, _merge_nearby_macro_zones,
-    compress_fat_zones, resolve_cross_overlaps,
+    compress_fat_zones, resolve_cross_overlaps, MACRO_LAYER_STATS,
 )
 
 # =========================================================
@@ -34,7 +33,6 @@ IMPULSE_LOOKAHEAD_DAYS = 10   # Даем цене 10 дней на то, что�
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from backend.modules.cryptano.utils.paths import MACRO_LEVELS_FILE, CUSTOM_LEVELS_FILE
-from backend.modules.cryptano.levels.levels_builder import MACRO_LAYER_STATS
 
 # Списки Потока А (боевой)/Потока Б (радар) — whitelist/blacklist/greylist.
 # Путь строим от MACRO_LEVELS_FILE (тот же jsonbank), не трогая
@@ -755,7 +753,7 @@ def build_greylist_candidates(exclude_symbols):
     print(f"✅ [РАДАР] Готово. В сером списке: {len([k for k in greylist if k != '_meta'])} монет.")
 
 
-def build_macro_levels(bot=None, admin_chat_id=None):
+def build_macro_levels():
     print(f"[SWING HUNTER] Запуск генерации зон интереса...")
     _fetch_stats_reset()
     scan_started_at = time.time()
@@ -941,17 +939,17 @@ def build_levels_for_single_coin(coin):
         print(f"[HUNTER ERROR] Ошибка при построении уровней для {coin}: {e}")
         return None
 
-def run_heavy_generator(bot, admin_chat_id):
+def run_heavy_generator():
     """Фоновый поток для генерации уровней по расписанию."""
-    schedule.every().day.at(TIME_ASIAN_CLOSE).do(build_macro_levels, bot, admin_chat_id)
-    schedule.every().day.at(TIME_US_OPEN).do(build_macro_levels, bot, admin_chat_id)
+    schedule.every().day.at(TIME_ASIAN_CLOSE).do(build_macro_levels)
+    schedule.every().day.at(TIME_US_OPEN).do(build_macro_levels)
     while True:
         schedule.run_pending()
         time.sleep(1)
 
-def start_swing_hunter(bot, admin_chat_id):
+def start_swing_hunter():
     """Инициализация Swing Hunter: запускает фоновые потоки, не блокируя старт бота."""
-    threading.Thread(target=run_heavy_generator, args=(bot, admin_chat_id), daemon=True).start()
+    threading.Thread(target=run_heavy_generator, daemon=True).start()
     # minute_radar удалён — второй, независимый писатель в watchlist.json
     # (наравне с синхронизацией в background_tasks.py), не нужен: свою роль
     # ("добавить монету в watchlist") с запасом перекрывает синхронизация в

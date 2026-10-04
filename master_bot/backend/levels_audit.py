@@ -34,8 +34,7 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 if CURRENT_DIR not in sys.path:
     sys.path.insert(0, CURRENT_DIR)
 
-from backend.modules.cryptano.utils.crypto_utils import exchange
-from backend.modules.cryptano.utils.common import resolve_symbol, KNOWN_TICKER_ALIASES
+from backend.modules.cryptano.utils.bybit import exchange, resolve_symbol, KNOWN_TICKER_ALIASES
 from backend.modules.cryptano.utils.paths import DATABASE_DIR
 from backend.modules.cryptano.levels import levels_builder as lb
 from backend.modules.cryptano.levels.swing_hunter import _safe_fetch_ohlcv

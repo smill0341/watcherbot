@@ -10,8 +10,8 @@ import threading
 from backend.modules.cryptano.utils.storage import load_json, save_json_atomic
 from backend.background_tasks import crypto_orchestrator
 from backend.modules.cryptano.levels.swing_hunter import start_swing_hunter
-import backend.dashboard_actions as dashboard_actions
-from backend.dashboard_actions import NOTIFICATIONS_FILE, CONFIG_FILE, ADMIN_LABEL
+import backend.modules.cryptano.backstage.dashboard_actions as dashboard_actions
+from backend.modules.cryptano.backstage.dashboard_actions import CONFIG_FILE
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -100,11 +100,8 @@ def _acquire_single_instance_lock():
 def main():
     print("🪙 run_web.py — крипто-сканер + веб-дашборд (единый процесс)")
     print(f"   config:        {CONFIG_FILE}")
-    print(f"   notifications: {NOTIFICATIONS_FILE}")
 
     _acquire_single_instance_lock()
-
-    notifier = dashboard_actions.init_notifier()
 
     # На штатный выход (Ctrl+C, sys.exit) подстрахуемся и погасим статус.
     # Не гарантия на 100%: принудительное закрытие окна крестиком/taskkill -F
@@ -117,37 +114,32 @@ def main():
 
     threading.Thread(
         target=crypto_orchestrator,
-        args=(notifier, ADMIN_LABEL),
         daemon=True,
     ).start()
 
-    # Футбол/NBA — тот же notifier вместо телеграм-бота (send_message просто
-    # печатает в консоль + пишет в notifications.json, реального Telegram
-    # тут нет и не нужен — нужны только данные, которые эти функции теперь
-    # также сохраняют в football_signals.json/nba_signals.json для страницы
-    # дашборда). Оба ждут status: RUNNING в своей секции config.json — как
-    # и раньше, просто больше нет телеграм-команды, которая его включает,
-    # выставляй вручную в config.json ("football": {"status": "RUNNING"}).
+    # Футбол/NBA сохраняют найденные сигналы в football_signals.json и
+    # nba_signals.json для страницы дашборда. Оба монитора ждут status: RUNNING
+    # в своей секции config.json, который выставляется вручную.
     try:
         from backend.modules.footballnogoal.football import run_football_monitor
-        threading.Thread(target=run_football_monitor, args=(notifier, ADMIN_LABEL), daemon=True).start()
+        threading.Thread(target=run_football_monitor, daemon=True).start()
     except Exception as e:
         print(f"[run_web] ⚠️ Футбол-монитор не запущен: {e}")
 
     try:
         from backend.modules.playerpropsbasket.player_props import run_nba_monitor
-        threading.Thread(target=run_nba_monitor, args=(notifier, ADMIN_LABEL), daemon=True).start()
+        threading.Thread(target=run_nba_monitor, daemon=True).start()
     except Exception as e:
         print(f"[run_web] ⚠️ NBA-монитор не запущен: {e}")
 
-    start_swing_hunter(notifier, ADMIN_LABEL)
+    start_swing_hunter()
 
     threading.Thread(target=_console_listener, daemon=True).start()
 
     # --- Дашборд — ПРЯМО ТУТ, в этом же процессе (см. докстринг файла) ---
     # Раньше здесь стояли threading.Thread(target=_flag_listener, ...) +
-    # while True: time.sleep(1) — этот скрипт был просто "не Telegram"-
-    # заглушкой вокруг background_tasks, а веб-дашборд (backend/app.py)
+    # while True: time.sleep(1) — этот скрипт был служебной заглушкой вокруг
+    # background_tasks, а веб-дашборд (backend/app.py)
     # запускался ОТДЕЛЬНОЙ командой (uvicorn backend.app:app), отдельным
     # процессом со своим собственным bounce_mgr в памяти.
     import uvicorn

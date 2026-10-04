@@ -55,7 +55,7 @@ def compute_trade_outcome(entry_ts, entry_price, target_price, trade_type, df_fu
     if have_full_window and not future.empty:
         # Дошли до дедлайна, TP так и не случился — закрываем по последней
         # доступной цене периода (тот же принцип, что history.py::
-        # check_and_update при MAX_HOLD_DAYS, просто честно по истории,
+        # update_open_signals при MAX_HOLD_DAYS, просто честно по истории,
         # а не по текущему тикеру биржи).
         last_close = float(future.iloc[-1]["close"])
         result_pct = (last_close - entry_price) / entry_price * 100.0 if trade_type == "LONG" \

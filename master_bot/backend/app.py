@@ -43,9 +43,11 @@ CONFIG_FILE = os.path.join(BASE_DIR, "config.json")               # тот же 
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from backend.modules.cryptano.utils.crypto_utils import exchange
-from backend.modules.cryptano.utils.common import resolve_symbol, KNOWN_TICKER_ALIASES, price_precision_from_market
+from backend.modules.cryptano.utils.bybit import (
+    exchange, resolve_symbol, KNOWN_TICKER_ALIASES, price_precision_from_market,
+)
 from backend.modules.cryptano.utils.paths import JSONBANK_DIR
+from backend.modules.cryptano.utils.notifier import notify
 from backend.modules.cryptano.levels.levels_history import get_levels_snapshot
 import backend.modules.cryptano.levels.candle_store as candle_store
 
@@ -113,13 +115,6 @@ WHITELIST_PATH = os.path.join(JSONBANK_DIR, "whitelist.json")
 BLACKLIST_PATH = os.path.join(JSONBANK_DIR, "blacklist.json")
 GREYLIST_PATH = os.path.join(JSONBANK_DIR, "greylist.json")
 GREYLIST_LEVELS_PATH = os.path.join(JSONBANK_DIR, "greylist_levels.json")
-# Та же лента, куда пишет Notifier (см. dashboard_actions.py) — "заглушка
-# вместо telebot", реального Telegram тут всё равно нет, просто общий
-# JSON-список последних сообщений для дашборда. Массовый рескан пишет сюда
-# напрямую, без импорта Notifier — не нужен весь его __init__, нужна
-# только запись.
-NOTIFICATIONS_PATH = os.path.join(JSONBANK_DIR, "notifications.json")
-MAX_NOTIFICATIONS = 200  # то же число, что MAX_NOTIFICATIONS в dashboard_actions.py
 
 STATIC_DIR = os.path.join(BASE_DIR, "frontend")
 
@@ -349,7 +344,7 @@ def get_active_watchers(all_states: bool = Query(default=False)):
     пишет save_watcher_state()/_write_active_watchers_snapshot() (нужен для
     персистентности между рестартами), просто дашборд его больше не читает.
     """
-    from backend.modules.cryptano.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
+    from backend.modules.cryptano.backstage.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
     from backend.background_tasks import _build_active_watchers_export
 
     with _watcher_lock:
@@ -453,7 +448,7 @@ def get_watcher_debug_log(level_id: str, coin: str = Query(default=None, descrip
        по себе (координаты уровня) не гарантирует уникальность без монеты,
        а strategy восстанавливаем из TAG в самом level_id.
     """
-    from backend.modules.cryptano.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
+    from backend.modules.cryptano.backstage.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
 
     with _watcher_lock:
         watcher = v_bottom_mgr._watchers.get(level_id) or bounce_mgr._watchers.get(level_id)
@@ -504,8 +499,8 @@ def trigger_single_watcher_rescan(coin: str, level_id: str = Query(..., descript
     Использует _watcher_lock — та же блокировка, что и боевой скан/рескан
     монеты, чтобы не читать/писать вотчер параллельно с боевым циклом."""
     coin = coin.upper().strip()
-    from backend.modules.cryptano.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
-    from backend.modules.cryptano.watcher_plan import rescan_single_bounce_watcher
+    from backend.modules.cryptano.backstage.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
+    from backend.modules.cryptano.backstage.watcher_plan import rescan_single_bounce_watcher
     from backend.background_tasks import export_dashboard_state
 
     _watcher_lock.acquire()
@@ -541,14 +536,11 @@ def trigger_rescan_all_watchers():
     Эндпоинт синхронный и отдаёт готовый результат сразу — как и точечный
     /api/rescan_watcher, только на всю пачку сразу.
 
-    Уведомление — ОДНО сводное на всю пачку (список того, что изменилось),
-    а не по одному на каждую монету, как раньше присылал боевой рескан —
-    здесь так же, только явным списком в тексте одного сообщения.
-    Пишем прямо в notifications.json (та же лента, что ведёт Notifier в
-    run_web.py) — реального Telegram у дашборда всё равно нет.
+    Сводка по всей пачке выводится одним уведомлением после завершения
+    рескана.
     """
-    from backend.modules.cryptano.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
-    from backend.modules.cryptano.watcher_plan import rescan_single_bounce_watcher
+    from backend.modules.cryptano.backstage.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
+    from backend.modules.cryptano.backstage.watcher_plan import rescan_single_bounce_watcher
     from backend.background_tasks import export_dashboard_state
 
     _watcher_lock.acquire()
@@ -612,20 +604,7 @@ def trigger_rescan_all_watchers():
     lines.append(f"✅ Остались активными: {len(still_active)}")
     summary_text = "\n".join(lines)
 
-    try:
-        items = _read_json(NOTIFICATIONS_PATH, default=None)
-        if not isinstance(items, list):
-            items = []
-        items.append({
-            "timestamp": datetime.datetime.now().isoformat(),
-            "chat_id": "web-dashboard",
-            "text": summary_text,
-        })
-        items = items[-MAX_NOTIFICATIONS:]
-        _write_json_atomic(NOTIFICATIONS_PATH, items)
-    except Exception as e:
-        # Уведомление — не критично для самого рескана, не роняем ответ из-за него.
-        print(f"[app.py] Не удалось записать сводное уведомление рескана: {e}")
+    notify(summary_text, source="watcher-rescan")
 
     return {
         "status": "ok",
@@ -653,7 +632,7 @@ def trigger_reset_watchers():
     каждую секунду — тот же процесс, что и сейчас, только раньше это был
     ОТДЕЛЬНЫЙ процесс без прямого доступа к bounce_mgr/v_bottom_mgr
     дашборда (см. докстринг run_web.py)."""
-    from backend.dashboard_actions import reset_all_watchers
+    from backend.modules.cryptano.backstage.dashboard_actions import reset_all_watchers
     try:
         reset_all_watchers()
         return {"status": "ok", "message": "Вотчеры сброшены"}
@@ -672,7 +651,7 @@ def trigger_rebuild_levels():
     блокируя HTTP-ответ — раньше это была заявка через rebuild_levels.flag,
     теперь dashboard_actions.py::rebuild_levels() вызывается напрямую."""
     import threading as _threading
-    from backend.dashboard_actions import rebuild_levels
+    from backend.modules.cryptano.backstage.dashboard_actions import rebuild_levels
     global is_rebuilding
 
     def _worker():
@@ -725,8 +704,8 @@ def clear_history():
 def get_strategies():
     """Текущее вкл/выкл каждой стратегии Watcher'а. Отсутствие ключа в
     config.json трактуется как ВКЛЮЧЕНО (True) — то же правило, что
-    в background_tasks.py::crypto_orchestrator, чтобы дашборд и реальный
-    диспетчер бота никогда не расходились в интерпретации пустого конфига."""
+    в background_tasks.py::crypto_orchestrator, чтобы дашборд и основной
+    диспетчер никогда не расходились в интерпретации пустого конфига."""
     config = _read_json(CONFIG_FILE, default={})
     saved = config.get("crypto", {}).get("strategies", {})
     return {tag: saved.get(tag, True) for tag in STRATEGY_TAGS}
@@ -735,7 +714,7 @@ def get_strategies():
 @app.post("/api/strategies/{tag}/toggle")
 def toggle_strategy(tag: str):
     """Переключает одну стратегию, не трогая остальные. Пишет в тот же
-    config.json, что и Telegram-бот (main.py) — диспетчер (background_tasks.py)
+    config.json, что и основной процесс — диспетчер (background_tasks.py)
     перечитывает конфиг каждую секунду, поэтому применяется без рестарта."""
     tag = tag.upper().strip()
     if tag not in STRATEGY_TAGS:
@@ -2328,7 +2307,7 @@ def delete_watchers(level_ids: list = Body(...)):
     зону" теперь одно действие. Ответ содержит removed_custom_levels —
     сколько зон подчистилось заодно (0, если среди удалённых не было
     ручных)."""
-    from backend.modules.cryptano.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
+    from backend.modules.cryptano.backstage.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
     from backend.background_tasks import export_dashboard_state
 
     _watcher_lock.acquire()

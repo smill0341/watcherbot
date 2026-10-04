@@ -1,8 +1,8 @@
 // Спорт-страница — полностью отдельно от крипто-графика (app.js). Просто
 // две таблицы, каждая читает свой /api/sports/* эндпоинт и обновляется
-// раз в минуту. Никакого Telegram тут нет — данные пишут сами
+// раз в минуту. Данные записывают сами
 // football.py/player_props.py (см. _save_football_signal/_save_nba_signal)
-// рядом с отправкой в Telegram, независимо от неё.
+// независимо от вывода уведомлений.
 
 function renderStatus(elId, data) {
   const el = document.getElementById(elId);

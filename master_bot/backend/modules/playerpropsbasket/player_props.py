@@ -8,6 +8,7 @@ from backend.modules.playerpropsbasket.update_base import run_auto_update
 from dotenv import load_dotenv
 from backend.modules.cryptano.utils.storage import load_json, save_json_atomic
 from backend.modules.cryptano.utils.paths import NBA_SIGNALS_FILE, NBA_STATUS_FILE
+from backend.modules.cryptano.utils.notifier import notify
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
@@ -76,7 +77,7 @@ def analyze_star_absence_live(df, star_name, team_abc):
 
 def _save_nba_signal(record: dict):
     """Дописывает найденный сигнал в nba_signals.json — для страницы
-    дашборда, отдельно от отправки в Telegram (вызывается рядом, не вместо)."""
+    дашборда, независимо от вывода уведомления."""
     try:
         signals = load_json(NBA_SIGNALS_FILE, default=[])
         if not isinstance(signals, list):
@@ -88,7 +89,7 @@ def _save_nba_signal(record: dict):
         print(f"⚠️ [NBA] Не удалось сохранить сигнал в nba_signals.json: {e}")
 
 
-def check_nba_injuries(bot, chat_id, silent=False):
+def check_nba_injuries(silent=False):
     current_time = datetime.now().strftime("%H:%M:%S")
     print(f"[{current_time}] 🏀 NBA: Сканирование составов Rotowire...")
     
@@ -96,7 +97,7 @@ def check_nba_injuries(bot, chat_id, silent=False):
     df = load_data()
     if df is None:
         print(f"⚠️ ОШИБКА: Файл {file_healthy} не найден!")
-        bot.send_message(chat_id, "⚠️ **NBA:** База `healthyplayers.csv` не найдена! Запустите скрипт обновления базы.", parse_mode="Markdown")
+        notify("⚠️ **NBA:** База `healthyplayers.csv` не найдена! Запустите скрипт обновления базы.", kind="error", source="nba")
         return
 
     url = "https://www.rotowire.com/basketball/nba-lineups.php"
@@ -142,7 +143,7 @@ def check_nba_injuries(bot, chat_id, silent=False):
                                     any_signals = True
                                     signals_found += 1
                                     
-                                    # Формируем сообщение для Телеграма
+                                    # Формируем текст уведомления
                                     msg = (
                                         f"🔥 **РЕАЛЬНЫЙ ВАЛУЙНЫЙ СИГНАЛ (NBA):**\n\n"
                                         f"🏀 **Матч:** {teams[1].text.strip()} @ {teams[0].text.strip()}\n"
@@ -152,9 +153,9 @@ def check_nba_injuries(bot, chat_id, silent=False):
                                         f"📈 Прирост: `+{trend['diff']}` очков (выборка: {trend['games_count']} матчей)"
                                     )
                                     
-                                    bot.send_message(chat_id, msg, parse_mode="Markdown")
+                                    notify(msg, kind="signal", source="nba")
                                     sent_signals.add(signal_id)
-                                    print(f"🔥 Отправлен сигнал в ТГ: {trend['player']} (Травма: {p_name})")
+                                    print(f"🔥 Сформирован сигнал: {trend['player']} (Травма: {p_name})")
 
                                     _save_nba_signal({
                                         "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -183,16 +184,16 @@ def check_nba_injuries(bot, chat_id, silent=False):
 
         if not silent:
             if any_signals:
-                bot.send_message(chat_id, "✅ [NBA]: Сканирование завершено. Сигналы отправлены выше.")
+                notify("✅ [NBA]: Сканирование завершено. Сигналы отправлены выше.", source="nba")
             else:
-                bot.send_message(chat_id, "🏀 [NBA]: Матчей с травмами не найдено.")
+                notify("🏀 [NBA]: Матчей с травмами не найдено.", source="nba")
             
     except Exception as e:
         print(f"❌ Ошибка парсинга NBA: {e}")
 
 
 # ================= ИНТЕГРАЦИЯ С MAIN.PY =================
-def run_nba_monitor(bot, chat_id):
+def run_nba_monitor():
     """
     Бесконечный фоновый цикл. Управляется через config.json
     """
@@ -237,13 +238,10 @@ def run_nba_monitor(bot, chat_id):
                             print("[NBA] ⚠️ Не удалось обновить базу.")
                     
                     print(f"[{datetime.now().strftime('%H:%M:%S')}] 🏀 NBA: Сканирование...")
-                    check_nba_injuries(bot, chat_id, silent=True)       
+                    check_nba_injuries(silent=True)
                     
         except Exception as e:
             print(f"Ошибка в цикле монитора NBA: {e}")
-            try:
-                bot.send_message(chat_id, f"❌ [NBA] Ошибка:\n`{e}`", parse_mode="Markdown")
-            except:
-                pass
+            notify(f"❌ [NBA] Ошибка:\n`{e}`", kind="error", source="nba")
             
         time.sleep(SLEEP_TIME)

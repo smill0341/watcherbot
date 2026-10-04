@@ -41,7 +41,7 @@ if not exist "backend\app.py" (
 pip show fastapi >nul 2>&1
 if errorlevel 1 (
     echo Installing dashboard dependencies...
-    pip install -r backend\requirements1.txt
+    pip install -r backend\requirements.txt
 )
 
 echo [4/4] Starting scanner + dashboard (single process)...

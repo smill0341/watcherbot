@@ -5,7 +5,8 @@ import os
 
 # Импорт базовых инструментов
 from backend.modules.cryptano.utils.storage import load_json, save_json_atomic
-from backend.modules.cryptano.utils.common import KNOWN_TICKER_ALIASES
+from backend.modules.cryptano.utils.bybit import KNOWN_TICKER_ALIASES
+from backend.modules.cryptano.utils.notifier import notify
 from backend.modules.cryptano.utils.paths import MACRO_LEVELS_FILE, WATCHER_HISTORY_FILE, ACTIVE_WATCHERS_FILE, RESCAN_STATUS_FILE, CUSTOM_LEVELS_FILE
 from backend.modules.cryptano.strategy.bounce_manager import SHORT_MODES
 from backend.modules.cryptano.levels.swing_hunter import start_swing_hunter
@@ -122,7 +123,7 @@ def _write_active_watchers_snapshot(v_bottom_mgr, bounce_mgr, level_id_meta=None
     VBottomManager.clear_dead_watchers vs BounceParent.clear_dead_watchers)
     этот хелпер не делает и не должен — это остаётся заботой вызывающего
     кода, до вызова этой функции."""
-    from backend.modules.cryptano.live_scan import save_watcher_state
+    from backend.modules.cryptano.backstage.live_scan import save_watcher_state
 
     export = _build_active_watchers_export(v_bottom_mgr, bounce_mgr, level_id_meta)
     save_json_atomic(ACTIVE_WATCHERS_FILE, export)
@@ -186,7 +187,7 @@ def export_dashboard_state(v_bottom_mgr, bounce_mgr):
         print(f"⚠️ [DASHBOARD EXPORT] Не удалось сохранить active_watchers.json: {e}")
 
 
-def crypto_orchestrator(bot, admin_chat_id):
+def crypto_orchestrator():
     """
     Единый каскадный Диспетчер автоматики Крипты.
     Управляет очередью, задержками и строго следит за кнопками ON/OFF.
@@ -211,7 +212,7 @@ def crypto_orchestrator(bot, admin_chat_id):
             config = load_json(config_path, default={})
             status = config.get("crypto", {}).get("status", "STOPPED")
             fasttrade_on = config.get("crypto", {}).get("fasttrade", False)
-            # Вкл/выкл отдельных стратегий через Telegram-меню "🧩 Стратегии"
+            # Вкл/выкл отдельных стратегий через меню "🧩 Стратегии"
             # (main.py). Отсутствие ключа = стратегия включена (старое
             # поведение) — конфиг перечитывается каждую секунду в начале
             # цикла, поэтому переключение в меню применяется на ближайшем
@@ -274,14 +275,14 @@ def crypto_orchestrator(bot, admin_chat_id):
                 # та же 15-минутная граница, что и весь остальной скан. Отдельный
                 # try/except — сбой тут не должен ронять остальной watcher-цикл.
                 try:
-                    from backend.modules.cryptano.history import update_open_signals
+                    from backend.modules.cryptano.levels.history import update_open_signals
                     update_open_signals()
                 except Exception as e:
                     print(f"[DISPATCHER ERROR] Не удалось обновить открытые сигналы: {e}")
 
                 try:
-                    from backend.modules.cryptano.live_scan import _load_watchlist, _save_watchlist, watcher_cooldown_cache, _watcher_lock, _cascade_lock, COOLDOWN_HOURS, v_bottom_mgr, bounce_mgr, tracked_origin_levels, tracked_origin_levels_vrt, save_watcher_state
-                    from backend.modules.cryptano.watcher_plan import check_v_bottom, check_v_green_bottom, check_v_red_top, check_bounce, check_volume_triggers
+                    from backend.modules.cryptano.backstage.live_scan import _load_watchlist, _save_watchlist, watcher_cooldown_cache, _watcher_lock, _cascade_lock, COOLDOWN_HOURS, v_bottom_mgr, bounce_mgr, tracked_origin_levels, tracked_origin_levels_vrt, save_watcher_state
+                    from backend.modules.cryptano.backstage.watcher_plan import check_v_bottom, check_v_green_bottom, check_v_red_top, check_bounce, check_volume_triggers
 
                     # Список монет для скана — watchlist.json. Синхронизация на каждом
                     # скане: любая монета из macro_levels.json, которой ещё нет в
@@ -470,7 +471,7 @@ def crypto_orchestrator(bot, admin_chat_id):
                                             for bc_report in bc_reports:
                                                 signals_found += 1
                                                 bounce_signals += 1
-                                                bot.send_message(admin_chat_id, bc_report, parse_mode="Markdown")
+                                                notify(bc_report, kind="signal", source="crypto")
 
                                         for d in dirs:
                                             if f"{coin}_{d}" in watcher_cooldown_cache: continue
@@ -486,7 +487,7 @@ def crypto_orchestrator(bot, admin_chat_id):
                                                     signals_found += 1
                                                     vbottom_signals += 1
                                                     coin_signal_found = True
-                                                    bot.send_message(admin_chat_id, v_report, parse_mode="Markdown")
+                                                    notify(v_report, kind="signal", source="crypto")
 
                                             # --- 2. V-GREEN-BOTTOM стратегия (в паре с V-BOTTOM, один менеджер на двоих) ---
                                             # Только LONG — функция сама пропускает SHORT без обращения к бирже
@@ -497,7 +498,7 @@ def crypto_orchestrator(bot, admin_chat_id):
                                                     signals_found += 1
                                                     vgb_signals += 1
                                                     coin_signal_found = True
-                                                    bot.send_message(admin_chat_id, vgb_report, parse_mode="Markdown")
+                                                    notify(vgb_report, kind="signal", source="crypto")
 
                                             # --- 3. V-RED-TOP стратегия ---
                                             # Только SHORT — функция сама пропускает LONG без обращения к бирже.
@@ -511,7 +512,7 @@ def crypto_orchestrator(bot, admin_chat_id):
                                                     signals_found += 1
                                                     vrt_signals += 1
                                                     coin_signal_found = True
-                                                    bot.send_message(admin_chat_id, vrt_report, parse_mode="Markdown")
+                                                    notify(vrt_report, kind="signal", source="crypto")
 
                                             if coin_signal_found:
                                                 watcher_cooldown_cache[f"{coin}_{d}"] = now_dt
@@ -666,16 +667,16 @@ def crypto_orchestrator(bot, admin_chat_id):
         except Exception as e:
             print(f"[CRITICAL DISPATCHER ERROR] Сбой главного диспетчера задач: {e}")
 
-def start_all_background_tasks(bot, admin_chat_id):
+def start_all_background_tasks():
     """
     Запускает спортивные мониторы и наш единый Каскадный Диспетчер крипты.
     """
     # 🪙 Запуск Единого Диспетчера Крипты в один поток
-    threading.Thread(target=crypto_orchestrator, args=(bot, admin_chat_id), daemon=True).start()
+    threading.Thread(target=crypto_orchestrator, daemon=True).start()
     
     # 🌪 Запуск Свинг Хантера (Генератор уровней + Минутный дозор)
-    start_swing_hunter(bot, admin_chat_id)
+    start_swing_hunter()
     
     # ⚽️🏀 Спортивные мониторы (остались без изменений)
-    threading.Thread(target=run_football_monitor, args=(bot, admin_chat_id), daemon=True).start()
-    threading.Thread(target=run_nba_monitor, args=(bot, admin_chat_id), daemon=True).start()
+    threading.Thread(target=run_football_monitor, daemon=True).start()
+    threading.Thread(target=run_nba_monitor, daemon=True).start()

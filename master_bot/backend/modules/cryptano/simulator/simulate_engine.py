@@ -55,9 +55,8 @@ _MASTER_BOT_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "..", "..", ".."))
 if _MASTER_BOT_ROOT not in sys.path:
     sys.path.insert(0, _MASTER_BOT_ROOT)
 
-from backend.modules.cryptano.utils.common import exchange, calculate_rsi, resolve_symbol
-from backend.modules.cryptano.utils.market_cache import load_markets_cached
-from backend.modules.cryptano.utils.indicators import calculate_atr, calculate_ema
+from backend.modules.cryptano.utils.bybit import exchange, resolve_symbol, load_markets_cached
+from backend.modules.cryptano.utils.indicators import calculate_atr, calculate_ema, calculate_rsi
 from backend.modules.cryptano.utils.storage import load_json, save_json_atomic
 import backend.modules.cryptano.levels.candle_store as candle_store
 from backend.modules.cryptano.levels.levels_history import get_levels_snapshot
@@ -65,7 +64,7 @@ from backend.modules.cryptano.strategy.vbottom_manager import VBottomManager
 from backend.modules.cryptano.strategy.v_bottom_watcher import VBottomWatcher
 from backend.modules.cryptano.strategy.v_green_bottom_watcher import VGreenBottomWatcher
 from backend.modules.cryptano.strategy.v_red_top_watcher import VRedTopWatcher
-from backend.modules.cryptano.watcher_plan import (
+from backend.modules.cryptano.backstage.watcher_plan import (
     _find_fresh_breach,
     _find_fresh_breach_up,
     VBOTTOM_BREATH_BUFFER_PCT,

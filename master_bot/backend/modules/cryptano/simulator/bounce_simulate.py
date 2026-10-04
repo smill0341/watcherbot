@@ -20,8 +20,7 @@ import datetime
 import pandas as pd
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-from backend.modules.cryptano.utils.common import exchange, resolve_symbol
-from backend.modules.cryptano.utils.market_cache import load_markets_cached
+from backend.modules.cryptano.utils.bybit import exchange, resolve_symbol, load_markets_cached
 from backend.modules.cryptano.utils.indicators import calculate_atr
 from backend.modules.cryptano.utils.storage import load_json, save_json_atomic
 from backend.modules.cryptano.utils.paths import DATABASE_DIR
@@ -285,7 +284,7 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, 
                 "volume_mult": d.get("volume_mult"),
                 "reason": d.get("reason", ""),
                 # То же самое, что уже показывает боевой дашборд для реальных
-                # сигналов (см. history.py::save_signal/check_and_update) —
+                # сигналов (см. history.py::save_signal/update_open_signals) —
                 # только тут исход честно посчитан по истории, а не ждёт
                 # реального тикера биржи.
                 "status": outcome["status"],

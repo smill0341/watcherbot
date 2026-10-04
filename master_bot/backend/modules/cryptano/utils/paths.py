@@ -37,7 +37,6 @@ FOOTBALL_SIGNALS_FILE = os.path.join(JSONBANK_DIR, "football_signals.json")
 FOOTBALL_STATUS_FILE = os.path.join(JSONBANK_DIR, "football_status.json")
 NBA_SIGNALS_FILE = os.path.join(JSONBANK_DIR, "nba_signals.json")
 NBA_STATUS_FILE = os.path.join(JSONBANK_DIR, "nba_status.json")
-NOTIFICATIONS_FILE = os.path.join(JSONBANK_DIR, "notifications.json")
 
 # Отдельный лог ошибок check_bounce (watcher_plan.py) — ПОЧЕМУ отдельный
 # файл, а не просто print(): print() виден только в живой консоли сервера,

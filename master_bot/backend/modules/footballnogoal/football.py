@@ -5,6 +5,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 from backend.modules.cryptano.utils.storage import load_json, save_json_atomic
 from backend.modules.cryptano.utils.paths import FOOTBALL_SIGNALS_FILE, FOOTBALL_STATUS_FILE
+from backend.modules.cryptano.utils.notifier import notify
 
 # Явно указываем путь к .env
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -50,7 +51,7 @@ TEAM_MIN_XG = 1.5         # Индивидуальный xG команды
 
 # ==================================================
 
-# Множество, чтобы не дублировать сигналы в Telegram
+# Множество, чтобы не дублировать сигналы между проверками
 sent_matches = set()
 
 def parse_stat_value(stat_list, type_name):
@@ -67,8 +68,7 @@ def parse_stat_value(stat_list, type_name):
 
 def _save_football_signal(record: dict):
     """Дописывает найденный сигнал в football_signals.json — для страницы
-    дашборда, отдельно от отправки в Telegram (см. send_telegram_signal_advanced,
-    вызывается рядом, не вместо)."""
+    дашборда, независимо от вывода уведомления."""
     try:
         signals = load_json(FOOTBALL_SIGNALS_FILE, default=[])
         if not isinstance(signals, list):
@@ -80,9 +80,9 @@ def _save_football_signal(record: dict):
         print(f"⚠️ [FOOTBALL] Не удалось сохранить сигнал в football_signals.json: {e}")
 
 
-def send_telegram_signal_advanced(bot, chat_id, match_data, minute, ht_home, ht_away, total_xg, total_chances, 
-                                  home_team, away_team, home_touches, away_touches, 
-                                  home_shots, away_shots, additional_pred):
+def send_signal(match_data, minute, ht_home, ht_away, total_xg, total_chances,
+                home_team, away_team, home_touches, away_touches,
+                home_shots, away_shots, additional_pred):
     league_name = match_data['league']['name']
     current_home = match_data['goals']['home']
     current_away = match_data['goals']['away']
@@ -102,13 +102,9 @@ def send_telegram_signal_advanced(bot, chat_id, match_data, minute, ht_home, ht_
         f"🎯 **ДОПОЛНИТЕЛЬНЫЙ ПРОГНОЗ:**\n`{additional_pred}`"
     )
     
-    try:
-        # Отправляем через объект bot из main.py
-        bot.send_message(chat_id, message, parse_mode='Markdown')
-    except Exception as e:
-        print(f"❌ Не удалось отправить в Telegram: {e}")
+    notify(message, kind="signal", source="football")
 
-def check_live_matches(bot, chat_id, silent=False):
+def check_live_matches(silent=False):
     current_time = datetime.now().strftime("%H:%M:%S")
     print(f"[{current_time}] Отправляю запрос к API футбола...")
     
@@ -219,7 +215,7 @@ def check_live_matches(bot, chat_id, silent=False):
                                             elif away_on_target >= 4 and away_shots >= 9:
                                                 additional_pred = f"🔥 ИТБ2 (+0.5) — Гол команды {away_team} (по ударам)"
                                         
-                                        print(f"🔥 НАЙДЕН ЖИРНЫЙ МАТЧ ({TOP_LEAGUES[league_id]}): {home_team} {current_home}:{current_away} {away_team} ({elapsed}') -> В Telegram!")
+                                        print(f"🔥 НАЙДЕН ЖИРНЫЙ МАТЧ ({TOP_LEAGUES[league_id]}): {home_team} {current_home}:{current_away} {away_team} ({elapsed}')")
                                         
                                         _save_football_signal({
                                             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -236,8 +232,8 @@ def check_live_matches(bot, chat_id, silent=False):
                                             "prediction": additional_pred,
                                         })
 
-                                        send_telegram_signal_advanced(
-                                            bot, chat_id, item, elapsed, halftime_home, halftime_away, 
+                                        send_signal(
+                                            item, elapsed, halftime_home, halftime_away,
                                             total_xg, total_chances, home_team, away_team, 
                                             home_touches, away_touches, home_shots, away_shots, 
                                             additional_pred
@@ -261,7 +257,7 @@ def check_live_matches(bot, chat_id, silent=False):
             print(f"⚠️ [FOOTBALL] Не удалось сохранить статус: {e}")
     
         if not silent:
-            bot.send_message(chat_id, f"📊 Лайв: {total_live} | ТОП-лиг: {top_leagues_live} | Сигналов: {matches_found}")
+            notify(f"📊 Лайв: {total_live} | ТОП-лиг: {top_leagues_live} | Сигналов: {matches_found}", source="football")
                                 
     except Exception as e:
         print(f"❌ Ошибка при сканировании: {e}\n")
@@ -269,7 +265,7 @@ def check_live_matches(bot, chat_id, silent=False):
 
 
 # ================= ИНТЕГРАЦИЯ С MAIN.PY =================
-def run_football_monitor(bot, chat_id):
+def run_football_monitor():
     """
     Бесконечный фоновый цикл. Управляется через config.json
     """
@@ -295,13 +291,10 @@ def run_football_monitor(bot, chat_id):
                 
                 # Запускаем проверку матчей ТОЛЬКО если статус RUNNING
                 if config.get("football", {}).get("status") == "RUNNING":
-                    check_live_matches(bot, chat_id, silent=True)
+                    check_live_matches(silent=True)
                     
         except Exception as e:
             print(f"❌ Ошибка в цикле футбола: {e}")
-            try:
-                bot.send_message(chat_id, f"❌ [ФУТБОЛ] Ошибка:\n`{e}`", parse_mode="Markdown")
-            except:
-                pass
+            notify(f"❌ [ФУТБОЛ] Ошибка:\n`{e}`", kind="error", source="football")
 
         time.sleep(SLEEP_TIME)

@@ -1,7 +1,7 @@
 """
 levels_builder_new.py  (НОВАЯ сборка уровней; старый levels_builder.py не тронут)
 ==================
-Чистый модуль расчёта уровней. Не знает про биржу, расписание, Telegram.
+Чистый модуль расчёта уровней. Не знает про биржу и расписание.
 Принимает готовые DataFrame (1D и 4H), возвращает словарь зон,
 АКТУАЛЬНЫХ на момент current_idx (на момент скана).
 
@@ -44,6 +44,7 @@ Merge пересекающихся зон (merge_overlapping_zones): база с
 """
 
 import pandas as pd
+from backend.modules.cryptano.utils.indicators import calculate_atr
 import numpy as np
 from scipy.signal import find_peaks
 
@@ -166,15 +167,6 @@ MERGE_MAX_UNION_FACTOR = 1.5  # и если объединение не шире
 REJECTION_SCORE_STEP = 0.5    # score = база источника + 0.5 за каждый отбой от готовой зоны
 REJECTION_SCORE_CAP = 4
 
-
-
-def calculate_atr(df, period=14):
-    """Average True Range по стандартной формуле."""
-    high_low = df["high"] - df["low"]
-    high_cp = (df["high"] - df["close"].shift()).abs()
-    low_cp = (df["low"] - df["close"].shift()).abs()
-    tr = pd.concat([high_low, high_cp, low_cp], axis=1).max(axis=1)
-    return tr.rolling(window=period).mean()
 
 
 def _calc_weekly_atr(df_1d, current_idx):

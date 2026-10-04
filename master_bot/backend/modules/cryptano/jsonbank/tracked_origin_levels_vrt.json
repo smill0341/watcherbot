@@ -80,5 +80,35 @@
         "activated_at": "2026-10-01",
         "reaction_count": 1,
         "level_id": "R|4h_extreme_peak|2026-09-30"
+    },
+    "ATOM_VRT_SHORT": {
+        "min": 1.736,
+        "max": 1.7672642857142855,
+        "score": 4.0,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-02",
+        "activated_at": "2026-10-03",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-10-02"
+    },
+    "AXS_VRT_SHORT": {
+        "min": 1.2427172410714284,
+        "max": 1.3064463303571427,
+        "score": 5.5,
+        "type": "1W_high_PWH",
+        "date": "2026-10-04",
+        "activated_at": "2026-10-04",
+        "reaction_count": 0,
+        "level_id": "R|1W_high_PWH|2026-10-04"
+    },
+    "RUNE_VRT_SHORT": {
+        "min": 0.7631785714285714,
+        "max": 0.7791685714285714,
+        "score": 5.5,
+        "type": "1W_high_PWH",
+        "date": "2026-09-27",
+        "activated_at": "2026-09-27",
+        "reaction_count": 0,
+        "level_id": "R|1W_high_PWH|2026-09-27"
     }
 }
