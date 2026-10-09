@@ -83,6 +83,16 @@ class BounceWatcher:
                 self.CONFIG['FIXED_TP_PCT'] = float(live_cfg["bounce_tp_pct"])
             if "bounce_sl_pct" in live_cfg:
                 self.CONFIG['SL_PCT'] = float(live_cfg["bounce_sl_pct"])
+            # Свой TP/SL монеты (jsonbank/coin_settings.json) — приоритет над общим.
+            # Подхватывается только НОВЫМИ вотчерами (уже живые держат свой CONFIG).
+            from backend.modules.cryptano.utils.coin_settings import get_coin_tpsl
+            own = get_coin_tpsl(coin)
+            own_tp = own.get("tp")
+            own_sl = own.get("sl")
+            if own_tp is not None:
+                self.CONFIG['FIXED_TP_PCT'] = float(own_tp)
+            if own_sl is not None:
+                self.CONFIG['SL_PCT'] = float(own_sl)
         except Exception as e:
             pass # Если файл битый или ключей нет - останутся дефолты из класса
         self.mode = mode

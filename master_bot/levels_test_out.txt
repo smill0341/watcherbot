@@ -1,0 +1,257 @@
+Старый билдер для сравнения ширины: D:\bot\master_bot\backend\levels_builder_before_atrfix.py
+Параметры: зазор G = 0.0 ATR
+⚪ [БОЙ] Whitelist: 74/74 монет(ы) резолвнулись в реальный символ на бирже.
+✋ [БОЙ] Монет с ручными зонами добавлено сверх whitelist: 1
+📋 COIN_SOURCE='whitelist' -> 75 символов.
+📡 Фаза 1/2: проверяю/докачиваю базу по 75 монетам (по одной, с паузой — бережём биржу)...
+   …10/75
+   …20/75
+   …30/75
+   …40/75
+   …50/75
+   …60/75
+   …70/75
+   …75/75
+✅ Фаза 1 готова — база свежая по всем монетам (кто докачался).
+📥 Фаза 2/2: собираю кэш из базы в 4 поток(а/ов)...
+   …10/75
+   …20/75
+   …30/75
+   …40/75
+   …50/75
+   …60/75
+   …70/75
+   …75/75
+✅ Кэш готов: 75 монет.
+   …10/75
+   …20/75
+   …30/75
+   …40/75
+   …50/75
+   …60/75
+   …70/75
+
+Период: 2026-09-30 00:00:00 .. 2026-10-06 12:00:00  (снимков: 14), монет: 74
+
+                                СТАРЫЙ     НОВЫЙ
+живых зон за неделю (всего)        551       424
+пар пересекаются/<G                143         0
+монет с такими парами               64         0
+зон в снимке на монету (ср.)       3.9       3.8
+снимков без зон снизу                0         0   (из 1036 снимков монет)
+снимков без зон сверху               0         0   (из 1036 снимков монет)
+пересечений поддержка/сопр.         48        76   (по снимкам)
+
+РАЗБОР пересечений поддержка/сопр. в НОВОМ (реестр):
+  одна и та же точка в обеих зонах, такое же пересечение есть и в СТАРОМ: 7
+  одна и та же точка в обеих зонах, в СТАРОМ такого пересечения нет:      31
+  разные точки, такое же пересечение есть и в СТАРОМ:                      26
+  разные точки, в СТАРОМ такого пересечения нет:                           12
+    [shared_new] BNB 10-02 00:00  общие: ['1M_close_PMC']
+        S [753.699..767] 1W_low_PWL + 1M_close_PMC
+        R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak + 1M_close_PMC
+    [shared_new] BNB 10-02 12:00  общие: ['1M_close_PMC']
+        S [753.699..767] 1W_low_PWL + 1M_close_PMC
+        R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak + 1M_close_PMC
+    [shared_new] BNB 10-05 12:00  общие: ['4h_poc']
+        S [753.699..767] 1W_low_PWL + 1M_close_PMC + 4h_extreme_peak + 1d_extreme_peak+4h_poc
+        R [765.8..783.228] 1W_MACRO_Resistance+4h_poc
+    [shared_existed] BNB 10-03 00:00  общие: ['1M_close_PMC']
+        S [753.699..767] 1W_low_PWL + 1M_close_PMC
+        R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak + 1M_close_PMC
+    [shared_existed] BNB 10-03 12:00  общие: ['1M_close_PMC']
+        S [753.699..767] 1W_low_PWL + 1M_close_PMC
+        R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak + 1M_close_PMC
+    [shared_existed] JUP 10-02 00:00  общие: ['4h_extreme_peak']
+        S [0.315072..0.3231] 4h_extreme_peak
+        R [0.321793..0.337607] 1M_close_PMC + 4h_extreme_peak
+    [noshared_new] BNB 10-01 00:00  общие: []
+        S [753.699..767] 1W_low_PWL
+        R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak + 1M_close_PMC
+    [noshared_new] BNB 10-01 12:00  общие: []
+        S [753.699..767] 1W_low_PWL
+        R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak + 1M_close_PMC
+    [noshared_new] BNB 10-05 00:00  общие: []
+        S [753.699..767] 1W_low_PWL + 1M_close_PMC + 4h_extreme_peak + 1d_extreme_peak
+        R [765.8..783.228] 1W_MACRO_Resistance
+    [noshared_existed] BNB 09-30 00:00  общие: []
+        S [753.699..767] 1W_low_PWL
+        R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak
+    [noshared_existed] BNB 09-30 12:00  общие: []
+        S [753.699..767] 1W_low_PWL
+        R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak
+    [noshared_existed] BNB 10-04 00:00  общие: []
+        S [753.699..767] 1W_low_PWL + 1M_close_PMC + 4h_extreme_peak
+        R [765.8..783.228] 1W_MACRO_Resistance
+
+Пересечения поддержка/сопротивление (СТАРЫЙ):
+  AKE       10-01 00:00  S [0.029663..0.0311841] 1W_low_PWL + 4h_extreme_peak   <->   R [0.0308968..0.0324812] 1M_close_PMC + 4h_extreme_peak
+  AKE       10-01 12:00  S [0.029663..0.0311841] 1W_low_PWL + 4h_extreme_peak   <->   R [0.0308968..0.0324812] 1M_close_PMC + 4h_extreme_peak
+  AKE       10-02 00:00  S [0.029663..0.0311841] 1W_low_PWL + 4h_extreme_peak   <->   R [0.0308968..0.0324812] 1M_close_PMC + 4h_extreme_peak
+  AKE       10-02 12:00  S [0.029663..0.0311841] 1W_low_PWL + 4h_extreme_peak   <->   R [0.0308968..0.0324812] 1M_close_PMC + 4h_extreme_peak
+  BCH       10-02 00:00  S [299.325..312.475] 1M_close_PMC + 4h_extreme_peak+4h_poc   <->   R [311.021..318.808] 4h_extreme_peak+4h_poc
+  BCH       10-02 12:00  S [299.325..312.475] 1M_close_PMC + 4h_extreme_peak+4h_poc   <->   R [311.021..318.808] 4h_extreme_peak+4h_poc
+  BCH       10-03 00:00  S [299.325..312.475] 1M_close_PMC + 4h_extreme_peak+4h_poc   <->   R [311.021..318.808] 4h_extreme_peak+4h_poc
+  BCH       10-03 12:00  S [299.325..312.475] 1M_close_PMC + 4h_extreme_peak+4h_poc   <->   R [311.021..318.808] 4h_extreme_peak+4h_poc
+  BNB       09-30 00:00  S [753.699..767] 1W_low_PWL   <->   R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak
+  BNB       09-30 12:00  S [753.699..767] 1W_low_PWL   <->   R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak
+  BNB       10-03 00:00  S [753.699..767] 1W_low_PWL   <->   R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak
+  BNB       10-03 12:00  S [753.699..767] 1W_low_PWL   <->   R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak
+  BNB       10-04 00:00  S [753.699..767] 1W_low_PWL + 4h_extreme_peak   <->   R [765.8..783.228] 1W_MACRO_Resistance
+  BNB       10-04 12:00  S [753.699..767] 1W_low_PWL + 4h_extreme_peak   <->   R [765.8..783.228] 1W_MACRO_Resistance
+  BTC       09-30 00:00  S [80569.6..81446.1] 1W_low_PWL   <->   R [81394.2..83001.6] 1M_MACRO_Resistance
+  BTC       09-30 12:00  S [80569.6..81446.1] 1W_low_PWL   <->   R [81394.2..83001.6] 1M_MACRO_Resistance
+  ETC       10-01 00:00  S [8.55001..8.747] 4h_extreme_peak   <->   R [8.71929..9.05871] 1M_close_PMC
+  ETC       10-01 12:00  S [8.55001..8.747] 4h_extreme_peak   <->   R [8.71929..9.05871] 1M_close_PMC
+  ETC       10-02 00:00  S [8.55001..8.747] 4h_extreme_peak   <->   R [8.71929..9.05871] 1M_close_PMC
+  ETC       10-02 12:00  S [8.55001..8.747] 4h_extreme_peak   <->   R [8.71929..9.05871] 1M_close_PMC
+
+Пересечения поддержка/сопротивление (НОВЫЙ):
+  BNB       09-30 00:00  S [753.699..767] 1W_low_PWL   <->   R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak
+  BNB       09-30 12:00  S [753.699..767] 1W_low_PWL   <->   R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak
+  BNB       10-01 00:00  S [753.699..767] 1W_low_PWL   <->   R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak + 1M_close_PMC
+  BNB       10-01 12:00  S [753.699..767] 1W_low_PWL   <->   R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak + 1M_close_PMC
+  BNB       10-02 00:00  S [753.699..767] 1W_low_PWL + 1M_close_PMC   <->   R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak + 1M_close_PMC
+  BNB       10-02 12:00  S [753.699..767] 1W_low_PWL + 1M_close_PMC   <->   R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak + 1M_close_PMC
+  BNB       10-03 00:00  S [753.699..767] 1W_low_PWL + 1M_close_PMC   <->   R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak + 1M_close_PMC
+  BNB       10-03 12:00  S [753.699..767] 1W_low_PWL + 1M_close_PMC   <->   R [765.8..783.228] 1W_MACRO_Resistance + 4h_extreme_peak + 1M_close_PMC
+  BNB       10-04 00:00  S [753.699..767] 1W_low_PWL + 1M_close_PMC + 4h_extreme_peak   <->   R [765.8..783.228] 1W_MACRO_Resistance
+  BNB       10-04 12:00  S [753.699..767] 1W_low_PWL + 1M_close_PMC + 4h_extreme_peak   <->   R [765.8..783.228] 1W_MACRO_Resistance
+  BNB       10-05 00:00  S [753.699..767] 1W_low_PWL + 1M_close_PMC + 4h_extreme_peak + 1d_extreme_peak   <->   R [765.8..783.228] 1W_MACRO_Resistance
+  BNB       10-05 12:00  S [753.699..767] 1W_low_PWL + 1M_close_PMC + 4h_extreme_peak + 1d_extreme_peak+4h_poc   <->   R [765.8..783.228] 1W_MACRO_Resistance+4h_poc
+  BTC       09-30 00:00  S [80569.6..81446.1] 1W_low_PWL   <->   R [81394.2..83001.6] 1M_MACRO_Resistance
+  BTC       09-30 12:00  S [80569.6..81446.1] 1W_low_PWL   <->   R [81394.2..83001.6] 1M_MACRO_Resistance
+  BTC       10-01 00:00  S [80569.6..81446.1] 1W_low_PWL   <->   R [81394.2..83001.6] 1M_MACRO_Resistance + 1M_close_PMC
+  BTC       10-01 12:00  S [80569.6..81446.1] 1W_low_PWL   <->   R [81394.2..83001.6] 1M_MACRO_Resistance + 1M_close_PMC
+  ETC       10-01 00:00  S [8.55001..8.747] 4h_extreme_peak   <->   R [8.71929..9.05871] 1M_close_PMC
+  ETC       10-01 12:00  S [8.55001..8.747] 4h_extreme_peak   <->   R [8.71929..9.05871] 1M_close_PMC
+  ETC       10-02 00:00  S [8.55001..8.747] 4h_extreme_peak   <->   R [8.71929..9.05871] 1M_close_PMC
+  ETC       10-02 12:00  S [8.55001..8.747] 4h_extreme_peak   <->   R [8.71929..9.05871] 1M_close_PMC
+
+ДРЕЙФ МЕЖДУ СОСЕДНИМИ СНИМКАМИ (зоны в выдаче; id = сторона | якорь | дата):
+                                                СТАРЫЙ     НОВЫЙ
+зон с тем же id в двух снимках подряд             3270      3355
+  из них границы поменялись                          0         0
+то же место, но id другой                          135         6
+зона появилась (нового места)                      344       288
+зона ушла совсем                                   346       289
+две зоны одной стороны с одним id                    0         0
+
+ПРОВЕРКА «УРОВЕНЬ НЕ ЗАВИСИТ ОТ ОКНА СВЕЧЕЙ» (каждый 4-й снимок: обычное окно против чуть длиннее):
+  зон, найденных в обоих окнах: 1155   из них с разными границами: 0   (должно быть 0)
+  зон только в одном окне (длинное видит дальше): 0
+
+ШИРИНА ЗОН: билдер ДО правки ATR против ПОСЛЕ (те же свечи, каждый 4-й снимок; ширина в % от цены):
+                                      ДО     ПОСЛЕ
+зон                                 1154      1155
+медиана, %                           3.1       3.0
+90-й процентиль, %                   5.0       5.0
+максимум, %                         25.0      14.0
+зон шире 10%                          20         4
+зон шире 15%                          16         0
+сопоставлено по месту: границы те же 1110, границы другие 38, только в НОВОМ 7, только в СТАРОМ 9
+  Зоны, которые стали ШИРЕ всего (разница в п.п. ширины):
+    MORPHO   10-06 00:00 R  2.6% -> 5.0%
+        было  [2.8074..2.87992] 1M_MACRO_Resistance + 1M_high_PMH + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak
+        стало [2.67613..2.81337] 1W_high_PWH + 4h_extreme_peak+4h_poc
+    MORPHO   10-04 00:00 R  2.8% -> 5.0%
+        было  [2.80263..2.88183] 1M_MACRO_Resistance + 1M_high_PMH + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak
+        стало [2.67613..2.81337] 1W_high_PWH
+    MORPHO   09-30 00:00 R  2.8% -> 5.0%
+        было  [2.80166..2.88221] 1M_MACRO_Resistance + 1W_high_PWH + 4h_extreme_peak+4h_poc
+        стало [2.67613..2.81337] 1W_high_PWH+4h_poc
+    MORPHO   10-02 00:00 R  2.9% -> 5.0%
+        было  [2.79999..2.88289] 1M_MACRO_Resistance + 1M_high_PMH + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak
+        стало [2.67613..2.81337] 1W_high_PWH
+    RAYDIUM  10-06 00:00 R  2.0% -> 3.9%
+        было  [3.8166..3.89388] 1M_MACRO_Resistance + 1W_MACRO_Resistance
+        стало [3.76442..3.91475] 1W_MACRO_Resistance
+    GRASS    09-30 00:00 R  2.7% -> 3.3%
+        было  [1.02766..1.05558] 1W_MACRO_Resistance
+        стало [1.02321..1.05736] 1W_MACRO_Resistance
+    ZRO      10-06 00:00 R  3.4% -> 3.7%
+        было  [2.39971..2.483] 1W_MACRO_Resistance + 1d_extreme_peak
+        стало [2.39393..2.48531] 1W_MACRO_Resistance + 1d_extreme_peak
+    NEAR     10-06 00:00 R  3.3% -> 3.5%
+        было  [6.08798..6.29241] 1W_MACRO_Resistance
+        стало [6.07766..6.29654] 1W_MACRO_Resistance
+    NEAR     10-04 00:00 R  3.5% -> 3.5%
+        было  [6.07729..6.29669] 1W_MACRO_Resistance
+        стало [6.07766..6.29654] 1W_MACRO_Resistance
+    NEAR     09-30 00:00 R  3.6% -> 3.5%
+        было  [6.07679..6.29689] 1W_MACRO_Resistance
+        стало [6.07766..6.29654] 1W_MACRO_Resistance
+  Зоны, которые стали УЖЕ всего:
+    PENGU    09-30 00:00 S  25.0% -> 1.9%
+        было  [0.00686885..0.00883137] 1M_MACRO_Support + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak
+        стало [0.00752206..0.007663] 4h_extreme_peak
+    XLM      10-06 00:00 S  25.0% -> 2.3%
+        было  [0.16214..0.208466] 1M_MACRO_Support + 1M_low_PML + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak
+        стало [0.193938..0.198355] 1W_low_PWL + 4h_extreme_peak
+    XLM      10-02 00:00 S  25.0% -> 2.3%
+        было  [0.154518..0.198666] 1M_MACRO_Support + 1M_low_PML + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak
+        стало [0.193938..0.198355] 1W_low_PWL + 4h_extreme_peak
+    TIA      10-06 00:00 S  25.0% -> 2.3%
+        было  [0.33173..0.42651] 1M_MACRO_Support + 1W_MACRO_Support + 1W_low_PWL + 4h_extreme_peak
+        стало [0.4122..0.422] 1W_low_PWL + 4h_extreme_peak
+    ONDO     09-30 00:00 S  25.0% -> 2.4%
+        было  [0.253838..0.326364] 1M_MACRO_Support + 1M_close_PMC + 1M_low_PML + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak
+        стало [0.320721..0.328348] 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak
+  только в НОВОМ: BZ 10-02 00:00 R [109.034..112.682] 1M_high_PMH + 1W_MACRO_Resistance + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak  ширина 3.3%
+  только в НОВОМ: BZ 10-04 00:00 R [109.034..112.682] 1M_high_PMH + 1W_MACRO_Resistance + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak  ширина 3.3%
+  только в НОВОМ: BZ 10-06 00:00 R [109.034..112.682] 1M_high_PMH + 1W_MACRO_Resistance + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak  ширина 3.3%
+  только в НОВОМ: PENGU 10-04 00:00 S [0.00775031..0.00794873] 1W_low_PWL  ширина 2.5%
+  только в НОВОМ: PENGU 10-04 00:00 S [0.00858417..0.00884] 4h_extreme_peak  ширина 2.9%
+  только в НОВОМ: PENGU 10-06 00:00 R [0.00998935..0.0105016] 1M_high_PMH + 1W_MACRO_Resistance + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak  ширина 5.0%
+
+СТАРЫЙ (без реестра): примеры смены границ/id, самые большие сдвиги первыми (сдвиг в дневных ATR):
+  1000BONK 10-01 00:00 R id  сдвиг=0.00 ATR
+      было [0.00398263..0.00418687] 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak
+      стало [0.00398263..0.00418687] 1M_high_PMH + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak
+  1000BONK 10-05 00:00 S id  сдвиг=0.00 ATR
+      было [0.0033517..0.003517] 4h_extreme_peak
+      стало [0.00331823..0.00348839] 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak
+  1000BONK 10-05 00:00 S id  сдвиг=0.00 ATR
+      было [0.0033517..0.003517] 4h_extreme_peak
+      стало [0.00350544..0.00355641] 4h_extreme_peak
+  AAVE     10-05 00:00 S id  сдвиг=0.00 ATR
+      было [143.565..145.82] 4h_extreme_peak
+      стало [142.867..149.36] 1W_low_PWL + 4h_extreme_peak
+  ADA      10-05 00:00 S id  сдвиг=0.00 ATR
+      было [0.238064..0.2426] 4h_extreme_peak
+      стало [0.234961..0.2443] 1W_low_PWL + 4h_extreme_peak+4h_poc
+  ADA      10-05 00:00 R id  сдвиг=0.00 ATR
+      было [0.2596..0.262911] 4h_extreme_peak
+      стало [0.2587..0.267029] 1M_high_PMH + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak
+  AKE      10-01 00:00 R id  сдвиг=0.00 ATR
+      было [0.0321027..0.0337489] 4h_extreme_peak
+      стало [0.0308968..0.0324812] 1M_close_PMC + 4h_extreme_peak
+  AKE      10-03 00:00 R id  сдвиг=0.00 ATR
+      было [0.0308968..0.0324812] 1M_close_PMC + 4h_extreme_peak
+      стало [0.0321027..0.0337489] 4h_extreme_peak
+  AKE      10-05 00:00 R id  сдвиг=0.00 ATR
+      было [0.0349699..0.0367586] 4h_extreme_peak
+      стало [0.0354656..0.0372843] 1W_high_PWH + 4h_extreme_peak
+  ASTER    10-01 00:00 S id  сдвиг=0.00 ATR
+      было [0.658666..0.673336] 4h_extreme_peak
+      стало [0.653607..0.687126] 1M_low_PML + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak
+  ASTER    10-01 00:00 S id  сдвиг=0.00 ATR
+      было [0.673974..0.692964] 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak
+      стало [0.688239..0.7011] 4h_extreme_peak
+  ASTER    10-01 00:00 R id  сдвиг=0.00 ATR
+      было [0.817407..0.871959] 1W_MACRO_Resistance + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak+4h_poc
+      стало [0.823566..0.8658] 1M_high_PMH + 1W_MACRO_Resistance + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak
+
+монета     пар стар.  пар нов.  живых стар.  живых нов.
+DOT               10         0           11           5
+ONDO               6         0           10           6
+TAO                6         0           11           6
+UNI                5         0           10           6
+ASTER              4         0            9           6
+LINK               4         0            9           6
+PENDLE             4         0            7           4
+XPL                4         0           11           7
+XMR                4         0            8           5
+XLM                4         0            8           6
+
+Пары в НОВОМ должны быть 0. Если не 0 — это ошибка метода, покажи вывод.

@@ -1,0 +1,24 @@
+{
+    "XAU": {
+        "tp": 2.0,
+        "sl": 10.0
+    },
+    "AKE": {
+        "level_filter": {
+            "short_min": 100.0,
+            "long_max": null,
+            "short_off": false,
+            "long_off": false
+        }
+    },
+    "XAG": {
+        "tp": 3.0,
+        "sl": 20.0,
+        "level_filter": {
+            "short_min": null,
+            "long_max": null,
+            "short_off": true,
+            "long_off": true
+        }
+    }
+}

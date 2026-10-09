@@ -10,6 +10,7 @@ import datetime
 import pandas as pd
 
 from .bounce_watcher import BounceWatcher
+from backend.modules.cryptano.levels.level_filter import zone_ema_dist
 
 # Два независимых "режима" SHORT, работающих ОДНОВРЕМЕННО на одну и ту же
 # resistance-зону: CLIMAX (SHORT_CLIMAX_MODE=True, 3 закрытия подряд перед
@@ -22,48 +23,29 @@ SHORT_MODES = ('CLIMAX', 'MIRROR')
 
 class BounceManager:
     CONFIG = {
-        # Если середины двух уровней (одной стороны, LONG/LONG или SHORT/SHORT)
-        # отличаются меньше чем на этот % — считаем их одним и тем же уровнем
-        # (дрожание пересчёта базы раз в 12ч), не заводим второй вотчер.
-        'LEVEL_DEDUP_TOLERANCE_PCT': 4.0,
         # "Кладбище": на сколько % цена должна уйти от мёртвой (DEAD/TRIGGERED)
-        # зоны, чтобы система перестала считать новый уровень на этом месте клоном.
+        # зоны, чтобы эта же зона снова могла взять вотчер (правило входа).
         'GRAVEYARD_ESCAPE_PCT': 5.0,
-        # === EMA-фильтр рождения вотчера (ТОЛЬКО BOUNCE) ===
-        # Вотчер вообще не заводится, если зона слишком далеко от EMA.
-        # Проверка один раз — в момент рождения (evaluate_bounce); уже живые
-        # вотчеры не трогаются. Уровень при этом остаётся на графике.
-        # EMA: период/ТФ задаёт make_ema_dist_fn (simulator/outcome.py:
-        # EMA_DIST_PERIOD=200, EMA_DIST_TF='4h') — та же, что ema_dist_pct в сделках.
-        # SHORT: не заводим, если ЛЮБАЯ часть зоны ниже EMA на SHORT_MAX_BELOW_PCT %.
-        # LONG:  не заводим, если ЛЮБАЯ часть зоны выше EMA на LONG_MAX_ABOVE_PCT %.
-        # Нет данных для EMA -> фильтр пропускает (не блокирует торговлю молча).
-        'EMA_FILTER_ENABLED': True,
-        'EMA_FILTER_SHORT_MAX_BELOW_PCT': 10.0,
-        'EMA_FILTER_LONG_MAX_ABOVE_PCT': 10.0,
     }
 
-    def __init__(self, parent, log_dir_override=None):
-        """parent — это WatcherManager. Общая инфраструктура (_watchers,
-        burned_levels, _level_id, _deny) пока остаётся там, чтобы её
-        продолжали видеть и остальные стратегии — здесь только читаем её
-        через parent, не дублируем.
+    def __init__(self, log_dir_override=None):
+        """Свой реестр вотчеров BOUNCE (_watchers), не пересекается с VBottomManager.
 
         log_dir_override — своя папка логов для ВСЕХ вотчеров, созданных
         через этот менеджер (см. BounceWatcher.log_dir_override). None у
         боевого bounce_mgr (пишет в стандартный bounce_logs/), задаётся
         только симулятором (modules/cryptano/simulator/) — свой изолированный
-        BounceManager(BounceParent(), log_dir_override=...) на каждый прогон."""
-        self.parent = parent
+        BounceManager(log_dir_override=...) на каждый прогон."""
+        self._watchers = {}
+        self.burned_levels = set()
         self.log_dir_override = log_dir_override
         # Счётчик реальных пробоев — источник для "конверсии" (пробитые уровни -> сделки).
         # Считается по событию SWEEP_BOTTOM, не по старому tracked_support (его для
         # BOUNCE больше нет — см. шаг 3 изоляции).
         self.pierced_count = 0
         # "Кладбище" мёртвых зон: [{'trade_type','min','max','escaped'}, ...].
-        # Живёт, пока цена не уйдёт от зоны дальше GRAVEYARD_ESCAPE_PCT — до этого
-        # момента новый уровень, пересчитанный на этом же месте (дрожание базы),
-        # считается клоном, а не честным новым сетапом. См. _find_graveyard_match.
+        # Пока цена не ушла от зоны дальше GRAVEYARD_ESCAPE_PCT, ТА ЖЕ зона (те же
+        # границы) не берёт новый вотчер. См. _find_graveyard_match.
         self.graveyard = []
         self._graveyard_recorded = set()  # level_id, уже занесённые в кладбище
         # Сделки по уровню — ВНЕ вотчера: level_id -> [unix-время свечи входа, ...].
@@ -82,58 +64,41 @@ class BounceManager:
         # видеть только текущую и терять/сдвигать события во времени.
         self.last_processed_time = {}
 
-    @property
-    def _watchers(self):
-        return self.parent._watchers
-
-    @property
-    def burned_levels(self):
-        return self.parent.burned_levels
-
     def _level_id(self, level, trade_type):
-        return self.parent._level_id(level, trade_type)
+        """id уровня = сторона + границы зоны. Границы зоны постоянны, пока она жива
+        (реестр в levels_builder.py), поэтому и id постоянный."""
+        return f"BC_{trade_type}_{level['min']}_{level['max']}"
 
     def _deny(self, reason):
-        return self.parent._deny(reason)
+        return {'allow': False, 'reason': reason, 'sl': 0.0, 'tp': 0.0,
+                'level_id': None, 'entry_price': None, 'history_log': ''}
+
+    @staticmethod
+    def _same_zone(a, b):
+        """Та же зона — те же границы (точно, без допусков)."""
+        return float(a['min']) == float(b['min']) and float(a['max']) == float(b['max'])
 
     def set_ema_dist_fn(self, coin, fn):
         """Вызывающий код (скан/рескан/симулятор) кладёт сюда функцию
         make_ema_dist_fn(df_full) по монете — EMA считается по ПОЛНОЙ истории,
-        а в evaluate_bounce приходит только окно в 60 свечей."""
+        а в evaluate_bounce приходит только окно в 60 свечей. Нужна только
+        для отчёта (ema_dist_birth), фильтр зон — в levels/level_filter.py."""
         if not hasattr(self, '_ema_dist_fns'):
             self._ema_dist_fns = {}
         self._ema_dist_fns[coin] = fn
 
     def _ema_level_dist(self, level, trade_type, df, coin):
-        """Расстояние края зоны от EMA200(4h), % (плюс — выше EMA): SHORT — низ зоны,
-        LONG — верх зоны. None, если функции/данных нет. Единая точка для фильтра и отчёта."""
+        """Расстояние ближайшего к EMA200(4h) края зоны от EMA, % (плюс — зона выше EMA).
+        None, если функции/данных нет. ТОЛЬКО для отчёта (ema_dist_birth в сделках):
+        фильтрации здесь нет — зоны фильтрует отдельный слой
+        levels/level_filter.py ДО передачи в process_candle."""
         fn = getattr(self, '_ema_dist_fns', {}).get(coin)
         if fn is None or df is None or len(df) == 0:
             return None
         try:
-            ts = pd.Timestamp(df.index[-1])
-            edge = level['min'] if trade_type == 'SHORT' else level['max']
-            return fn(ts, edge)
+            return zone_ema_dist(fn, pd.Timestamp(df.index[-1]), level)
         except Exception:
             return None
-
-    def _ema_filter_reason(self, level, trade_type, df, coin, dist=None):
-        """Текст причины, если зону по EMA-фильтру нельзя брать, иначе None."""
-        if not self.CONFIG.get('EMA_FILTER_ENABLED'):
-            return None
-        if dist is None:
-            dist = self._ema_level_dist(level, trade_type, df, coin)
-        if dist is None:
-            return None
-        if trade_type == 'SHORT':
-            lim = self.CONFIG['EMA_FILTER_SHORT_MAX_BELOW_PCT']
-            if dist < -lim:
-                return f"EMA-фильтр: SHORT, низ зоны {dist:+.1f}% от EMA (порог -{lim:g}%)"
-        else:
-            lim = self.CONFIG['EMA_FILTER_LONG_MAX_ABOVE_PCT']
-            if dist > lim:
-                return f"EMA-фильтр: LONG, верх зоны {dist:+.1f}% от EMA (порог +{lim:g}%)"
-        return None
 
     def has_active_bounce_watchers(self, trade_type=None):
         """True, если есть хотя бы один живой (не DEAD/TRIGGERED) BOUNCE-вотчер.
@@ -227,16 +192,14 @@ class BounceManager:
         Записи, которые ещё блокируют (escaped=False) и чья зона жива, не
         трогаются. Вызывать раз на монету за скан (см. watcher_plan.py::
         check_bounce)."""
-        tolerance = self.CONFIG['LEVEL_DEDUP_TOLERANCE_PCT'] / 100.0
-        mids = [(z['min'] + z['max']) / 2 for z in (current_zones or []) if 'min' in z and 'max' in z]
+        zones = [z for z in (current_zones or []) if 'min' in z and 'max' in z]
         cutoff = datetime.datetime.utcnow() - datetime.timedelta(days=max_age_days)
         kept, removed_ids = [], set()
         for entry in self.graveyard:
             if entry.get('coin') != coin:
                 kept.append(entry)
                 continue
-            e_mid = (entry['min'] + entry['max']) / 2
-            zone_alive = any(m > 0 and abs(e_mid - m) / m <= tolerance for m in mids)
+            zone_alive = any(self._same_zone(entry, z) for z in zones)
             too_old = False
             if entry.get('escaped'):
                 try:
@@ -259,16 +222,13 @@ class BounceManager:
         ложно блокироваться как "клон" мёртвой зоны совсем другой монеты B,
         если их цены случайно оказались в одном диапазоне (частое дело для
         мелких альткоинов)."""
-        tolerance = self.CONFIG['LEVEL_DEDUP_TOLERANCE_PCT'] / 100.0
-        lvl_mid = (level['min'] + level['max']) / 2
         matched_escaped = False
         for entry in self.graveyard:
             if entry.get('coin') != coin:
                 continue
             if entry['trade_type'] != trade_type or entry.get('mode') != mode:
                 continue
-            entry_mid = (entry['min'] + entry['max']) / 2
-            if entry_mid > 0 and abs(lvl_mid - entry_mid) / entry_mid <= tolerance:
+            if self._same_zone(entry, level):
                 if entry['escaped']:
                     matched_escaped = True
                 else:
@@ -283,14 +243,9 @@ class BounceManager:
           1. уже активные вотчеры (защита от того, что 12-часовое обновление
              CURRENT_SUPPORTS/RESISTANCES выкинет уровень, пока по нему ещё
              идёт сканирование)
-          2. плюс новые уровни, которых свеча только что коснулась (touched_levels) —
-             НО только если это правда новый уровень, а не дрожание уже
-             отслеживаемого (см. LEVEL_DEDUP_TOLERANCE_PCT). Если новый кандидат
-             похож на уже живой вотчер ЭТОГО ЖЕ mode — координаты живого вотчера
-             остаются замороженными, второй вотчер не заводим. Вотчеры ДРУГОГО
-             mode на той же зоне это не видят и не блокируют — climax и mirror
-             живут полностью независимо, каждый в своём собственном пространстве
-             дублей (см. mode в level_id и в фильтре active_mids ниже).
+          2. плюс новые уровни, которых свеча только что коснулась (touched_levels).
+             Та же зона = тот же level_id (границы зоны постоянны) — второй вотчер
+             не заводится. CLIMAX и MIRROR живут независимо (mode в level_id).
 
         КРИТИЧНО (найденный баг): self._watchers — ОДИН общий реестр на ВЕСЬ
         бот, не один на монету, как было в testswing/симуляторе. Без фильтра
@@ -308,7 +263,6 @@ class BounceManager:
         нарисовать событие на графике).
         """
         levels_to_eval = {}
-        active_mids = []  # середины уже живых вотчеров этой стороны+mode — для сверки на дубли
         for level_id, w in list(self._watchers.items()):
             if getattr(w, 'coin', None) != coin:
                 continue
@@ -316,26 +270,13 @@ class BounceManager:
                 levels_to_eval[level_id] = {'min': w.min, 'max': w.max,
                                              'score': getattr(w, 'level_score', 0),
                                              'type': getattr(w, 'level_type', 'UNKNOWN')}
-                active_mids.append((w.min + w.max) / 2)
-
-        tolerance = self.CONFIG['LEVEL_DEDUP_TOLERANCE_PCT'] / 100.0
 
         for lvl in touched_levels:
             level_id = self._level_id(lvl, trade_type)
             if mode:
                 level_id = f"{level_id}__{mode}"
             if level_id in levels_to_eval:
-                continue
-
-            lvl_mid = (lvl['min'] + lvl['max']) / 2
-            is_duplicate = any(
-                mid > 0 and abs(lvl_mid - mid) / mid <= tolerance
-                for mid in active_mids
-            )
-            if is_duplicate:
-                # Это дрожание уже отслеживаемого уровня — не заводим второй вотчер,
-                # координаты живого остаются замороженными как есть.
-                continue
+                continue   # по этой зоне уже есть живой вотчер (тот же id = те же границы)
 
             grave_status = self._find_graveyard_match(lvl, trade_type, mode=mode, coin=coin)
             if grave_status == 'clone':
@@ -371,7 +312,7 @@ class BounceManager:
             base_id = self._level_id(r, 'SHORT')
             for m in SHORT_MODES:
                 current_level_ids.add(f"{base_id}__{m}")
-        self.parent.clear_dead_watchers(current_level_ids)
+        self.clear_dead_watchers(current_level_ids)
 
     def _get_focus_level_id(self, trade_type, mode=None, coin="UNKNOWN"):
         """Единый центр принятия решений по фокусу — отдельно для каждой
@@ -619,9 +560,6 @@ class BounceManager:
 
         if level_id not in self._watchers:
             _ema_dist = self._ema_level_dist(level, trade_type, df, coin)
-            _ema_reason = self._ema_filter_reason(level, trade_type, df, coin, dist=_ema_dist)
-            if _ema_reason:
-                return self._deny(_ema_reason)
             config_overrides = None
             if trade_type == 'SHORT' and mode:
                 # CLIMAX -> SHORT_CLIMAX_MODE=True, MIRROR -> False. Фиксируется
@@ -745,12 +683,13 @@ class BounceManager:
         return len(self._watchers)
 
     def clear_dead_watchers(self, active_level_ids):
-        """Тонкая обёртка над parent.clear_dead_watchers — та же роль, что
-        VBottomManager.clear_dead_watchers: убирает уже DEAD/TRIGGERED
-        вотчеров, которых нет среди активных id этого скана. Не трогает
-        живые (SCANNING/searching) вотчеры независимо от active_level_ids —
-        см. BounceParent.clear_dead_watchers."""
-        return self.parent.clear_dead_watchers(active_level_ids)
+        """Архивирует все TRIGGERED/DEAD вотчеры — безусловно, каждый скан (живые не трогает).
+        active_level_ids не используется: раньше TRIGGERED-вотчер MIRROR застревал навсегда,
+        пока на той же зоне жил CLIMAX. Аргумент оставлен ради вызывающего кода.
+        Возвращает {level_id: вотчер} убранных — для архива в watcher_history.json."""
+        dead_keys = [k for k, w in self._watchers.items()
+                     if getattr(w, 'state', None) in ("TRIGGERED", "DEAD")]
+        return {k: self._watchers.pop(k) for k in dead_keys}
 
     def clear_graveyard_by_coin(self, coin):
         """Чистит кладбище (graveyard) для конкретной монеты ЦЕЛИКОМ.

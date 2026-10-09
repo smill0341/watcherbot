@@ -16,6 +16,9 @@ JSONBANK_DIR = os.path.join(CRYPTANO_DIR, "jsonbank")
 DATABASE_DIR = os.path.join(CRYPTANO_DIR, "database")
 
 WATCHLIST_FILE = os.path.join(JSONBANK_DIR, "watchlist.json")
+# Настройки ПО МОНЕТАМ (свой TP/SL, свой фильтр уровней по EMA) — отдельно от
+# config.json, где лежат только общие настройки (см. utils/coin_settings.py).
+COIN_SETTINGS_FILE = os.path.join(JSONBANK_DIR, "coin_settings.json")
 MACRO_LEVELS_FILE = os.path.join(JSONBANK_DIR, "macro_levels.json")
 # Уровни, добавленные вручную с дашборда (см. app.py::add_custom_level) —
 # ОТДЕЛЬНЫЙ файл, не внутри macro_levels.json: тот целиком перезаписывается

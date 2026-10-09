@@ -39,7 +39,7 @@ class _QuietPollingEndpoints(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(_QuietPollingEndpoints())
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # .../master_bot
-CONFIG_FILE = os.path.join(BASE_DIR, "config.json")               # тот же файл, что main.py (автобот/fasttrade)
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")  # ЕДИНЫЙ config.json бота: backend/config.json (тот же читают background_tasks, swing_hunter, bounce_watcher)
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
@@ -47,9 +47,11 @@ from backend.modules.cryptano.utils.bybit import (
     exchange, resolve_symbol, KNOWN_TICKER_ALIASES, price_precision_from_market,
 )
 from backend.modules.cryptano.utils.paths import JSONBANK_DIR
+import backend.modules.cryptano.utils.coin_settings as coin_settings
 from backend.modules.cryptano.utils.notifier import notify
 from backend.modules.cryptano.levels.levels_history import get_levels_snapshot
 import backend.modules.cryptano.levels.candle_store as candle_store
+import backend.modules.cryptano.levels.candle_archive as candle_archive
 
 # Стратегии Watcher'а, которые можно вкл/выкл через дашборд — тот же
 # набор тегов, что "BC"/"VB"/"VGB"/"VRT" в background_tasks.py::_STRATEGY_BY_TAG.
@@ -119,6 +121,10 @@ GREYLIST_LEVELS_PATH = os.path.join(JSONBANK_DIR, "greylist_levels.json")
 STATIC_DIR = os.path.join(BASE_DIR, "frontend")
 
 app = FastAPI(title="Watcherbot Dashboard (read-only)")
+
+# Сжатие ответов: свечи/индикаторы — это мегабайты JSON, gzip режет их в 5–10 раз.
+from fastapi.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=4)  # 4 вместо 9: в разы быстрее, сжатие почти то же
 
 
 @app.middleware("http")
@@ -247,10 +253,11 @@ def get_watchlist():
         return bool((c or {}).get("ignore_auto"))
 
     favorites = set(_read_favorites())
-    # Свой TP/SL монеты (меню "⋮" -> ⚖️) — только для бейджа/подсказки на
-    # дашборде, реально применяется в BounceWatcher.__init__ (см. app.py::
-    # /api/config/coin_tpsl). Пусто у монеты -> используется общий.
-    coin_tp_sl_cfg = _read_json(CONFIG_FILE, default={}).get("crypto", {}).get("coin_tp_sl", {}) or {}
+    # Свои настройки монеты (меню "⋮" -> ⚙️ Свой конфиг) — для бейджа/подсказки
+    # на дашборде; лежат в jsonbank/coin_settings.json (utils/coin_settings.py),
+    # TP/SL реально применяется в BounceWatcher.__init__, фильтр — в levels/level_filter.py.
+    # Пусто у монеты -> используется общий.
+    coin_settings_all = coin_settings.load_all()
 
     with_levels = []
     without_levels = []
@@ -272,7 +279,9 @@ def get_watchlist():
             "has_custom_levels": _has_custom_levels(coin),
             "ignore_auto": _is_ignore_auto(coin),
             "favorite": coin in favorites,
-            "coin_tp_sl": coin_tp_sl_cfg.get(coin) or None,
+            "coin_tp_sl": ({"tp": (coin_settings_all.get(coin) or {}).get("tp"), "sl": (coin_settings_all.get(coin) or {}).get("sl")}
+                           if ((coin_settings_all.get(coin) or {}).get("tp") is not None or (coin_settings_all.get(coin) or {}).get("sl") is not None) else None),
+            "coin_level_filter": (coin_settings_all.get(coin) or {}).get("level_filter") or None,
             **{k: v for k, v in clean_meta.items() if k not in ["source", "added_at", "direction"]}
         }
         (with_levels if has_levels else without_levels).append(entry)
@@ -427,6 +436,76 @@ def get_active_watchers(all_states: bool = Query(default=False)):
 _TAG_TO_STRATEGY = {"VB": "V_BOTTOM", "VGB": "V_GREEN_BOTTOM", "VRT": "V_RED_TOP", "BC": "BOUNCE"}
 
 
+_BOUNCE_LOG_LINES = 400  # сколько последних строк лога вотчера отдаём на сайт
+
+
+def _bounce_watcher_log_lines(level_id, coin):
+    """Лог ОДНОГО BOUNCE-вотчера — строки его метки из файла
+    bounce_logs/{монета}.log (его пишет BounceWatcher._dbg; метка в каждой
+    строке: "[LONG 1.2345-1.3456]" / "[SHORT 1.2345-1.3456 MIRROR]", у
+    "воскресшего" вотчера в конце ещё " OD"). Метку собираем из самого
+    level_id ("BC_{TYPE}_{min}_{max}" + "__CLIMAX"/"__MIRROR"). Один источник
+    для живого вотчера, умершего и сигнала: переживает рестарт бота, не
+    зависит от архива. None — level_id не разобрать или файла нет."""
+    import re
+    from backend.modules.cryptano.strategy.bounce_watcher import BounceWatcher
+    if not coin:
+        return None
+    base, _, mode = level_id.partition("__")
+    parts = base.split("_")
+    if len(parts) != 4 or parts[0] != "BC" or parts[1] not in ("LONG", "SHORT"):
+        return None
+    try:
+        zmin, zmax = float(parts[2]), float(parts[3])
+    except ValueError:
+        return None
+    path = os.path.join(BounceWatcher._LOG_DIR, f"{coin}.log")
+    if not os.path.exists(path):
+        return None
+    tag = re.compile(
+        re.escape(f"[{parts[1]} {zmin:.4f}-{zmax:.4f}")
+        + (re.escape(f" {mode}") if mode else "")
+        + r"( OD)?\]"
+    )
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        found = [ln.rstrip("\n") for ln in f if tag.search(ln)]
+    return found[-_BOUNCE_LOG_LINES:]
+
+
+_V_LOG_NAME = {"VB": "V_BOTTOM", "VGB": "V_GREEN_BOTTOM", "VRT": "V_RED_TOP"}
+
+
+def _v_watcher_log_lines(level_id, coin):
+    """Лог ОДНОГО V-вотчера (VB/VGB/VRT) — строки его метки из файла
+    logs/watchers/{монета}.log (его пишут сами вотчеры, _dbg). Метка в строке:
+    "[V_BOTTOM][max]" / "[V_GREEN_BOTTOM][max]" / "[V_RED_TOP][min]" (цена с
+    4 знаками). Координаты берём из level_id "{TAG}_{тип}_{min}_{max}".
+    Файл переживает рестарт бота и не зависит от архива. None — level_id не
+    разобрать или файла нет."""
+    from backend.modules.cryptano.strategy import v_bottom_watcher
+    if not coin:
+        return None
+    parts = level_id.split("_")
+    if len(parts) != 4 or parts[0] not in _V_LOG_NAME:
+        return None
+    try:
+        zmin, zmax = float(parts[2]), float(parts[3])
+    except ValueError:
+        return None
+    price = zmin if parts[0] == "VRT" else zmax
+    log_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(v_bottom_watcher.__file__)))),
+        "logs", "watchers",
+    )
+    path = os.path.join(log_dir, f"{coin}.log")
+    if not os.path.exists(path):
+        return None
+    marker = f"[{_V_LOG_NAME[parts[0]]}][{price:.4f}]"
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        found = [ln.rstrip("\n") for ln in f if marker in ln]
+    return found[-_BOUNCE_LOG_LINES:]
+
+
 @app.get("/api/watcher_debug_log/{level_id}")
 def get_watcher_debug_log(level_id: str, coin: str = Query(default=None, description="Монета сигнала — нужна только для архивного фолбэка (умерший вотчер), для живого не обязательна")):
     """Лог ОДНОГО вотчера — то, что реально видит код (все _dbg() события:
@@ -434,7 +513,8 @@ def get_watcher_debug_log(level_id: str, coin: str = Query(default=None, descrip
     уровнями/режимами той же монеты, как в общем файле на диске
     (bounce_logs/{coin}.log, logs/watchers/{coin}.log).
 
-    Два источника, в этом порядке:
+    BOUNCE (level_id "BC_...") — из файла лога монеты, см. _bounce_watcher_log_lines.
+    Остальные стратегии — два источника, в этом порядке:
     1. ЖИВОЙ вотчер — кольцевой буфер watcher.debug_ring в памяти (см.
        _DEBUG_RING_SIZE в BounceWatcher/VBottomWatcher/VGreenBottomWatcher/
        VRedTopWatcher), последние ~400 строк. level_id ищем и в
@@ -449,6 +529,32 @@ def get_watcher_debug_log(level_id: str, coin: str = Query(default=None, descrip
        а strategy восстанавливаем из TAG в самом level_id.
     """
     from backend.modules.cryptano.backstage.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
+
+    # BOUNCE (BC_...): лог берём из файла монеты по метке вотчера — у
+    # BounceWatcher нет кольца debug_ring в памяти, раньше тут всегда было пусто.
+    if level_id.startswith("BC_"):
+        w_coin = coin
+        with _watcher_lock:
+            w_live = bounce_mgr._watchers.get(level_id)
+            if w_live is not None:
+                w_coin = getattr(w_live, "coin", None) or coin
+        lines = _bounce_watcher_log_lines(level_id, w_coin)
+        if lines is None:
+            raise HTTPException(status_code=404, detail="Лог не найден — нет файла лога монеты или не разобрать level_id")
+        return {"level_id": level_id, "coin": w_coin, "lines": lines, "source": "file"}
+
+    # V-семья (VB_/VGB_/VRT_): тоже из файла монеты — кольцо debug_ring в
+    # памяти пустеет после рестарта бота, а архив умершего вотчера лога не
+    # хранил. Файла нет / строк нет — идём дальше, как раньше (кольцо, архив).
+    if level_id.split("_", 1)[0] in _V_LOG_NAME:
+        w_coin = coin
+        with _watcher_lock:
+            w_live = v_bottom_mgr._watchers.get(level_id)
+            if w_live is not None:
+                w_coin = getattr(w_live, "coin", None) or coin
+        v_lines = _v_watcher_log_lines(level_id, w_coin)
+        if v_lines:
+            return {"level_id": level_id, "coin": w_coin, "lines": v_lines, "source": "file"}
 
     with _watcher_lock:
         watcher = v_bottom_mgr._watchers.get(level_id) or bounce_mgr._watchers.get(level_id)
@@ -803,35 +909,208 @@ class CoinTpSlRequest(BaseModel):
 @app.get("/api/config/coin_tpsl/{coin}")
 def get_coin_tpsl(coin: str):
     """Свой TP/SL монеты (watchlist, меню "⋮"). Пусто = используется общий
-    bounce_tp_pct/bounce_sl_pct (см. /api/config/bounce_tpsl)."""
-    config = _read_json(CONFIG_FILE, default={})
-    coin_cfg = config.get("crypto", {}).get("coin_tp_sl", {}).get(coin)
-    if not coin_cfg:
-        return {"coin": coin, "tp": None, "sl": None}
-    return {"coin": coin, "tp": coin_cfg.get("tp"), "sl": coin_cfg.get("sl")}
+    bounce_tp_pct/bounce_sl_pct (см. /api/config/bounce_tpsl). Хранится в
+    jsonbank/coin_settings.json, не в config.json."""
+    own = coin_settings.get_coin_tpsl(coin)
+    return {"coin": coin, "tp": own["tp"], "sl": own["sl"]}
 
 @app.post("/api/config/coin_tpsl")
 def set_coin_tpsl(payload: CoinTpSlRequest):
     """Установить или сбросить свой TP/SL для монеты. tp/sl оба null (или
-    оба отсутствуют) -> запись для монеты удаляется, монета возвращается на
-    общий TP/SL."""
+    оба отсутствуют) -> TP/SL монеты сбрасывается на общий."""
+    try:
+        coin_settings.set_coin_tpsl(payload.coin, payload.tp, payload.sl)
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class LevelFilterRequest(BaseModel):
+    short_min: Optional[float] = None
+    long_max: Optional[float] = None
+
+class CoinLevelFilterRequest(BaseModel):
+    coin: str
+    short_min: Optional[float] = None
+    long_max: Optional[float] = None
+    short_off: bool = False
+    long_off: bool = False
+
+@app.get("/api/config/level_filter")
+def get_level_filter():
+    """Общий фильтр уровней по EMA200(4h): SHORT-зона проходит при расстоянии
+    от EMA >= short_min %, LONG-зона — при <= long_max %. null = нет фильтра."""
+    lf = _read_json(CONFIG_FILE, default={}).get("crypto", {}).get("level_filter") or {}
+    return {"short_min": lf.get("short_min"), "long_max": lf.get("long_max")}
+
+@app.post("/api/config/level_filter")
+def set_level_filter(payload: LevelFilterRequest):
     try:
         config = _read_json(CONFIG_FILE, default={})
-        if "crypto" not in config:
-            config["crypto"] = {}
-        if "coin_tp_sl" not in config["crypto"]:
-            config["crypto"]["coin_tp_sl"] = {}
-        if payload.tp is None and payload.sl is None:
-            config["crypto"]["coin_tp_sl"].pop(payload.coin, None)
-        else:
-            config["crypto"]["coin_tp_sl"][payload.coin] = {
-                "tp": payload.tp,
-                "sl": payload.sl,
-            }
+        config.setdefault("crypto", {})["level_filter"] = {
+            "short_min": payload.short_min, "long_max": payload.long_max,
+        }
         _write_json_atomic(CONFIG_FILE, config)
         return {"status": "ok"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/config/coin_level_filter/{coin}")
+def get_coin_level_filter(coin: str):
+    """Свой фильтр монеты. Пустое поле = для этой стороны действует общий;
+    short_off/long_off = «без фильтра» для этой стороны у этой монеты."""
+    return {"coin": coin, **coin_settings.get_coin_level_filter(coin)}
+
+@app.post("/api/config/coin_level_filter")
+def set_coin_level_filter(payload: CoinLevelFilterRequest):
+    """Всё пусто и без галочек -> фильтр монеты сбрасывается на общий."""
+    try:
+        coin_settings.set_coin_level_filter(
+            payload.coin, payload.short_min, payload.long_max, payload.short_off, payload.long_off)
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# === КОНФИГ СИМУЛЯТОРА (jsonbank/sim_config.json) ===========================
+# Один файл, только общие настройки симулятора (по монетам — нет).
+# mode: "sim"     — симулятор считает по СВОИМ tp/sl/short_min/long_max/max_hold_days;
+#       "watcher" — как в бою (config.json + coin_settings.json), свои значения не используются.
+# blocked — монеты, заблокированные в списке симулятора (не идут в ▶▶ ALL).
+# Боевые файлы отсюда только ЧИТАЮТСЯ (копирование «из боевого»), никогда не пишутся.
+SIM_CONFIG_PATH = os.path.join(JSONBANK_DIR, "sim_config.json")
+_SIM_NUM_KEYS = ("tp", "sl", "short_min", "long_max", "max_hold_days")
+
+
+def _sim_num(v):
+    if v is None or v == "":
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _battle_general() -> dict[str, Any]:
+    """Боевые общие настройки (только чтение): TP/SL и пороги EMA из config.json."""
+    crypto = _read_json(CONFIG_FILE, default={}).get("crypto", {}) or {}
+    lf = crypto.get("level_filter") or {}
+    return {
+        "tp": crypto.get("bounce_tp_pct", 7.0),
+        "sl": crypto.get("bounce_sl_pct", 50.0),
+        "short_min": lf.get("short_min"),
+        "long_max": lf.get("long_max"),
+        "max_hold_days": 14,
+    }
+
+
+def _sim_cfg_load() -> dict[str, Any]:
+    raw = _read_json(SIM_CONFIG_PATH, default=None)
+    if not isinstance(raw, dict):
+        raw = None
+    if raw is None:
+        # Файла ещё нет: свои значения стартуют копией боевых, режим — Watcher (как было).
+        cfg: dict[str, Any] = dict(_battle_general())
+        cfg["mode"] = "watcher"
+        cfg["blocked"] = []
+        return cfg
+    cfg: dict[str, Any] = {"mode": "sim" if raw.get("mode") == "sim" else "watcher"}
+    base = _battle_general()
+    for k in _SIM_NUM_KEYS:
+        cfg[k] = _sim_num(raw[k]) if k in raw else _sim_num(base.get(k))
+    if cfg["max_hold_days"] is None:
+        cfg["max_hold_days"] = 14
+    blocked = raw.get("blocked") or []
+    cfg["blocked"] = sorted({str(c).upper().strip() for c in blocked if str(c).strip()})
+    return cfg
+
+
+def _sim_cfg_save(cfg):
+    out: dict[str, Any] = {"mode": cfg["mode"], "blocked": cfg.get("blocked", [])}
+    for k in _SIM_NUM_KEYS:
+        out[k] = cfg.get(k)
+    _write_json_atomic(SIM_CONFIG_PATH, out)
+
+
+def _sim_cfg_effective():
+    """Для прогона: None = режим Watcher, иначе словарь своих настроек."""
+    cfg = _sim_cfg_load()
+    if cfg["mode"] != "sim":
+        return None
+    return {k: cfg.get(k) for k in _SIM_NUM_KEYS}
+
+
+def _sim_blocked_set():
+    return set(_sim_cfg_load().get("blocked", []))
+
+
+@app.get("/api/sim_config")
+def get_sim_config():
+    """Конфиг симулятора + боевые общие (battle) и боевые настройки по монетам
+    (battle_coins) — последние две части только для показа в режиме Watcher."""
+    cfg = _sim_cfg_load()
+    cfg["battle"] = _battle_general()
+    try:
+        cfg["battle_coins"] = coin_settings.load_all() or {}
+    except Exception:
+        cfg["battle_coins"] = {}
+    return cfg
+
+
+@app.post("/api/sim_config")
+def set_sim_config(payload: dict = Body(...)):
+    """Частичное обновление: меняются только присланные поля. Пустое/null у
+    short_min/long_max = «без фильтра»; tp/sl/max_hold_days пустыми быть не могут."""
+    cfg = _sim_cfg_load()
+    if "mode" in payload:
+        if payload["mode"] not in ("sim", "watcher"):
+            raise HTTPException(status_code=400, detail="mode: 'sim' или 'watcher'")
+        cfg["mode"] = payload["mode"]
+    for k in _SIM_NUM_KEYS:
+        if k in payload:
+            v = _sim_num(payload[k])
+            if k in ("tp", "sl", "max_hold_days") and (v is None or v <= 0):
+                raise HTTPException(status_code=400, detail=f"{k}: нужно число больше 0")
+            cfg[k] = v
+    try:
+        _sim_cfg_save(cfg)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Не удалось сохранить sim_config.json: {e}")
+    return {"status": "ok"}
+
+
+@app.post("/api/sim_config/copy_from_battle")
+def sim_config_copy_from_battle():
+    """Копирует боевые общие TP/SL и пороги EMA в свои настройки симулятора
+    (режим и список блокировок не меняются). Боевое не трогается."""
+    cfg = _sim_cfg_load()
+    b = _battle_general()
+    for k in ("tp", "sl", "short_min", "long_max"):
+        cfg[k] = _sim_num(b.get(k))
+    try:
+        _sim_cfg_save(cfg)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Не удалось сохранить sim_config.json: {e}")
+    return {"status": "ok", **{k: cfg[k] for k in ("tp", "sl", "short_min", "long_max")}}
+
+
+@app.post("/api/sim_config/block")
+def sim_config_block(payload: dict = Body(...)):
+    """{"coin": "XXX", "blocked": true|false} — блок/разблок монеты в списке симулятора."""
+    coin = str(payload.get("coin", "")).upper().strip()
+    if not coin:
+        raise HTTPException(status_code=400, detail="coin обязателен")
+    cfg = _sim_cfg_load()
+    blocked = set(cfg["blocked"])
+    if payload.get("blocked", True):
+        blocked.add(coin)
+    else:
+        blocked.discard(coin)
+    cfg["blocked"] = sorted(blocked)
+    try:
+        _sim_cfg_save(cfg)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Не удалось сохранить sim_config.json: {e}")
+    return {"status": "ok", "blocked": cfg["blocked"]}
+
 
 class DirectionSetRequest(BaseModel):
     allow_long: bool
@@ -867,8 +1146,45 @@ def get_global_history():
     # Отдаем топ-50 последних записей, чтобы не перегружать интерфейс
     return history[:50]
 
+def _apply_level_filter_for_chart(coin, result):
+    """Фильтр уровней по EMA (levels/level_filter.py) для графика — те же
+    пороги из config.json (общие + свои у монеты) и то же правило, что в
+    бою/симуляторе: зона, не прошедшая порог, боту не отдаётся и на графике
+    не рисуется. EMA — по текущему моменту (последняя закрытая 15m-свеча).
+    Ручные зоны не фильтруются. Любая ошибка/нет данных — отдаём как есть."""
+    try:
+        import pandas as pd
+        from backend.modules.cryptano.levels.level_filter import LevelFilter, load_thresholds
+        from backend.modules.cryptano.simulator.outcome import make_ema_dist_fn
+        cfg = _read_json(CONFIG_FILE, default={}).get("crypto", {}) or {}
+        thresholds = load_thresholds(coin, cfg)
+        if thresholds[0] is None and thresholds[1] is None:
+            return result
+        symbol = resolve_symbol(coin, exchange.markets)
+        if not symbol:
+            return result
+        candles = candle_store.get_candles(symbol, "4h", limit=None, around=None)
+        if not candles:
+            return result
+        empty = pd.DataFrame({"close": pd.Series(dtype=float)}, index=pd.DatetimeIndex([], tz="UTC"))
+        fn = make_ema_dist_fn(empty, candles_4h=candles)
+        ts = pd.Timestamp.now(tz="UTC").floor("15min") - pd.Timedelta(minutes=15)
+        sup, res = LevelFilter(coin, fn, thresholds).apply(ts, result.get("supports", []), result.get("resistances", []))
+        out = dict(result)
+        out["supports"] = sup
+        out["resistances"] = res
+        return out
+    except Exception as e:
+        print(f"[LEVEL FILTER] {coin}: график без фильтра — {e}")
+        return result
+
+
 @app.get("/api/levels/{coin}")
 def get_levels(coin: str):
+    return _apply_level_filter_for_chart(coin.upper().strip(), _get_levels_raw(coin))
+
+
+def _get_levels_raw(coin: str):
     """Уровни поддержки/сопротивления по монете — macro (swing_hunter) +
     ручные (custom_levels.json), слитые в один ответ. Слияние тут, а не
     отдельным полем в ответе — фронт (график) не должен ничего знать про
@@ -1887,7 +2203,8 @@ def simulate_bounce(
     """
     from backend.modules.cryptano.simulator.bounce_simulate import run_bounce_simulation
     try:
-        return run_bounce_simulation(coin, start, end, allow_long=allow_long, allow_short=allow_short)
+        return run_bounce_simulation(coin, start, end, allow_long=allow_long, allow_short=allow_short,
+                                     sim_cfg=_sim_cfg_effective())
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -1930,7 +2247,9 @@ def simulate_bounce_bulk(
     from backend.modules.cryptano.simulator.bounce_simulate import run_bulk_bounce_simulation
     coin_filter = _coin_source_filter_set(coin_source)
     try:
-        return run_bulk_bounce_simulation(start, end, allow_long=allow_long, allow_short=allow_short, coin_filter=coin_filter)
+        return run_bulk_bounce_simulation(start, end, allow_long=allow_long, allow_short=allow_short,
+                                          coin_filter=coin_filter, sim_cfg=_sim_cfg_effective(),
+                                          blocked=_sim_blocked_set())
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка bulk-симуляции BOUNCE: {e}")
 
@@ -1975,6 +2294,9 @@ def simulate_bulk(
     tags = [t.strip().upper() for t in strategies.split(",") if t.strip()] if strategies else None
     coin_filter = _coin_source_filter_set(coin_source)
     try:
+        blocked = _sim_blocked_set()
+        if blocked and coin_filter is not None:
+            coin_filter = {c for c in coin_filter if c not in blocked}
         return run_bulk_v_simulation(start, end, strategies=tags, coin_filter=coin_filter)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка bulk-симуляции V: {e}")
@@ -2121,12 +2443,75 @@ def get_watcher_events(coin: str):
     return {"coin": coin, "active": active, "history": history}
 
 
+# Докачка хвоста свечей с биржи — в ФОНЕ, чтобы открытие графика не ждало биржу
+# (это было ~2 с на каждый запрос). График сразу отдаётся из локальной базы, а
+# свежее подтянется фоном и придёт со следующим обновлением (см. app.js::refreshLiveCandles).
+_topup_lock = threading.Lock()
+_topup_running = set()      # (symbol, timeframe), по которым докачка уже идёт
+_topup_last = {}            # (symbol, timeframe) -> время последнего запуска
+_TOPUP_MIN_INTERVAL = 15    # не чаще раза в 15 с на пару
+
+def _topup_async(symbol, timeframe):
+    key = (symbol, timeframe)
+    now = time.time()
+    with _topup_lock:
+        if key in _topup_running or now - _topup_last.get(key, 0) < _TOPUP_MIN_INTERVAL:
+            return
+        _topup_running.add(key)
+        _topup_last[key] = now
+
+    def _run():
+        try:
+            candle_store.top_up_tail(exchange, symbol, timeframe)
+        except Exception as e:
+            logging.warning("background top_up_tail failed %s %s: %s", symbol, timeframe, e)
+        finally:
+            with _topup_lock:
+                _topup_running.discard(key)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+# Кэш индикаторов: считаются заново только когда изменились свечи (новая свеча или
+# сдвинулась цена закрытия последней).
+_ind_cache = {}
+
+def _fast_json(obj):
+    """Большие списки свечей/индикаторов: обычный возврат dict проходит через FastAPI
+    jsonable_encoder (рекурсивно по каждой точке) — на десятках тысяч точек это сотни
+    миллисекунд. Здесь сразу json.dumps без лишнего обхода."""
+    return Response(content=json.dumps(obj, separators=(",", ":"), allow_nan=False),
+                    media_type="application/json")
+
+def _sim_archive_candles(symbol, timeframe, limit=None, around=None):
+    """Свечи из архива симулятора (только 15m и 4h). Пусто — архива по монете нет
+    или таймфрейм не архивный: вызывающий код идёт обычным путём (общая база)."""
+    if timeframe not in candle_archive.TF_SEC:
+        return []
+    try:
+        candles = candle_archive.get_candles(symbol, timeframe)
+    except Exception as e:
+        logging.warning("sim archive read failed %s %s: %s", symbol, timeframe, e)
+        return []
+    if not candles:
+        return []
+    if limit:
+        if around:
+            i = min(range(len(candles)), key=lambda k: abs(candles[k]["time"] - around))
+            a = max(0, i - limit // 2)
+            candles = candles[a:a + limit]
+        else:
+            candles = candles[-limit:]
+    return candles
+
+
 @app.get("/api/ohlcv/{coin}")
 def get_ohlcv(
     coin: str,
     timeframe: str = "15m",
     limit: Optional[int] = Query(default=None, ge=1, description="если не задан — вся история, что есть в базе (её глубину задаёт candle_store.BACKFILL_DAYS_MAP)"),
     around: Optional[int] = Query(default=None, description="unix-секунды — окно вокруг этого момента вместо последних `limit` свечей (переход по клику на старый сигнал/сделку)"),
+    source: Optional[str] = Query(default=None, description="'sim' — страница симулятора: 15m/4h из архива sim_candles.db (любая глубина, без докачки), остальное — как обычно"),
 ):
     """
     Свечи по монете — из локальной SQLite-истории (candle_store), а не
@@ -2162,24 +2547,37 @@ def get_ohlcv(
     if timeframe not in candle_store.TIMEFRAME_MS:
         raise HTTPException(status_code=400, detail=f"Unsupported timeframe: {timeframe}")
 
+    # Страница симулятора: симулятор считает по архиву (sim_candles.db), поэтому и
+    # график должен читать его, а не общую базу (там 15m только за последние 60 дней).
+    if source == "sim":
+        arch = _sim_archive_candles(symbol, timeframe, limit, around)
+        if arch:
+            return _fast_json({"symbol": symbol, "timeframe": timeframe,
+                               "price_precision": price_precision, "candles": arch})
+
     if not candle_store.has_data(symbol, timeframe):
+        # Монеты в базе ещё нет — без первой докачки показывать нечего, ждём (разово).
         candle_store.backfill_symbol(exchange, symbol, timeframe)
-    else:
-        # ПРИНУДИТЕЛЬНАЯ ДОКАЧКА: всегда стягиваем хвост до текущей секунды при открытии графика
+    elif limit is not None and limit <= 50 and around is None:
+        # Фоновое автообновление последних свечей (раз в минуту) — тут ждать биржу не страшно,
+        # пользователь график уже видит.
         candle_store.top_up_tail(exchange, symbol, timeframe)
+    else:
+        # Открытие графика: отдаём из базы сразу, свежий хвост докачиваем в фоне.
+        _topup_async(symbol, timeframe)
 
     candles = candle_store.get_candles(symbol, timeframe, limit=limit, around=around)
 
-    return {
+    return _fast_json({
         "symbol": symbol,
         "timeframe": timeframe,
         "price_precision": price_precision,
         "candles": candles,
-    }
+    })
 
 
 @app.get("/api/indicators/{coin}")
-def get_indicators(coin: str, timeframe: str = "15m"):
+def get_indicators(coin: str, timeframe: str = "15m", source: Optional[str] = None):
     """Индикаторы для графика (Supertrend/ADX/HMA/VWAP/Envelope) — только
     отображение, торговой логики не касается. Считаются по тем же свечам из
     candle_store, что и /api/ohlcv, поэтому времена точек совпадают со свечами.
@@ -2193,8 +2591,20 @@ def get_indicators(coin: str, timeframe: str = "15m"):
         return {"indicators": {}}
     try:
         from backend.modules.cryptano.levels.chart_indicators import compute_indicators  # type: ignore
-        candles = candle_store.get_candles(symbol, timeframe, limit=None, around=None)
-        return {"indicators": compute_indicators(candles)}
+        candles = (_sim_archive_candles(symbol, timeframe) if source == "sim" else []) \
+            or candle_store.get_candles(symbol, timeframe, limit=None, around=None)
+        last = candles[-1] if candles else None
+        # Ключ — по времени последней свечи (не по её цене): индикаторы пересчитываются раз на
+        # новую свечу, а не при каждом тике цены формирующейся.
+        ckey = (symbol, timeframe, source, len(candles), last["time"] if last else None)
+        hit = _ind_cache.get(ckey)
+        if hit is not None:
+            return _fast_json({"indicators": hit})
+        result = compute_indicators(candles)
+        if len(_ind_cache) >= 64:
+            _ind_cache.pop(next(iter(_ind_cache)))
+        _ind_cache[ckey] = result
+        return _fast_json({"indicators": result})
     except Exception as e:
         return {"indicators": {}, "error": str(e)}
 

@@ -153,9 +153,15 @@ function watchlistRowHtml(info) {
   const showHand = info.has_custom_levels || info.source === "MANUAL";
   const isManual = info.source === "MANUAL" ? "true" : "false";
   const frozen = !!info.ignore_auto;
-  const hasOwnTpSl = !!(info.coin_tp_sl && (info.coin_tp_sl.tp != null || info.coin_tp_sl.sl != null));
+  const hasOwnTpSlOnly = !!(info.coin_tp_sl && (info.coin_tp_sl.tp != null || info.coin_tp_sl.sl != null));
+  const hasOwnLf = !!(info.coin_level_filter && (info.coin_level_filter.short_min != null || info.coin_level_filter.long_max != null || info.coin_level_filter.short_off || info.coin_level_filter.long_off));
+  const lfShortTxt = info.coin_level_filter ? (info.coin_level_filter.short_off ? "выкл" : (info.coin_level_filter.short_min != null ? `от ${info.coin_level_filter.short_min}%` : "общий")) : "";
+  const lfLongTxt = info.coin_level_filter ? (info.coin_level_filter.long_off ? "выкл" : (info.coin_level_filter.long_max != null ? `до ${info.coin_level_filter.long_max}%` : "общий")) : "";
+  const hasOwnTpSl = hasOwnTpSlOnly || hasOwnLf;
   const ownTpSlTitle = hasOwnTpSl
-    ? `Свой TP/SL: TP ${info.coin_tp_sl.tp != null ? info.coin_tp_sl.tp : "—"}% / SL ${info.coin_tp_sl.sl != null ? info.coin_tp_sl.sl : "—"}%`
+    ? "Свой конфиг:" +
+      (hasOwnTpSlOnly ? ` TP ${info.coin_tp_sl.tp != null ? info.coin_tp_sl.tp : "—"}% / SL ${info.coin_tp_sl.sl != null ? info.coin_tp_sl.sl : "—"}%` : "") +
+      (hasOwnLf ? ` фильтр EMA: SHORT ${lfShortTxt} / LONG ${lfLongTxt}` : "")
     : "";
   return `
     <div class="list-item" data-coin="${info.coin}" style="display:flex;align-items:center;">
@@ -175,7 +181,7 @@ function watchlistRowHtml(info) {
               style="cursor:pointer;font-size:14px;line-height:1;color:#9aa0a6;padding:0 2px;">⋮</span>
         <div class="wl-menu-dropdown" style="display:none;position:absolute;top:100%;right:0;z-index:60;background:#1e1e1e;border:1px solid #3f3f4e;border-radius:6px;margin-top:2px;min-width:170px;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
           <div style="padding:7px 10px;cursor:pointer;font-size:12px;font-weight:normal;"
-               onclick="event.stopPropagation(); openCoinTpSlModal('${info.coin}');">⚖️ Свой TP/SL${hasOwnTpSl ? " ✓" : ""}</div>
+               onclick="event.stopPropagation(); openCoinTpSlModal('${info.coin}');">⚙️ Свой конфиг${hasOwnTpSl ? " ✓" : ""}</div>
           <div style="padding:7px 10px;cursor:pointer;font-size:12px;font-weight:normal;"
                onclick="event.stopPropagation(); demoteWatchlistCoin('${info.coin}', 'greylist');">🔘 В серый список</div>
           <div style="padding:7px 10px;cursor:pointer;font-size:12px;font-weight:normal;color:#e5654f;"
@@ -342,6 +348,7 @@ function renderActiveWatchersFiltered(watchers) {
         level_reaction_count: w.level_reaction_count, // касания зоны для легенды
         direction: w.direction,        // LONG/SHORT — влияет на цвет зоны и Target/Stop
         activated_at: w.activated_at,  // дата технической активации — от неё рисуется линия
+        events: w.events || [],        // путь вотчера — по нему ставится центр графика (начало слежения)
       });
     };
     activeListEl.appendChild(div);
@@ -453,6 +460,24 @@ function addSplitLevel(zMin, zMax, color, candles, birthTime, zoneStartTime, tit
 let selectedCoin = null;
 let focusedLevel = null;
 let isSignalView = false;
+// Обзор графика при открытии сигнала/вотчера: центр — точка входа (сигнал) или
+// последнее начало слежения (вотчер); по бокам CHART_HALF_WINDOW свечей; по цене —
+// запас CHART_PRICE_PAD от высоты диапазона. Цифры тут — чтобы крутить в одном месте.
+const CHART_HALF_WINDOW = 450;
+const CHART_PRICE_PAD = 0.25;
+let focusPriceExtras = [];
+// События, с которых начинается слежение за уровнем (прокол/касание): BOUNCE
+// (ZONE_TOUCH, SWEEP_BOTTOM, CLIMAX_*_BREACH), V_BOTTOM (ORIENTIR), V_RED_TOP (TRACK_START).
+const TRACK_START_EVENTS = new Set(["ZONE_TOUCH", "SWEEP_BOTTOM", "CLIMAX_NEAR_BREACH", "CLIMAX_FAR_BREACH", "ORIENTIR", "TRACK_START"]);
+function chartCenterTime(signal, focus) {
+  if (signal && signal.time) return signal.time;
+  const evs = (focus && focus.events) || [];
+  for (let i = evs.length - 1; i >= 0; i--) {
+    if (evs[i].time && TRACK_START_EVENTS.has(evs[i].type)) return evs[i].time;
+  }
+  for (let i = evs.length - 1; i >= 0; i--) { if (evs[i].time) return evs[i].time; }
+  return null;
+}
 let currentSignal = null; // сигнал, по которому сейчас открыт график (для точки закрытия сделки в loadEvents)
 
 const STRATEGY_COLORS = {
@@ -487,6 +512,14 @@ const EVENT_MARKER_STYLE = {
   ORIENTIR:           { color: "#5aa9e6", shape: "circle" },
   START:              { color: "#5aa9e6", shape: "circle" },
   PEAK:               { color: "#f2c14e", shape: "circle" },
+  // V_GREEN_BOTTOM (v_green_bottom_watcher.py): PIT — яма, GOOD_GREEN — зелёная
+  // перед входом. V_RED_TOP (v_red_top_watcher.py): TRACK_START/NEW_PEAK — пики,
+  // GOOD_RED — красная подтверждения. Без этого рисовались серым по умолчанию.
+  PIT:                { color: "#e5654f", shape: "circle" },
+  GOOD_GREEN:         { color: "#4caf7d", shape: "circle" },
+  GOOD_RED:           { color: "#e5654f", shape: "circle" },
+  TRACK_START:        { color: "#5aa9e6", shape: "circle" },
+  NEW_PEAK:           { color: "#f2c14e", shape: "circle" },
 };
 
 function friendlyStrategyWithMode(strategy, mode) {
@@ -820,11 +853,10 @@ async function refreshIndicators(coin, token) {
   const key = coin + "|" + currentTimeframe;
   if (indicatorCache.key !== key) {
     try {
-      const res = await fetch(`/api/indicators/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}`);
+      const res = await fetchJson(`/api/indicators/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}`, 30000);
       if (token !== undefined && token !== chartLoadToken) return;
-      if (!res.ok) { _hideAllIndicators(); return; }
-      const j = await res.json();
-      indicatorCache = { key, data: j.indicators || {} };
+      if (!res.ok || !res.data) { _hideAllIndicators(); return; }
+      indicatorCache = { key, data: res.data.indicators || {} };
     } catch (e) { _hideAllIndicators(); return; }
   }
   if (coin !== selectedCoin) return;
@@ -941,18 +973,17 @@ async function refreshLevelMethods(coin, token) {
   const seq = ++methodRefreshSeq;
   const active = LEVEL_METHODS.filter((m) => levelMethodState.methods[m.key]);
   if (!coin || !chart || !active.length) { clearMethodZones(); return; }
-  const results = [];
-  for (const m of active) {
+  // Запросы по всем включённым методам идут параллельно (раньше — по очереди).
+  const loaded = await Promise.all(active.map(async (m) => {
     const key = coin + "|" + currentTimeframe + "|" + m.key;
     if (!methodCache[key]) {
-      try {
-        const res = await fetch(`/api/level_methods/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}&method=${m.key}`);
-        if (!res.ok) continue;
-        methodCache[key] = await res.json();
-      } catch (e) { continue; }
+      const res = await fetchJson(`/api/level_methods/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}&method=${m.key}`, 0);
+      if (!res.ok || !res.data) return null;
+      methodCache[key] = res.data;
     }
-    results.push([m, methodCache[key]]);
-  }
+    return [m, methodCache[key]];
+  }));
+  const results = loaded.filter(Boolean);
   if (seq !== methodRefreshSeq) return;
   if (token !== undefined && token !== chartLoadToken) return;
   if (coin !== selectedCoin) return;
@@ -1119,6 +1150,17 @@ function initChart() {
     borderUpColor: "#4caf7d",   
     borderDownColor: "#e5654f", 
     wickUpColor: "#4caf7d", wickDownColor: "#e5654f",
+    // Автомасштаб цены с "воздухом" (не впритык к свечам) и с обязательным
+    // включением ключевых цен (вход, зона) — иначе они уезжают за край.
+    // Запас в % от высоты диапазона, поэтому одинаково работает на любой монете.
+    autoscaleInfoProvider: (orig) => {
+      const r = orig();
+      if (!r || !r.priceRange) return r;
+      let lo = r.priceRange.minValue, hi = r.priceRange.maxValue;
+      for (const p of focusPriceExtras) { if (Number.isFinite(p)) { lo = Math.min(lo, p); hi = Math.max(hi, p); } }
+      const pad = (hi - lo) * CHART_PRICE_PAD;
+      return { priceRange: { minValue: lo - pad, maxValue: hi + pad }, margins: r.margins };
+    },
   });
 
   volumeSeries = chart.addHistogramSeries({
@@ -1131,7 +1173,7 @@ function initChart() {
 
   ema20Series = chart.addLineSeries({ color: "#f2c14e", lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false });
   ema50Series = chart.addLineSeries({ color: "#5aa9e6", lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false });
-  emaMacroSeries = chart.addLineSeries({ color: "#7e57c2", lineWidth: 2, priceLineVisible: false, crosshairMarkerVisible: false });
+  emaMacroSeries = chart.addLineSeries({ color: "#7e57c2", lineWidth: 2, priceLineVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: () => null });
   rsiSeries = chart.addLineSeries({ visible: false, crosshairMarkerVisible: false }); 
 
   chart.subscribeCrosshairMove((param) => {
@@ -1290,11 +1332,10 @@ async function loadEvents(coin, token = chartLoadToken) {
   // Точки пути и входа показываем, когда открыт конкретный вотчер («В работе») или сигнал.
   if (!focusedLevel && !isSignalView) { candleSeries.setMarkers([]); return; }
   try {
-    const res = await fetch(`/api/events/${encodeURIComponent(coin)}`);
+    const res = await fetchJson(`/api/events/${encodeURIComponent(coin)}`, 0);
     if (token !== chartLoadToken) return; 
-    if (!res.ok) { candleSeries.setMarkers([]); return; }
-    const data = await res.json();
-    if (token !== chartLoadToken) return;
+    if (!res.ok || !res.data) { candleSeries.setMarkers([]); return; }
+    const data = res.data;
 
     const matchesFocus = (w) => !focusedLevel
       || (focusedLevel.level_id ? w.level_id === focusedLevel.level_id
@@ -1465,13 +1506,12 @@ async function loadLevels(coin, token = chartLoadToken, source = null) {
     const url = source === "greylist"
       ? `/api/levels/greylist/${encodeURIComponent(coin)}`
       : `/api/levels/${encodeURIComponent(coin)}`;
-    const res = await fetch(url);
+    const res = await fetchJson(url, 0);
     if (token !== chartLoadToken) return;
     clearLevelLines();
-    if (!res.ok) return; // 404 — у монеты просто нет уровней, это не ошибка
+    if (!res.ok || !res.data) return; // 404 — у монеты просто нет уровней, это не ошибка
 
-    const data = await res.json();
-    if (token !== chartLoadToken) return;
+    const data = res.data;
     if (!globalCandles.length) return;
 
     const drawSide = (zones, color) => {
@@ -1507,9 +1547,9 @@ async function loadMacroEma200(coin) {
 
   // Для внутридневных графиков (15m, 1h) скачиваем 4-часовую историю как макро-тренд
   try {
-    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=4h&limit=999`);
-    if (!res.ok) { emaMacroSeries.setData([]); return; }
-    const data = await res.json();
+    const res = await fetchJson(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=4h&limit=999`, 30000);
+    if (!res.ok || !res.data) { emaMacroSeries.setData([]); return; }
+    const data = res.data;
     
     const candles = (data.candles || [])
       .map((c) => {
@@ -1527,6 +1567,36 @@ async function loadMacroEma200(coin) {
 }
 
 let chartLoadToken = 0;
+
+// Единая обёртка fetch для графика: один и тот же URL, запрошенный дважды подряд
+// (предзагрузка в начале loadChart + вызов внутри loadEvents/loadLevels/...), уходит
+// на сервер ОДИН раз. ttlMs > 0 — ответ ещё и кэшируется (свечи/индикаторы, чтобы
+// повторный клик по той же монете открывался мгновенно); ttlMs = 0 — только пока запрос
+// в полёте (уровни/события меняются на лету, их кэшировать нельзя).
+// Не бросает исключений: всегда возвращает { ok, status, data }.
+const _fetchCache = new Map();
+function fetchJson(url, ttlMs = 0) {
+  const now = Date.now();
+  const hit = _fetchCache.get(url);
+  if (hit && (hit.pending || now - hit.t < hit.ttl)) return hit.p;
+  const entry = { t: now, ttl: ttlMs, pending: true, p: null };
+  entry.p = fetch(url)
+    .then(async (r) => {
+      let data = null;
+      try { data = await r.json(); } catch (e) {}
+      return { ok: r.ok, status: r.status, data };
+    })
+    .catch(() => ({ ok: false, status: 0, data: null }))
+    .then((res) => {
+      entry.pending = false;
+      entry.t = Date.now();
+      if (!res.ok || ttlMs <= 0) _fetchCache.delete(url);
+      return res;
+    });
+  _fetchCache.set(url, entry);
+  if (_fetchCache.size > 40) _fetchCache.delete(_fetchCache.keys().next().value);
+  return entry.p;
+}
 
 // Бинарный поиск ближайшей по времени свечи (candles отсортированы по time).
 function findNearestCandleIndex(candles, targetTime) {
@@ -1583,10 +1653,34 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
     }
   }
 
+  // ── Быстрая загрузка: ВСЕ запросы стартуют одновременно, а рисуем один раз, когда
+  // всё пришло (раньше: свечи → потом по очереди индикаторы/EMA200/уровни/события,
+  // и каждый менял масштаб/высоту — отсюда "сначала один размер, потом другой").
+  const wantInd = INDICATOR_DEFS.some((d) => indicatorState[d.key]);
+  if (wantInd && indicatorState.adx) {   // место под ADX-панель резервируем сразу
+    ensureAdxPanel();
+    if (adxPanelEl) adxPanelEl.style.display = "block";
+  }
+  const enc = encodeURIComponent(coin);
+  const pCandles = fetchJson(`/api/ohlcv/${enc}?timeframe=${currentTimeframe}`, 30000);
+  const pre = [];
+  if (!skipLiveOverlay) {
+    if (!["1d", "1w", "1M"].includes(currentTimeframe)) pre.push(fetchJson(`/api/ohlcv/${enc}?timeframe=4h&limit=999`, 30000));
+    if (!signal && !focus && levelsVisible) {
+      pre.push(fetchJson(opts.source === "greylist" ? `/api/levels/greylist/${enc}` : `/api/levels/${enc}`, 0));
+    }
+    if (focus || signal) pre.push(fetchJson(`/api/events/${enc}`, 0));
+  }
+  if (wantInd) pre.push(fetchJson(`/api/indicators/${enc}?timeframe=${currentTimeframe}`, 30000));
+  LEVEL_METHODS.filter((m) => levelMethodState.methods[m.key]).forEach((m) => {
+    pre.push(fetchJson(`/api/level_methods/${enc}?timeframe=${currentTimeframe}&method=${m.key}`, 0));
+  });
+
   try {
-    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}`);
+    const res0 = await pCandles;
+    const res = { ok: res0.ok, json: async () => res0.data || {} };
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
+      const err = res0.data || {};
       currentSymbolEl.textContent = err.detail || "график недоступен";
       candleSeries.setData([]);
       candleSeries.setMarkers([]);
@@ -1601,6 +1695,7 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
       return;
     }
     const data = await res.json();
+    await Promise.all(pre);   // остальные запросы идут параллельно со свечами; fetchJson не бросает
 
     // Гонка при быстром переключении монеты/таймфрейма: если пока этот
     // запрос летел, пользователь успел кликнуть что-то ещё — myToken уже
@@ -1641,30 +1736,16 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
     rsiSeries.setData(computeRSI(formattedCandles, 14)); 
     indicatorCache = { key: null, data: null };
     methodCache = {};
-    refreshIndicators(coin, myToken);
-    refreshLevelMethods(coin, myToken);
 
-    // Клик по сигналу — не обрезаем данные, грузим ВСЮ историю как обычно,
-    // просто ставим видимое окно (viewport) вокруг момента сигнала. Данные
-    // за пределами окна никуда не делись — можно спокойно отскроллить/
-    // отзумить и посмотреть весь график целиком.
-    if (signal && signal.time && formattedCandles.length) {
-      const idx = findNearestCandleIndex(formattedCandles, signal.time);
-      const half = 150; // свечей до и после сигнала
-      const fromIdx = Math.max(0, idx - half);
-      const toIdx = Math.min(formattedCandles.length - 1, idx + half);
-      chart.timeScale().setVisibleRange({
-        from: formattedCandles[fromIdx].time,
-        to: formattedCandles[toIdx].time,
-      });
-    } else {
-      chart.timeScale().fitContent();
-    }
-    candleSeries.priceScale().applyOptions({ autoScale: true });
+    await Promise.all([refreshIndicators(coin, myToken), refreshLevelMethods(coin, myToken)]);
     if (!skipLiveOverlay) {
-      if (!signal && !focusedLevel) loadLevels(coin, myToken, opts.source);
-      loadEvents(coin, myToken);
-      loadMacroEma200(coin);
+      // Все данные уже в кэше запросов — эти вызовы дорисовывают за микротаски, без
+      // перерисовки между ними; окно (диапазон) ставим уже после, одним движением.
+      await Promise.all([
+        (!signal && !focusedLevel) ? loadLevels(coin, myToken, opts.source) : null,
+        loadEvents(coin, myToken),
+        loadMacroEma200(coin),
+      ]);
       // Если кликнули на вотчера - рисуем только его уровень
       if (!signal && focusedLevel && focusedLevel.min != null && focusedLevel.max != null) {
         const levelColor = focusedLevel.direction === "LONG" ? "#00c853" : "#ff3d3d";
@@ -1684,7 +1765,32 @@ async function loadChart(coin, focus = null, signal = null, opts = {}) {
         }
       }
     }
+    if (myToken !== chartLoadToken) return;
+    // Клик по сигналу/вотчеру — данные не обрезаем (грузим ВСЮ историю), просто
+    // ставим окно: центр — вход сигнала или последнее начало слежения вотчера
+    // (см. chartCenterTime), по CHART_HALF_WINDOW свечей в каждую сторону. Окно
+    // задаём по индексам (logical range) — центр точно по центру, а если слева/
+    // справа данных не хватает, остаётся пустое место, а не сдвиг центра.
+    focusPriceExtras = [];
+    if (signal && signal.entry != null) focusPriceExtras.push(Number(signal.entry));
+    if (focus && focus.min != null && focus.max != null) focusPriceExtras.push(Number(focus.min), Number(focus.max));
+    const centerTime = formattedCandles.length ? chartCenterTime(signal, focus) : null;
+    if (centerTime) {
+      const idx = findNearestCandleIndex(formattedCandles, centerTime);
+      chart.timeScale().setVisibleLogicalRange({ from: idx - CHART_HALF_WINDOW, to: idx + CHART_HALF_WINDOW });
+    } else if (focus && formattedCandles.length) {
+      // Вотчер без событий (центра нет): не прижимаем последнюю свечу к правому
+      // краю — показываем конец графика с пустым местом справа.
+      const last = formattedCandles.length - 1;
+      chart.timeScale().setVisibleLogicalRange({ from: last - 1.5 * CHART_HALF_WINDOW, to: last + 0.5 * CHART_HALF_WINDOW });
+    } else {
+      chart.timeScale().fitContent();
+    }
+    candleSeries.priceScale().applyOptions({ autoScale: true });
     if (signal) drawSignalTradeLines(signal);
+    // Свечи отданы из базы сразу; фоновая докачка с биржи заканчивается за пару секунд —
+    // подхватываем свежий хвост (только если пользователь всё ещё на этой монете).
+    setTimeout(() => { if (myToken === chartLoadToken) refreshLiveCandles(coin); }, 3500);
   } catch (e) {
     currentSymbolEl.textContent = "ошибка загрузки графика";
     console.error(e);
@@ -2028,14 +2134,16 @@ if (savedState && savedState.coin) {
 }
 
 // === АВТООБНОВЛЕНИЕ РАЗ В МИНУТУ ===
-setInterval(async () => {
-  refreshAll(); 
-  
-  if (selectedCoin) {
-    try {
-      const res = await fetch(`/api/ohlcv/${encodeURIComponent(selectedCoin)}?timeframe=${currentTimeframe}&limit=10`);
-      if (!res.ok) return;
-      const data = await res.json();
+// Подтягивает последние свечи и обновляет график на месте. Зовётся раз в минуту и один раз
+// через пару секунд после открытия графика: сам график отдаётся из базы сразу, а свежий
+// хвост докачивается с биржи в фоне (см. app.py::_topup_async) — этот вызов его подхватывает.
+async function refreshLiveCandles(forCoin) {
+  const coin = forCoin || selectedCoin;
+  if (!coin) return;
+  try {
+    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}&limit=10`);
+    if (!res.ok || coin !== selectedCoin) return;
+    const data = await res.json();
 
       // Тот же принцип, что и в loadChart() — бэкенд уже отдаёт чистые,
       // уникальные, отсортированные свечи, подгонять/схлопывать самим не
@@ -2058,11 +2166,15 @@ setInterval(async () => {
         }
       });
       
-      loadEvents(selectedCoin);
-    } catch (e) {
-      console.error("Ошибка автообновления свечей:", e);
-    }
+    loadEvents(selectedCoin);
+  } catch (e) {
+    console.error("Ошибка автообновления свечей:", e);
   }
+}
+
+setInterval(() => {
+  refreshAll();
+  refreshLiveCandles();
 }, 60000);
 
 const resetWatchersBtnEl = document.getElementById("reset-watchers-btn");
@@ -2977,7 +3089,7 @@ applyListModeUI();
 wireListModeDropdown();
 
 
-// === Настройки TP/SL для BOUNCE (#tpsl-btn / #tpsl-overlay) ===
+// === Конфиг BOUNCE: TP/SL + фильтр уровней по EMA (#tpsl-btn / #tpsl-overlay) ===
 // Одна и та же модалка работает в двух режимах:
 //  - общие (глобальные) TP/SL — tpSlModalCoin === null, кнопка ⚙️ TP/SL в
 //    шапке графика, читает/пишет /api/config/bounce_tpsl;
@@ -2985,6 +3097,27 @@ wireListModeDropdown();
 //    ⋮-меню строки watchlist (openCoinTpSlModal), читает/пишет
 //    /api/config/coin_tpsl. Пустые поля при сохранении = сброс на общий.
 let tpSlModalCoin = null;
+
+// Фильтр EMA: галочки «без фильтра» — только в режиме монеты. Отмеченная
+// галочка гасит и очищает свой порог (у монеты он не нужен, общий не действует).
+function _lfSetOffRowsVisible(visible) {
+  ["lf-short-off-row", "lf-long-off-row"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = visible ? "flex" : "none";
+  });
+}
+function _lfApplyOff(side) {
+  const off = document.getElementById(`lf-${side}-off`);
+  const inp = document.getElementById(`lf-${side}`);
+  if (!off || !inp) return;
+  if (off.checked) inp.value = "";
+  inp.disabled = off.checked;
+}
+function _lfSetOff(side, value) {
+  const off = document.getElementById(`lf-${side}-off`);
+  if (off) off.checked = !!value;
+  _lfApplyOff(side);
+}
 
 function openTpSlModal() {
   tpSlModalCoin = null;
@@ -2995,19 +3128,26 @@ function openTpSlModal() {
   const resetBtn = document.getElementById("tpsl-reset-btn");
   if (!overlay) return;
   if (errEl) { errEl.style.display = "none"; errEl.textContent = ""; }
-  if (titleEl) titleEl.textContent = "Настройки BOUNCE TP/SL";
+  if (titleEl) titleEl.textContent = "Конфиг BOUNCE";
   if (hintEl) hintEl.style.display = "none";
   if (resetBtn) resetBtn.style.display = "none";
 
   // Подтягиваем текущие значения с бэкенда
-  fetch("/api/config/bounce_tpsl")
-    .then(r => r.json())
-    .then(data => {
+  Promise.all([
+    fetch("/api/config/bounce_tpsl").then(r => r.json()),
+    fetch("/api/config/level_filter").then(r => r.json()),
+  ])
+    .then(([data, lf]) => {
       document.getElementById("tpsl-tp").value = data.bounce_tp_pct;
       document.getElementById("tpsl-sl").value = data.bounce_sl_pct;
+      document.getElementById("lf-short").value = lf.short_min != null ? lf.short_min : "";
+      document.getElementById("lf-long").value = lf.long_max != null ? lf.long_max : "";
+      _lfSetOffRowsVisible(false);
+      _lfSetOff("short", false);
+      _lfSetOff("long", false);
       overlay.style.display = "flex";
     })
-    .catch(e => console.error("Ошибка загрузки TP/SL:", e));
+    .catch(e => console.error("Ошибка загрузки конфига:", e));
 }
 
 // ⋮ → "⚖️ Свой TP/SL" на строке watchlist. Поля пустые = своего override нет
@@ -3022,21 +3162,29 @@ function openCoinTpSlModal(coin) {
   const resetBtn = document.getElementById("tpsl-reset-btn");
   if (!overlay) return;
   if (errEl) { errEl.style.display = "none"; errEl.textContent = ""; }
-  if (titleEl) titleEl.textContent = `TP/SL — ${coin}`;
+  if (titleEl) titleEl.textContent = `Конфиг — ${coin}`;
   if (hintEl) {
-    hintEl.textContent = "Пусто — используется общий TP/SL. Свой — общий для этой монеты игнорируется.";
+    hintEl.textContent = "Пусто — используется общий. Заполненное поле — приоритет над общим для этой монеты (TP/SL — оба сразу, фильтр — каждое поле отдельно).";
     hintEl.style.display = "block";
   }
 
-  fetch(`/api/config/coin_tpsl/${encodeURIComponent(coin)}`)
-    .then(r => r.json())
-    .then(data => {
+  Promise.all([
+    fetch(`/api/config/coin_tpsl/${encodeURIComponent(coin)}`).then(r => r.json()),
+    fetch(`/api/config/coin_level_filter/${encodeURIComponent(coin)}`).then(r => r.json()),
+  ])
+    .then(([data, lf]) => {
       document.getElementById("tpsl-tp").value = data.tp != null ? data.tp : "";
       document.getElementById("tpsl-sl").value = data.sl != null ? data.sl : "";
-      if (resetBtn) resetBtn.style.display = (data.tp != null || data.sl != null) ? "" : "none";
+      document.getElementById("lf-short").value = lf.short_min != null ? lf.short_min : "";
+      document.getElementById("lf-long").value = lf.long_max != null ? lf.long_max : "";
+      _lfSetOffRowsVisible(true);
+      _lfSetOff("short", lf.short_off);
+      _lfSetOff("long", lf.long_off);
+      const hasOwn = data.tp != null || data.sl != null || lf.short_min != null || lf.long_max != null || lf.short_off || lf.long_off;
+      if (resetBtn) resetBtn.style.display = hasOwn ? "" : "none";
       overlay.style.display = "flex";
     })
-    .catch(e => console.error("Ошибка загрузки TP/SL монеты:", e));
+    .catch(e => console.error("Ошибка загрузки конфига монеты:", e));
 }
 
 function closeTpSlModal() {
@@ -3054,6 +3202,21 @@ async function submitTpSl() {
   const tpRaw = document.getElementById("tpsl-tp").value.trim();
   const slRaw = document.getElementById("tpsl-sl").value.trim();
 
+  // Фильтр уровней по EMA: пусто -> null (нет порога / у монеты — общий).
+  const lfShortRaw = document.getElementById("lf-short").value.trim();
+  const lfLongRaw = document.getElementById("lf-long").value.trim();
+  const lfShort = lfShortRaw === "" ? null : parseFloat(lfShortRaw);
+  const lfLong = lfLongRaw === "" ? null : parseFloat(lfLongRaw);
+  if ((lfShort !== null && !Number.isFinite(lfShort)) || (lfLong !== null && !Number.isFinite(lfLong))) {
+    return showError("Фильтр EMA: значения должны быть числами");
+  }
+  const lfShortOff = !!(document.getElementById("lf-short-off") || {}).checked;
+  const lfLongOff = !!(document.getElementById("lf-long-off") || {}).checked;
+  const lf = {
+    short_min: lfShortOff ? null : lfShort, long_max: lfLongOff ? null : lfLong,
+    short_off: lfShortOff, long_off: lfLongOff,
+  };
+
   const submitBtn = document.getElementById("tpsl-submit-btn");
 
   if (tpSlModalCoin) {
@@ -3061,13 +3224,13 @@ async function submitTpSl() {
     // Иначе оба должны быть заданы (валидные числа > 0) — не даём
     // половинчатый override.
     if (tpRaw === "" && slRaw === "") {
-      return await _saveCoinTpSl(tpSlModalCoin, null, null, submitBtn, showError);
+      return await _saveCoinTpSl(tpSlModalCoin, null, null, lf, submitBtn, showError);
     }
     const tpVal = parseFloat(tpRaw);
     const slVal = parseFloat(slRaw);
     if (!Number.isFinite(tpVal) || !Number.isFinite(slVal)) return showError("Заполните оба поля или оставьте оба пустыми");
     if (tpVal <= 0 || slVal <= 0) return showError("Значения должны быть больше 0");
-    return await _saveCoinTpSl(tpSlModalCoin, tpVal, slVal, submitBtn, showError);
+    return await _saveCoinTpSl(tpSlModalCoin, tpVal, slVal, lf, submitBtn, showError);
   }
 
   const tpVal = parseFloat(tpRaw);
@@ -3087,6 +3250,16 @@ async function submitTpSl() {
       showError(data.detail || "Не удалось сохранить настройки");
       return;
     }
+    const resLf = await fetch("/api/config/level_filter", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ short_min: lf.short_min, long_max: lf.long_max }),
+    });
+    const dataLf = await resLf.json();
+    if (!resLf.ok) {
+      showError(dataLf.detail || "Не удалось сохранить фильтр");
+      return;
+    }
     closeTpSlModal();
   } catch (e) {
     showError("Ошибка запроса: " + e.message);
@@ -3095,7 +3268,7 @@ async function submitTpSl() {
   }
 }
 
-async function _saveCoinTpSl(coin, tp, sl, submitBtn, showError) {
+async function _saveCoinTpSl(coin, tp, sl, lf, submitBtn, showError) {
   submitBtn.disabled = true;
   try {
     const res = await fetch("/api/config/coin_tpsl", {
@@ -3106,6 +3279,16 @@ async function _saveCoinTpSl(coin, tp, sl, submitBtn, showError) {
     const data = await res.json();
     if (!res.ok) {
       showError(data.detail || "Не удалось сохранить настройки");
+      return;
+    }
+    const resLf = await fetch("/api/config/coin_level_filter", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ coin, short_min: lf.short_min, long_max: lf.long_max, short_off: lf.short_off, long_off: lf.long_off }),
+    });
+    const dataLf = await resLf.json();
+    if (!resLf.ok) {
+      showError(dataLf.detail || "Не удалось сохранить фильтр");
       return;
     }
     closeTpSlModal();
@@ -3120,6 +3303,10 @@ async function _saveCoinTpSl(coin, tp, sl, submitBtn, showError) {
 function resetTpSl() {
   document.getElementById("tpsl-tp").value = "";
   document.getElementById("tpsl-sl").value = "";
+  document.getElementById("lf-short").value = "";
+  document.getElementById("lf-long").value = "";
+  _lfSetOff("short", false);
+  _lfSetOff("long", false);
   submitTpSl();
 }
 
@@ -3132,6 +3319,10 @@ function wireTpSlModal() {
 
   if (!btn || !overlay || !cancelBtn || !submitBtn) return;
 
+  const lfShortOffEl = document.getElementById("lf-short-off");
+  const lfLongOffEl = document.getElementById("lf-long-off");
+  if (lfShortOffEl) lfShortOffEl.onchange = () => _lfApplyOff("short");
+  if (lfLongOffEl) lfLongOffEl.onchange = () => _lfApplyOff("long");
   btn.onclick = openTpSlModal;
   cancelBtn.onclick = closeTpSlModal;
   submitBtn.onclick = submitTpSl;

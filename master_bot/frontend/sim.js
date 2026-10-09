@@ -39,6 +39,13 @@ let ema20Series = null;
 let ema50Series = null;
 let emaMacroSeries = null;
 let globalCandles = [];
+// Кэш свечей на время жизни страницы: смена периода/клик по сделке той же монеты
+// не ходят на сервер заново ("coin|tf" -> {symbol, timeframe, price_precision, all}).
+// Свежие данные принудительно — loadFullCandlesForCoin(coin, { force: true }).
+const candleCache = new Map();
+const macroCandleCache = new Map(); // coin -> 4h-свечи для EMA200(4H)
+const CANDLE_CACHE_MAX = 12;
+let fullCandlesAll = []; // вся история монеты (до обрезки по выбранному периоду) — на ней считаются EMA, чтобы линия в начале периода не стартовала с нуля
 let currentPrecision = 4;
 
 let selectedCoin = null;
@@ -186,26 +193,29 @@ function computeEMA(candles, period) {
 // Для 1d/1w/1M — честная EMA200 по родным свечам этого же таймфрейма.
 // Для внутридневных (15m/1h/4h) — отдельно тянем 4h-историю и считаем
 // EMA200 по ней (макро-тренд поверх мелкого графика).
-async function loadMacroEma200(coin) {
+async function loadMacroEma200(coin, force = false) {
   if (!emaMacroSeries) return;
 
   if (currentTimeframe === "1d" || currentTimeframe === "1w" || currentTimeframe === "1M") {
     if (coin !== selectedCoin) return;
-    emaMacroSeries.setData(computeEMA(globalCandles, 200));
+    emaMacroSeries.setData(_clipToCandles(computeEMA(fullCandlesAll.length ? fullCandlesAll : globalCandles, 200)));
     return;
   }
 
   try {
-    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=4h&limit=999`);
-    if (!res.ok) { emaMacroSeries.setData([]); return; }
-    const data = await res.json();
-
-    const candles = (data.candles || [])
-      .map((c) => {
-        const unixSeconds = c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time;
-        return { ...c, time: unixSeconds };
-      })
-      .sort((a, b) => a.time - b.time);
+    let candles = force ? null : macroCandleCache.get(coin);
+    if (!candles) {
+      const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=4h&limit=999&source=sim`);
+      if (!res.ok) { emaMacroSeries.setData([]); return; }
+      const data = await res.json();
+      candles = (data.candles || [])
+        .map((c) => {
+          const unixSeconds = c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time;
+          return { ...c, time: unixSeconds };
+        })
+        .sort((a, b) => a.time - b.time);
+      macroCandleCache.set(coin, candles);
+    }
 
     if (coin !== selectedCoin) return;
 
@@ -392,6 +402,11 @@ function ensureAdxPanel() {
 function _showAdxPanel(adxPts) {
   ensureAdxPanel();
   if (!adxChart) return;
+  // Запоминаем вид основного графика и глушим синхронизацию на время подготовки
+  // ADX-панели: иначе её стартовый диапазон перезаписывал диапазон основного
+  // графика (график "сначала один масштаб, потом прыгает").
+  const _keepRange = chart.timeScale().getVisibleLogicalRange();
+  _adxRangeSyncing = true;
   adxPanelEl.style.display = "block";
   adxChart.applyOptions({ width: document.getElementById("chart").clientWidth });
   adxValueMap = new Map();
@@ -406,7 +421,14 @@ function _showAdxPanel(adxPts) {
     const r = chart.timeScale().getVisibleLogicalRange();
     if (r) { _adxRangeSyncing = true; try { adxChart.timeScale().setVisibleLogicalRange(r); } catch (e) {} _adxRangeSyncing = false; }
   };
-  _sync();
+  _adxRangeSyncing = false;
+  if (_keepRange) {
+    _adxRangeSyncing = true;
+    try { adxChart.timeScale().setVisibleLogicalRange(_keepRange); } catch (e) {}
+    _adxRangeSyncing = false;
+  } else {
+    _sync();
+  }
   requestAnimationFrame(_sync);
 }
 
@@ -445,7 +467,7 @@ function _indPts(arr) {
 
 function _ensureIndSeries() {
   if (!chart || indSeries.created) return;
-  const base = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
+  const base = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: _focusAwareAutoscale };
   indSeries.stUp = chart.addLineSeries({ ...base, color: "#26a69a", lineWidth: 2, visible: false });
   indSeries.stDn = chart.addLineSeries({ ...base, color: "#ef5350", lineWidth: 2, visible: false });
   indSeries.hma = chart.addLineSeries({ ...base, color: "#ff9800", lineWidth: 2, visible: false });
@@ -487,7 +509,7 @@ async function refreshIndicators(coin) {
   const key = coin + "|" + currentTimeframe;
   if (indicatorCache.key !== key) {
     try {
-      const res = await fetch(`/api/indicators/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}`);
+      const res = await fetch(`/api/indicators/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}&source=sim`);
       if (!res.ok) { _hideAllIndicators(); return; }
       const j = await res.json();
       indicatorCache = { key, data: j.indicators || {} };
@@ -535,6 +557,10 @@ function initChart() {
     upColor: "#4caf7d", downColor: "#e5654f",
     borderVisible: false,
     wickUpColor: "#4caf7d", wickDownColor: "#e5654f",
+    // Выбрана сделка с зумом пользователя — цена центрируется по уровню/входу (см. focusCameraOnTrade).
+    autoscaleInfoProvider: (orig) => focusPriceRange
+      ? { priceRange: { minValue: focusPriceRange.min, maxValue: focusPriceRange.max } }
+      : orig(),
   });
 
   volumeSeries = chart.addHistogramSeries({
@@ -543,9 +569,11 @@ function initChart() {
   });
   chart.priceScale("volume").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
 
-  ema20Series = chart.addLineSeries({ color: "#f2c14e", lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false });
-  ema50Series = chart.addLineSeries({ color: "#5aa9e6", lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false });
-  emaMacroSeries = chart.addLineSeries({ color: "#7e57c2", lineWidth: 2, priceLineVisible: false, crosshairMarkerVisible: false });
+  ema20Series = chart.addLineSeries({ color: "#f2c14e", lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: _focusAwareAutoscale });
+  ema50Series = chart.addLineSeries({ color: "#5aa9e6", lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: _focusAwareAutoscale });
+  // autoscaleInfoProvider: () => null — длинная EMA200 не участвует в автомасштабе цены
+  // (иначе она, будучи далеко от цены, сплющивала свечи и шкала прыгала при её подгрузке).
+  emaMacroSeries = chart.addLineSeries({ color: "#7e57c2", lineWidth: 2, priceLineVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: () => null });
 
   chart.subscribeCrosshairMove((param) => {
     const legendEl = document.getElementById("chart-legend");
@@ -596,6 +624,7 @@ function initChart() {
       clearSimSnapshotLines();
       candleSeries.setMarkers([]);
       updateSimUI();
+      reloadCandlesForPeriod();
     };
   }
   const simRunBtnEl = document.getElementById("sim-run-btn");
@@ -615,7 +644,7 @@ function initChart() {
   if (simStartInputEl) {
     simStartInputEl.onchange = () => {
       const sec = dateInputToUnixSec(simStartInputEl.value);
-      if (sec != null) setSimStartTime(sec, { syncInput: false });
+      if (sec != null) setSimStartTime(sec, { syncInput: false, reload: true });
     };
   }
   // Поле "До" — просто конец периода теста. Пусто = до конца графика,
@@ -623,6 +652,7 @@ function initChart() {
   if (simEndInputEl) {
     simEndInputEl.onchange = () => {
       simEndTime = dateInputToUnixSec(simEndInputEl.value);
+      reloadCandlesForPeriod();
     };
   }
 }
@@ -664,7 +694,7 @@ function currentMonthRangeSec() {
 // переприсвоить прямо ВНУТРИ обработчика его же события change, даже
 // тем же самым значением. Для клика по свече/автозаполнения месяца
 // (дата приходит СНАРУЖИ поля) синхронизация по-прежнему нужна.
-function setSimStartTime(sec, { syncInput = true } = {}) {
+function setSimStartTime(sec, { syncInput = true, reload = false } = {}) {
   const d = new Date(sec * 1000);
   sec = Math.floor(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0).getTime() / 1000);
   simStartTime = sec;
@@ -676,7 +706,14 @@ function setSimStartTime(sec, { syncInput = true } = {}) {
   // Теперь только если явно включён тумблер "Уровни" (см. блок в самом
   // низу файла, showSnapshotLevels/#sim-levels-toggle) — сам тумблер,
   // если он уже включён, тоже перерисует по этой же функции при клике.
-  if (selectedCoin && typeof showSnapshotLevels !== "undefined" && showSnapshotLevels) {
+  // УРОВНИ НА ДАТУ (тумблер "Уровни"): клик по пустому месту графика ставит дату
+  // старта и рисует уровни, которые бот реально видел в ЭТОТ момент (исторический
+  // снимок). Это НЕ зоны сделок прогона — те рисуются отдельно (drawTradeDetail /
+  // "Фон"). Клик график НЕ обрезает и камеру не двигает — только дата + уровни.
+  // Обрезка свечей под период — только когда дату вписали в поле "От" (reload:true).
+  if (reload) {
+    if (selectedCoin) reloadCandlesForPeriod();
+  } else if (selectedCoin && typeof showSnapshotLevels !== "undefined" && showSnapshotLevels) {
     drawSnapshotLevels(selectedCoin, sec);
   }
 }
@@ -723,7 +760,12 @@ function addZoneBand(rawMin, rawMax, color, candles, titleText, styleMode = "nor
     title: titleText || "",
     autoscaleInfoProvider: () => null,
   });
-  bandSeries.setData(candles.map((c) => ({ time: c.time, value: zMax })));
+  // Зона — прямая полоса: достаточно двух точек (начало и конец), а не точки на
+  // каждую свечу (тысячи точек на зону за месяц — это и тормозило страницу).
+  const _edge = (v) => (candles.length > 1
+    ? [{ time: candles[0].time, value: v }, { time: candles[candles.length - 1].time, value: v }]
+    : candles.map((c) => ({ time: c.time, value: v })));
+  bandSeries.setData(_edge(zMax));
 
   const bottomLine = chart.addLineSeries({
     color,
@@ -734,7 +776,7 @@ function addZoneBand(rawMin, rawMax, color, candles, titleText, styleMode = "nor
     lastValueVisible: false,
     autoscaleInfoProvider: () => null,
   });
-  bottomLine.setData(candles.map((c) => ({ time: c.time, value: zMin })));
+  bottomLine.setData(_edge(zMin));
 
   return [bandSeries, bottomLine];
 }
@@ -817,27 +859,64 @@ function highlightSelection() {
 // панели. Просто какой список тикеров показать слева, само тестирование
 // (свечи/уровни конкретной монеты) от этого не зависит — см.
 // /api/macro/coins?source=... в app.py.
+let simCfg = null;            // конфиг симулятора (GET /api/sim_config)
+let simShowBlocked = false;   // показывать ли заблокированные монеты в списке
+
+async function loadSimCfg() {
+  try {
+    const res = await fetch("/api/sim_config");
+    simCfg = await res.json();
+  } catch (e) {
+    console.error("sim config load failed", e);
+    if (!simCfg) simCfg = { mode: "watcher", blocked: [] };
+  }
+  return simCfg;
+}
+
 async function loadSimCoins() {
   if (!simListEl) return;
   const source = simCoinSourceEl ? simCoinSourceEl.value : "whitelist";
   try {
+    if (!simCfg) await loadSimCfg();
     const res = await fetch(`/api/macro/coins?source=${encodeURIComponent(source)}`);
     const data = await res.json();
-    const coins = data.coins || [];
+    const all = data.coins || [];
+    const blockedSet = new Set((simCfg && simCfg.blocked) || []);
+    const coins = all.filter((c) => !blockedSet.has(c));
+    const blocked = all.filter((c) => blockedSet.has(c));
     if (simCountEl) simCountEl.textContent = coins.length;
 
-    if (coins.length === 0) {
+    if (all.length === 0) {
       simListEl.innerHTML = `<div class='muted'>нет монет с уровнями (${source})</div>`;
       return;
     }
 
-    simListEl.innerHTML = coins
-      .map((coin) => `<div class="list-item" data-coin="${coin}"><span>${coin}</span></div>`)
-      .join("");
+    const item = (coin, isBlocked) =>
+      `<div class="list-item${isBlocked ? " sim-blocked" : ""}" data-coin="${coin}" ${isBlocked ? 'style="opacity:.45;"' : ""}>` +
+      `<span>${coin}</span>` +
+      `<span class="sim-blk-btn" data-coin="${coin}" data-block="${isBlocked ? "0" : "1"}" ` +
+      `title="${isBlocked ? "Разблокировать" : "Заблокировать: не участвует в ▶▶ ALL"}" ` +
+      `style="margin-left:auto;padding:0 4px;font-size:11px;opacity:.5;">${isBlocked ? "↩" : "⛔"}</span></div>`;
+
+    let html = coins.map((c) => item(c, false)).join("");
+    if (blocked.length) {
+      html += `<div id="sim-blocked-toggle" class="muted" style="cursor:pointer;font-size:11px;padding:6px 8px 2px;">` +
+        `${simShowBlocked ? "▾" : "▸"} заблокированные (${blocked.length})</div>`;
+      if (simShowBlocked) html += blocked.map((c) => item(c, true)).join("");
+    }
+    simListEl.innerHTML = html;
 
     simListEl.querySelectorAll(".list-item").forEach((div) => {
       div.onclick = () => loadChartForCoin(div.dataset.coin);
     });
+    simListEl.querySelectorAll(".sim-blk-btn").forEach((btn) => {
+      btn.onclick = async (ev) => {
+        ev.stopPropagation(); // не открывать график монеты
+        await setSimCoinBlocked(btn.dataset.coin, btn.dataset.block === "1");
+      };
+    });
+    const tg = document.getElementById("sim-blocked-toggle");
+    if (tg) tg.onclick = () => { simShowBlocked = !simShowBlocked; loadSimCoins(); };
     // Монета могла быть выбрана раньше, чем пришёл список (открытие по
     // ссылке /simulator?coin=XXX) — подсвечиваем её и в списке.
     highlightSelection();
@@ -845,6 +924,157 @@ async function loadSimCoins() {
     console.error("sim coins load failed", e);
     simListEl.innerHTML = "<div class='muted'>ошибка загрузки</div>";
   }
+}
+
+async function setSimCoinBlocked(coin, blocked) {
+  try {
+    const res = await fetch("/api/sim_config/block", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ coin, blocked }),
+    });
+    const data = await res.json();
+    if (res.ok && simCfg) simCfg.blocked = data.blocked || [];
+  } catch (e) {
+    console.error("sim block failed", e);
+  }
+  loadSimCoins();
+}
+
+// === ⚙️ КОНФИГ СИМУЛЯТОРА (окно #simcfg-overlay) ===========================
+// Sim — свои общие настройки (TP/SL, пороги EMA, MAX_HOLD), по монетам нет.
+// Watcher — как в бою (только показ, ничего не редактируется).
+// Режим и поля сохраняются кнопкой «Сохранить» в /api/sim_config.
+let _simcfgMode = "watcher";
+
+function _simcfgFmt(v) { return v === null || v === undefined || v === "" ? "—" : String(v); }
+
+function _simcfgRenderMode() {
+  const simBox = document.getElementById("simcfg-sim");
+  const watBox = document.getElementById("simcfg-watcher");
+  const bSim = document.getElementById("simcfg-mode-sim");
+  const bWat = document.getElementById("simcfg-mode-watcher");
+  if (simBox) simBox.style.display = _simcfgMode === "sim" ? "block" : "none";
+  if (watBox) watBox.style.display = _simcfgMode === "watcher" ? "block" : "none";
+  if (bSim) bSim.classList.toggle("sim-run", _simcfgMode === "sim");
+  if (bWat) bWat.classList.toggle("sim-run", _simcfgMode === "watcher");
+}
+
+function _simcfgFill(cfg) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v === null || v === undefined ? "" : v; };
+  set("simcfg-tp", cfg.tp);
+  set("simcfg-sl", cfg.sl);
+  set("simcfg-short", cfg.short_min);
+  set("simcfg-long", cfg.long_max);
+  set("simcfg-hold", cfg.max_hold_days);
+}
+
+function _simcfgRenderWatcher(cfg) {
+  const el = document.getElementById("simcfg-watcher");
+  if (!el) return;
+  const b = cfg.battle || {};
+  let html = `<div class="muted" style="font-size:12px;margin-bottom:6px;">Как в бою: общие настройки из config.json и свои настройки монет из coin_settings.json. Здесь только показ — менять в боевом «⚙️ Конфиг».</div>` +
+    `<div style="font-size:13px;line-height:1.6;">TP: <b>${_simcfgFmt(b.tp)}%</b> · SL: <b>${_simcfgFmt(b.sl)}%</b><br>` +
+    `SHORT выше EMA ≥ <b>${_simcfgFmt(b.short_min)}%</b> · LONG выше EMA ≤ <b>${_simcfgFmt(b.long_max)}%</b></div>`;
+  const coins = cfg.battle_coins || {};
+  const keys = Object.keys(coins).sort();
+  if (keys.length) {
+    html += `<div class="muted" style="font-size:12px;margin:8px 0 2px;">По монетам (${keys.length}):</div><div style="font-size:12px;max-height:120px;overflow:auto;line-height:1.5;">`;
+    keys.forEach((k) => {
+      const v = coins[k] || {};
+      const lf = v.level_filter || {};
+      const parts = [];
+      if (v.tp != null || v.sl != null) parts.push(`TP ${_simcfgFmt(v.tp)} / SL ${_simcfgFmt(v.sl)}`);
+      if (lf.short_off) parts.push("SHORT без фильтра"); else if (lf.short_min != null) parts.push(`SHORT ≥ ${lf.short_min}`);
+      if (lf.long_off) parts.push("LONG без фильтра"); else if (lf.long_max != null) parts.push(`LONG ≤ ${lf.long_max}`);
+      if (parts.length) html += `<div><b>${k}</b>: ${parts.join(" · ")}</div>`;
+    });
+    html += `</div>`;
+  }
+  el.innerHTML = html;
+}
+
+async function openSimCfg() {
+  const overlay = document.getElementById("simcfg-overlay");
+  if (!overlay) return;
+  const err = document.getElementById("simcfg-error");
+  if (err) err.style.display = "none";
+  const cfg = await loadSimCfg();
+  _simcfgMode = cfg.mode === "sim" ? "sim" : "watcher";
+  _simcfgFill(cfg);
+  _simcfgRenderWatcher(cfg);
+  _simcfgRenderMode();
+  const bl = document.getElementById("simcfg-blocked-info");
+  if (bl) bl.textContent = (cfg.blocked || []).length ? `Заблокировано монет: ${(cfg.blocked || []).length} (список слева, «заблокированные»)` : "Заблокированных монет нет (⛔ у монеты в списке слева)";
+  overlay.style.display = "flex";
+}
+
+function closeSimCfg() {
+  const overlay = document.getElementById("simcfg-overlay");
+  if (overlay) overlay.style.display = "none";
+}
+
+async function saveSimCfg() {
+  const err = document.getElementById("simcfg-error");
+  const showErr = (t) => { if (err) { err.textContent = t; err.style.display = "block"; } };
+  const val = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ""; };
+  const body = { mode: _simcfgMode };
+  if (_simcfgMode === "sim") {
+    const tp = parseFloat(val("simcfg-tp")), sl = parseFloat(val("simcfg-sl")), hold = parseFloat(val("simcfg-hold"));
+    if (!(tp > 0) || !(sl > 0) || !(hold > 0)) { showErr("TP, SL и MAX_HOLD — числа больше 0"); return; }
+    body.tp = tp; body.sl = sl; body.max_hold_days = hold;
+    body.short_min = val("simcfg-short") === "" ? null : parseFloat(val("simcfg-short"));
+    body.long_max = val("simcfg-long") === "" ? null : parseFloat(val("simcfg-long"));
+    if ((body.short_min !== null && isNaN(body.short_min)) || (body.long_max !== null && isNaN(body.long_max))) {
+      showErr("Пороги EMA — число или пусто"); return;
+    }
+  }
+  try {
+    const res = await fetch("/api/sim_config", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      showErr(d.detail || "ошибка сохранения");
+      return;
+    }
+    await loadSimCfg();
+    closeSimCfg();
+  } catch (e) {
+    showErr("ошибка запроса");
+  }
+}
+
+async function copySimCfgFromBattle() {
+  try {
+    const res = await fetch("/api/sim_config/copy_from_battle", { method: "POST" });
+    const d = await res.json();
+    if (res.ok) _simcfgFill(d);
+  } catch (e) {
+    console.error("copy from battle failed", e);
+  }
+}
+
+function initSimCfg() {
+  const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
+  on("simcfg-btn", openSimCfg);
+  on("simcfg-cancel-btn", closeSimCfg);
+  on("simcfg-submit-btn", saveSimCfg);
+  on("simcfg-copy-btn", copySimCfgFromBattle);
+  on("simcfg-mode-sim", () => { _simcfgMode = "sim"; _simcfgRenderMode(); });
+  on("simcfg-mode-watcher", () => { _simcfgMode = "watcher"; _simcfgRenderMode(); });
+  const overlay = document.getElementById("simcfg-overlay");
+  if (overlay) overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) closeSimCfg(); });
+}
+
+// Строка «с какими настройками считано» рядом с вкладками результата.
+function showSimSettingsNote(st) {
+  const el = document.getElementById("sim-settings-note");
+  if (!el) return;
+  if (!st || !st.mode) { el.textContent = ""; return; }
+  if (st.mode === "watcher") { el.textContent = "Настройки: Watcher (как в бою)"; return; }
+  const f = (v) => (v === null || v === undefined ? "—" : v);
+  el.textContent = `Настройки: Sim · TP ${f(st.tp)}% · SL ${f(st.sl)}% · SHORT ≥ ${f(st.short_min)}% · LONG ≤ ${f(st.long_max)}% · hold ${f(st.max_hold_days)}д`;
 }
 
 // === Загрузка графика монеты — НИКОГДА не тянет боевые уровни/события/
@@ -875,6 +1105,15 @@ async function loadChartForCoin(coin) {
     simEndTime = null;
     if (simStartInputEl) simStartInputEl.value = "";
     if (simEndInputEl) simEndInputEl.value = "";
+    // Текущий месяц ставим ДО загрузки свечей — график грузится один раз
+    // сразу обрезанным, а не "вся история, потом перерисовка под месяц".
+    if (simMode) {
+      const { startSec, endSec } = currentMonthRangeSec();
+      simStartTime = startSec;
+      simEndTime = endSec;
+      if (simStartInputEl) simStartInputEl.value = unixSecToDateInputValue(startSec);
+      if (simEndInputEl) simEndInputEl.value = unixSecToDateInputValue(endSec);
+    }
   }
   updateSimUI();
 
@@ -883,13 +1122,8 @@ async function loadChartForCoin(coin) {
     if (!ok) return;
 
     if (isCoinChange) {
-      // Монету сменили, пока режим симуляции уже был включён — сразу
-      // заполняем текущий месяц заново (как при первом включении режима).
-      if (simMode) {
-        const { startSec, endSec } = currentMonthRangeSec();
-        simEndTime = endSec;
-        if (simEndInputEl) simEndInputEl.value = unixSecToDateInputValue(endSec);
-        setSimStartTime(startSec);
+      if (simMode && typeof showSnapshotLevels !== "undefined" && showSnapshotLevels) {
+        drawSnapshotLevels(coin, simStartTime);
       }
     } else if (simMode && simStartTime != null && typeof showSnapshotLevels !== "undefined" && showSnapshotLevels) {
       // Та же монета, просто другой таймфрейм — период уже выбран,
@@ -910,13 +1144,102 @@ async function loadChartForCoin(coin) {
 // узких окон — переиспользуется и обычным кликом по монете слева, и
 // кликом по bulk-сделке (см. selectBulkTrade): график должен грузиться
 // одинаково в обоих местах, не двумя разными путями с разным поведением.
-async function loadFullCandlesForCoin(coin) {
-  const limit = TF_LIMITS[currentTimeframe]; // null -> вся история из базы, без ограничения
-  const limitParam = limit != null ? `&limit=${limit}` : "";
-  const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}${limitParam}`);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    if (currentSymbolEl) currentSymbolEl.textContent = err.detail || "график недоступен";
+// Показываем на графике только выбранный период теста ("От"/"До"), а не всю
+// историю: тест за август — свечи только августа. "До" — включительно весь
+// этот день (в поле дата без времени). Периода нет или в нём нет свечей —
+// как раньше, вся история.
+function clipToSimPeriod(candles) {
+  if (!simMode || simStartTime == null) return candles;
+  const to = simEndTime ? simEndTime + 24 * 3600 : Infinity;
+  const part = candles.filter((c) => c.time >= simStartTime && c.time < to);
+  return part.length ? part : candles;
+}
+
+// Перезагрузка свечей после смены периода (поля "От"/"До", клик по свече, "Сброс").
+async function reloadCandlesForPeriod() {
+  if (!selectedCoin) return;
+  const ok = await loadFullCandlesForCoin(selectedCoin);
+  if (ok && simStartTime != null && typeof showSnapshotLevels !== "undefined" && showSnapshotLevels) {
+    drawSnapshotLevels(selectedCoin, simStartTime);
+  }
+}
+
+// Ключ того, что сейчас на графике (монета + ТФ + период): если выбираемая сделка из
+// bulk-таблицы относится к уже показанному — график не перезагружаем (иначе сбросится
+// масштаб, выставленный пользователем).
+let _loadedViewKey = null;
+function _viewKey(coin) { return [coin, currentTimeframe, simStartTime, simEndTime].join("|"); }
+let _loadSeq = 0; // номер последней загрузки — устаревший (перебитый новым) ответ ничего не рисует
+async function loadFullCandlesForCoin(coin, opts = {}) {
+  const seq = ++_loadSeq;
+  const force = !!opts.force;
+  const ckey = coin + "|" + currentTimeframe;
+  const intraday = !["1d", "1w", "1M"].includes(currentTimeframe);
+  const wantInd = INDICATOR_DEFS.some((d) => indicatorState[d.key]);
+  const freshCandles = force || !candleCache.has(ckey);
+
+  // Место под ADX-панель резервируем СРАЗУ (до загрузки): раньше она появлялась
+  // после прихода индикаторов и меняла высоту графика — отсюда "прыжок размера".
+  if (wantInd && indicatorState.adx) {
+    ensureAdxPanel();
+    if (adxPanelEl) adxPanelEl.style.display = "block";
+  }
+
+  // Три запроса идут ПАРАЛЛЕЛЬНО (свечи, 4h для EMA200, индикаторы), а рисуем
+  // после того, как пришли все — одним куском, без поочерёдной дорисовки.
+  const getCandles = async () => {
+    if (!freshCandles) return { ok: true, cached: candleCache.get(ckey) };
+    const limit = TF_LIMITS[currentTimeframe]; // null -> вся история из базы, без ограничения
+    const limitParam = limit != null ? `&limit=${limit}` : "";
+    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}${limitParam}&source=sim`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return { ok: false, detail: err.detail };
+    }
+    const json = await res.json();
+    const cachedNew = {
+      symbol: json.symbol,
+      timeframe: json.timeframe,
+      price_precision: json.price_precision,
+      all: (json.candles || [])
+        .map((c) => ({ ...c, time: c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time }))
+        .sort((a, b) => a.time - b.time),
+    };
+    candleCache.set(ckey, cachedNew);
+    if (candleCache.size > CANDLE_CACHE_MAX) candleCache.delete(candleCache.keys().next().value);
+    return { ok: true, cached: cachedNew };
+  };
+  const getMacro = async () => {
+    if (!intraday) return null; // для 1d/1w/1M EMA200 считается по самим свечам
+    if (!force && macroCandleCache.has(coin)) return macroCandleCache.get(coin);
+    try {
+      const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=4h&limit=999&source=sim`);
+      if (!res.ok) return null;
+      const d = await res.json();
+      const arr = (d.candles || [])
+        .map((c) => ({ ...c, time: c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time }))
+        .sort((a, b) => a.time - b.time);
+      macroCandleCache.set(coin, arr);
+      return arr;
+    } catch (e) { return null; }
+  };
+  const getInd = async () => {
+    if (!wantInd) return null;
+    if (!freshCandles && indicatorCache.key === ckey) return indicatorCache.data;
+    try {
+      const res = await fetch(`/api/indicators/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}&source=sim`);
+      if (!res.ok) return null;
+      const j = await res.json();
+      return j.indicators || {};
+    } catch (e) { return null; }
+  };
+
+  const [candlesRes, macro4h, indData] = await Promise.all([getCandles(), getMacro(), getInd()]);
+  if (seq !== _loadSeq) return false;     // за это время запустили более новую загрузку
+  if (coin !== selectedCoin) return false; // выбрали другую монету — не затираем её график
+
+  if (!candlesRes.ok) {
+    if (currentSymbolEl) currentSymbolEl.textContent = candlesRes.detail || "график недоступен";
     candleSeries.setData([]);
     candleSeries.setMarkers([]);
     volumeSeries.setData([]);
@@ -926,7 +1249,8 @@ async function loadFullCandlesForCoin(coin) {
     _hideAllIndicators();
     return false;
   }
-  const data = await res.json();
+
+  const data = candlesRes.cached;
   if (currentSymbolEl) currentSymbolEl.textContent = `${data.symbol} · ${data.timeframe}`;
   currentPrecision = data.price_precision ?? 4;
 
@@ -936,23 +1260,34 @@ async function loadFullCandlesForCoin(coin) {
   ema50Series.applyOptions({ priceFormat });
   if (emaMacroSeries) emaMacroSeries.applyOptions({ priceFormat });
 
-  const formattedCandles = data.candles
-    .map((c) => ({ ...c, time: c.time > 9999999999 ? Math.floor(c.time / 1000) : c.time }))
-    .sort((a, b) => a.time - b.time);
+  const allCandles = data.all;
+  fullCandlesAll = allCandles;
+  const formattedCandles = clipToSimPeriod(allCandles);
   globalCandles = formattedCandles;
 
   candleSeries.setData(formattedCandles);
   volumeSeries.setData(formattedCandles.map((c) => ({
     time: c.time, value: c.volume, color: c.close >= c.open ? "rgba(76,175,125,0.5)" : "rgba(229,101,79,0.5)",
   })));
-  ema20Series.setData(computeEMA(formattedCandles, 20));
-  ema50Series.setData(computeEMA(formattedCandles, 50));
-  loadMacroEma200(coin);
-  indicatorCache = { key: null, data: null };
-  refreshIndicators(coin);
+  // EMA считаем по ВСЕЙ истории, на график кладём только кусок периода
+  ema20Series.setData(_clipToCandles(computeEMA(allCandles, 20)));
+  ema50Series.setData(_clipToCandles(computeEMA(allCandles, 50)));
+  if (emaMacroSeries) {
+    const macroSrc = intraday ? macro4h : allCandles;
+    emaMacroSeries.setData(macroSrc && macroSrc.length ? _clipToCandles(computeEMA(macroSrc, 200)) : []);
+  }
 
-  chart.timeScale().fitContent();
+  // Вид ставим ДО индикаторов: ADX-панель при показе берёт диапазон основного графика.
+  if (opts.fit !== false) { chart.timeScale().fitContent(); userBarsWidth = null; focusPriceRange = null; } // новая монета/период — снова виден весь период
+  _loadedViewKey = _viewKey(coin);
   candleSeries.priceScale().applyOptions({ autoScale: true });
+
+  if (wantInd && indData) {
+    indicatorCache = { key: ckey, data: indData };
+    _applyIndicators(indData);
+  } else {
+    _hideAllIndicators();
+  }
   return true;
 }
 
@@ -967,7 +1302,7 @@ async function loadCandlesAroundRange(coin, fromSec, toSec) {
   const limit = Math.min(6000, Math.max(200, spanCandles));
   const aroundSec = Math.floor((fromSec + toSec) / 2);
   try {
-    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}&limit=${limit}&around=${aroundSec}`);
+    const res = await fetch(`/api/ohlcv/${encodeURIComponent(coin)}?timeframe=${currentTimeframe}&limit=${limit}&around=${aroundSec}&source=sim`);
     if (!res.ok) return;
     const data = await res.json();
     const formattedCandles = (data.candles || [])
@@ -1012,6 +1347,14 @@ const EVENT_MARKER_STYLE = {
   ORIENTIR:           { color: "#5aa9e6", shape: "circle" },
   START:              { color: "#5aa9e6", shape: "circle" },
   PEAK:               { color: "#f2c14e", shape: "circle" },
+  // V_GREEN_BOTTOM (v_green_bottom_watcher.py): PIT — яма, GOOD_GREEN — зелёная
+  // перед входом. V_RED_TOP (v_red_top_watcher.py): TRACK_START/NEW_PEAK — пики,
+  // GOOD_RED — красная подтверждения. ДУБЛИРОВАНО В app.js::EVENT_MARKER_STYLE.
+  PIT:                { color: "#e5654f", shape: "circle" },
+  GOOD_GREEN:         { color: "#4caf7d", shape: "circle" },
+  GOOD_RED:           { color: "#e5654f", shape: "circle" },
+  TRACK_START:        { color: "#5aa9e6", shape: "circle" },
+  NEW_PEAK:           { color: "#f2c14e", shape: "circle" },
 };
 
 // level_id вотчера — "BC_SHORT_0.1072_0.1127__CLIMAX" — у CLIMAX и MIRROR
@@ -1064,7 +1407,7 @@ function drawTradeDetail(trade) {
       let bgMarkers = typeof drawBackgroundTradesAndGetMarkers === "function" ? drawBackgroundTradesAndGetMarkers() : [];
       candleSeries.setMarkers([...bgMarkers, ...markers].sort((a,b) => a.time - b.time));
       
-      centerChartOnEvents([{ time: trade.time }], endSec);
+      // камеру не двигаем — виден весь выбранный период (см. centerChartOnEvents)
     }
     const statusEl = document.getElementById("sim-status");
     if (statusEl) statusEl.textContent = "";
@@ -1114,7 +1457,8 @@ function drawTradeDetail(trade) {
   // событие вотчера: вотчер пишет события только ДО входа (ENTRY —
   // последнее, что он вообще знает), а сделка может держаться ещё
   // много дней после входа до реального закрытия.
-  centerChartOnEvents(events, zoneEndSec);
+  // Камеру НЕ наводим на сделку: на графике весь выбранный период со всеми
+  // сделками, выбранная просто подсвечивается (см. centerChartOnEvents).
 
   // Крупная точка на месте реального закрытия сделки — куда бы оно ни
   // пришлось (TP ✅, дедлайн 14 дней 🕐). Не требует ничего нового от
@@ -1143,12 +1487,84 @@ function buildCloseMarker(trade) {
   };
 }
 
+// === КАМЕРА ПРИ ПЕРЕКЛЮЧЕНИИ СДЕЛОК ===
+// Монета открыта впервые — виден весь период (fitContent). Как только пользователь САМ
+// приблизил/отдалил/прокрутил график, запоминаем ширину окна (сколько свечей
+// помещается). Дальше при выборе другой сделки меняем ТОЛЬКО положение: центр —
+// вход сделки, ширина — та, что выставил пользователь. Пока он график не трогал —
+// камеру не двигаем (остаётся весь период). Смена монеты/периода сбрасывает всё.
+// Ручное действие определяем по wheel/мыши/тачу на самом графике: изменения
+// диапазона, которые делаем мы сами (fitContent, синхронизация с ADX, перенос камеры),
+// запомненную ширину не трогают.
+let userBarsWidth = null;
+let _lastUserInputAt = 0;
+let _cameraSetAt = 0;
+// Диапазон цены, заданный центрированием на сделке ({min,max}) или null — обычный автомасштаб.
+var focusPriceRange = null;
+// Пока цена центрируется на сделке, остальные линии (EMA, индикаторы) на масштаб не влияют.
+function _focusAwareAutoscale(orig) { return focusPriceRange ? null : orig(); }
+function initCameraTracking() {
+  const box = document.getElementById("chart");
+  if (!box || !chart) return;
+  const mark = () => { _lastUserInputAt = Date.now(); };
+  ["wheel", "mousedown", "touchstart", "touchmove", "keydown"].forEach((ev) =>
+    box.addEventListener(ev, mark, { passive: true, capture: true }));
+  chart.timeScale().subscribeVisibleLogicalRangeChange((r) => {
+    if (!r || _adxRangeSyncing) return;
+    if (Date.now() - _lastUserInputAt > 1500) return; // не от пользователя
+    if (Date.now() - _cameraSetAt < 400) return;       // это наш собственный перенос камеры
+    const w = r.to - r.from;
+    if (w > 5) userBarsWidth = w;
+    focusPriceRange = null; // пользователь сам двигает график — цена снова автомасштабом
+  });
+}
+
+function _nearestCandleIndex(candles, t) {
+  let lo = 0, hi = candles.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (candles[mid].time < t) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+}
+
+// Переводит камеру на сделку: центр — вход, ширина — как у пользователя.
+function focusCameraOnTrade(trade) {
+  if (!chart || !trade || !globalCandles.length) return;
+  if (userBarsWidth == null) return; // пользователь график не трогал — остаётся весь период
+  const t = Number(trade.time);
+  if (!t) return;
+  const idx = _nearestCandleIndex(globalCandles, t);
+  const half = userBarsWidth / 2;
+
+  // Цена: центр — середина между краями зоны уровня и точкой входа; полуширина — чтобы
+  // влезли все свечи окна (симметрично вверх и вниз), но не тоньше зоны с запасом.
+  const nums = [trade.level_min, trade.level_max, trade.entry].map(Number).filter((x) => isFinite(x) && x > 0);
+  focusPriceRange = null;
+  if (nums.length) {
+    const lo = Math.min(...nums), hi = Math.max(...nums);
+    const c = (lo + hi) / 2;
+    let dev = Math.max((hi - lo) * 1.5, c * 0.005);
+    const a = Math.max(0, Math.floor(idx - half)), b = Math.min(globalCandles.length - 1, Math.ceil(idx + half));
+    for (let i = a; i <= b; i++) {
+      const k = globalCandles[i];
+      dev = Math.max(dev, Math.abs(k.high - c), Math.abs(k.low - c));
+    }
+    dev *= 1.08;
+    focusPriceRange = { min: c - dev, max: c + dev };
+  }
+  _cameraSetAt = Date.now();
+  try { chart.timeScale().setVisibleLogicalRange({ from: idx - half, to: idx + half }); } catch (e) {}
+  try { candleSeries.priceScale().applyOptions({ autoScale: true }); } catch (e) {}
+}
+
 // Приближает видимую область графика к диапазону сделки — от первого
 // события вотчера (касание/скан ДО входа) до момента закрытия сделки
 // (tradeEndSec), с отступом по паре дней с каждой стороны, чтобы был
 // виден контекст (что было до и после), а не только точки впритык.
 function centerChartOnEvents(events, tradeEndSec, paddingSec = 2 * 24 * 3600) {
   if (!chart || !events.length) return;
+  if (simStartTime != null) return; // период выбран — показываем его целиком, без наведения на сделку
   const rightEdge = Math.max(events[events.length - 1].time, tradeEndSec ?? 0);
   try {
     chart.timeScale().setVisibleRange({
@@ -1186,35 +1602,9 @@ function playTradeAnimation(events, direction, closeMarker) {
   let bgMarkers = typeof drawBackgroundTradesAndGetMarkers === "function" ? drawBackgroundTradesAndGetMarkers() : [];
   const combinedFinal = [...bgMarkers, ...markers].sort((a,b) => a.time - b.time);
 
-  const playCandles = globalCandles.filter((c) => c.time >= events[0].time && c.time <= events[events.length - 1].time);
-  if (playCandles.length < 2) {
-    candleSeries.setMarkers(combinedFinal);
-    return;
-  }
-
-  const TOTAL_MS = 1500;
-  const STEP_MS = 20;
-  const steps = Math.max(1, Math.floor(TOTAL_MS / STEP_MS));
-  const candlesPerStep = Math.max(1, Math.ceil(playCandles.length / steps));
-
-  let idx = 0;
-  simPlaybackTimer = setInterval(() => {
-    idx += candlesPerStep;
-    const done = idx >= playCandles.length - 1;
-    if (done) idx = playCandles.length - 1;
-
-    const cursorTime = playCandles[idx].time;
-    const revealed = markers.filter((m) => m.time <= cursorTime);
-    const cursorMarker = { time: cursorTime, position: "inBar", color: "#5aa9e6", shape: "circle", text: "" };
-    
-    // 🔥 Подмешиваем фон, чтобы он не пропадал при анимации
-    candleSeries.setMarkers([...bgMarkers, ...revealed, cursorMarker].sort((a,b) => a.time - b.time));
-
-    if (done) {
-      stopSimPlayback();
-      candleSeries.setMarkers(combinedFinal);
-    }
-  }, STEP_MS);
+  // Без анимации "бегущей точки" — сразу готовый результат (она тормозила
+  // отрисовку: setMarkers каждые 20 мс на каждый шаг).
+  candleSeries.setMarkers(combinedFinal);
 }
 function selectTrade(trade, rowEl) {
   document.querySelectorAll("#sim-trades-body tr").forEach((tr) => tr.classList.remove("selected"));
@@ -1224,6 +1614,7 @@ function selectTrade(trade, rowEl) {
   const toggleBtn = document.getElementById("sim-view-toggle");
   if (toggleBtn) toggleBtn.style.display = "inline-block";
   drawTradeDetail(activeTrade);
+  focusCameraOnTrade(activeTrade);
 }
 
 // Разметка ОДНОЙ строки таблицы сделок — общая для одиночного симулятора
@@ -1323,13 +1714,22 @@ async function selectBulkTrade(trade, rowEl) {
   if (currentCoinEl) currentCoinEl.textContent = trade.coin;
   highlightSelection();
 
-  await loadFullCandlesForCoin(trade.coin);
+  if (bulkPeriodSec && bulkPeriodSec.start != null) {
+    simStartTime = bulkPeriodSec.start;
+    simEndTime = bulkPeriodSec.end;
+    if (simStartInputEl) simStartInputEl.value = unixSecToDateInputValue(simStartTime);
+    if (simEndInputEl) simEndInputEl.value = simEndTime ? unixSecToDateInputValue(simEndTime) : "";
+  }
+  if (_loadedViewKey !== _viewKey(trade.coin) || !globalCandles.length) {
+    await loadFullCandlesForCoin(trade.coin);
+  }
 
   activeTrade = trade;
   activeTradeSource = "bulk"; // <--- Жестко фиксируем источник
   const toggleBtn = document.getElementById("sim-view-toggle");
   if (toggleBtn) toggleBtn.style.display = "inline-block";
   drawTradeDetail(activeTrade);
+  focusCameraOnTrade(activeTrade);
 }
 
 // Читает #sim-direction-select и превращает его в query-параметры
@@ -1531,9 +1931,10 @@ async function runSimulation() {
     }
 
     simHistory = data.history || [];
+    showSimSettingsNote(data.settings);
 
     // Загружаем ВСЮ историю монеты без обрезки
-    await loadFullCandlesForCoin(selectedCoin);
+    await loadFullCandlesForCoin(selectedCoin, { force: true });
 
     // Обе семьи теперь отдают data.trades в одном и том же формате —
     // одна и та же таблица без разбора "какая это семья".
@@ -1774,7 +2175,19 @@ async function runBulkSimulation() {
 // сохраняет bulkHistoryByCoin для клика по сделке (см. selectBulkTrade).
 // Общая точка, чтобы "свежий прогон" и "восстановление после F5" не могли
 // разъехаться в том, как они раскладывают один и тот же формат ответа.
+// Период bulk-прогона (unix-секунды, UTC-строки "YYYY-MM-DD HH:MM" из ответа) —
+// клик по сделке из списка показывает график ЭТОГО периода, даже после F5,
+// когда поля "От"/"До" пустые.
+let bulkPeriodSec = null;
+function _utcStrToSec(str) {
+  if (!str) return null;
+  const t = Date.parse(String(str).replace(" ", "T") + ":00Z");
+  return Number.isFinite(t) ? Math.floor(t / 1000) : null;
+}
+
 function applyBulkResult(data) {
+  showSimSettingsNote(data && data.settings);
+  bulkPeriodSec = data && data.start_time ? { start: _utcStrToSec(data.start_time), end: _utcStrToSec(data.end_time) } : null;
   renderBulkReport(data);
   renderBulkTradesTable(data.trades || []);
   bulkHistoryByCoin = data.history_by_coin || {};
@@ -1865,9 +2278,11 @@ async function restoreLastSimIfAny() {
     }
 
     simStartTime = startSec;
-    // Свечи уже полностью загружены выше (loadChartForCoin) — раньше тут
-    // был повторный поход за узким окном вокруг периода, который просто
-    // затирал уже загруженную полную историю худшей, урезанной версией.
+    simEndTime = _utcStrToSec(data.end_time);
+    if (simStartInputEl) simStartInputEl.value = unixSecToDateInputValue(startSec);
+    if (simEndInputEl) simEndInputEl.value = simEndTime ? unixSecToDateInputValue(simEndTime) : "";
+    // Свечи загружены выше целиком — теперь обрезаем график под период прогона.
+    await reloadCandlesForPeriod();
 
     simHistory = data.history || [];
     renderTradesTable(data.trades || []);
@@ -1887,6 +2302,8 @@ async function restoreLastSimIfAny() {
 const urlCoin = (new URLSearchParams(window.location.search).get("coin") || "").toUpperCase().trim();
 
 initChart();
+initCameraTracking();
+initSimCfg();
 loadSimCoins();
 if (simCoinSourceEl) {
   simCoinSourceEl.onchange = () => loadSimCoins();
@@ -1907,7 +2324,7 @@ initSimTabs();
 // по "Фон", хотя менялся только фон. Теперь toggle только добавляет/убирает
 // фоновые зоны+маркеры поверх уже нарисованной активной сделки (по образцу
 // toggleLevelsBtn в app.js) — камера и путь активной сделки не трогаются.
-let showBackgroundZones = false;
+let showBackgroundZones = true; // по умолчанию на графике ВСЕ сделки монеты бледно, выбранная — ярко
 const viewToggleBtn = document.getElementById("sim-view-toggle");
 if (viewToggleBtn) {
   viewToggleBtn.onclick = () => {
@@ -1923,6 +2340,11 @@ if (viewToggleBtn) {
     const bgMarkers = drawBackgroundTradesAndGetMarkers();
     candleSeries.setMarkers([...bgMarkers, ...lastForegroundMarkers].sort((a, b) => a.time - b.time));
   };
+}
+
+if (viewToggleBtn) {
+  viewToggleBtn.title = "Фон: показать/скрыть остальные сделки — сейчас включено";
+  viewToggleBtn.classList.add("sim-neon-on");
 }
 
 // === ГЛАЗОК №2: СНИМОК УРОВНЕЙ НА ДАТУ ===
@@ -1961,10 +2383,10 @@ if (levelsToggleBtn) {
 // клику пользователя, поэтому оба "фоновых" режима на этот момент сбрасываем,
 // а не молча продолжаем рисовать поверх данных уже другой семьи.
 function resetSimOverlayToggles() {
-  if (showBackgroundZones && viewToggleBtn) {
-    showBackgroundZones = false;
-    viewToggleBtn.title = "Фон: показать/скрыть остальные сделки — сейчас выключено";
-    viewToggleBtn.classList.remove("sim-neon-on");
+  if (viewToggleBtn) {
+    showBackgroundZones = true; // значение по умолчанию — "Фон" включён
+    viewToggleBtn.title = "Фон: показать/скрыть остальные сделки — сейчас включено";
+    viewToggleBtn.classList.add("sim-neon-on");
   }
   clearBgZoneLines();
   if (showSnapshotLevels && levelsToggleBtn) {

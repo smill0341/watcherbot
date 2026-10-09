@@ -1,3 +1,12 @@
+# ============================================================================
+# ТЕСТОВАЯ КОПИЯ levels_builder.py — «РОВНО СТОЛЬКО, СКОЛЬКО НАДО» + «НА МЕСТЕ ГЛАВНАЯ ПЕРВАЯ ТОЧКА»
+# (только для levels_test.py --warmup / --timeline).
+# Боевой код этот файл не импортирует. Отличия от боевого помечены словом «ПРОГРЕВ».
+# Билдер получает свечи с запасом (LOOKBACK) перед обычным окном (WINDOWS):
+#   ATR(14) и средний объём (30) считаются по ВСЕМ полученным свечам, у каждой свечи — по её настоящим
+#   предыдущим; свинги ищутся только в обычном окне; дневная свеча МАКРО-свинга ищется во всех дневных
+#   свечах (≈ 60 месяцев), а не только в последних 365.
+# ============================================================================
 """
 levels_builder.py — расчёт уровней (зон поддержки/сопротивления).
 Не знает про биржу и расписание: принимает готовые DataFrame, возвращает зоны.
@@ -143,9 +152,12 @@ def count_zone_touches(df_1d, zone, is_support, current_idx=None):
 def _volume_bonus(df, idx, lookback=30):
     """+0.5 если объём формирующей свечи в VOLUME_SPIKE_MULTIPLIER раз больше
     среднего объёма за lookback свечей до неё."""
-    if idx < lookback:
-        return 0.0
-    avg_vol = df['volume'].iloc[max(0, idx - lookback):idx].mean()
+    if lookback == 30 and "_vavg" in df.columns:   # ПРОГРЕВ: средний объём 30 свечей ДО этой, по всем полученным
+        avg_vol = df['_vavg'].iloc[idx]
+    else:
+        if idx < lookback:
+            return 0.0
+        avg_vol = df['volume'].iloc[max(0, idx - lookback):idx].mean()
     if avg_vol <= 0 or pd.isna(avg_vol):
         return 0.0
     this_vol = df['volume'].iloc[idx]
@@ -205,9 +217,11 @@ def _atr_full(df, period=14):
     """ATR по свечам. У первых period-1 свечей окна позади меньше period свечей — ATR там NaN (честно «не
     посчитать»). Раньше там стояло среднее по тем свечам, что есть: оно зависело от начала окна выгрузки, и
     границы зоны на старых свечах сдвигались каждый день, пока окно ехало вперёд."""
+    if period == 14 and "_atr" in df.columns:   # ПРОГРЕВ: посчитан по всем полученным свечам до обрезки окна
+        return df["_atr"]
     h, l, c = df["high"], df["low"], df["close"]
     tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
-    return tr.rolling(window=period, min_periods=period).mean()
+    return tr.rolling(window=period, min_periods=1).mean()   # ПРОГРЕВ: у новой монеты — по свечам с листинга
 
 
 def _atr_at(atr_arr, idx, default):
@@ -291,6 +305,7 @@ def _extract_period_extremes(df_1d, freq, n_periods_back, current_price, atr_1d,
             zone['min'], zone['max'] = _wick_body_zone(o_arr[idx_ext], c_arr[idx_ext], l_arr[idx_ext],
                                                        h_arr[idx_ext], is_support, atr_p)
             zone['_is_support'] = is_support
+            zone['_known'] = int(pd.Timestamp(period_end).value // 10**6) + 86400000   # ИЗВЕСТНА: закрытие периода
             zones.append(zone)
     return zones
 
@@ -346,6 +361,7 @@ def _extract_monthly_close_levels(df_1d, months_back, current_price, atr_1d,
         zone['min'] = float(price - LINE_HALF_ATR * atr_p)
         zone['max'] = float(price + LINE_HALF_ATR * atr_p)
         zone['_is_support'] = is_support
+        zone['_known'] = int(pd.Timestamp(period_end).value // 10**6) + 86400000   # ИЗВЕСТНА: закрытие месяца
         zones.append(zone)
     return zones
 
@@ -379,6 +395,7 @@ def _extract_pivots(df, k, label, base_score, current_price, max_distance, curre
     hi = work['high'].to_numpy(dtype=float)
     atr_arr = atr_series.to_numpy(dtype=float)
     ts = work['timestamp'].to_numpy()
+    step = int(ts[1] - ts[0]) if n > 1 else 0   # длина свечи этого ТФ, мс
 
     zones = []
     for i in range(k, n - k):
@@ -397,6 +414,7 @@ def _extract_pivots(df, k, label, base_score, current_price, max_distance, curre
                                 reaction_count=0, volume_bonus=_volume_bonus(work, i), activated_at=act_str)
             zone['min'], zone['max'] = _wick_body_zone(o[i], c[i], lo[i], hi[i], is_support, float(a))
             zone['_is_support'] = is_support
+            zone['_known'] = int(ts[i + k]) + step   # ИЗВЕСТНА: закрытие подтверждающей свечи
             zones.append(zone)
     return zones
 
@@ -570,7 +588,7 @@ def _extract_macro_swings(df, current_price, max_distance, base_score, label_pre
     _scale = MACRO_ATR_DAYS.get(label_prefix[:2], 1.0) ** 0.5
     _h, _l, _c = df['high'], df['low'], df['close']
     _tr = pd.concat([_h - _l, (_h - _c.shift()).abs(), (_l - _c.shift()).abs()], axis=1).max(axis=1)
-    _own_atr = (_tr.rolling(14, min_periods=14).mean() / _scale).to_numpy(dtype=float)
+    _own_atr = (_atr_full(df, 14) / _scale).to_numpy(dtype=float)   # ПРОГРЕВ: тот же ATR, посчитан до обрезки
 
     def _macro_atr(i):
         return _atr_at(_own_atr, i, atr_fb)
@@ -596,15 +614,19 @@ def _extract_macro_swings(df, current_price, max_distance, base_score, label_pre
     _ts_arr = df['timestamp'].to_numpy()
 
     def _macro_bounds(i, is_support, tip_price):
+        reason = "nodaily"   # ПРОГРЕВ: счётчик причин, по которым зона строится НЕ по дневной свече
         if _d is not None and i + 1 < len(_ts_arr):
             pos = np.flatnonzero((_d['ts'] >= _ts_arr[i]) & (_d['ts'] < _ts_arr[i + 1]))
             if len(pos):
+                reason = "mismatch"
                 j = int(pos[np.argmin(_d['lo'][pos])] if is_support else pos[np.argmax(_d['hi'][pos])])
                 ext = _d['lo'][j] if is_support else _d['hi'][j]
                 if tip_price and abs(ext - tip_price) / tip_price <= 0.002:
                     a = _atr_at(_d['atr'], j, atr_fb)
                     if not np.isnan(a):
                         return _wick_body_zone(_d['o'][j], _d['c'][j], _d['lo'][j], _d['hi'][j], is_support, a)
+        MACRO_FB[reason] = MACRO_FB.get(reason, 0) + 1
+        MACRO_FB[label_prefix[:2]] = MACRO_FB.get(label_prefix[:2], 0) + 1
         # Дневной свечи свинга нет (старше окна дневок или у самого его края) — кончик тени и ATR
         # собственной свечи свинга (месяц/неделя, приведён к дневному масштабу): от «сегодняшнего» ATR не зависит.
         a = _macro_atr(i)
@@ -625,6 +647,8 @@ def _extract_macro_swings(df, current_price, max_distance, base_score, label_pre
         date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
         confirm_ts = work['timestamp'].iloc[i + 2]
         activated_at = pd.to_datetime(confirm_ts, unit='ms').strftime('%Y-%m-%d')
+        _ct = pd.to_datetime(int(confirm_ts), unit='ms')
+        known_ms = int(((_ct + pd.offsets.MonthBegin(1)) if label_prefix.startswith('1M') else (_ct + pd.Timedelta(days=7))).value // 10**6)
 
         # Получаем данные текущей свечи для SMC
         open_price = float(work['open'].iloc[i])
@@ -658,6 +682,7 @@ def _extract_macro_swings(df, current_price, max_distance, base_score, label_pre
                         zone['min'], zone['max'] = bounds
                         zone['_is_support'] = True
                         zone['class'] = 'MACRO'
+                        zone['_known'] = known_ms   # ИЗВЕСТНА: закрытие подтверждающей свечи
                         zones.append(zone)
 
         # --- Сопротивление (SHORT) ---
@@ -687,20 +712,22 @@ def _extract_macro_swings(df, current_price, max_distance, base_score, label_pre
                         zone['min'], zone['max'] = bounds
                         zone['_is_support'] = False
                         zone['class'] = 'MACRO'
+                        zone['_known'] = known_ms   # ИЗВЕСТНА: закрытие подтверждающей свечи
                         zones.append(zone)
 
     return zones
 
-def _collect_zones(df_1M, df_1W, df_1d, df_4h, current_price, atr_1d, max_distance, current_idx, deep=False, count_stats=True):
+def _collect_zones(df_1M, df_1W, df_1d, df_4h, current_price, atr_1d, max_distance, current_idx, deep=False, count_stats=True,
+                   df_1d_macro=None):
     """Все сырые точки всех слоёв. deep=True — фолбэк: вся история и бесконечный радар (max_distance=inf)."""
     zones = []
     if df_1M is not None:
-        z = _extract_macro_swings(df_1M, current_price, max_distance if deep else max_distance * 2.5, 5.0, "1M_MACRO", atr_1d=atr_1d, df_1d=df_1d)
+        z = _extract_macro_swings(df_1M, current_price, max_distance if deep else max_distance * 2.5, 5.0, "1M_MACRO", atr_1d=atr_1d, df_1d=(df_1d_macro if df_1d_macro is not None else df_1d))
         if count_stats:
             MACRO_LAYER_STATS['1M_raw'] += len(z)
         zones += z
     if df_1W is not None:
-        z = _extract_macro_swings(df_1W, current_price, max_distance if deep else max_distance * 1.5, 4.0, "1W_MACRO", atr_1d=atr_1d, df_1d=df_1d)
+        z = _extract_macro_swings(df_1W, current_price, max_distance if deep else max_distance * 1.5, 4.0, "1W_MACRO", atr_1d=atr_1d, df_1d=(df_1d_macro if df_1d_macro is not None else df_1d))
         if count_stats:
             MACRO_LAYER_STATS['1W_raw'] += len(z)
         zones += z
@@ -783,7 +810,10 @@ def _place(points, existing):
     Возвращает (все зоны, новые зоны)."""
     zones = list(existing)
     added = []
-    for p in sorted(points, key=lambda q: (-_tf_rank(q), str(q.get('date') or '9999'), q['min'])):
+    # ПЕРВАЯ ИЗВЕСТНАЯ ТОЧКА: основа зоны — точка, которая стала известна на этом месте раньше всех (_known —
+    # момент закрытия свечи, подтвердившей точку). Новая точка всегда известна позже уже стоящих,
+    # поэтому основу у живой точки не забирает никогда.
+    for p in sorted(points, key=lambda q: (int(q.get('_known', 2**62)), _tf_rank(q), str(q.get('type')), q['min'])):
         host = next((z for z in zones if _overlap(p, z) > 0), None)
         if host is None:
             q = dict(p)
@@ -800,6 +830,34 @@ def _place(points, existing):
 def _public(z):
     """Копия зоны для выдачи: без служебных полей."""
     return {k: v for k, v in z.items() if not k.startswith('_') and k != 'anchor'}
+
+
+# ПРОГРЕВ: обычное окно, в котором ищем свинги (как всегда), и сколько свечей перед ним нужно дополнительно.
+WINDOWS = {"1M": 60, "1W": 150, "1d": 365, "4h": 200}
+# 1M, 1W: +14 на ATR своей свечи. 4h: +30 (ATR 14, средний объём 30). 1d: дневная свеча КАЖДОГО макро-свинга окна
+# 1M (60 мес. ≈ 1860 дней) + 30 на ATR/объём этой свечи.
+LOOKBACK = {"1M": 14, "1W": 14, "1d": 60 * 31 + 30, "4h": 30}
+MACRO_FB = {}   # счётчик: сколько макро-зон строилось не по дневной свече и почему
+
+
+def _warm_df(df, tf, trim=True):
+    """ATR(14) и средний объём 30 свечей до каждой свечи — по ВСЕМ полученным свечам; потом (trim) обрезка до окна."""
+    d = df.copy()
+    h, l, c = d["high"], d["low"], d["close"]
+    tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
+    d["_atr"] = tr.rolling(14, min_periods=1).mean()
+    d["_vavg"] = d["volume"].shift(1).rolling(30, min_periods=30).mean()
+    return d.tail(WINDOWS[tf]).reset_index(drop=True) if trim else d.reset_index(drop=True)
+
+
+def prepare(df_1M, df_1W, df_1d, df_4h):
+    """Свечи с запасом -> (1M, 1W, 1d в окне 365, 4h, все дневные свечи для поиска дня макро-свинга)."""
+    d1M = None if df_1M is None else _warm_df(df_1M, "1M")
+    d1W = None if df_1W is None else _warm_df(df_1W, "1W")
+    d4h = None if df_4h is None else _warm_df(df_4h, "4h")
+    d1_full = _warm_df(df_1d, "1d", trim=False)
+    d1 = d1_full.tail(WINDOWS["1d"]).reset_index(drop=True)
+    return d1M, d1W, d1, d4h, d1_full
 
 
 def build_levels(df_1M, df_1W, df_1d, df_4h, coin, current_idx=None, registry=None, snap_day=None,
@@ -823,6 +881,7 @@ def build_levels(df_1M, df_1W, df_1d, df_4h, coin, current_idx=None, registry=No
       6. Сжатие, resolve_cross_overlaps, отбои: score = база + POC + 0.5 за отбой (до REJECTION_SCORE_CAP).
     """
     registry = registry or {'S': [], 'R': []}
+    df_1M, df_1W, df_1d, df_4h, d1_full = prepare(df_1M, df_1W, df_1d, df_4h)
     if current_idx is None:
         current_idx = len(df_1d) - 1
 
@@ -837,7 +896,10 @@ def build_levels(df_1M, df_1W, df_1d, df_4h, coin, current_idx=None, registry=No
 
     max_distance = _calc_weekly_atr(df_1d, current_idx) * ATR_DISTANCE_MULTIPLIER
 
-    all_zones = _collect_zones(df_1M, df_1W, df_1d, df_4h, current_price, atr_1d, max_distance, current_idx)
+    # Зоны строятся из ВСЕХ точек (без радиуса): состав зоны не зависит от того, где сейчас цена.
+    # Какие зоны показать — решает отбор ближайших (_pick_nearest) ниже.
+    all_zones = _collect_zones(df_1M, df_1W, df_1d, df_4h, current_price, atr_1d, float('inf'), current_idx,
+                               df_1d_macro=d1_full)
     raw_zone_count = len(all_zones)
     raw_s, raw_r = _split_alive(all_zones)
 
@@ -862,7 +924,7 @@ def build_levels(df_1M, df_1W, df_1d, df_4h, coin, current_idx=None, registry=No
 
         if len(chosen) < 2:   # ФОЛБЭК: минимум 2 уровня на сторону (вся история, бесконечный радар)
             fb_all = _collect_zones(df_1M, df_1W, df_1d, df_4h, current_price, atr_1d, float('inf'), current_idx,
-                                    deep=True, count_stats=False)
+                                    deep=True, count_stats=False, df_1d_macro=d1_full)
             fb_s, fb_r = _split_alive(fb_all)
             cand = fb_s if is_sup else fb_r
             cand = [z for z in cand if (z['max'] < current_price if is_sup else z['min'] > current_price)]

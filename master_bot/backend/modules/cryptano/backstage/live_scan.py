@@ -7,14 +7,13 @@ import re
 from backend.modules.cryptano.utils.storage import load_json, save_json_atomic
 from backend.modules.cryptano.strategy.vbottom_manager import VBottomManager
 from backend.modules.cryptano.strategy.bounce_manager import BounceManager
-from backend.modules.cryptano.strategy.bounce_parent import BounceParent
 # json-файлы теперь в jsonbank/, а не рядом с этим модулем — см. utils/paths.py
 from backend.modules.cryptano.utils.paths import (
     WATCHLIST_FILE, WATCHER_STATE_FILE, BOUNCE_STATE_FILE,
     TRACKED_LONG_FILE, TRACKED_VRT_FILE, MACRO_LEVELS_FILE,
 )
 
-bounce_mgr = BounceManager(BounceParent())
+bounce_mgr = BounceManager()
 import json
 
 # ================= НАСТРОЙКИ WATCHER =================

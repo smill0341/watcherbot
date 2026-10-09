@@ -49,17 +49,6 @@
         "reaction_count": 2,
         "level_id": "R|1d_extreme_peak|2026-04-14"
     },
-    "MON_VRT_SHORT": {
-        "min": 0.0315,
-        "max": 0.03251121428571429,
-        "score": 4.5,
-        "type": "1W_MACRO_Resistance",
-        "date": "2026-08-24",
-        "activated_at": "2026-09-07",
-        "reaction_count": 1,
-        "class": "MACRO",
-        "level_id": "R|1W_MACRO_Resistance|2026-08-24"
-    },
     "BNB_VRT_SHORT": {
         "min": 765.8,
         "max": 783.2278571428571,
@@ -110,5 +99,277 @@
         "activated_at": "2026-09-27",
         "reaction_count": 0,
         "level_id": "R|1W_high_PWH|2026-09-27"
+    },
+    "LTC_VRT_SHORT": {
+        "min": 69.83,
+        "max": 71.43785714285715,
+        "score": 5.0,
+        "type": "4h_extreme_peak+4h_poc",
+        "date": "2026-10-03",
+        "activated_at": "2026-10-04",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-10-03"
+    },
+    "VIRTUAL_VRT_SHORT": {
+        "min": 0.7896857142857143,
+        "max": 0.8189142857142857,
+        "score": 5.5,
+        "type": "1M_close_PMC + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
+        "date": "2026-09-30",
+        "activated_at": "2026-09-30",
+        "reaction_count": 1,
+        "level_id": "R|1M_close_PMC|2026-09-30"
+    },
+    "SUI_VRT_SHORT": {
+        "min": 1.1944,
+        "max": 1.2251385714285714,
+        "score": 6.0,
+        "type": "1W_high_PWH + 4h_extreme_peak",
+        "date": "2026-09-27",
+        "activated_at": "2026-09-27",
+        "reaction_count": 2,
+        "level_id": "R|1W_high_PWH|2026-09-27"
+    },
+    "SEI_VRT_SHORT": {
+        "min": 0.07181053571428572,
+        "max": 0.07508946428571428,
+        "score": 5.5,
+        "type": "1M_close_PMC",
+        "date": "2026-09-30",
+        "activated_at": "2026-09-30",
+        "reaction_count": 1,
+        "level_id": "R|1M_close_PMC|2026-09-30"
+    },
+    "DOGE_VRT_SHORT": {
+        "min": 0.09290839285714286,
+        "max": 0.09607160714285715,
+        "score": 5.5,
+        "type": "1M_close_PMC",
+        "date": "2026-09-30",
+        "activated_at": "2026-09-30",
+        "reaction_count": 1,
+        "level_id": "R|1M_close_PMC|2026-09-30"
+    },
+    "ADA_VRT_SHORT": {
+        "min": 0.24610566964285713,
+        "max": 0.2587264732142857,
+        "score": 6.0,
+        "type": "1M_high_PMH + 1M_close_PMC + 1W_MACRO_Resistance + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
+        "date": "2026-08-31",
+        "activated_at": "2026-08-31",
+        "reaction_count": 1,
+        "level_id": "R|1M_high_PMH|2026-08-31"
+    },
+    "JUP_VRT_SHORT": {
+        "min": 0.32198214285714283,
+        "max": 0.33741785714285716,
+        "score": 5.5,
+        "type": "1M_close_PMC + 4h_extreme_peak",
+        "date": "2026-09-30",
+        "activated_at": "2026-09-30",
+        "reaction_count": 1,
+        "level_id": "R|1M_close_PMC|2026-09-30"
+    },
+    "AAVE_VRT_SHORT": {
+        "min": 177.89464285714286,
+        "max": 181.16414285714285,
+        "score": 6.0,
+        "type": "1W_MACRO_Resistance + 1W_high_PWH",
+        "date": "2026-01-12",
+        "activated_at": "2026-01-26",
+        "reaction_count": 1,
+        "class": "MACRO",
+        "level_id": "R|1W_MACRO_Resistance|2026-01-12"
+    },
+    "ONDO_VRT_SHORT": {
+        "min": 0.49970535714285713,
+        "max": 0.5047378571428571,
+        "score": 4.0,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-03",
+        "activated_at": "2026-10-04",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-10-03"
+    },
+    "LDO_VRT_SHORT": {
+        "min": 0.447,
+        "max": 0.47405785714285714,
+        "score": 7.0,
+        "type": "1M_MACRO_Resistance + 4h_extreme_peak",
+        "date": "2026-04-01",
+        "activated_at": "2026-06-01",
+        "reaction_count": 4,
+        "class": "MACRO",
+        "level_id": "R|1M_MACRO_Resistance|2026-04-01"
+    },
+    "RENDER_VRT_SHORT": {
+        "min": 2.0068928571428573,
+        "max": 2.026642857142857,
+        "score": 3.5,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-03",
+        "activated_at": "2026-10-04",
+        "reaction_count": 0,
+        "level_id": "R|4h_extreme_peak|2026-10-03"
+    },
+    "HYPE_VRT_SHORT": {
+        "min": 89.75982142857143,
+        "max": 92.14017857142858,
+        "score": 5.5,
+        "type": "1M_close_PMC + 4h_extreme_peak",
+        "date": "2026-09-30",
+        "activated_at": "2026-09-30",
+        "reaction_count": 1,
+        "level_id": "R|1M_close_PMC|2026-09-30"
+    },
+    "PENDLE_VRT_SHORT": {
+        "min": 2.431,
+        "max": 2.4998785714285714,
+        "score": 5.5,
+        "type": "4h_extreme_peak+4h_poc",
+        "date": "2026-10-01",
+        "activated_at": "2026-10-02",
+        "reaction_count": 2,
+        "level_id": "R|4h_extreme_peak|2026-10-01"
+    },
+    "POL_VRT_SHORT": {
+        "min": 0.10987571428571428,
+        "max": 0.11065171428571428,
+        "score": 4.0,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-04",
+        "activated_at": "2026-10-05",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-10-04"
+    },
+    "XAG_VRT_SHORT": {
+        "min": 61.6,
+        "max": 61.861,
+        "score": 5.0,
+        "type": "4h_extreme_peak",
+        "date": "2026-09-29",
+        "activated_at": "2026-09-30",
+        "reaction_count": 2,
+        "level_id": "R|4h_extreme_peak|2026-09-29"
+    },
+    "LITE_VRT_SHORT": {
+        "min": 1081.9894642857141,
+        "max": 1099.2942142857141,
+        "score": 5.5,
+        "type": "1W_high_PWH",
+        "date": "2026-10-04",
+        "activated_at": "2026-10-04",
+        "reaction_count": 1,
+        "level_id": "R|1W_high_PWH|2026-10-04"
+    },
+    "FIL_VRT_SHORT": {
+        "min": 1.0842,
+        "max": 1.1197714285714284,
+        "score": 4.5,
+        "type": "4h_extreme_peak",
+        "date": "2026-09-29",
+        "activated_at": "2026-09-30",
+        "reaction_count": 2,
+        "level_id": "R|4h_extreme_peak|2026-09-29"
+    },
+    "ICP_VRT_SHORT": {
+        "min": 3.437,
+        "max": 3.5775571428571427,
+        "score": 6.0,
+        "type": "1M_high_PMH + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
+        "date": "2026-09-30",
+        "activated_at": "2026-09-30",
+        "reaction_count": 1,
+        "level_id": "R|1M_high_PMH|2026-09-30"
+    },
+    "LIT_VRT_SHORT": {
+        "min": 3.8551499999999996,
+        "max": 4.052849999999999,
+        "score": 6.5,
+        "type": "1M_close_PMC",
+        "date": "2026-09-30",
+        "activated_at": "2026-09-30",
+        "reaction_count": 2,
+        "level_id": "R|1M_close_PMC|2026-09-30"
+    },
+    "ARB_VRT_SHORT": {
+        "min": 0.20504,
+        "max": 0.20946878571428573,
+        "score": 4.0,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-02",
+        "activated_at": "2026-10-03",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-10-02"
+    },
+    "OP_VRT_SHORT": {
+        "min": 0.13594,
+        "max": 0.13931164285714284,
+        "score": 4.0,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-03",
+        "activated_at": "2026-10-04",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-10-03"
+    },
+    "APT_VRT_SHORT": {
+        "min": 0.8456696428571429,
+        "max": 0.8577521428571429,
+        "score": 4.0,
+        "type": "4h_extreme_peak",
+        "date": "2026-09-29",
+        "activated_at": "2026-09-30",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-09-29"
+    },
+    "AVAX_VRT_SHORT": {
+        "min": 11.117,
+        "max": 11.3072,
+        "score": 5.0,
+        "type": "4h_extreme_peak+4h_poc",
+        "date": "2026-10-02",
+        "activated_at": "2026-10-03",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-10-02"
+    },
+    "WLFI_VRT_SHORT": {
+        "min": 0.05555,
+        "max": 0.055945214285714286,
+        "score": 4.0,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-04",
+        "activated_at": "2026-10-05",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-10-04"
+    },
+    "ZEC_VRT_SHORT": {
+        "min": 1351.89,
+        "max": 1371.144642857143,
+        "score": 4.0,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-04",
+        "activated_at": "2026-10-05",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-10-04"
+    },
+    "CRV_VRT_SHORT": {
+        "min": 0.38199464285714285,
+        "max": 0.38578214285714285,
+        "score": 4.5,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-03",
+        "activated_at": "2026-10-04",
+        "reaction_count": 2,
+        "level_id": "R|4h_extreme_peak|2026-10-03"
+    },
+    "CL_VRT_SHORT": {
+        "min": 91.81035714285714,
+        "max": 92.00585714285715,
+        "score": 4.5,
+        "type": "4h_extreme_peak+4h_poc",
+        "date": "2026-10-04",
+        "activated_at": "2026-10-05",
+        "reaction_count": 0,
+        "level_id": "R|4h_extreme_peak|2026-10-04"
     }
 }

@@ -16,9 +16,9 @@ from backend.modules.footballnogoal.football import run_football_monitor
 from backend.modules.playerpropsbasket.player_props import run_nba_monitor
 
 # level_id всегда имеет вид "{TAG}_{trade_type}_{min}_{max}" (см. _level_id
-# в vbottom_manager.py / bounce_parent.py) — TAG однозначно говорит, какая
+# в vbottom_manager.py) — TAG однозначно говорит, какая
 # это стратегия, независимо от того, есть ли метаданные в текущем
-# macro_levels.json. "BC" — BounceParent._level_id (см. bounce_parent.py).
+
 _STRATEGY_BY_TAG = {"VB": "V_BOTTOM", "VGB": "V_GREEN_BOTTOM", "VRT": "V_RED_TOP", "BC": "BOUNCE"}
 
 

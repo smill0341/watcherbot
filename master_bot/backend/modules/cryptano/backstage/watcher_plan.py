@@ -14,7 +14,6 @@ from backend.modules.cryptano.utils.bybit import (
 from backend.modules.cryptano.utils.indicators import calculate_atr, calculate_ema, calculate_rsi
 from backend.modules.cryptano.strategy.vbottom_manager import VBottomManager
 from backend.modules.cryptano.strategy.bounce_manager import BounceManager
-from backend.modules.cryptano.strategy.bounce_parent import BounceParent
 from backend.modules.cryptano.utils.paths import MACRO_LEVELS_FILE, CUSTOM_LEVELS_FILE, BOUNCE_ERRORS_FILE, SIGNALS_FILE
 from backend.modules.cryptano.levels.history import save_signal
 
@@ -242,6 +241,15 @@ def _find_fresh_breach_up(levels, c_close, c_high, prev_close):
     return None
 
 
+def _v_signal_events(vbottom_mgr, level_id):
+    """Путь V-вотчера (event_log) — копией, в сам сигнал (поле events), как у
+    BOUNCE (см. _signal_level_snapshot). Сайт рисует точки сигнала именно из
+    s.events. Копия, а не ссылка: сигнал навсегда остаётся с тем путём,
+    который был на момент сделки."""
+    w = vbottom_mgr._watchers.get(level_id) if vbottom_mgr is not None else None
+    return [dict(ev) for ev in (getattr(w, "event_log", None) or [])]
+
+
 def check_v_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None):
     """
     Проверяет V-BOTTOM паттерн — теперь по той же модели, что в симуляторе:
@@ -359,6 +367,7 @@ def check_v_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None):
             "level_score": tracked.get("score"),
             "level_reaction_count": tracked.get("reaction_count"),
             "time": int(df.index[-1].timestamp()),
+            "events": _v_signal_events(vbottom_mgr, level_id),
         })
 
         report = (
@@ -479,6 +488,7 @@ def check_v_green_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None)
             "level_score": tracked.get("score"),
             "level_reaction_count": tracked.get("reaction_count"),
             "time": int(df.index[-1].timestamp()),
+            "events": _v_signal_events(vbottom_mgr, level_id),
         })
 
         report = (
@@ -622,6 +632,7 @@ def check_v_red_top(coin, direction, vbottom_mgr=None, tracked_levels=None):
             "level_score": tracked.get("score"),
             "level_reaction_count": tracked.get("reaction_count"),
             "time": int(df.index[-1].timestamp()),
+            "events": _v_signal_events(vbottom_mgr, level_id),
         })
 
         report = (
@@ -766,9 +777,13 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr):
             return 0, [], 0
 
         atr_series = calculate_atr(df)
-        # EMA-фильтр рождения вотчера (BounceManager.CONFIG['EMA_FILTER_*'])
+        # EMA200(4h): для отчёта (ema_dist_birth) и для фильтра уровней
+        # (levels/level_filter.py — пороги из config.json: общие + свои у монеты)
         from backend.modules.cryptano.simulator.outcome import make_ema_dist_fn, load_candles_4h
-        bounce_mgr.set_ema_dist_fn(coin, make_ema_dist_fn(df, candles_4h=load_candles_4h(candle_store, symbol)))
+        from backend.modules.cryptano.levels.level_filter import LevelFilter
+        _ema_fn = make_ema_dist_fn(df, candles_4h=load_candles_4h(candle_store, symbol))
+        bounce_mgr.set_ema_dist_fn(coin, _ema_fn)
+        level_filter = LevelFilter(coin, _ema_fn)
 
         # УРОВНИ ДЛЯ БОЕВОГО СКАНА — ТОЛЬКО macro_levels.json + custom_levels.json
         # (supports/resistances выше, get_merged_levels_for_coin). Исторические
@@ -835,9 +850,12 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr):
             # в любом случае — process_candle подхватывает их сам, независимо
             # от этих списков (списки решают только, кто может РОДИТЬСЯ).
             ts_naive = ts.tz_localize(None) if ts.tzinfo is not None else ts
-            candle_supports = [z for z in supports
+            # Фильтр уровней по EMA — ДО стратегии: BOUNCE получает уже
+            # отфильтрованные зоны (уже живые вотчеры фильтр не трогает).
+            allowed_supports, allowed_resistances = level_filter.apply(ts, supports, resistances)
+            candle_supports = [z for z in allowed_supports
                                if level_active_from[id(z)] is None or level_active_from[id(z)] <= ts_naive]
-            candle_resistances = [z for z in resistances
+            candle_resistances = [z for z in allowed_resistances
                                   if level_active_from[id(z)] is None or level_active_from[id(z)] <= ts_naive]
 
             orders, draw_events = bounce_mgr.process_candle(
@@ -1268,7 +1286,7 @@ def rescan_single_bounce_watcher(coin, level_id, bounce_mgr):
 
     atr_series = calculate_atr(df)
     from backend.modules.cryptano.simulator.outcome import make_ema_dist_fn, load_candles_4h
-    bounce_mgr.set_ema_dist_fn(coin, make_ema_dist_fn(df, candles_4h=load_candles_4h(candle_store, symbol)))  # EMA-фильтр рождения вотчера
+    bounce_mgr.set_ema_dist_fn(coin, make_ema_dist_fn(df, candles_4h=load_candles_4h(candle_store, symbol)))  # EMA для отчёта (ema_dist_birth); рескан уже существующего вотчера фильтром не режется
     WINDOW = 60
     df_index = df.index
     orders = []

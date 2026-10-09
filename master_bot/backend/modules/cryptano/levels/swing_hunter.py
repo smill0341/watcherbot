@@ -3,15 +3,10 @@ import datetime
 import os
 import threading
 import pandas as pd
-import numpy as np
-from scipy.signal import find_peaks
 import schedule
 from backend.modules.cryptano.utils.bybit import exchange, resolve_symbol, KNOWN_TICKER_ALIASES
 from backend.modules.cryptano.utils.storage import load_json, save_json_atomic
-from backend.modules.cryptano.levels.levels_builder import (
-    build_levels, _is_mitigated, merge_overlapping_zones, _merge_nearby_macro_zones,
-    compress_fat_zones, resolve_cross_overlaps, MACRO_LAYER_STATS,
-)
+from backend.modules.cryptano.levels.levels_builder import build_levels, MACRO_LAYER_STATS
 
 # =========================================================
 # ⚙️ НАСТРОЙКИ РАСПИСАНИЯ
@@ -24,10 +19,6 @@ TIME_US_OPEN = "15:05"
 # см. build_macro_levels). Слишком мало — вернёмся к старому багу (вотчер
 # осиротеет за один цикл), слишком много — файл будет копить мусор.
 MACRO_STALE_DAYS = 14
-
-# 🎛 НАСТРОЙКИ V2 ФИЛЬТРОВ
-IMPULSE_ATR_MULTIPLIER = 2.5  # Цена должна улететь минимум на 2.5 ATR от зоны
-IMPULSE_LOOKAHEAD_DAYS = 10   # Даем цене 10 дней на то, чтобы показать этот импульс
 
 # BASE_DIR указывает на backend/, где лежит config.json.
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -72,267 +63,19 @@ MAX_COINS = _config.get("crypto", {}).get("max_coins", 80)
 GREYLIST_MAX_COINS = _config.get("crypto", {}).get("greylist_max_coins", 50)
 GREYLIST_STALE_DAYS = _config.get("crypto", {}).get("greylist_stale_days", 4)
 
-# Порог "это тот же уровень или новый" для паспорта уровня (см. обсуждение
-# дрожания min/max и пропадания-появления зон из-за того, что ATR, от
-# которого зависят и ширина зоны, и порог дистанции, пересчитывается заново
-# на каждой сборке). То же значение, что уже используют LEVEL_DEDUP_
-# TOLERANCE_PCT (bounce_manager.py) и MACRO_MERGE_DISTANCE_PCT (levels_
-# builder.py) для той же по смыслу задачи — держим согласованно, а не
-# заводим третью независимую константу.
-LEVEL_PASSPORT_TOLERANCE_PCT = 4.0
-# ПАСПОРТ ВЫКЛЮЧЕН. Боевой бот теперь считает уровни тем же levels_builder.py (новая сборка), что и
-# симулятор (precalc_for_bot.py): границы зоны считаются по свече рождения и между сканами не
-# дрожат, level_id постоянный, поэтому заморозка границ не нужна. А повторная склейка внутри
-# паспорта объединяла границы и раздувала зоны. True = вернуть старое поведение (паспорт +
-# повторное слияние + сжатие). Сама _reconcile_coin_levels не удалена — её используют
-# levels_ab.py / passport_ab.py.
-USE_LEVEL_PASSPORT = False
-# Паспорт держит старые границы зоны, только если её состав не менялся и
-# ширина отличается не больше чем на столько процентов (обычное дрожание ATR).
-# Больше — берутся свежие границы (см. _reconcile_levels_with_registry).
-PASSPORT_WIDTH_CHANGE_PCT = 30.0
+def _prev_registry(base, coin):
+    """Реестр зон монеты с прошлого пересчёта (хранится в той же записи монеты, ключ "registry")."""
+    entry = base.get(coin)
+    return entry.get("registry") if isinstance(entry, dict) else None
 
 
-
-def _is_poc_zone(zone):
-    """POC-зона (4h_poc_standalone) — не исторический свинг с точкой рождения,
-    а живой, скользящий показатель "где концентрировался объём за последнее
-    время" (см. levels_builder.py — у неё 'date' всегда ставится как сегодняшняя
-    дата скана, current_idx_date, а не дата какой-то конкретной свечи). Её
-    дрожание координат между сканами — не баг, а её прямая работа: она ДОЛЖНА
-    двигаться вместе с недавним объёмом. Паспорт её не трогает вообще.
-
-    Точное совпадение типа, а не подстрока: зона вида 'X+4h_poc' (структурный
-    уровень, который POC просто подтвердил объёмом — см. confluence в
-    levels_builder.py) — это НЕ чистый POC, это по-прежнему структурная зона
-    со своей исторической датой, паспорт её замораживает как обычно."""
-    return zone.get('type') == '4h_poc_standalone'
-
-
-def _is_pmc_zone(zone):
-    """PMC-зона (1M_close_PMC, ровно этот тип, БЕЗ confluence с чем-либо ещё)
-    — цена ЗАКРЫТИЯ конкретного, уже закрытого месяца. В отличие от PMH/PWH
-    (где сама цена — экстремум месяца/недели, а гуляет только ширина ATR-
-    буфера вокруг неё), у PMC гулять почти нечему: закрытие того же самого
-    месяца — исторический факт, не меняется скан от скана.
-
-    Паспорт её тем не менее НЕ должен подхватывать по общей схеме "ближайшая
-    в пределах 4% по цене" — на практике (см. обсуждение проекта, BTC) это
-    приводило к тому, что свежий PMC-кандидат "прилипал" к СТАРОЙ, вообще не
-    связанной с ним записи в реестре (например, старому PWH/find_peaks,
-    оставшемуся с прошлых сканов ещё до появления PMC), если та случайно
-    оказывалась в пределах допуска — и получал вместо своих точных координат
-    чужие, замороженные. Раз координата и так стабильна сама по себе — прогон
-    через паспорт только вредит, поэтому PMC, как и POC выше, просто
-    добавляется в реестр как есть, без сверки со старыми записями.
-
-    Точное совпадение типа — так же, как у _is_poc_zone: если PMC слился с
-    чем-то ещё (confluence, "1M_close_PMC + 1W_low_PWL..."), это уже обычная
-    структурная зона нескольких источников, её паспорт трогает как всегда."""
-    return zone.get('type') == '1M_close_PMC'
-
-
-def _reconcile_levels_with_registry(old_zones, fresh_zones, is_support, df_1d, current_idx=None, scan_time=None):
-    """Паспорт уровня.
-
-    min/max/date уже существующей записи ("паспорт") считаются правдой по
-    геометрии и НЕ переписываются результатом свежего пересчёта — ATR, от
-    которого зависит и ширина зоны, и общий фильтр дистанции в levels_
-    builder.py, гуляет от скана к скану даже когда сам исторический уровень
-    никуда не сдвинулся. Обновляются только те поля, которым и положено
-    быть свежими каждый раз честно: type/score/reaction_count/mitigated/
-    class.
-
-    Свежая зона без пары в старом списке -> новый паспорт, как есть.
-
-    Старая запись без пары в свежем списке -> НЕ удаляется автоматически
-    (она могла просто не пройти сегодняшний фильтр дистанции ATR в levels_
-    builder.py, а не быть пробитой) — удаляется только если отдельная,
-    самостоятельная проверка _is_mitigated() (та же функция, что использует
-    сам levels_builder.py, не копия) говорит, что уровень реально пробит
-    закрытием с даты, когда он появился. levels_builder.py при этом не
-    трогаем — это отдельная проверка того же факта, снаружи.
-
-    ИСКЛЮЧЕНИЕ: POC-зоны (см. _is_poc_zone) и PMC-зоны (см. _is_pmc_zone) в
-    паспорт не попадают вообще — ни заморозка геометрии, ни mitigated-
-    проверка осиротевших записей. У POC координата по конструкции плавает
-    (нет "исторической правды", с которой можно было бы сверяться), у PMC —
-    наоборот, координата и так стабильна, а сверка по 4% только рискует
-    подменить её чужой, случайно близкой старой записью (см. докстринг
-    _is_pmc_zone). Разными путями к одному и тому же выводу: обеим не нужен
-    паспорт, обе просто проходят как есть.
-
-    scan_time — ISO-дата момента скана (для activated_at новых уровней)."""
-    if current_idx is None:
-        current_idx = len(df_1d) - 1
-    if scan_time is None:
-        scan_time = datetime.datetime.now().isoformat()
-
-    def _mid(z):
-        return (z['min'] + z['max']) / 2.0
-
-    passthrough_fresh = [z for z in fresh_zones if _is_poc_zone(z) or _is_pmc_zone(z)]
-    fresh_zones = [z for z in fresh_zones if not (_is_poc_zone(z) or _is_pmc_zone(z))]
-    old_zones_for_match = [z for z in old_zones if not (_is_poc_zone(z) or _is_pmc_zone(z))]
-
-    used_old = set()
-    result = []  # POC/PMC не в этом списке вообще — добавляются отдельно, в
-                 # самом конце, чтобы финальный merge-проход ниже их не трогал
-                 # (см. return).
-
-    for fresh in fresh_zones:
-        fresh_mid = _mid(fresh)
-        match_i = None
-        for i, old in enumerate(old_zones_for_match):
-            if i in used_old:
-                continue
-            old_mid = _mid(old)
-            if old_mid == 0:
-                continue
-            if abs(fresh_mid - old_mid) / old_mid * 100.0 <= LEVEL_PASSPORT_TOLERANCE_PCT:
-                match_i = i
-                break
-        if match_i is not None:
-            used_old.add(match_i)
-            old_z = old_zones_for_match[match_i]
-            merged = dict(old_z)  # геометрия/дата/activated_at — от старой записи
-            for key in ('type', 'score', 'reaction_count', 'mitigated', 'class'):
-                if key in fresh:
-                    merged[key] = fresh[key]
-            # КОГДА ПАСПОРТ НЕ ДЕРЖИТ СТАРЫЕ ГРАНИЦЫ. Заморозка нужна против
-            # дрожания ATR (та же зона, ширина чуть гуляет от скана к скану).
-            # Но раньше она держала старые min/max ВСЕГДА — зона не сужалась,
-            # когда умирал уровень внутри неё, и новые правила ширины (потолок
-            # MACRO K*ATR) до старых зон не доходили вообще. Теперь свежие
-            # границы берутся, если:
-            #   - изменился СОСТАВ зоны (набор уровней в названии type), или
-            #   - ширина отличается больше чем на PASSPORT_WIDTH_CHANGE_PCT.
-            def _parts(t):
-                return frozenset(p.strip() for p in str(t or '').split('+') if p.strip())
-            old_w = float(old_z['max']) - float(old_z['min'])
-            fresh_w = float(fresh['max']) - float(fresh['min'])
-            width_changed = fresh_w > 0 and abs(old_w - fresh_w) / fresh_w * 100.0 > PASSPORT_WIDTH_CHANGE_PCT
-            if _parts(old_z.get('type')) != _parts(fresh.get('type')) or width_changed:
-                merged['min'] = fresh['min']
-                merged['max'] = fresh['max']
-                if fresh.get('date'):
-                    merged['date'] = fresh['date']
-            # activated_at — максимум старого и свежего. Обычно они совпадают
-            # (то же множество компонентов), но если fresh['type'] "разросся"
-            # новым confluence-компонентом (см. merge_overlapping_zones в
-            # levels_builder.py) — свежий activated_at может быть позже: зона
-            # готова не раньше момента, когда подтвердился ПОСЛЕДНИЙ из её
-            # компонентов, а не первый исторический.
-            fresh_act = fresh.get('activated_at')
-            if fresh_act and (not merged.get('activated_at') or fresh_act > merged['activated_at']):
-                merged['activated_at'] = fresh_act
-            result.append(merged)
-        else:
-            # Новый уровень — levels_builder.py уже проставил activated_at
-            # по своей формуле (задержка подтверждения по типу зоны). scan_time
-            # тут только safety-fallback на случай, если по какой-то причине
-            # оно не пришло (старый кэш модуля, ручной вызов в обход builder).
-            fresh_with_activated = dict(fresh)
-            if 'activated_at' not in fresh_with_activated:
-                fresh_with_activated['activated_at'] = scan_time
-            result.append(fresh_with_activated)
-
-    for i, old in enumerate(old_zones_for_match):
-        if i in used_old:
-            continue
-        keep = True
-        date_str = old.get('date')
-        if date_str:
-            try:
-                date_mask = pd.to_datetime(df_1d['timestamp'], unit='ms').dt.strftime('%Y-%m-%d') == date_str
-                date_rows = df_1d.index[date_mask]
-                if len(date_rows) > 0:
-                    idx = int(date_rows[0])
-                    price = old['min'] if is_support else old['max']
-                    if _is_mitigated(df_1d, idx, price, is_support, current_idx=current_idx):
-                        keep = False
-            except Exception as e:
-                print(f"[PASSPORT] Не смог проверить mitigated для старой записи ({date_str}): {e} — оставляю как есть")
-        if keep:
-            result.append(old)
-
-    # Финальный проход слияния — ПОСЛЕ паспорта, не только до него. levels_
-    # builder.py уже сливает пересекающиеся зоны, но видит только СЕГОДНЯШНИЙ
-    # свежий пересчёт целиком. Паспорт выше подменяет геометрию КАЖДОЙ зоны
-    # по отдельности на старую, замороженную — и две РАЗНЫЕ зоны, свежие
-    # версии которых не пересекались, могут оказаться физически пересекающимися
-    # уже здесь, после независимой подмены каждой на свою старую геометрию.
-    # Тот же самый merge, что уже есть в levels_builder.py, не новый — MACRO
-    # своим мягким правилом (по зазору между серединами), остальное — строгим
-    # (только реальное физическое пересечение), в том же порядке, что и там.
-    #
-    # ВАЖНО: обёрнуто в try/except намеренно. Это ДОПОЛНИТЕЛЬНАЯ уборка
-    # поверх уже готового, честного результата паспорта — если она сама
-    # на каких-то данных (например, старых записях с форматом до этой
-    # правки) споткнётся об исключение, монета не должна из-за этого
-    # ТЕРЯТЬ ВСЕ уровни целиком (см. build_macro_levels — необработанное
-    # исключение здесь пробросилось бы наверх и оставило бы coin вообще
-    # без обновления на этот цикл). Деградация — вернуть результат ДО
-    # этого прохода (дубли могут остаться), а не потерять всё.
-    # Закидываем свежие POC/PMC в общий список ДО того, как алгоритм начнет склейку
-    result = result + passthrough_fresh
-
-    try:
-        result = _merge_nearby_macro_zones(result)
-        result = merge_overlapping_zones(result)
-    except Exception as e:
-        print(f"[PASSPORT MERGE] Не смог финально слить зоны: {e} — оставляю без этого прохода")
-
-    # Возвращаем финальный склеенный массив
-    return result
-
-
-def _reconcile_coin_levels(coin, fresh_levels, macro_base, df_1d, scan_time=None):
-    """Обёртка над _reconcile_levels_with_registry для одной монеты, отдельно
-    для supports и resistances. Единственная точка, которую вызывают оба
-    места сборки (build_macro_levels и build_levels_for_single_coin) — не
-    дублируем логику дважды (см. историю с дублем export в background_
-    tasks.py, тут та же ловушка).
-
-    Количество зон на сторону НЕ ограничиваем (было — попробовали
-    MAX_LEVELS_PER_SIDE=1, оказалось слишком жёстко, откатили по просьбе —
-    возвращает столько зон, сколько реально прошло паспорт, как было
-    исходно).
-
-    compress_fat_zones/resolve_cross_overlaps — те же два шага, которыми
-    build_levels() в levels_builder.py сам завершает сборку (merge ->
-    compress -> resolve_cross_overlaps), но там они видят только СЕГОДНЯШНИЙ
-    пересчёт. _reconcile_levels_with_registry() выше в конце тоже делает
-    свой merge (склеивая старые "замороженные" зоны со свежими) — и этот
-    повторный merge геометрию УЖЕ сжатых зон может снова раздуть (старая
-    зона + свежая, слитые в одну, физически шире любой из них по отдельности).
-    Раньше после этого повторного merge сжатия не было вообще — отсюда
-    зоны в разы шире паспортного допуска (см. обсуждение проекта, скрины
-    с огромными зелёными/красными зонами). Этот фикс остаётся в силе —
-    речь только про лимит КОЛИЧЕСТВА зон, не про их ширину."""
-    old_entry = macro_base.get(coin, {})
-    old_supports = old_entry.get('supports', []) if isinstance(old_entry, dict) else []
-    old_resistances = old_entry.get('resistances', []) if isinstance(old_entry, dict) else []
-    reconciled_supports = _reconcile_levels_with_registry(old_supports, fresh_levels["supports"], True, df_1d, scan_time=scan_time)
-    reconciled_resistances = _reconcile_levels_with_registry(old_resistances, fresh_levels["resistances"], False, df_1d, scan_time=scan_time)
-
-    compress_fat_zones(reconciled_supports, coin)
-    compress_fat_zones(reconciled_resistances, coin)
-    reconciled_supports, reconciled_resistances = resolve_cross_overlaps(reconciled_supports, reconciled_resistances)
-
+def _coin_entry(levels, scan_time):
+    """Запись монеты для macro_levels.json / greylist_levels.json: уровни + реестр для следующего пересчёта."""
     return {
-        "supports": reconciled_supports,
-        "resistances": reconciled_resistances,
-    }
-
-def _finalize_coin_levels(coin, fresh_levels, macro_base, df_1d, scan_time=None):
-    """Единая точка для трёх мест сборки (бой, одиночная монета, радар): при выключенном
-    паспорте (USE_LEVEL_PASSPORT=False) отдаёт свежий результат build_levels как есть."""
-    if USE_LEVEL_PASSPORT:
-        return _reconcile_coin_levels(coin, fresh_levels, macro_base, df_1d, scan_time=scan_time)
-    return {
-        "supports": fresh_levels["supports"],
-        "resistances": fresh_levels["resistances"],
+        "supports": levels["supports"],
+        "resistances": levels["resistances"],
+        "registry": levels.get("registry"),
+        "updated_at": scan_time,
     }
 
 
@@ -464,22 +207,16 @@ def _safe_fetch_ohlcv(sym, tf, lim):
     raise Exception("Биржа заблокировала запросы после 5 попыток")
 
 
-def _fetch_and_build_levels(symbol, coin):
+def _fetch_and_build_levels(symbol, coin, registry=None):
     """Общий для боевого потока (build_macro_levels, build_levels_for_single_coin)
     и радара (build_greylist_candidates) кусок: скачать 1M/1W/1d/4h свечи
     (через _safe_fetch_ohlcv — сначала локальная БД, потом биржа) и
-    построить сырые зоны через build_levels(). Раньше был продублирован в
-    build_macro_levels() и build_levels_for_single_coin() по отдельности —
-    с появлением радара получился бы уже третий дубль (та же ловушка, о
-    которой уже предупреждают комментарии в этом файле — см.
-    _reconcile_coin_levels выше).
+    построить зоны через build_levels() (одна точка для всех трёх мест).
 
-    Возвращает (levels, df_1d), или None, если по монете меньше 50 дневных
-    свечей (недостаточно истории — та же проверка, что была в обоих местах
-    раньше). НЕ занимается ни паспортом/reconcile (см. _reconcile_coin_levels),
-    ни сохранением — куда положить результат, решает вызывающий код (у
-    боевого/одиночного/радара это РАЗНЫЕ файлы: macro_levels.json или
-    greylist_levels.json)."""
+    registry — реестр зон монеты с прошлого пересчёта (см. levels_builder.build_levels).
+    Возвращает (levels, df_1d) — levels с ключом "registry" для следующего пересчёта —
+    или None, если по монете меньше 50 дневных свечей. Сохранением не занимается —
+    куда положить результат, решает вызывающий код (macro_levels.json или greylist_levels.json)."""
     _t0 = time.time()
     ohlcv_1M = _safe_fetch_ohlcv(symbol, "1M", 60)
     ohlcv_1W = _safe_fetch_ohlcv(symbol, "1W", 150)
@@ -496,7 +233,7 @@ def _fetch_and_build_levels(symbol, coin):
     df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_4h) >= 50 else None
 
     _t1 = time.time()
-    levels = build_levels(df_1M, df_1W, df_1d, df_4h, coin)
+    levels = build_levels(df_1M, df_1W, df_1d, df_4h, coin, registry=registry, return_registry=True)
     _FETCH_TIME["levels"] += time.time() - _t1
 
     return levels, df_1d
@@ -649,7 +386,7 @@ def build_greylist_candidates(exclude_symbols):
     GREYLIST_MAX_COINS.
 
     Кандидаты, честно прошедшие фильтр, получают полный расчёт уровней —
-    ту же build_levels()+паспорт (_reconcile_coin_levels), что и боевые —
+    ту же build_levels() с реестром, что и боевые —
     но результат уходит ТОЛЬКО в greylist_levels.json. macro_levels.json
     этот проход не трогает вообще — watcher_plan.py физически не видит
     ни один из этих уровней."""
@@ -690,19 +427,14 @@ def build_greylist_candidates(exclude_symbols):
         seen_coins.add(coin)  # реально дошли до расчёта — точка отсчёта для "протухания"
         net_before = _network_calls()
         try:
-            result = _fetch_and_build_levels(sym, coin)
+            result = _fetch_and_build_levels(sym, coin, _prev_registry(greylist_levels, coin))
             if result is None:
                 continue
             levels, df_1d = result
 
             has_any = (levels["supports"] or levels["resistances"])
             if has_any:
-                reconciled = _finalize_coin_levels(coin, levels, greylist_levels, df_1d, scan_time=scan_time)
-                greylist_levels[coin] = {
-                    "supports": reconciled["supports"],
-                    "resistances": reconciled["resistances"],
-                    "updated_at": scan_time,
-                }
+                greylist_levels[coin] = _coin_entry(levels, scan_time)
             else:
                 greylist_levels.pop(coin, None)
 
@@ -808,20 +540,14 @@ def build_macro_levels():
                 # в _fetch_and_build_levels (см. её докстринг) — тот же он
                 # переиспользуется build_levels_for_single_coin() и радаром
                 # (build_greylist_candidates).
-                result = _fetch_and_build_levels(symbol, coin)
+                result = _fetch_and_build_levels(symbol, coin, _prev_registry(macro_base, coin))
                 if result is None:
                     continue
                 levels, df_1d = result
 
                 has_any = (levels["supports"] or levels["resistances"])
                 if has_any:
-                    scan_time = datetime.datetime.now().isoformat()
-                    reconciled = _finalize_coin_levels(coin, levels, macro_base, df_1d, scan_time=scan_time)
-                    macro_base[coin] = {
-                        "supports": reconciled["supports"],
-                        "resistances": reconciled["resistances"],
-                        "updated_at": scan_time
-                    }
+                    macro_base[coin] = _coin_entry(levels, datetime.datetime.now().isoformat())
                 else:
                     # Явно пересчитали и уровней не нашли — это не "выпал из
                     # топ-70", а честный пустой результат, тут можно смело убрать.
@@ -916,19 +642,13 @@ def build_levels_for_single_coin(coin):
             print(f"[HUNTER SKIP] {coin}: нет рынка ни SPOT, ни FUTURES на Bybit — пропускаю.")
             return None
 
-        result = _fetch_and_build_levels(symbol, coin)
+        macro_base = load_json(MACRO_LEVELS_FILE, default={})
+        result = _fetch_and_build_levels(symbol, coin, _prev_registry(macro_base, coin))
         if result is None:
             return None
         levels, df_1d = result
 
-        macro_base = load_json(MACRO_LEVELS_FILE, default={})
-        scan_time = datetime.datetime.now().isoformat()
-        reconciled = _finalize_coin_levels(coin, levels, macro_base, df_1d, scan_time=scan_time)
-        macro_base[coin] = {
-            "supports": reconciled["supports"],
-            "resistances": reconciled["resistances"],
-            "updated_at": scan_time
-        }
+        macro_base[coin] = _coin_entry(levels, datetime.datetime.now().isoformat())
         save_json_atomic(MACRO_LEVELS_FILE, macro_base)
         # ⚠️ Снимок в историю уровней больше не пишем — см. комментарий в
         # build_macro_levels() выше, история уровней теперь только через

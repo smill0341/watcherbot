@@ -6,7 +6,7 @@
 и здесь — расхождения между "тестером" и боем, как раньше с test/testswing,
 тут в принципе невозможны, потому что это буквально один и тот же код.
 
-На каждый вызов создаётся СВОЙ, изолированный BounceManager (BounceParent()) —
+На каждый вызов создаётся СВОЙ, изолированный BounceManager —
 ничего не пишет в боевые файлы (bounce_state.json, active_watchers.json,
 signals.json). Уровни на каждую свечу берутся из levels_history.py (снимки
 раз в ~12ч, та же "машина времени", что уже строит swing_hunter в бою) —
@@ -26,11 +26,14 @@ from backend.modules.cryptano.utils.storage import load_json, save_json_atomic
 from backend.modules.cryptano.utils.paths import DATABASE_DIR
 from backend.modules.cryptano.levels.levels_history import get_levels_snapshot, snapshot_bucket_start
 from backend.modules.cryptano.strategy.bounce_manager import BounceManager
-from backend.modules.cryptano.strategy.bounce_parent import BounceParent
 from backend.modules.cryptano.strategy.bounce_watcher import BounceWatcher
-import backend.modules.cryptano.levels.candle_store as candle_store
+import backend.modules.cryptano.levels.candle_archive as candle_archive
 
 
+
+# На сколько дней вперёд после конца периода нужны свечи для честного исхода
+# сделки (compute_trade_outcome идёт вперёд от входа на MAX_HOLD_DAYS).
+FORWARD_DAYS = BounceWatcher.CONFIG.get("MAX_HOLD_DAYS", 14)
 
 SIM_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
 LAST_RUN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_run.json")
@@ -86,26 +89,23 @@ def _reset_sim_log(coin):
         print(f"⚠️ [BOUNCE SIM] Не удалось очистить лог {coin}: {e}")
 
 
-def _candles_df(symbol, top_up=True):
-    """Вся доступная 15m-история из candle_store (та же база, что у дашборда
-    и боевого watcher_plan.py) — никакого похода на биржу за свечами.
+def _candles_df(symbol, start_ts, end_ts, top_up=True, forward_days=FORWARD_DAYS):
+    """15m-свечи периода [start_ts, end_ts] из АРХИВА симулятора
+    (candle_archive, база sim_candles.db) — не из общей базы дашборда/бота.
+    В окно входят запас назад (7 суток) и запас вперёд (forward_days — для
+    честного исхода сделок в конце периода), см. candle_archive.sim_window.
 
-    top_up=True (по умолчанию, как и раньше) — перед чтением подтягивает
-    самые свежие свечи с биржи (candle_store.top_up_tail), нужно для
-    одиночного ручного прогона, где период часто доходит до "сейчас".
+    top_up=True — перед чтением докачивает с биржи недостающее (одиночный
+    ручной прогон). top_up=False — только читает то, что уже лежит в архиве:
+    для bulk-прогона, где докачка уже сделана в главном процессе до раздачи
+    монет воркерам (см. _ensure_archive_for_coins).
 
-    top_up=False — читает ТОЛЬКО то, что уже лежит локально, ни одного
-    сетевого похода. Для bulk-прогона по списку монет: период всегда в
-    прошлом (историческая дата "до"), а последовательная докачка по
-    каждой из десятков монет была бы чистыми лишними секундами без
-    какой-либо пользы для результата."""
-    if candle_store is None:
-        raise RuntimeError("candle_store недоступен")
-    if top_up and candle_store.has_data(symbol, "15m"):
-        candle_store.top_up_tail(exchange, symbol, "15m")
-    candles = candle_store.get_candles(symbol, "15m")
+    start_ts/end_ts — pandas.Timestamp, tz-aware (UTC)."""
+    if top_up:
+        candle_archive.ensure_for_sim(exchange, symbol, start_ts, end_ts, forward_days)
+    candles = candle_archive.get_sim_candles(symbol, "15m", start_ts, end_ts, forward_days)
     if not candles:
-        raise RuntimeError(f"Нет локальной 15m-истории для {symbol} — монета ещё не в candle_store")
+        raise RuntimeError(f"Нет 15m-свечей {symbol} в архиве симулятора за этот период")
 
     df = pd.DataFrame(candles)
     df["timestamp"] = pd.to_datetime(df["time"], unit="s", utc=True)
@@ -138,19 +138,45 @@ def _episode(watcher, level_id, coin):
 # копией (см. докстринг outcome.py). Алиас оставлен под старым именем
 # (было "_compute_trade_outcome") — в этом файле больше ничего не менял,
 # только тело функции переехало.
-from backend.modules.cryptano.simulator.outcome import compute_trade_outcome as _compute_trade_outcome, make_ema_dist_fn, load_candles_4h
+from backend.modules.cryptano.simulator.outcome import compute_trade_outcome as _compute_trade_outcome, make_ema_dist_fn
+from backend.modules.cryptano.levels.level_filter import LevelFilter, _num
+
+
+def _sim_hold_days(sim_cfg):
+    """MAX_HOLD_DAYS для прогона: свои из sim_cfg (режим Sim) или боевые (Watcher)."""
+    if sim_cfg:
+        v = _num(sim_cfg.get("max_hold_days"))
+        if v is not None and v > 0:
+            return int(v)
+    return BounceWatcher.CONFIG.get("MAX_HOLD_DAYS", 14)
+
+
+def _settings_snapshot(sim_cfg):
+    """Какие настройки были у прогона — кладётся в результат, UI показывает их строкой."""
+    if not sim_cfg:
+        return {"mode": "watcher"}
+    return {
+        "mode": "sim",
+        "tp": sim_cfg.get("tp"), "sl": sim_cfg.get("sl"),
+        "short_min": sim_cfg.get("short_min"), "long_max": sim_cfg.get("long_max"),
+        "max_hold_days": _sim_hold_days(sim_cfg),
+    }
 
 
 def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, save_last_run=True,
-                           allow_long=True, allow_short=True):
+                           allow_long=True, allow_short=True, sim_cfg=None):
     """
+    sim_cfg: None — режим Watcher (всё как в бою: TP/SL/пороги EMA из боевых
+        config.json и coin_settings.json). Словарь {tp, sl, short_min, long_max,
+        max_hold_days} — режим Sim: свои общие настройки симулятора (по монетам
+        не бывает), боевые файлы не читаются и не меняются.
     coin: тикер, напр. 'BTC'
     start_time_str: 'YYYY-MM-DD' или 'YYYY-MM-DD HH:MM' (UTC) — начало реплея
     end_time_str: конец реплея, по умолчанию — самая свежая доступная свеча
-    top_up: докачивать ли свежие свечи перед прогоном (см. _candles_df) —
-        False используется bulk-прогоном (run_bulk_bounce_simulation), где
-        период исторический и докачка "до сейчас" не нужна ни одной из
-        десятков монет по очереди.
+    top_up: докачивать ли недостающие свечи в архив симулятора перед
+        прогоном (см. _candles_df) — False используется bulk-прогоном
+        (run_bulk_bounce_simulation): там докачка уже сделана в главном
+        процессе до раздачи монет воркерам.
     save_last_run: сохранять ли результат в LAST_RUN_FILE (для восстановления
         одиночной страницы симулятора после F5) — False для bulk, чтобы
         цикл по списку монет не затирал этот файл результатом случайной
@@ -175,25 +201,38 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, 
     if not symbol:
         raise ValueError(f"Монета {coin} не найдена на бирже")
 
-    df_full = _candles_df(symbol, top_up=top_up)
-
     start_ts = pd.Timestamp(start_time_str, tz="UTC")
+    data_end_ts = pd.Timestamp(end_time_str, tz="UTC") if end_time_str else pd.Timestamp.now(tz="UTC")
+    hold_days = _sim_hold_days(sim_cfg)
+    fwd_days = max(FORWARD_DAYS, hold_days)
+    df_full = _candles_df(symbol, start_ts, data_end_ts, top_up=top_up, forward_days=fwd_days)
+
     end_ts = pd.Timestamp(end_time_str, tz="UTC") if end_time_str else df_full.index[-1]
     replay_df = df_full[(df_full.index >= start_ts) & (df_full.index <= end_ts)]
     if replay_df.empty:
         raise ValueError(f"Нет свечей в диапазоне {start_time_str} .. {end_time_str or 'сейчас'} для {coin}")
 
     atr_series = calculate_atr(df_full)
-    # EMA200(4h): глубокая история берётся из 4h-свечей хранилища (как линия на графике), а не из 15m
-    ema_dist_fn = make_ema_dist_fn(df_full, candles_4h=load_candles_4h(candle_store, symbol))
+    # EMA200(4h): 4h-свечи из архива симулятора (запас 100 суток назад от старта), а не из 15m
+    ema_dist_fn = make_ema_dist_fn(
+        df_full, candles_4h=candle_archive.get_sim_candles(symbol, "4h", start_ts, data_end_ts, fwd_days),
+    )
 
     # Свой, полностью изолированный менеджер — ничего общего с боевым
     # bounce_mgr (модуль modules.cryptano.live_scan), ничего не пишет в
     # боевые jsonbank/*.json. Своя папка логов, не bounce_logs/.
     os.makedirs(SIM_LOG_DIR, exist_ok=True)
     _reset_sim_log(coin)  # новый прогон — старый лог этой монеты не тащим
-    bounce_mgr = BounceManager(BounceParent(), log_dir_override=SIM_LOG_DIR)
-    bounce_mgr.set_ema_dist_fn(coin, ema_dist_fn)  # EMA-фильтр рождения вотчера (см. BounceManager.CONFIG)
+    bounce_mgr = BounceManager(log_dir_override=SIM_LOG_DIR)
+    bounce_mgr.set_ema_dist_fn(coin, ema_dist_fn)  # EMA для отчёта (ema_dist_birth)
+    # Фильтр уровней по EMA (levels/level_filter.py) — те же пороги из config.json,
+    # что и в бою: общие + свои у монеты.
+    if sim_cfg:
+        # Режим Sim: пороги — свои общие (None = без фильтра), по монетам не бывает.
+        level_filter = LevelFilter(coin, ema_dist_fn,
+                                   thresholds=(_num(sim_cfg.get("short_min")), _num(sim_cfg.get("long_max"))))
+    else:
+        level_filter = LevelFilter(coin, ema_dist_fn)
 
     messages = []
     trades = []
@@ -234,6 +273,7 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, 
         else:
             supports, resistances = [], []
 
+        supports, resistances = level_filter.apply(ts, supports, resistances)
         orders, _draw_events = bounce_mgr.process_candle(
             c_low, c_high, c_close, supports, resistances, df_slice,
             allow_long=allow_long, allow_short=allow_short, c_atr=c_atr, coin=coin,
@@ -253,6 +293,14 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, 
             d = order["decision"]
             tt = order["trade_type"]
             entry, sl, tp = d.get("entry_price", 0.0), d.get("sl", 0.0), d.get("tp", 0.0)
+            if sim_cfg and entry:
+                # Режим Sim: TP/SL от цены входа по СВОИМ процентам симулятора
+                # (вотчер посчитал их по боевым — здесь пересчитываем).
+                _tp, _sl = _num(sim_cfg.get("tp")), _num(sim_cfg.get("sl"))
+                if _tp is not None:
+                    tp = entry * (1 + _tp / 100.0) if tt == "LONG" else entry * (1 - _tp / 100.0)
+                if _sl is not None:
+                    sl = entry * (1 - _sl / 100.0) if tt == "LONG" else entry * (1 + _sl / 100.0)
             rr = ((tp - entry) / (entry - sl)) if tt == "LONG" and entry > sl else \
                  ((entry - tp) / (sl - entry)) if tt == "SHORT" and sl > entry else 0
 
@@ -261,8 +309,7 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, 
             source_label = f"BOUNCE_{tt}" + (f"_{mode}" if tt == "SHORT" and mode else "")
 
             outcome = _compute_trade_outcome(
-                ts, entry, tp, tt, df_full,
-                BounceWatcher.CONFIG.get("MAX_HOLD_DAYS", 14),
+                ts, entry, tp, tt, df_full, hold_days,
             )
 
             trades.append({
@@ -279,7 +326,7 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, 
                 "level_min": order.get("level", {}).get("min"),
                 "level_max": order.get("level", {}).get("max"),
                 "level_type": d.get("level_type", ""),
-                "level_reaction_count": order.get("level", {}).get("reaction_count"),
+                "level_reaction_count": getattr(bounce_mgr._watchers.get(level_id_val), "level_reaction_count", None),
                 "volume": d.get("volume", float(row["volume"])),
                 "volume_mult": d.get("volume_mult"),
                 "reason": d.get("reason", ""),
@@ -335,6 +382,7 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, 
         "levels": levels_out,
         "trades": trades,
         "messages": messages,
+        "settings": _settings_snapshot(sim_cfg),
     }
 
     # Переживает обновление страницы — при открытии /simulator фронт сам
@@ -480,25 +528,31 @@ def get_bulk_progress():
     return data if isinstance(data, dict) and data else {}
 
 
-def _needs_topup(symbol, max_age_seconds=24 * 3600):
-    """True, если локальные 15m-свечи этой монеты либо отсутствуют, либо
-    отстают от реальности больше чем на max_age_seconds — тогда стоит один
-    раз донести сеть за свежим хвостом. Иначе можно честно читать
-    локальные данные без похода в сеть — для большинства активно
-    отслеживаемых ботом монет они и так свежие (бот сам их топит по ходу
-    работы), а проверка сама по себе ничего не качает — чистый локальный
-    SQLite-запрос (см. candle_store.last_candle_age_seconds).
+def _ensure_archive_for_coins(coins, markets, start_time_str, end_time_str, forward_days, progress_cb):
+    """Докачивает архив симулятора (15m + 4h) по списку монет на период —
+    ПОСЛЕДОВАТЕЛЬНО, по одной монете, в ГЛАВНОМ процессе, до раздачи монет
+    воркерам: докачка пишет в SQLite и ходит на биржу, ей нужна очередь, а не
+    параллельные процессы. Воркеры потом только читают готовое.
 
-    Важно НЕ путать с тем, почему сделка вообще может остаться "⏳" —
-    даже при полностью свежих данных сделка, открытая позже чем
-    (сейчас − MAX_HOLD_DAYS), физически не может быть разрешена: дедлайн
-    ещё не наступил в реальности, это не пробел в данных. Эта проверка
-    закрывает только случай "дедлайн давно прошёл в календаре, а
-    локальная история этого не знает", не пытается предсказывать будущее."""
-    if candle_store is None:
-        return False
-    age = candle_store.last_candle_age_seconds(symbol, "15m")
-    return age is None or age > max_age_seconds
+    progress_cb(done, total, label) — запись прогресса (у BOUNCE и V-семьи
+    свои файлы прогресса). Возвращает {coin: текст ошибки} для монет, по
+    которым докачать не удалось — их считать нельзя (данных нет), они
+    попадают в отчёт как error."""
+    total = len(coins)
+    start_ts = pd.Timestamp(start_time_str, tz="UTC")
+    data_end_ts = pd.Timestamp(end_time_str, tz="UTC") if end_time_str else pd.Timestamp.now(tz="UTC")
+    failed = {}
+    for i, coin in enumerate(coins, 1):
+        progress_cb(i - 1, total, f"качаю свечи {coin}")
+        symbol = resolve_symbol(coin, markets)
+        if not symbol:
+            failed[coin] = f"Монета {coin} не найдена на бирже"
+            continue
+        try:
+            candle_archive.ensure_for_sim(exchange, symbol, start_ts, data_end_ts, forward_days)
+        except Exception as e:
+            failed[coin] = f"Нет данных: {e}"
+    return failed
 
 
 def _simulate_one_coin_worker(task):
@@ -516,12 +570,12 @@ def _simulate_one_coin_worker(task):
     Возвращает (coin, payload, error) — сама функция ничего не пишет
     (ни прогресс, ни файлы): запись — забота главного процесса, чтобы не
     ловить гонку записи от нескольких процессов разом в один файл."""
-    coin, start_time_str, end_time_str, top_up, allow_long, allow_short = task
+    coin, start_time_str, end_time_str, top_up, allow_long, allow_short, sim_cfg = task
     try:
         sim_result = run_bounce_simulation(
             coin, start_time_str, end_time_str,
             top_up=top_up, save_last_run=False,
-            allow_long=allow_long, allow_short=allow_short,
+            allow_long=allow_long, allow_short=allow_short, sim_cfg=sim_cfg,
         )
         payload = {"trades": sim_result.get("trades", []), "history": sim_result.get("history", [])}
         return coin, payload, None
@@ -529,7 +583,8 @@ def _simulate_one_coin_worker(task):
         return coin, None, str(e)
 
 
-def run_bulk_bounce_simulation(start_time_str, end_time_str=None, allow_long=True, allow_short=True, coin_filter=None):
+def run_bulk_bounce_simulation(start_time_str, end_time_str=None, allow_long=True, allow_short=True, coin_filter=None, sim_cfg=None,
+                              blocked=None):
     """Гоняет run_bounce_simulation по КАЖДОЙ монете из list_coins_with_levels
     за период, без перезаписи LAST_RUN_FILE одиночного симулятора
     (save_last_run=False — свой файл, LAST_ALL_RUN_FILE).
@@ -547,17 +602,12 @@ def run_bulk_bounce_simulation(start_time_str, end_time_str=None, allow_long=Tru
     Каждая монета полностью независима от остальных (свой вход, свой
     выход, никакого общего состояния) — идеальный случай для этого.
 
-    Сетевая докачка НЕ отключена наглухо — включается точечно, только для
-    монет, чья локальная история реально отстала (см. _needs_topup).
-    Без этого сделки, чей 14-дневный дедлайн уже прошёл в календаре, но
-    локальные свечи этого коин ещё не знают, честно повисали бы статусом
-    "⏳" навсегда — не потому что дедлайн не наступил, а просто потому что
-    у нас не было данных это проверить. Для большинства монет (бот их и
-    так топит по ходу работы) эта проверка — локальный SQLite-запрос и
-    ничего не качает, так что общая скорость bulk от этого почти не
-    страдает, а результат честный. Сам _needs_topup (и resolve_symbol)
-    считается ЗАРАНЕЕ, в главном процессе, до раздачи задач по воркерам —
-    дешевле сделать это один раз тут, чем тащить в каждый процесс.
+    Свечи берутся из АРХИВА симулятора (candle_archive, sim_candles.db).
+    Недостающее докачивается автоматически (_ensure_archive_for_coins) —
+    последовательно, в главном процессе, до раздачи монет воркерам; уже
+    скачанное повторно не качается. Период с запасом: 7 суток назад (прогрев)
+    и FORWARD_DAYS вперёд (честный исход сделок в конце периода, иначе они
+    повисли бы статусом "⏳" не из-за дедлайна, а из-за нехватки данных).
 
     Одна упавшая монета не должна рушить весь batch — ошибка ловится
     поштучно (внутри _simulate_one_coin_worker) и попадает в
@@ -586,6 +636,9 @@ def run_bulk_bounce_simulation(start_time_str, end_time_str=None, allow_long=Tru
     coins, coverage = list_coins_with_levels(start_time_str, end_time_str)
     if coin_filter is not None:
         coins = [c for c in coins if c in coin_filter]
+    if blocked:
+        # Заблокированные в симуляторе монеты в ALL не участвуют.
+        coins = [c for c in coins if c not in blocked]
     total = len(coins)
     markets = load_markets_cached(exchange)
 
@@ -596,18 +649,23 @@ def run_bulk_bounce_simulation(start_time_str, end_time_str=None, allow_long=Tru
 
     _write_bulk_progress(0, total, None, finished=False)
 
-    # Готовим ВСЕ задания заранее (top_up-решение требует candle_store/
-    # резолва символа — дёшево и один раз, в главном процессе), потом
-    # раздаём их по воркерам. Порядок завершения не совпадает с порядком
-    # отправки (кто первый досчитал, тот первый и вернулся) — это нормально,
-    # прогресс просто считает готовые штуки, не заботится о порядке.
-    tasks = []
-    for coin in coins:
-        symbol = resolve_symbol(coin, markets)
-        top_up = _needs_topup(symbol) if symbol else False
-        tasks.append((coin, start_time_str, end_time_str, top_up, allow_long, allow_short))
+    # Сначала докачиваем архив свечей (в главном процессе, по одной монете),
+    # потом раздаём монеты воркерам — они только читают. Монеты, по которым
+    # докачать не удалось, не считаем (нет данных) — идут в отчёт как error.
+    # Порядок завершения воркеров не совпадает с порядком отправки (кто
+    # первый досчитал, тот первый и вернулся) — это нормально, прогресс
+    # просто считает готовые штуки, не заботится о порядке.
+    failed = _ensure_archive_for_coins(
+        coins, markets, start_time_str, end_time_str, max(FORWARD_DAYS, _sim_hold_days(sim_cfg)),
+        lambda d, t, label: _write_bulk_progress(d, t, label, finished=False),
+    )
+    for coin, err in failed.items():
+        results[coin] = {"error": err}
+    tasks = [(coin, start_time_str, end_time_str, False, allow_long, allow_short, sim_cfg)
+             for coin in coins if coin not in failed]
 
-    done = 0
+    done = len(failed)
+    _write_bulk_progress(done, total, None, finished=False)
     with ProcessPoolExecutor(max_workers=BULK_MAX_WORKERS) as executor:
         future_to_coin = {executor.submit(_simulate_one_coin_worker, task): task[0] for task in tasks}
         for future in as_completed(future_to_coin):
@@ -650,6 +708,7 @@ def run_bulk_bounce_simulation(start_time_str, end_time_str=None, allow_long=Tru
         "results": results,
         "trades": all_trades,
         "history_by_coin": history_by_coin,
+        "settings": _settings_snapshot(sim_cfg),
     }
 
     try:
@@ -665,3 +724,43 @@ def get_last_all_run():
     пересекается с get_last_run() одиночного симулятора."""
     data = load_json(LAST_ALL_RUN_FILE, default={})
     return data if isinstance(data, dict) and data else None
+
+
+def prefetch_archive(start_time_str, end_time_str=None):
+    """Заранее докачивает архив симулятора (15m + 4h) за период — без сайта.
+    Монеты те же, что у bulk-прогона (list_coins_with_levels): значит, для
+    периода уже должен быть посчитан файл уровней levels_timeline_*.json
+    (precalc_for_bot.py). Уже скачанное повторно не качается. Запуск из
+    корня master_bot (cmd):
+
+        python -m backend.modules.cryptano.simulator.bounce_simulate 2026-07-01 2026-07-31
+
+    Второй аргумент (конец) можно не указывать — тогда до сегодняшнего дня.
+    Возвращает {coin: текст ошибки} по монетам, которые докачать не удалось."""
+    coins, _ = list_coins_with_levels(start_time_str, end_time_str)
+    if not coins:
+        print("❌ За этот период нет монет с уровнями. Сначала посчитай уровни "
+              "(precalc_for_bot.py, MONTHS_TO_CALC) на этот период.")
+        return {}
+    markets = load_markets_cached(exchange)
+    print(f"📦 Период {start_time_str} .. {end_time_str or 'сейчас'}: монет {len(coins)}. "
+          f"Качаю недостающие свечи (15m + 4h) в архив симулятора...")
+    failed = _ensure_archive_for_coins(
+        coins, markets, start_time_str, end_time_str, FORWARD_DAYS,
+        lambda d, t, label: print(f"[{d + 1}/{t}] {label}"),
+    )
+    if failed:
+        print(f"⚠️ Не удалось докачать {len(failed)} монет (в bulk они попадут в отчёт как error):")
+        for coin, err in failed.items():
+            print(f"   {coin}: {err}")
+    print(f"✅ Готово: {len(coins) - len(failed)} из {len(coins)} монет в архиве.")
+    return failed
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) < 2:
+        print("Использование: python -m backend.modules.cryptano.simulator.bounce_simulate "
+              "ГГГГ-ММ-ДД [ГГГГ-ММ-ДД конец]")
+        sys.exit(1)
+    prefetch_archive(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)

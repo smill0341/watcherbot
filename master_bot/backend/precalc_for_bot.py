@@ -42,10 +42,10 @@ get_top_symbols() сама по себе никуда не делась (бой 
 старые уровни из прежних прогонов в него не попадают. Слияние с существующим файлом включается
 константой MERGE_WITH_EXISTING = True (нужно, только если гонять whitelist и greylist отдельными прогонами).
 
-Ничего не дублирует: build_levels берётся из levels/levels_builder.py (новый метод).
-ПАСПОРТА здесь НЕТ: границы зоны считаются по свече рождения уровня и между снимками не меняются
-(см. levels_builder.py), поэтому каждый снимок — это просто свежий build_levels. Этот файл только
-качает историю и гоняет даты, как test/precalc.py.
+Ничего не дублирует: build_levels берётся из levels/levels_builder.py.
+Снимки считаются СТРОГО ПОДРЯД по времени, и для каждой монеты между снимками передаётся реестр зон
+(registry): зона, один раз выданная, стоит с теми же границами, пока её не пробьют закрытием. Реестр
+начинается пустым с первого снимка первого периода и живёт только внутри одного прогона.
 
 ВАЖНО: запускать из корня master_bot/ (python precalc_for_bot.py) — только
 читает/качает данные и пишет в database/, ничего в bounce_state.json/
@@ -61,8 +61,9 @@ import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-if CURRENT_DIR not in sys.path:
-    sys.path.insert(0, CURRENT_DIR)
+ROOT_DIR = os.path.dirname(CURRENT_DIR)  # master_bot — отсюда виден пакет backend
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
 from backend.modules.cryptano.utils.bybit import exchange, resolve_symbol, KNOWN_TICKER_ALIASES
 from backend.modules.cryptano.utils.storage import load_json
@@ -75,7 +76,6 @@ from backend.modules.cryptano.utils.paths import DATABASE_DIR
 # RAYDIUM: правили порог в одном месте, он не подхватывался в другом).
 # GREYLIST_LEVELS_FILE — те же ключи (тикеры), что видны в "🔭 Серый список".
 from backend.modules.cryptano.levels.swing_hunter import (
-    _reconcile_coin_levels,  # в precalc НЕ используется; оставлен, чтобы работали levels_ab.py / passport_ab.py
     _safe_fetch_ohlcv,  # тот же "сначала база, потом биржа", что уже стоит в бою
     get_battle_symbols,
     GREYLIST_LEVELS_FILE,
@@ -95,7 +95,7 @@ CACHE_BUILD_THREADS = 4
 # --- ДИАПАЗОН ДАТ ДЛЯ ПЕРЕСЧЁТА ---
 # Можно указать несколько периодов подряд, как в test/precalc.py.
 MONTHS_TO_CALC = [
-    {"start": "2026-09-01", "end": "2026-09-30"},
+    {"start": "2026-08-01", "end": "2026-08-31"},
 ]
 
 
@@ -227,10 +227,21 @@ def build_full_history_cache(valid_symbols, extra_candles=1500):
     return cache
 
 
-def _slice_by_time(df, target_ts_ms, tail_n):
+_TF_MS = {"4h": 4 * 3600 * 1000, "1d": 24 * 3600 * 1000, "1W": 7 * 24 * 3600 * 1000}
+
+
+def _slice_by_time(df, target_ts_ms, tail_n, tf):
+    """Только свечи, ЗАКРЫТЫЕ к моменту снимка: время открытия + длина свечи <= target.
+    (timestamp свечи — время её ОТКРЫТИЯ; раньше бралось timestamp <= target, и в снимок
+    попадала целиком ещё не закрытая свеча — день/неделя/месяц — с закрытием из будущего.)"""
     if df is None:
         return None
-    sliced = df[df['timestamp'] <= target_ts_ms]
+    if tf == "1M":
+        opened = pd.to_datetime(df['timestamp'], unit='ms')
+        close_ms = (opened + pd.offsets.MonthBegin(1)).astype('datetime64[ms]').astype('int64')
+    else:
+        close_ms = df['timestamp'] + _TF_MS[tf]
+    sliced = df[close_ms <= target_ts_ms]
     if sliced.empty:
         return None
     return sliced.tail(tail_n).reset_index(drop=True)
@@ -241,23 +252,27 @@ def _slice_by_time(df, target_ts_ms, tail_n):
 MERGE_WITH_EXISTING = False
 
 
-def build_snapshot_for_date(target_time_str, cache):
-    """Один снимок на одну дату: свежий build_levels по каждой монете, без паспорта."""
+def build_snapshot_for_date(target_time_str, cache, registries):
+    """Один снимок на одну дату: build_levels по каждой монете с её реестром (registries[coin] обновляется)."""
     dt_obj = datetime.datetime.strptime(target_time_str, "%Y-%m-%d %H:%M:%S")
-    target_ts_ms = int(dt_obj.timestamp() * 1000)
+    # время снимка — UTC (как свечи и симулятор); .timestamp() у наивной даты брал местное время ПК
+    target_ts_ms = int(dt_obj.replace(tzinfo=datetime.timezone.utc).timestamp() * 1000)
+    snap_day = dt_obj.strftime("%Y-%m-%d")
 
     macro_base = {}
     for coin, tf_data in cache.items():
         try:
-            df_1M = _slice_by_time(tf_data["1M"], target_ts_ms, 60)
-            df_1W = _slice_by_time(tf_data["1W"], target_ts_ms, 150)
-            df_1d = _slice_by_time(tf_data["1d"], target_ts_ms, 365)
-            df_4h = _slice_by_time(tf_data["4h"], target_ts_ms, 200)
+            df_1M = _slice_by_time(tf_data["1M"], target_ts_ms, 60, "1M")
+            df_1W = _slice_by_time(tf_data["1W"], target_ts_ms, 150, "1W")
+            df_1d = _slice_by_time(tf_data["1d"], target_ts_ms, 365, "1d")
+            df_4h = _slice_by_time(tf_data["4h"], target_ts_ms, 200, "4h")
 
             if df_1d is None or len(df_1d) < 50:
                 continue
 
-            levels = build_levels(df_1M, df_1W, df_1d, df_4h, coin)
+            levels = build_levels(df_1M, df_1W, df_1d, df_4h, coin,
+                                  registry=registries.get(coin), snap_day=snap_day, return_registry=True)
+            registries[coin] = levels["registry"]
             has_any = (levels["supports"] or levels["resistances"])
             if has_any:
                 macro_base[coin] = {
@@ -274,7 +289,7 @@ def build_snapshot_for_date(target_time_str, cache):
     return macro_base
 
 
-def build_timeline_for_month(start_date, end_date, cache):
+def build_timeline_for_month(start_date, end_date, cache, registries):
     month_label = pd.to_datetime(start_date).strftime("%Y_%m")
     dates = pd.date_range(start=start_date, end=end_date, freq='12h')
 
@@ -296,7 +311,7 @@ def build_timeline_for_month(start_date, end_date, cache):
     for dt in dates:
         time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
         print(f"⏳ Сбор уровней на момент: {time_str}")
-        levels_dict = build_snapshot_for_date(time_str, cache)
+        levels_dict = build_snapshot_for_date(time_str, cache, registries)
         # СЛИЯНИЕ, не замена: valid_symbols фиксируется ОДИН раз на весь прогон
         # (по объёму ПРЯМО СЕЙЧАС, для выбранного COIN_SOURCE) и одинаков для
         # всех дат обоих месяцев — монета, которая сегодня не прошла отбор
@@ -332,10 +347,11 @@ if __name__ == "__main__":
 
     cache = build_full_history_cache(valid_symbols, extra_candles=extra_candles)
 
-    for period in MONTHS_TO_CALC:
+    registries = {}  # реестр зон по монетам, переходит из снимка в снимок и из периода в период
+    for period in sorted(MONTHS_TO_CALC, key=lambda p: p["start"]):
         print("==============================================")
         print(f"📅 ОБРАБОТКА ПЕРИОДА: {period['start']} -> {period['end']}")
         print("==============================================")
-        build_timeline_for_month(period['start'], period['end'], cache)
+        build_timeline_for_month(period['start'], period['end'], cache, registries)
 
     print("🎉 ГОТОВО! Симулятор (simulate_engine.py / bounce_simulate.py) увидит пересчитанную историю.")

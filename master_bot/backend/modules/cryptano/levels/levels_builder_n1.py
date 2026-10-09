@@ -1,57 +1,159 @@
 """
-levels_builder.py — расчёт уровней (зон поддержки/сопротивления).
-Не знает про биржу и расписание: принимает готовые DataFrame, возвращает зоны.
+levels_builder_new.py  (НОВАЯ сборка уровней; старый levels_builder.py не тронут)
+==================
+Чистый модуль расчёта уровней. Не знает про биржу и расписание.
+Принимает готовые DataFrame (1D и 4H), возвращает словарь зон,
+АКТУАЛЬНЫХ на момент current_idx (на момент скана).
 
-Точки (сырые уровни):
-    MACRO-свинги 1M/1W, PMH/PML (месяц), PMC (закрытие месяца), PWH/PWL (неделя),
-    пивоты 1d (k=5), пивоты 4h (k=6). Зона точки — от тени до тела свечи рождения
-    (с зазором), у PMC — цена +- LINE_HALF_ATR*ATR. Точка мертва после дневного закрытия
-    за уровнем. Дистанция: не дальше ATR(1W)*ATR_DISTANCE_MULTIPLIER от цены.
+ИЕРАРХИЯ БАЗОВЫХ БАЛЛОВ (откуда пришёл уровень):
+    PMH/PML (месяц, закрытый)        -> 5
+    PWH/PWL (неделя, закрытая)       -> 5
+    find_peaks + lookahead (1D)      -> 4
+    4H POC (volume profile)          -> 3 самостоятельно, либо +1 confluence-бонус к существующей зоне
+    PDH/PDL (день, закрытый)         -> слой не используется в build_levels (мёртвый код)
+    Месяц + неделя сошлись в одной зоне -> пол 9 (см. MIN_SCORE_MONTH_WEEK_CONFLUENCE)
 
-Сборка (build_levels) — через РЕЕСТР зон:
-    зона, однажды выданная, стоит с теми же границами, пока её не пробьют закрытием;
-    новая точка, пересекающаяся со стоящей зоной, поглощается ей (только в название);
-    иначе — новая зона со своей геометрией. Без коэффициентов и допусков.
-    POC — только бонус к score и метка. На сторону MAX_PER_SIDE ближайших, фолбэк до 2.
+    Значения PMH/PML и PWH/PWL подняты с 0 по факту бэктестов: календарные
+    уровни без find_peaks/POC confluence стабильно показывали положительный
+    результат несколько месяцев подряд, тогда как "самодоказанный" POC —
+    гораздо более волатильно. См. обсуждение в истории проекта.
+
+МОДИФИКАТОРЫ SCORE:
+    - Reaction count (сколько раз цена касалась зоны и отбивалась без закрытия
+      за пределами) -> +0.5 за каждый эпизод, максимум +2
+    - Объём на формирующей свече (если объём > 2x среднего за период) -> +0.5
+
+MITIGATED:
+    Если цена закрылась за пределами зоны после её формирования (зона пробита
+    насквозь) - зона считается мёртвой и НЕ ПОПАДАЕТ в финальный результат.
+    Без этого подтверждения слом структуры (CHoCH) не считается доказанным,
+    поэтому role-reversal (старый support становится resistance) здесь не
+    делается - это отдельная задача более высокого уровня (watcher), не этого
+    модуля. См. NOTES_role_reversal.md.
+
+ДИСТАНЦИЯ:
+    Вместо жёсткого процента от цены используется динамический порог:
+    max_distance = ATR(1W) * ATR_DISTANCE_MULTIPLIER.
+    Волатильные монеты сами расширяют себе радар, спокойные - сужают.
+    Это фильтр релевантности (зона физически достижима в обозримые дни),
+    а не "архив" - архива в этой системе нет, выводятся только актуальные
+    на момент current_idx уровни.
+
+Merge пересекающихся зон (merge_overlapping_zones): база самого сильного
+источника + бонус за каждое доп. наложение, с потолком MAX_MERGE_BONUS.
 """
 
-import copy
 import pandas as pd
-import numpy as np
 from backend.modules.cryptano.utils.indicators import calculate_atr
+import numpy as np
+from scipy.signal import find_peaks
 
 # =========================================================
-# ВЕСА ИСТОЧНИКОВ (подобраны по бэктестам: календарные уровни стабильнее POC)
+# БАЗОВЫЕ ВЕСА ИСТОЧНИКОВ
 # =========================================================
-SCORE_FIND_PEAKS = 4.0   # пивоты 1d (метка 1d_extreme_peak)
+# Изначальная идея была: доказанный рынком сигнал (find_peaks/POC) > календарная
+# метка (PWH/PMH). На практике за несколько месяцев бэктеста вышло НАОБОРОТ —
+# одиночные PWH/PML стабильно прибыльны, а POC гораздо более волатилен
+# (то сильно лучше, то сильно хуже месяц от месяца). Веса ниже подогнаны под
+# фактический результат, а не под изначальную теорию — это сознательный выбор.
+SCORE_FIND_PEAKS = 4.0
 SCORE_POC = 3.0
-SCORE_PWH_PWL = 5.0
-SCORE_PMH_PML = 5.0
+SCORE_PWH_PWL = 5.0  # Раньше было 0 (без confluence = мусор) — по факту бэктестов
+                       # одиночные PWL стабильно давали положительный результат
+                       # каждый месяц, поднято до 5, чтобы не отсеивались фильтром MIN_SCORE
+SCORE_PMH_PML = 5.0  # См. комментарий к SCORE_PWH_PWL — та же причина
+SCORE_PDH_PDL = 0.0  # Без confluence — календарная метка = мусор (слой не используется в build_levels)
+# PMC (Prior Month Close) — граница между месяцами (close месяца N = open
+# месяца N+1, свечи идут встык). Тот же тип источника, что PMH/PML (календарная
+# метка старшего масштаба), поэтому тот же вес — см. обсуждение проекта и
+# test_body_shelves.py: пробовали сначала брать весь размах ТЕЛА месяца
+# (open..close) как зону — ширина скакала от долей % до 10% цены (это просто
+# то, насколько месяц сдвинулся, а не сила уровня), непригодно как триггер.
+# Вместо этого берём саму границу (close) и оборачиваем в стандартный
+# ATR-буфер, как и все остальные уровни здесь — тогда это обычный календарный
+# уровень, ничем принципиально не отличается от PMH/PML.
 SCORE_PMC = 5.0
-POC_BONUS = 1.0          # бонус, если POC совпал с зоной
+CONFLUENCE_BONUS = 2.0  # бонус за совпадение с find_peaks или POC
+POC_BONUS = 1.0  # дополнительный бонус если POC совпал с существующей зоной
+# Пол score для зон, где сошлись календарные уровни РАЗНЫХ таймфреймов
+# (месяц + неделя, напр. 1M_low_PML + 1W_low_PWL) — временная мера, до
+# полного пересмотра скоринга. См. merge_overlapping_zones().
+MIN_SCORE_MONTH_WEEK_CONFLUENCE = 9.0
 
-# Потолок ширины MACRO-зоны: не больше K дневных ATR (одна волатильная месячная свеча давала зону 58-125% цены).
+# Допуск для слияния БЛИЗКИХ (не обязательно физически пересекающихся)
+# зон СРЕДИ MACRO-зон (1M_MACRO/1W_MACRO). MACRO-зоны искусственно узкие
+# (см. _extract_macro_swings — 1.5% от цены, а не реальный ATR месяца),
+# поэтому два РАЗНЫХ исторических свинга, оказавшихся близко по цене,
+# физически не пересекаются и остаются двумя записями вместо одной.
+# Проверено на реальных данных (HYPE, июль) через count_levels.py:
+# у regular-зон (find_peaks/PMH/PML/PWH/PWL/POC) за месяц ни разу не
+# нашлось близкой пары — там свой скоринг с confluence-бонусами, трогать
+# не стали. Только для MACRO, где reaction_count всегда 0 (сигнала для
+# выбора "кто сильнее" нет) и score фиксированный — тут безопасно просто
+# СЛИТЬ геометрию (min/max), а не выбирать одну зону.
+MACRO_MERGE_DISTANCE_PCT = 1.0   # было 8.0: склейка MACRO-зон «в 8% друг от друга» давала толстые зоны
+
+# Потолок ширины ОДНОЙ MACRO-зоны: не более, чем MACRO_ATR_CAP_MULTIPLIER
+# дневных ATR(1d) этой монеты (тот же atr_1d, что использует PMH/PML).
+# Раньше ширина = сырой размах "тень-до-тела" одной свечи БЕЗ всякого
+# ограничения - на реальных данных (AERO 2025-10, DASH 2024-12) одна
+# волатильная месячная свеча давала зону 58-125% от цены. Это и была
+# причина: (1) honest-слияние в merge_overlapping_zones "проглатывало"
+# несколько других реальных зон целиком под одну гигантскую, (2) случайные
+# касания костяком зоны с несвязанными историческими уровнями на исчезающе
+# малую величину (см. DASH: 71.8 вплотную к чужой зоне 71.7-78.6).
+# K=3.0 подобран эмпирически на реальных данных (test_macro_atr_cap.py,
+# BTC/ETH/AERO/DASH): не трогает зоны, которые и так уже in-range по своей
+# волатильности, режет только настоящие однокандловые выбросы.
 MACRO_ATR_CAP_MULTIPLIER = 3.0
-# ATR месячной/недельной свечи -> дневной масштаб: делим на корень из числа торговых дней в периоде.
+# Сколько торговых дней в периоде MACRO-свечи: ATR месячной/недельной свечи делим на корень из этого
+# числа, чтобы получить дневной масштаб (зазор/глубина зоны те же, что у остальных слоёв).
 MACRO_ATR_DAYS = {"1M": 21.0, "1W": 5.0}
 
-# Счётчики MACRO-слоёв за пересчёт (сбрасывает и печатает swing_hunter.py).
+# Счётчики MACRO-слоёв за пересчёт (сбрасывает и печатает swing_hunter.py):
+#   *_raw — сколько свингов нашёл слой ДО слияния/фильтров,
+#   1W/1M — сколько итоговых зон содержат уровень этого слоя,
+#   1W_no_data — у скольких монет не пришли недельные свечи вообще.
 MACRO_LAYER_STATS = {'1M_raw': 0, '1W_raw': 0, '1M': 0, '1W': 0, '1W_no_data': 0}
 
-# Окна поиска календарных уровней
-PERIODS_MONTHS_BACK = 3       # PMH/PML — последние 3 закрытых месяца
-PERIODS_WEEKS_BACK = 4        # PWH/PWL — последние 4 закрытых недели
-PERIODS_MONTHS_BACK_PMC = 12  # PMC — граница месяца может быть давней (консолидация у старой границы)
+# find_peaks-слой (lookahead-фильтр - старый алгоритм)
+IMPULSE_ATR_MULTIPLIER = 2.5
+IMPULSE_LOOKAHEAD_DAYS = 10
+FIND_PEAKS_DISTANCE = 15
+FIND_PEAKS_PROMINENCE_MULT = 1.5
+
+# Сколько последних закрытых недель/месяцев/дней проверяем на актуальность
+PERIODS_MONTHS_BACK = 3   # последние 3 закрытых месяца (PMH/PML, по теням)
+PERIODS_WEEKS_BACK = 4     # последние 4 закрытых недели
+PERIODS_DAYS_BACK = 5       # последние 5 закрытых дней (PDH/PDL)
+# PMC — отдельное, БОЛЬШЕЕ окно от PERIODS_MONTHS_BACK выше: PMH/PML ищут
+# экстремум (важна свежесть, дальние тени почти всегда уже отфильтрованы
+# дистанцией), а PMC ищет саму границу месяца рядом с текущей ценой — на
+# консолидации цена может стоять у границы N-месячной давности (см. пример
+# BTC/ZRO в обсуждении проекта, где нужный уровень был на ~9 месяцев назад).
+# max_distance ниже всё равно отсекает то, что физически далеко от цены —
+# это окно только даёт кандидатам ШАНС попасть в фильтр, а не показывает
+# их все подряд.
+PERIODS_MONTHS_BACK_PMC = 12
 
 # Дистанция релевантности: max_distance = ATR(1W) * этот множитель.
+# Заменяет старый жёсткий процент от цены - адаптируется к волатильности монеты.
 ATR_DISTANCE_MULTIPLIER = 2.0
 
-# Объёмный бонус: объём свечи рождения больше среднего в столько раз -> +0.5
+# Порог объёмного бонуса: во сколько раз объём формирующей свечи должен
+# превышать средний объём периода, чтобы получить бонус
 VOLUME_SPIKE_MULTIPLIER = 2.0
+
+# Потолок бонуса score за слияние нескольких источников в одну зону
+MAX_MERGE_BONUS = 3.0
 
 MAJORS = ["BTC", "ETH", "SOL", "BNB"]
 
-# Геометрия зоны и сборка
+# =========================================================
+# НОВАЯ СБОРКА (см. шапку функций ниже). Источники метода: общепринятая практика
+# (pivot high/low, зона от тени до тела свечи, «naked» уровни живут до закрытия за ними,
+# Chung & Bellotti 2021: сила уровня = число отскоков, а не число совпавших слоёв).
+# =========================================================
 LINE_HALF_ATR = 0.25          # линия-уровень (закрытие месяца): зона = цена +- 0.25 ATR
 WICK_GAP_ATR = 0.10           # зазор за тенью (цена не всегда долетает до экстремума)
 WICK_MIN_INWARD_ATR = 0.25    # минимальная глубина зоны от тени внутрь
@@ -59,9 +161,12 @@ WICK_MAX_INWARD_ATR = 1.00    # максимальная глубина зоны
 PIVOT_K_1D = 5                # пивот на дневках: 5 свечей слева и справа ниже/выше
 PIVOT_K_4H = 6                # пивот на 4h: 6 свечей (сутки) слева и справа
 SCORE_PIVOT_4H = 3.5
-MAX_PER_SIDE = 2              # сколько ближайших непробитых зон выдаём на сторону
+MAX_PER_SIDE = 2              # сколько ближайших непробитых зон оставляем на сторону (в методичках: 2-3 зоны, не 15)
+MERGE_MIN_OVERLAP = 0.5       # зоны сливаются, только если пересекаются хотя бы на 50% более узкой
+MERGE_MAX_UNION_FACTOR = 1.5  # и если объединение не шире 1.5 самой широкой из них
 REJECTION_SCORE_STEP = 0.5    # score = база источника + 0.5 за каждый отбой от готовой зоны
 REJECTION_SCORE_CAP = 4
+
 
 
 def _calc_weekly_atr(df_1d, current_idx):
@@ -96,11 +201,52 @@ def _is_mitigated(df_1d, idx, price, is_support, current_idx=None):
         return bool((future_closes > price).any())
 
 
+def _count_reactions(df_1d, idx, price, atr_value, is_support, current_idx=None):
+    """Эпизоды касания зоны price+-0.5ATR, закончившиеся отбоем (без закрытия за дальним краем).
+    Логика прежняя, цикл по numpy вместо iterrows (в десятки раз быстрее)."""
+    if current_idx is None:
+        current_idx = len(df_1d) - 1
+    if idx >= current_idx:
+        return 0
+    zone_half = atr_value * 0.5
+    zmin, zmax = price - zone_half, price + zone_half
+    lo = df_1d['low'].to_numpy(dtype=float)[idx + 1: current_idx + 1]
+    hi = df_1d['high'].to_numpy(dtype=float)[idx + 1: current_idx + 1]
+    cl = df_1d['close'].to_numpy(dtype=float)[idx + 1: current_idx + 1]
+    reactions = 0
+    in_ep = False
+    broke = False
+    for l, h, c in zip(lo, hi, cl):
+        if l <= zmax and h >= zmin:
+            if not in_ep:
+                in_ep, broke = True, False
+            if (is_support and c < zmin) or ((not is_support) and c > zmax):
+                broke = True
+        elif in_ep:
+            if not broke:
+                reactions += 1
+            in_ep = False
+    if in_ep and not broke:
+        reactions += 1
+    return reactions
+
+
 def count_zone_touches(df_1d, zone, is_support, current_idx=None):
-    """Касания итоговой зоны по её границам (min/max), для всех типов уровней.
-    По дневным свечам, эпизодами: несколько дней подряд в зоне = одно касание; засчитывается,
-    только если эпизод закончился отбоем (нет закрытия за дальним краем). Считаем со следующего
-    дня после даты зоны; если дата старше истории — с начала истории.
+    """КАСАНИЯ ИТОГОВОЙ ЗОНЫ — по её реальным границам (min/max), после
+    всех слияний и сжатия, для ВСЕХ типов уровней, включая MACRO.
+
+    Раньше касания считал каждый исходный уровень сам, вокруг своей точки
+    ±0.5 дневного ATR (_count_reactions), а у слитой зоны брался максимум;
+    у MACRO не считались вообще (всегда 0). Реальных касаний самой зоны
+    никто не считал.
+
+    Правило то же, что у _count_reactions: по дневным свечам, "эпизодами" —
+    несколько дней подряд в зоне = одно касание; засчитывается, только если
+    эпизод закончился ОТБОЕМ (ни одного закрытия за дальним краем зоны:
+    для поддержки ниже min, для сопротивления выше max). Считаем со
+    следующего дня после даты зоны (date — дата самого раннего её уровня);
+    если дата старше доступной дневной истории — со начала истории.
+
     Вес (score) этим НЕ пересчитывается — только reaction_count."""
     if current_idx is None:
         current_idx = len(df_1d) - 1
@@ -154,6 +300,17 @@ def _volume_bonus(df, idx, lookback=30):
     return 0.0
 
 
+def _calculate_zone_age(df, idx, current_idx=None):
+    """Считает количество дней между формированием уровня (idx) и текущим моментом."""
+    if current_idx is None:
+        current_idx = len(df) - 1
+
+    ts_zone = pd.to_datetime(df['timestamp'].iloc[idx], unit='ms')
+    ts_current = pd.to_datetime(df['timestamp'].iloc[current_idx], unit='ms')
+    age_days = (ts_current - ts_zone).days
+    return max(0, age_days)
+
+
 def _build_zone(price, atr_value, base_score, zone_type, date_str,
                  mitigated, reaction_count=0, volume_bonus=0.0, activated_at=None):
     """
@@ -175,7 +332,9 @@ def _build_zone(price, atr_value, base_score, zone_type, date_str,
     например, MACRO-фрактал подтверждается только после 2 свечей справа
     от центра). Если экстрактор не передал свою — по умолчанию = date_str
     (безопасный fallback, ничего не сдвигает). Это поле определяет, с какой
-    даты уровень рисуется на графике как "рабочий"."""
+    даты уровень рисуется на графике как "рабочий" — см. паспорт в
+    swing_hunter.py (_reconcile_levels_with_registry), который копирует его
+    неизменным при повторных сканах."""
     score = base_score
 
     # Reaction count логика: до 3 бонус, после 4+ штраф (истощение ликвидности)
@@ -202,24 +361,21 @@ def _build_zone(price, atr_value, base_score, zone_type, date_str,
 
 
 def _atr_full(df, period=14):
-    """ATR по свечам. У первых period-1 свечей окна позади меньше period свечей — ATR там NaN (честно «не
-    посчитать»). Раньше там стояло среднее по тем свечам, что есть: оно зависело от начала окна выгрузки, и
-    границы зоны на старых свечах сдвигались каждый день, пока окно ехало вперёд."""
+    """ATR, у которого нет пустых первых свечей: в начале окна — среднее по тем свечам, что есть.
+    Нужен, чтобы уровень у начала окна истории не брал «сегодняшний» ATR (иначе его границы дёргаются)."""
     h, l, c = df["high"], df["low"], df["close"]
     tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
-    return tr.rolling(window=period, min_periods=period).mean()
+    return tr.rolling(window=period, min_periods=1).mean()
 
 
 def _atr_at(atr_arr, idx, default):
-    """ATR на конкретной свече (а не «сегодняшний»): зона зависит только от истории до своей свечи.
-    NaN — у этой свечи позади меньше 14 свечей (край окна), честного ATR нет: вызывающий решает сам."""
+    """ATR на конкретной свече (а не «сегодняшний»): зона зависит только от истории до своей свечи и
+    не дёргается от скана к скану (ATR — простая средняя за 14 свечей, от окна выгрузки не зависит)."""
     try:
         a = float(atr_arr[idx])
     except (IndexError, TypeError, ValueError):
         return float(default)
-    if np.isnan(a):
-        return float('nan')
-    return float(default) if a == 0 else a
+    return float(default) if (np.isnan(a) or a == 0) else a
 
 
 def _wick_body_zone(o, c, low, high, is_support, atr):
@@ -269,10 +425,7 @@ def _extract_period_extremes(df_1d, freq, n_periods_back, current_price, atr_1d,
     for period_start, row in resampled.tail(n_periods_back).iterrows():
         period_end = offset.rollforward(period_start) if offset.rollforward(period_start) != period_start else period_start + offset
         date_str = period_end.strftime('%Y-%m-%d')
-        # Дни периода — те же, что в resample: (period_start, period_end], т.е. неделя пн..вс, месяц 1..последнее
-        # число. Раньше бралось [period_start, period_end) — со сдвигом на день назад, и если экстремум был
-        # в последний день периода, зона строилась по чужой свече.
-        pos = np.flatnonzero((dates > np.datetime64(period_start)) & (dates <= np.datetime64(period_end)))
+        pos = np.flatnonzero((dates >= np.datetime64(period_start)) & (dates < np.datetime64(period_end)))
         pos = pos[pos <= current_idx]
         if len(pos) == 0:
             continue
@@ -284,8 +437,6 @@ def _extract_period_extremes(df_1d, freq, n_periods_back, current_price, atr_1d,
             vol_bonus = _volume_bonus(df_1d, idx_ext)
             base_score = SCORE_PMH_PML if freq == 'ME' else SCORE_PWH_PWL
             atr_p = _atr_at(atr_arr, idx_ext, atr_1d)
-            if np.isnan(atr_p):   # свеча экстремума у самого края окна — ATR честно не посчитать
-                continue
             zone = _build_zone(price, atr_p, base_score, label, date_str, mitigated=mitigated,
                                 reaction_count=0, volume_bonus=vol_bonus)
             zone['min'], zone['max'] = _wick_body_zone(o_arr[idx_ext], c_arr[idx_ext], l_arr[idx_ext],
@@ -327,10 +478,7 @@ def _extract_monthly_close_levels(df_1d, months_back, current_price, atr_1d,
             continue
         period_end = offset.rollforward(period_start) if offset.rollforward(period_start) != period_start else period_start + offset
         date_str = period_end.strftime('%Y-%m-%d')
-        # Дни периода — те же, что в resample: (period_start, period_end], т.е. неделя пн..вс, месяц 1..последнее
-        # число. Раньше бралось [period_start, period_end) — со сдвигом на день назад, и если экстремум был
-        # в последний день периода, зона строилась по чужой свече.
-        pos = np.flatnonzero((dates > np.datetime64(period_start)) & (dates <= np.datetime64(period_end)))
+        pos = np.flatnonzero((dates >= np.datetime64(period_start)) & (dates < np.datetime64(period_end)))
         pos = pos[pos <= current_idx]
         if len(pos) == 0:
             continue
@@ -339,14 +487,53 @@ def _extract_monthly_close_levels(df_1d, months_back, current_price, atr_1d,
         mitigated = _is_mitigated(df_1d, idx_ref, float(price), is_support, current_idx)
         vol_bonus = _volume_bonus(df_1d, idx_ref)
         atr_p = _atr_at(atr_arr, idx_ref, atr_1d)
-        if np.isnan(atr_p):
-            continue
         zone = _build_zone(price, atr_p, SCORE_PMC, "1M_close_PMC", date_str, mitigated=mitigated,
                             reaction_count=0, volume_bonus=vol_bonus)
         zone['min'] = float(price - LINE_HALF_ATR * atr_p)
         zone['max'] = float(price + LINE_HALF_ATR * atr_p)
         zone['_is_support'] = is_support
         zones.append(zone)
+    return zones
+
+
+def _extract_daily_extremes(df_1d, n_days_back, current_price, atr_1d,
+                             max_distance, current_idx=None):
+    """PDH/PDL - последние n закрытых дней, в пределах max_distance от цены.
+    БЕЗ confluence = score 0 (мусор), WITH confluence = бонус."""
+    if current_idx is None:
+        current_idx = len(df_1d) - 1
+
+    zones = []
+    start = max(0, current_idx - n_days_back)
+    for idx in range(start, current_idx):
+        row = df_1d.iloc[idx]
+        ts = row['timestamp']
+        date_str = pd.to_datetime(ts, unit='ms').strftime('%Y-%m-%d')
+        # Свеча дня ещё не закрылась в момент своего экстремума — уровень
+        # подтверждается только на следующий день (см. докстринг activated_at
+        # в _build_zone).
+        if idx + 1 < len(df_1d):
+            activated_at = pd.to_datetime(df_1d['timestamp'].iloc[idx + 1], unit='ms').strftime('%Y-%m-%d')
+        else:
+            activated_at = date_str
+
+        for price, is_support in [(row['high'], False), (row['low'], True)]:
+            if abs(price - current_price) > max_distance:
+                continue
+
+            mitigated = _is_mitigated(df_1d, idx, price, is_support, current_idx)
+            reactions = _count_reactions(df_1d, idx, price, atr_1d, is_support, current_idx)
+            vol_bonus = _volume_bonus(df_1d, idx)
+
+            label = "1d_low_PDL" if is_support else "1d_high_PDH"
+            base_score = 0.0  # PDH/PDL БЕЗ confluence = score 0
+
+            zone = _build_zone(price, atr_1d, base_score, label, date_str,
+                                mitigated=mitigated, reaction_count=reactions,
+                                volume_bonus=vol_bonus, activated_at=activated_at)
+            zone['_is_support'] = is_support
+            zones.append(zone)
+
     return zones
 
 
@@ -386,9 +573,7 @@ def _extract_pivots(df, k, label, base_score, current_price, max_distance, curre
             if not flag or abs(price - current_price) > max_distance:
                 continue
             a = atr_arr[i]
-            if np.isnan(a):   # свеча у края окна — ATR честно не посчитать
-                continue
-            if a == 0:
+            if np.isnan(a) or a == 0:
                 a = default_atr
             mitigated = _is_mitigated(work, i, float(price), is_support, n - 1)
             date_str = pd.to_datetime(int(ts[i]), unit='ms').strftime('%Y-%m-%d')
@@ -484,6 +669,62 @@ def _merge_type_labels(existing, incoming):
     return " + ".join(parts)
 
 
+def merge_overlapping_zones(zones):
+    """Слияние зон одной стороны.
+    НОВОЕ: сливаем только если зоны перекрываются хотя бы на MERGE_MIN_OVERLAP более узкой (один и тот же
+    уровень, а не две коробки, едва касающиеся краями) и объединение не шире MERGE_MAX_UNION_FACTOR
+    самой широкой из них — цепочка «зона растёт, пока есть пересечения» больше не строит толстых зон.
+    Score = база сильнейшего источника (бонусов за наложение слоёв нет: наложение силы не добавляет)."""
+    if not zones:
+        return []
+
+    sorted_zones = sorted(zones, key=lambda x: x['min'])
+    for z in sorted_zones:
+        z['base_score'] = z.get('score', 0.0)
+        z['_w0'] = float(z['max'] - z['min'])
+
+    merged = [sorted_zones[0]]
+    for current in sorted_zones[1:]:
+        last = merged[-1]
+        overlap = min(last['max'], current['max']) - current['min']
+        narrow = min(last['max'] - last['min'], current['max'] - current['min'])
+        can_merge = current['min'] <= last['max'] and (narrow <= 0 or overlap / narrow >= MERGE_MIN_OVERLAP)
+        last_macro = last.get('class') == 'MACRO'
+        cur_macro = current.get('class') == 'MACRO'
+        union_w = max(last['max'], current['max']) - last['min']
+        if can_merge and not (last_macro != cur_macro) and union_w > MERGE_MAX_UNION_FACTOR * max(last['_w0'], current['_w0']):
+            can_merge = False
+        if not can_merge:
+            merged.append(current)
+            continue
+
+        if last_macro and not cur_macro:
+            last['min'], last['max'] = current['min'], current['max']
+            last.pop('class', None)
+            last['_w0'] = current['_w0']
+        elif cur_macro and not last_macro:
+            pass
+        else:
+            last['max'] = max(last['max'], current['max'])
+            last['_w0'] = max(last['_w0'], current['_w0'])
+        last['base_score'] = max(last['base_score'], current['base_score'])
+        last['score'] = round(last['base_score'], 2)
+        if current.get('type') and last.get('type'):
+            last['type'] = _merge_type_labels(last['type'], current['type'])
+        if last_macro and cur_macro:
+            last['class'] = 'MACRO'
+        last['reaction_count'] = max(last.get('reaction_count', 0), current.get('reaction_count', 0))
+        if current.get('date') and (not last.get('date') or current['date'] < last['date']):
+            last['date'] = current['date']
+        if current.get('activated_at') and (not last.get('activated_at') or current['activated_at'] > last['activated_at']):
+            last['activated_at'] = current['activated_at']
+
+    for m in merged:
+        m.pop('base_score', None)
+        m.pop('_w0', None)
+    return merged
+
+
 TF_RANK = (("1M", 4), ("1W", 3), ("1d", 2), ("4h", 1))  # сила уровня по таймфрейму источника
 
 
@@ -497,6 +738,85 @@ def _tf_rank(z):
         if t.startswith(prefix):
             return rank
     return 0
+
+
+def merge_anchor_zones(zones):
+    """Склейка БЕЗ объединения границ (замена паспорту).
+    Зоны одной стороны, которые реально заходят друг на друга, становятся ОДНОЙ зоной с границами
+    самого сильного уровня (таймфрейм 1M > 1W > 1d > 4h, при равенстве — более старый). Остальные
+    уровни зоны добавляются только в название (type), score = максимум баз. Границы зоны = границы
+    её якоря, а они считаются по свече рождения и не меняются, пока уровень жив."""
+    order = sorted(zones, key=lambda z: (-_tf_rank(z), str(z.get('date') or '9999-99-99'), float(z['min'])))
+    kept = []
+    for z in order:
+        host = None
+        for k in kept:
+            if min(k['max'], z['max']) - max(k['min'], z['min']) > 0:
+                host = k
+                break
+        if host is None:
+            z['anchor'] = _anchor_type(z)
+            kept.append(z)
+            continue
+        if z.get('type') and host.get('type'):
+            host['type'] = _merge_type_labels(host['type'], z['type'])
+        host['score'] = round(max(float(host.get('score', 0.0)), float(z.get('score', 0.0))), 2)
+    return sorted(kept, key=lambda q: q['min'])
+
+
+def _merge_nearby_macro_zones(zones, tolerance_pct=MACRO_MERGE_DISTANCE_PCT):
+    """Второй, более мягкий проход слияния — ТОЛЬКО для зон class == 'MACRO'.
+
+    Обычный merge_overlapping_zones выше сливает зоны только при физическом
+    пересечении. MACRO-зоны узкие (1.5% от цены, искусственно, см. коммент
+    к MACRO_MERGE_DISTANCE_PCT) — два разных исторических свинга, которые
+    по смыслу про один и тот же район графика, часто НЕ пересекаются чисто
+    из-за этой узости и остаются двумя отдельными записями. Тут условие
+    слияния ослаблено: не 'пересекается', а 'зазор между серединами меньше
+    tolerance_pct% от цены'.
+
+    Зоны других классов (regular) эта функция не трогает вообще — у них
+    свой, более тонкий скоринг (confluence-бонусы, MIN_SCORE_MONTH_WEEK_
+    CONFLUENCE), смешивать с этой упрощённой логикой не стали (см. NOTES).
+
+    В отличие от merge_overlapping_zones, тут НЕ считаем find_peaks/calendar
+    confluence-бонусы — они физически невозможны для MACRO-зон (тип всегда
+    '1M_MACRO_...'/'1W_MACRO_...', ни PMH/PML/PWH/PWL, ни extreme_peak).
+    Просто расширяем границы, score/reaction_count берём максимум из пары.
+    Ширину результата потом при необходимости обрежет compress_fat_zones
+    (эта функция вызывается ДО него в build_levels)."""
+    macro = [z for z in zones if z.get('class') == 'MACRO']
+    rest = [z for z in zones if z.get('class') != 'MACRO']
+
+    if not macro:
+        return zones
+
+    macro_sorted = sorted(macro, key=lambda z: z['min'])
+    merged = [macro_sorted[0]]
+
+    for current in macro_sorted[1:]:
+        last = merged[-1]
+        last_mid = (last['min'] + last['max']) / 2
+        gap_tolerance = last_mid * (tolerance_pct / 100.0)
+        # Зазор между концом last и началом current меньше допуска —
+        # считаем одной зоной (в т.ч. если пересекаются - gap отрицательный).
+        if current['min'] - last['max'] <= gap_tolerance:
+            last['max'] = max(last['max'], current['max'])
+            last['min'] = min(last['min'], current['min'])
+            last['score'] = max(last.get('score', 0), current.get('score', 0))
+            last['reaction_count'] = max(last.get('reaction_count', 0), current.get('reaction_count', 0))
+            if current.get('type') and last.get('type'):
+                last['type'] = _merge_type_labels(last['type'], current['type'])
+            # Та же логика, что в merge_overlapping_zones — самая ранняя дата.
+            if current.get('date') and (not last.get('date') or current['date'] < last['date']):
+                last['date'] = current['date']
+            # activated_at — максимум (см. комментарий в merge_overlapping_zones).
+            if current.get('activated_at') and (not last.get('activated_at') or current['activated_at'] > last['activated_at']):
+                last['activated_at'] = current['activated_at']
+        else:
+            merged.append(current)
+
+    return merged + rest
 
 
 def compress_fat_zones(zones, coin):
@@ -566,11 +886,11 @@ def _extract_macro_swings(df, current_price, max_distance, base_score, label_pre
     # ATR той же свечи, из которой сделана зона, в ЕЁ таймфрейме (месячной/недельной) — он есть всегда
     # (месяцев загружено 60, недель 150) и не меняется от скана к скану. Приводим к дневному масштабу
     # делением на корень из числа торговых дней в периоде (масштабирование волатильности по времени):
-    # месяц /sqrt(21), неделя /sqrt(5). Первые свечи окна (меньше 14 до них) — NaN, зону там не строим.
+    # месяц /sqrt(21), неделя /sqrt(5). Первые свечи окна (меньше 14 до них) — среднее по тем, что есть.
     _scale = MACRO_ATR_DAYS.get(label_prefix[:2], 1.0) ** 0.5
     _h, _l, _c = df['high'], df['low'], df['close']
     _tr = pd.concat([_h - _l, (_h - _c.shift()).abs(), (_l - _c.shift()).abs()], axis=1).max(axis=1)
-    _own_atr = (_tr.rolling(14, min_periods=14).mean() / _scale).to_numpy(dtype=float)
+    _own_atr = (_tr.rolling(14, min_periods=1).mean() / _scale).to_numpy(dtype=float)
 
     def _macro_atr(i):
         return _atr_at(_own_atr, i, atr_fb)
@@ -603,13 +923,8 @@ def _extract_macro_swings(df, current_price, max_distance, base_score, label_pre
                 ext = _d['lo'][j] if is_support else _d['hi'][j]
                 if tip_price and abs(ext - tip_price) / tip_price <= 0.002:
                     a = _atr_at(_d['atr'], j, atr_fb)
-                    if not np.isnan(a):
-                        return _wick_body_zone(_d['o'][j], _d['c'][j], _d['lo'][j], _d['hi'][j], is_support, a)
-        # Дневной свечи свинга нет (старше окна дневок или у самого его края) — кончик тени и ATR
-        # собственной свечи свинга (месяц/неделя, приведён к дневному масштабу): от «сегодняшнего» ATR не зависит.
-        a = _macro_atr(i)
-        if np.isnan(a):
-            return None
+                    return _wick_body_zone(_d['o'][j], _d['c'][j], _d['lo'][j], _d['hi'][j], is_support, a)
+        a = atr_fb
         return _wick_body_zone(tip_price, tip_price, tip_price, tip_price, is_support, a)
 
     work = df.copy()
@@ -651,14 +966,13 @@ def _extract_macro_swings(df, current_price, max_distance, base_score, label_pre
                     zone = _build_zone(price, 0.0, base_score, f"{label_prefix}_Support", date_str, False,
                                         activated_at=activated_at)
                     if atr_1d:
-                        bounds = _macro_bounds(i, True, price)
+                        zone['min'], zone['max'] = _macro_bounds(i, True, price)
                     else:
-                        bounds = (price, body_bottom)
-                    if bounds is not None:
-                        zone['min'], zone['max'] = bounds
-                        zone['_is_support'] = True
-                        zone['class'] = 'MACRO'
-                        zones.append(zone)
+                        zone['min'] = price
+                        zone['max'] = body_bottom
+                    zone['_is_support'] = True
+                    zone['class'] = 'MACRO'
+                    zones.append(zone)
 
         # --- Сопротивление (SHORT) ---
         if work['is_swing_high'].iloc[i]:
@@ -680,14 +994,13 @@ def _extract_macro_swings(df, current_price, max_distance, base_score, label_pre
                     zone = _build_zone(price, 0.0, base_score, f"{label_prefix}_Resistance", date_str, False,
                                         activated_at=activated_at)
                     if atr_1d:
-                        bounds = _macro_bounds(i, False, price)
+                        zone['min'], zone['max'] = _macro_bounds(i, False, price)
                     else:
-                        bounds = (body_top, price)
-                    if bounds is not None:
-                        zone['min'], zone['max'] = bounds
-                        zone['_is_support'] = False
-                        zone['class'] = 'MACRO'
-                        zones.append(zone)
+                        zone['min'] = body_top
+                        zone['max'] = price
+                    zone['_is_support'] = False
+                    zone['class'] = 'MACRO'
+                    zones.append(zone)
 
     return zones
 
@@ -753,76 +1066,23 @@ def _pick_nearest(zones, price, n):
     return chosen
 
 
-def _overlap(a, b):
-    return min(a['max'], b['max']) - max(a['min'], b['min'])
-
-
-def _zone_key(side, z):
-    return (side, round(z['min'], 10), round(z['max'], 10))
-
-
-def _still_alive(zone, is_support, df_1d):
-    """Зона реестра жива, пока ни одно дневное закрытие после её первого появления не ушло за дальний край."""
-    d = str(zone.get('_since') or zone.get('date') or '')[:10]
-    dates = pd.to_datetime(df_1d['timestamp'], unit='ms').dt.strftime('%Y-%m-%d')
-    closes = df_1d['close'][dates > d]
-    if closes.empty:
-        return True
-    return not ((closes < zone['min']).any() if is_support else (closes > zone['max']).any())
-
-
-def _without_poc(label):
-    parts = [p.strip() for p in str(label or '').split('+')]
-    return ' + '.join(p for p in parts if p and p != '4h_poc')
-
-
-def _place(points, existing):
-    """Расстановка точек относительно стоящих зон реестра (границы стоящих не двигаются).
-    Точки идут от самой сильной (1M > 1W > 1d > 4h, при равенстве — старше). Точка, пересекающаяся с
-    стоящей зоной, поглощается ей (в название добавляется тип). Иначе — отдельная зона со СВОЕЙ геометрией.
-    Возвращает (все зоны, новые зоны)."""
-    zones = list(existing)
-    added = []
-    for p in sorted(points, key=lambda q: (-_tf_rank(q), str(q.get('date') or '9999'), q['min'])):
-        host = next((z for z in zones if _overlap(p, z) > 0), None)
-        if host is None:
-            q = dict(p)
-            q['anchor'] = _anchor_type(q)
-            q['_base'] = float(q.get('score', 0.0))
-            zones.append(q)
-            added.append(q)
-            continue
-        host['type'] = _merge_type_labels(host.get('type'), p.get('type'))
-        host['_base'] = max(float(host.get('_base', host.get('score', 0.0))), float(p.get('score', 0.0)))
-    return zones, added
-
-
-def _public(z):
-    """Копия зоны для выдачи: без служебных полей."""
-    return {k: v for k, v in z.items() if not k.startswith('_') and k != 'anchor'}
-
-
-def build_levels(df_1M, df_1W, df_1d, df_4h, coin, current_idx=None, registry=None, snap_day=None,
-                 return_registry=False):
+def build_levels(df_1M, df_1W, df_1d, df_4h, coin, current_idx=None):
     """
-    Главная функция модуля. Формат результата прежний: {"supports": [...], "resistances": [...]}.
-
-    registry = {"S": [...], "R": [...]} — все зоны, уже выданные раньше для этой монеты и ещё не
-    пробитые (None = пусто, тогда это обычная сборка с нуля). return_registry=True добавляет в
-    результат ключ "registry" — передать его в следующий вызов.
+    Главная функция модуля (НОВАЯ сборка). Интерфейс и формат результата прежние:
+    {"supports": [...], "resistances": [...]}.
 
     Порядок:
-      1. Точки всех слоёв (MACRO 1M/1W, PMH/PML, PMC, PWH/PWL, пивоты 1d, пивоты 4h); пробитые
-         закрытием за уровнем выкидываются; слишком широкие сжимаются.
-      2. Зоны реестра стоят как были, пока дневное закрытие не уйдёт за дальний край (отсчёт от
-         первого появления зоны).
-      3. Расстановка точек (_place): пересекается со стоящей зоной -> поглощается ей, иначе новая зона
-         со своей геометрией. Без коэффициентов и допусков.
-      4. POC — бонус к score и метка, самостоятельной POC-зоны нет.
-      5. На сторону MAX_PER_SIDE ближайших; если меньше 2 — фолбэк (вся история, бесконечный радар).
-      6. Сжатие, resolve_cross_overlaps, отбои: score = база + POC + 0.5 за отбой (до REJECTION_SCORE_CAP).
+      1. Точки всех слоёв (MACRO 1M/1W, PMH/PML, PMC, PWH/PWL, пивоты 1d, пивоты 4h). Зона точки — от тени
+         до тела свечи (+зазор) либо цена +-0.25 ATR для линии (PMC).
+      2. Пробитые закрытием за уровнем выкидываются (теперь и PMC).
+      3. Слияние по якорю (merge_anchor_zones): пересекающиеся зоны -> одна, с границами самого сильного
+         уровня (1M > 1W > 1d > 4h, при равенстве более старый); границы не объединяются и не дрожат.
+         У каждой зоны постоянный level_id = сторона|якорь|дата свечи рождения.
+      4. POC — только бонус к score, самостоятельной POC-зоны нет.
+      5. На сторону оставляем MAX_PER_SIDE ближайших к цене непробитых зон; если меньше 2 — фолбэк
+         (вся история, бесконечный радар), как раньше.
+      6. Итоговый score = база сильнейшего источника + 0.5 за каждый отбой от ГОТОВОЙ зоны (до 4).
     """
-    registry = registry or {'S': [], 'R': []}
     if current_idx is None:
         current_idx = len(df_1d) - 1
 
@@ -832,58 +1092,63 @@ def build_levels(df_1M, df_1W, df_1d, df_4h, coin, current_idx=None, registry=No
     atr_1d = df_1d['atr'].iloc[current_idx]
     if pd.isna(atr_1d) or atr_1d == 0:
         atr_1d = current_price * 0.05
-    if snap_day is None:
-        snap_day = pd.to_datetime(df_1d['timestamp'].iloc[current_idx], unit='ms').strftime('%Y-%m-%d')
 
     max_distance = _calc_weekly_atr(df_1d, current_idx) * ATR_DISTANCE_MULTIPLIER
 
     all_zones = _collect_zones(df_1M, df_1W, df_1d, df_4h, current_price, atr_1d, max_distance, current_idx)
     raw_zone_count = len(all_zones)
-    raw_s, raw_r = _split_alive(all_zones)
 
-    poc_price = atr_4h = None
+    supports, resistances = _split_alive(all_zones)
+    supports = merge_anchor_zones(supports)
+    resistances = merge_anchor_zones(resistances)
+
+    # POC — только бонус к уже существующим зонам
     if df_4h is not None and len(df_4h) >= 50:
         poc_price, atr_4h = _get_poc(df_4h, current_price)
+        poc_date_str = pd.to_datetime(df_4h['timestamp'].iloc[-1], unit='ms').strftime('%Y-%m-%d')
+        supports = _apply_poc_confluence(supports, poc_price, atr_4h, poc_date_str)
+        resistances = _apply_poc_confluence(resistances, poc_price, atr_4h, poc_date_str)
 
-    chosen_by_side, alive_prev = {}, {}
-    for side, is_sup, pts in (('S', True, raw_s), ('R', False, raw_r)):
-        existing = [copy.deepcopy(z) for z in registry.get(side, []) if _still_alive(z, is_sup, df_1d)]
-        for z in existing:   # POC считается заново на каждом снимке, а не копится
-            z['score'] = z.get('_base', z.get('score', 0.0))
-            z['type'] = _without_poc(z.get('type'))
-        alive_prev[side] = existing
-        compress_fat_zones(pts, coin)
-        zones, added = _place(pts, existing)
-        for z in added:
-            z['_since'] = snap_day
-        if poc_price is not None:
-            zones = _apply_poc_confluence(zones, poc_price, atr_4h)
-        chosen = _pick_nearest(zones, current_price, MAX_PER_SIDE)
+    # Оставляем ближайшие к цене
+    supports = _pick_nearest(supports, current_price, MAX_PER_SIDE)
+    resistances = _pick_nearest(resistances, current_price, MAX_PER_SIDE)
 
-        if len(chosen) < 2:   # ФОЛБЭК: минимум 2 уровня на сторону (вся история, бесконечный радар)
-            fb_all = _collect_zones(df_1M, df_1W, df_1d, df_4h, current_price, atr_1d, float('inf'), current_idx,
-                                    deep=True, count_stats=False)
-            fb_s, fb_r = _split_alive(fb_all)
-            cand = fb_s if is_sup else fb_r
-            cand = [z for z in cand if (z['max'] < current_price if is_sup else z['min'] > current_price)]
-            compress_fat_zones(cand, coin)
-            _, fb_added = _place(cand, [dict(z) for z in chosen])
-            fb_added.sort(key=lambda x: _dist_to_price(x, current_price))
-            for z in fb_added[: 2 - len(chosen)]:
-                z['_since'] = snap_day
-                chosen.append(z)
-        chosen_by_side[side] = chosen
+    # ФОЛБЭК: минимум 2 уровня на сторону (вся история, бесконечный радар)
+    def _run_fallback(is_support_target, needed):
+        fb_all = _collect_zones(df_1M, df_1W, df_1d, df_4h, current_price, atr_1d, float('inf'), current_idx,
+                                deep=True, count_stats=False)
+        fb_s, fb_r = _split_alive(fb_all)
+        cand = fb_s if is_support_target else fb_r
+        cand = [z for z in cand if (z['max'] < current_price if is_support_target else z['min'] > current_price)]
+        merged = merge_anchor_zones(cand)
+        merged.sort(key=lambda x: _dist_to_price(x, current_price))
+        return merged[:needed]
 
-    # Повторно НЕ сжимаем: точки сжаты до расстановки, а зоны реестра трогать нельзя
-    # (повторное сжатие иногда сдвигает границы в последнем знаке -> другой level_id у менеджера).
-    supports, resistances = resolve_cross_overlaps(chosen_by_side['S'], chosen_by_side['R'])
+    if len(supports) < 2:
+        for z in _run_fallback(True, 2 - len(supports)):
+            if not any(abs(z['min'] - s_['min']) < 1e-9 for s_ in supports):
+                supports.append(z)
+    if len(resistances) < 2:
+        for z in _run_fallback(False, 2 - len(resistances)):
+            if not any(abs(z['min'] - r_['min']) < 1e-9 for r_ in resistances):
+                resistances.append(z)
 
-    # Отбои — по границам ИТОГОВЫХ зон; score = база (+POC) + 0.5 за отбой (до REJECTION_SCORE_CAP)
-    for side, zs, is_sup in (('S', supports, True), ('R', resistances, False)):
+    compress_fat_zones(supports, coin)
+    compress_fat_zones(resistances, coin)
+    supports, resistances = resolve_cross_overlaps(supports, resistances)
+
+    # Отбои — по границам ИТОГОВЫХ зон; score = база + 0.5 за отбой (до REJECTION_SCORE_CAP)
+    for z in supports:
+        z['reaction_count'] = count_zone_touches(df_1d, z, True, current_idx)
+        z['score'] = round(z.get('score', 0.0) + REJECTION_SCORE_STEP * min(z['reaction_count'], REJECTION_SCORE_CAP), 2)
+    for z in resistances:
+        z['reaction_count'] = count_zone_touches(df_1d, z, False, current_idx)
+        z['score'] = round(z.get('score', 0.0) + REJECTION_SCORE_STEP * min(z['reaction_count'], REJECTION_SCORE_CAP), 2)
+
+    for side, zs in (("S", supports), ("R", resistances)):
         for z in zs:
-            z['reaction_count'] = count_zone_touches(df_1d, z, is_sup, current_idx)
-            z['score'] = round(float(z.get('score', 0.0)) + REJECTION_SCORE_STEP * min(z['reaction_count'], REJECTION_SCORE_CAP), 2)
             z['level_id'] = f"{side}|{z.get('anchor') or _anchor_type(z)}|{z.get('date')}"
+            z.pop('anchor', None)
 
     for z in supports + resistances:
         t = str(z.get('type', ''))
@@ -900,18 +1165,7 @@ def build_levels(df_1M, df_1W, df_1d, df_4h, coin, current_idx=None, registry=No
             f"кандидатов до mitigated-фильтра={raw_zone_count}"
         )
 
-    result: dict = {
-        "supports": sorted((_public(z) for z in supports), key=lambda q: q['min']),
-        "resistances": sorted((_public(z) for z in resistances), key=lambda q: q['min']),
+    return {
+        "supports": sorted(supports, key=lambda z: z['min']),
+        "resistances": sorted(resistances, key=lambda z: z['min']),
     }
-    if return_registry:
-        new_registry = {}
-        for side, zs in (('S', supports), ('R', resistances)):
-            seen, new_registry[side] = set(), []
-            for z in alive_prev[side] + zs:     # реестр = живые прежние + выданные сейчас
-                k = _zone_key(side, z)
-                if k not in seen:
-                    seen.add(k)
-                    new_registry[side].append(z)
-        result["registry"] = new_registry
-    return result

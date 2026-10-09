@@ -3,8 +3,8 @@
 Симулятор стратегий "как будто это было онлайн".
 
 Идея: пользователь кликает точку старта на графике → мы
-1) берём 15m-свечи от этой даты до сейчас из candle_store (той же базы,
-   что использует дашборд и боевой watcher_plan.py);
+1) берём 15m-свечи периода из архива симулятора (candle_archive, база
+   sim_candles.db; недостающее докачивается с биржи автоматически);
 2) прогоняем их по одной через ТЕ ЖЕ САМЫЕ производственные классы
    вотчеров (VBottomManager + evaluate_v_bottom/v_green_bottom/v_red_top),
    что и в бою — никаких отдельных копий логики, чтобы бой и симулятор
@@ -58,7 +58,7 @@ if _MASTER_BOT_ROOT not in sys.path:
 from backend.modules.cryptano.utils.bybit import exchange, resolve_symbol, load_markets_cached
 from backend.modules.cryptano.utils.indicators import calculate_atr, calculate_ema, calculate_rsi
 from backend.modules.cryptano.utils.storage import load_json, save_json_atomic
-import backend.modules.cryptano.levels.candle_store as candle_store
+import backend.modules.cryptano.levels.candle_archive as candle_archive
 from backend.modules.cryptano.levels.levels_history import get_levels_snapshot
 from backend.modules.cryptano.strategy.vbottom_manager import VBottomManager
 from backend.modules.cryptano.strategy.v_bottom_watcher import VBottomWatcher
@@ -70,13 +70,16 @@ from backend.modules.cryptano.backstage.watcher_plan import (
     VBOTTOM_BREATH_BUFFER_PCT,
     MIN_LEVEL_SCORE,
 )
-from backend.modules.cryptano.simulator.outcome import compute_trade_outcome, make_ema_dist_fn, load_candles_4h
+from backend.modules.cryptano.simulator.outcome import compute_trade_outcome, make_ema_dist_fn
 # list_coins_with_levels/_aggregate_trades — тот же "какие монеты вообще
 # имели уровни в этом периоде" и "схлопнуть сделки в сводку по монете",
 # что уже строит bounce_simulate.py для своего bulk-отчёта. Переиспользуем
 # один код вместо копии — иначе отчёты BOUNCE/V бы неизбежно разъехались
 # при следующей независимой правке одного из файлов.
-from backend.modules.cryptano.simulator.bounce_simulate import list_coins_with_levels, _aggregate_trades, SIM_LOG_DIR, _reset_sim_log
+from backend.modules.cryptano.simulator.bounce_simulate import (
+    list_coins_with_levels, _aggregate_trades, SIM_LOG_DIR, _reset_sim_log,
+    _candles_df, _ensure_archive_for_coins,
+)
 
 _WATCHER_CLS = {"VB": VBottomWatcher, "VGB": VGreenBottomWatcher, "VRT": VRedTopWatcher}
 
@@ -211,27 +214,6 @@ def _remember_seen_levels(seen, levels, is_support):
                 "min": lv["min"], "max": lv["max"], "type": lv.get("type"),
                 "score": lv.get("score"), "is_support": is_support,
             }
-
-
-def _candles_df(symbol, top_up=True):
-    """Вся доступная 15m-история из candle_store (та же база, что у дашборда).
-
-    top_up=True (по умолчанию) — перед чтением подтягивает самые свежие
-    свечи с биржи. top_up=False — только локальные данные, без единого
-    сетевого похода (для bulk-прогона по списку монет, где период всегда
-    в прошлом — см. тот же приём в bounce_simulate.py::_candles_df)."""
-    if candle_store is None:
-        raise RuntimeError("candle_store недоступен")
-    if top_up and candle_store.has_data(symbol, "15m"):
-        candle_store.top_up_tail(exchange, symbol, "15m")
-    candles = candle_store.get_candles(symbol, "15m")
-    if not candles:
-        raise RuntimeError(f"Нет локальной 15m-истории для {symbol} — монета ещё не в candle_store")
-
-    df = pd.DataFrame(candles)
-    df["timestamp"] = pd.to_datetime(df["time"], unit="s", utc=True)
-    df = df.drop(columns=["time"]).set_index("timestamp")
-    return df[["open", "high", "low", "close", "volume"]].astype(float)
 
 
 def _pre_register(mgr, level, trade_type, tag, coin):
@@ -543,8 +525,9 @@ def run_simulation(coin, start_time_str, end_time_str=None, strategies=None, top
     strategies: список тегов из ALL_V_STRATEGY_TAGS ("VB"/"VGB"/"VRT") —
         какие из трёх реально гонять. None (по умолчанию) = все три, старое
         поведение не меняется для вызовов без этого параметра.
-    top_up: докачивать ли свежий хвост свечей перед прогоном — False для
-        bulk (см. run_bulk_v_simulation), где период исторический.
+    top_up: докачивать ли недостающие свечи в архив симулятора перед
+        прогоном — False для bulk (см. run_bulk_v_simulation): там докачка
+        уже сделана в главном процессе до раздачи монет воркерам.
     save_last_run: сохранять ли результат в LAST_RUN_FILE для восстановления
         одиночной страницы симулятора после F5 — False для bulk.
 
@@ -572,7 +555,8 @@ def run_simulation(coin, start_time_str, end_time_str=None, strategies=None, top
     # старте пусто, а уровень появится через неделю, проход его всё равно
     # найдёт сам. Гейтить по дню старта значило бы пропускать именно те
     # случаи, ради которых это всё и делалось.
-    df_full = _candles_df(symbol, top_up=top_up)
+    data_end_ts = pd.Timestamp(end_time_str, tz="UTC") if end_time_str else pd.Timestamp.now(tz="UTC")
+    df_full = _candles_df(symbol, start_ts, data_end_ts, top_up=top_up, forward_days=V_MAX_HOLD_DAYS)
     _reset_sim_log(coin)  # новый прогон — лог монеты перезаписывается (одна монета = один лог)
     start_idx = int(df_full.index.searchsorted(start_ts))
     start_idx = max(0, min(start_idx, len(df_full) - 1))
@@ -589,7 +573,10 @@ def run_simulation(coin, start_time_str, end_time_str=None, strategies=None, top
     # встретившиеся вотчерам за весь проход (не только на дату старта, см.
     # _remember_seen_levels), заполняется всеми вызванными _walk_*.
     seen_levels = {}
-    ema_dist_fn = make_ema_dist_fn(df_full, candles_4h=load_candles_4h(candle_store, symbol))  # расстояние входа от EMA200(4h), %
+    # расстояние входа от EMA200(4h), %; 4h-свечи — из архива симулятора (запас 100 суток назад от старта)
+    ema_dist_fn = make_ema_dist_fn(
+        df_full, candles_4h=candle_archive.get_sim_candles(symbol, "4h", start_ts, data_end_ts, V_MAX_HOLD_DAYS),
+    )
     if "VB" in strategies:
         ep, tr = _walk_long(df_full, start_idx, end_idx, "V_BOTTOM", coin, seen_levels=seen_levels, ema_dist_fn=ema_dist_fn)
         episodes += ep
@@ -696,9 +683,10 @@ def run_bulk_v_simulation(start_time_str, end_time_str=None, strategies=None, co
     ("по выбранному списку"), не по всем монетам сразу.
 
     Уровни для каждой монеты читаются из локальной БД снимков (_levels_at)
-    — без похода на биржу, так что это не медленнее bulk BOUNCE. Сетевая
-    докачка свечей (top_up) всё равно отключена (top_up=False), т.к.
-    период исторический.
+    — без похода на биржу. Свечи — из архива симулятора: недостающее
+    докачивается ДО раздачи монет воркерам (последовательно, в главном
+    процессе, см. _ensure_archive_for_coins), воркеры только читают
+    (top_up=False).
 
     Возвращает тот же формат, что и run_bulk_bounce_simulation (results/
     trades/history_by_coin), чтобы фронт (renderBulkReport/
@@ -716,9 +704,18 @@ def run_bulk_v_simulation(start_time_str, end_time_str=None, strategies=None, co
 
     _write_bulk_progress(0, total, None, finished=False)
 
-    tasks = [(coin, start_time_str, end_time_str, strategies, False) for coin in coins]
+    # Монеты, по которым свечи докачать не удалось, не считаем (нет данных) —
+    # они идут в отчёт как error. Остальные — воркерам, они только читают.
+    failed = _ensure_archive_for_coins(
+        coins, load_markets_cached(exchange), start_time_str, end_time_str, V_MAX_HOLD_DAYS,
+        lambda d, t, label: _write_bulk_progress(d, t, label, finished=False),
+    )
+    for coin, err in failed.items():
+        results[coin] = {"error": err}
+    tasks = [(coin, start_time_str, end_time_str, strategies, False) for coin in coins if coin not in failed]
 
-    done = 0
+    done = len(failed)
+    _write_bulk_progress(done, total, None, finished=False)
     with ProcessPoolExecutor(max_workers=BULK_MAX_WORKERS) as executor:
         future_to_coin = {executor.submit(_simulate_one_coin_worker, task): task[0] for task in tasks}
         for future in as_completed(future_to_coin):

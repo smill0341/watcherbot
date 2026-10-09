@@ -1,0 +1,320 @@
+Старый билдер не найден (D:\bot\master_bot\backend\levels_builder_before_atrfix.py) — секция «ширина зон» пропущена
+Параметры: зазор G = 0.0 ATR
+⚪ [БОЙ] Whitelist: 74/74 монет(ы) резолвнулись в реальный символ на бирже.
+✋ [БОЙ] Монет с ручными зонами добавлено сверх whitelist: 1
+📋 COIN_SOURCE='whitelist' -> 75 символов.
+📡 Фаза 1/2: проверяю/докачиваю базу по 75 монетам (по одной, с паузой — бережём биржу)...
+   …10/75
+   …20/75
+   …30/75
+   …40/75
+   …50/75
+   …60/75
+   …70/75
+   …75/75
+✅ Фаза 1 готова — база свежая по всем монетам (кто докачался).
+📥 Фаза 2/2: собираю кэш из базы в 4 поток(а/ов)...
+   …10/75
+   …20/75
+   …30/75
+   …40/75
+   …50/75
+   …60/75
+   …70/75
+   …75/75
+✅ Кэш готов: 75 монет.
+   …10/75
+   …20/75
+   …30/75
+   …40/75
+   …50/75
+   …60/75
+   …70/75
+
+ПРОГРЕВ: период 2026-09-30 00:00:00 .. 2026-10-06 12:00:00 (снимков: 14)
+A = боевой билдер сейчас (с моей правкой ATR),  W = тестовая копия с прогревом
+
+1) Сырые точки (до склейки) между соседними снимками: та же точка (тип+дата+сторона) — те же границы?
+   A: сравнено 91044, границы поменялись 2   (должно быть 0)
+      BNB 10-01 00:00 1M_MACRO_Resistance 2025-10-01 R  было (1302.4, 1386.6692857143)  стало (1365.4744478292, 1378.9502208683)
+      BNB 10-01 00:00 1W_MACRO_Resistance 2025-10-13 R  было (1302.4, 1386.6692857143)  стало (1358.4884107143, 1381.7446357143)
+   W: сравнено 94416, границы поменялись 0   (должно быть 0)
+
+2) W: больше старых свечей в запасе (+20) — результат должен быть тот же самый:
+   сырых точек совпало 29409, границы разные 0, только в одном 0   (должно быть 0 и 0)
+   снимков, где выдача отличается: 0   (должно быть 0)
+
+3) Потерянные точки (последний снимок, все монеты):
+   есть в W, нет в A (A выкинул): 228      есть в A, нет в W: 0   (должно быть 0)
+   слой                        A      W
+   1M_close_PMC              818    823
+   1M_high_PMH               220    221
+   1M_low_PML                221    221
+   1W_high_PWH               296    296
+   1W_low_PWL                296    296
+   1d_extreme_peak          2845   2897
+   4h_extreme_peak          1388   1463
+   MACRO 1M                  284    352
+   MACRO 1W                  721    748
+      только в W: AAVE     1M_MACRO_Support 2022-06-01 S (44.5878571429, 49.6)
+      только в W: AAVE     1d_extreme_peak 2025-10-17 S (196.4925, 208.52375)
+      только в W: AAVE     4h_extreme_peak 2026-09-04 R (133.81, 136.4980714286)
+      только в W: AAVE     4h_extreme_peak 2026-09-05 S (127.8608571429, 129.77)
+      только в W: AKE      1d_extreme_peak 2025-10-15 R (0.001905, 0.0023227643)
+      только в W: AKE      4h_extreme_peak 2026-09-04 S (0.0122538571, 0.0138153571)
+      только в W: AKE      4h_extreme_peak 2026-09-05 R (0.019684, 0.0219244143)
+      только в W: 1000PEPE 1M_MACRO_Support 2023-09-01 S (0.0005893179, 0.0006272)
+      только в W: 1000PEPE 1M_MACRO_Support 2024-02-01 S (0.000857585, 0.0008875)
+      только в W: 1000PEPE 1W_MACRO_Support 2024-02-05 S (0.000857585, 0.0008875)
+      только в W: 1000BONK 1M_MACRO_Support 2023-10-01 S (0.0001728571, 0.0001779071)
+      только в W: APT      1M_MACRO_Resistance 2023-01-01 R (18.305, 20.6605714286)
+      только в W: ARB      1M_MACRO_Resistance 2024-01-01 R (2.2594, 2.4371521429)
+      только в W: ARB      1W_MACRO_Resistance 2024-01-08 R (2.2594, 2.4371521429)
+      только в W: ATOM     1M_MACRO_Resistance 2022-01-01 R (40.115, 45.1202142857)
+
+4) Выдача (2 зоны на сторону) A против W:
+   снимков с одинаковой выдачей 135, с разной 901
+   ширина зон                   A       W
+   медиана, %                 3.1     2.7
+   90-й проц., %              5.0     5.0
+   максимум, %               14.0    25.0
+   шире 10%, шт              13.0    53.0
+   шире 15%, шт               0.0     6.0
+
+6) Выдача между соседними снимками (то, что видит менеджер): A = основа зоны — самая сильная точка, W = основа — первая точка на месте
+                                                  A       W
+   та же зона (тот же id) в двух снимках       3270    3376
+     из них границы поменялись                    0       0
+   то же место, но id другой (новая зона)       135      45
+   зона появилась на новом месте                344     343
+   зона ушла совсем                             346     339
+      W AAVE     10-02 12:00 R
+         было  [171.23..176.868] 4h_extreme_peak + 1M_high_PMH
+         стало [167.035..175.601] 1M_high_PMH
+      W AAVE     10-04 00:00 R
+         было  [177.895..181.164] 1d_extreme_peak + 1W_MACRO_Resistance
+         стало [177.895..181.164] 1W_MACRO_Resistance
+      W ADA      10-05 12:00 R
+         было  [0.2596..0.262911] 4h_extreme_peak + 1W_high_PWH + 1M_high_PMH + 1d_extreme_peak
+         стало [0.2587..0.267029] 1W_high_PWH + 1M_high_PMH + 1d_extreme_peak
+      W ASTER    09-30 12:00 S
+         было  [0.662662..0.683979] 4h_extreme_peak + 1W_low_PWL + 1d_extreme_peak
+         стало [0.658666..0.673336] 4h_extreme_peak
+      W ASTER    09-30 12:00 S
+         было  [0.662662..0.683979] 4h_extreme_peak + 1W_low_PWL + 1d_extreme_peak
+         стало [0.673974..0.692964] 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak
+      W ASTER    10-01 00:00 R
+         было  [0.7586..0.769027] 4h_extreme_peak + 1W_high_PWH
+         стало [0.7453..0.771174] 1W_high_PWH + 1M_close_PMC
+      W ASTER    10-05 00:00 S
+         было  [0.673974..0.692964] 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak + 1M_low_PML
+         стало [0.666636..0.684009] 1W_low_PWL + 4h_extreme_peak + 1d_extreme_peak + 1M_low_PML
+      W ASTER    10-05 00:00 S
+         было  [0.673974..0.692964] 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak + 1M_low_PML
+         стало [0.688239..0.7011] 4h_extreme_peak + 1W_low_PWL
+      W ARB      10-05 00:00 R
+         было  [0.197749..0.207891] 1M_close_PMC + 4h_extreme_peak
+         стало [0.20504..0.209469] 4h_extreme_peak
+      W ATOM     10-02 12:00 S
+         было  [1.46166..1.477] 4h_extreme_peak
+         стало [1.44719..1.47807] 4h_extreme_peak + 1W_low_PWL + 1d_extreme_peak
+
+7) Почему сменился id у W (то же место, другой id): всего 45
+   1. основа исчезла из данных — 4h-точка вышла из окна: 5
+   1. основа исчезла из данных — MACRO пробит закрытием: 4
+   1. основа исчезла из данных — смена месяца/недели (PMH/PML/PMC/PWH/PWL): 3
+   1. основа исчезла из данных — та же точка стала другой стороной (цена прошла уровень): 9
+   2. основа пробита закрытием: 17
+   4. основа жива в зоне, но основой стала другая точка — новая основа не старше: 4
+   4. основа жива в зоне, но основой стала другая точка — новая основа старше: 3
+   --- 1. основа исчезла из данных — 4h-точка вышла из окна
+      ASTER 09-30 12:00 S
+         было  [0.662662..0.683979] 4h_extreme_peak + 1W_low_PWL + 1d_extreme_peak   id S|4h_extreme_peak|2026-08-28
+         стало [0.658666..0.673336] 4h_extreme_peak   id S|4h_extreme_peak|2026-09-15
+      ASTER 09-30 12:00 S
+         было  [0.662662..0.683979] 4h_extreme_peak + 1W_low_PWL + 1d_extreme_peak   id S|4h_extreme_peak|2026-08-28
+         стало [0.673974..0.692964] 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak   id S|1W_low_PWL|2026-09-06
+      ETC 10-04 12:00 S
+         было  [7.09841..7.235] 4h_extreme_peak + 1d_extreme_peak + 1W_low_PWL + 1M_low_PML   id S|4h_extreme_peak|2026-09-02
+         стало [7.00893..7.20868] 1d_extreme_peak + 1W_low_PWL + 4h_extreme_peak + 1M_low_PML   id S|1d_extreme_peak|2026-08-30
+      LIT 09-30 12:00 S
+         было  [3.28839..3.373] 4h_extreme_peak + 1W_low_PWL   id S|4h_extreme_peak|2026-08-28
+         стало [3.3591..3.485] 4h_extreme_peak + 1W_low_PWL   id S|4h_extreme_peak|2026-09-02
+   --- 1. основа исчезла из данных — MACRO пробит закрытием
+      BTC 10-01 00:00 R
+         было  [81394.2..83001.6] 1M_MACRO_Resistance   id R|1M_MACRO_Resistance|2026-05-01
+         стало [82964.9..84182.7] 1M_close_PMC   id R|1M_close_PMC|2026-09-30
+      INJ 10-01 00:00 R
+         было  [6.987..7.40644] 1M_MACRO_Resistance   id R|1M_MACRO_Resistance|2026-06-01
+         стало [7.22475..7.59525] 1M_close_PMC   id R|1M_close_PMC|2026-09-30
+      ONDO 10-01 00:00 R
+         было  [0.4526..0.48989] 1M_MACRO_Resistance   id R|1M_MACRO_Resistance|2026-05-01
+         стало [0.48711..0.51209] 1M_close_PMC   id R|1M_close_PMC|2026-09-30
+      XLM 10-05 00:00 R
+         было  [0.211924..0.223778] 1W_MACRO_Resistance + 1M_close_PMC + 4h_extreme_peak+4h_poc   id R|1W_MACRO_Resistance|2026-08-17
+         стало [0.222498..0.230102] 1M_close_PMC + 4h_extreme_peak   id R|1M_close_PMC|2026-09-30
+   --- 1. основа исчезла из данных — смена месяца/недели (PMH/PML/PMC/PWH/PWL)
+      ASTER 10-05 00:00 S
+         было  [0.673974..0.692964] 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak + 1M_low_PML   id S|1W_low_PWL|2026-09-06
+         стало [0.666636..0.684009] 1W_low_PWL + 4h_extreme_peak + 1d_extreme_peak + 1M_low_PML   id S|1W_low_PWL|2026-09-13
+      ASTER 10-05 00:00 S
+         было  [0.673974..0.692964] 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak + 1M_low_PML   id S|1W_low_PWL|2026-09-06
+         стало [0.688239..0.7011] 4h_extreme_peak + 1W_low_PWL   id S|4h_extreme_peak|2026-09-28
+      LIT 10-05 00:00 S
+         было  [3.33767..3.50883] 1W_low_PWL + 1M_low_PML + 4h_extreme_peak   id S|1W_low_PWL|2026-09-06
+         стало [3.33767..3.50883] 1M_low_PML + 4h_extreme_peak + 1W_low_PWL   id S|1M_low_PML|2026-09-30
+   --- 1. основа исчезла из данных — та же точка стала другой стороной (цена прошла уровень)
+      ARB 10-05 00:00 R
+         было  [0.197749..0.207891] 1M_close_PMC + 4h_extreme_peak   id R|1M_close_PMC|2026-09-30
+         стало [0.20504..0.209469] 4h_extreme_peak   id R|4h_extreme_peak|2026-10-02
+      BCH 10-02 00:00 R
+         было  [299.325..312.475] 1M_close_PMC+4h_poc   id R|1M_close_PMC|2026-09-30
+         стало [311.021..318.808] 4h_extreme_peak+4h_poc   id R|4h_extreme_peak|2026-09-30
+      JUP 10-05 00:00 R
+         было  [0.321793..0.337607] 1M_close_PMC + 4h_extreme_peak   id R|1M_close_PMC|2026-09-30
+         стало [0.3333..0.342912] 4h_extreme_peak   id R|4h_extreme_peak|2026-09-30
+      MON 10-06 00:00 S
+         было  [0.0311029..0.0324771] 1M_close_PMC + 4h_extreme_peak   id S|1M_close_PMC|2026-09-30
+         стало [0.0304968..0.03192] 4h_extreme_peak   id S|4h_extreme_peak|2026-10-02
+   --- 2. основа пробита закрытием
+      AAVE 10-02 12:00 R
+         было  [171.23..176.868] 4h_extreme_peak + 1M_high_PMH   id R|4h_extreme_peak|2026-09-29
+         стало [167.035..175.601] 1M_high_PMH   id R|1M_high_PMH|2026-09-30
+      AAVE 10-04 00:00 R
+         было  [177.895..181.164] 1d_extreme_peak + 1W_MACRO_Resistance   id R|1d_extreme_peak|2026-01-14
+         стало [177.895..181.164] 1W_MACRO_Resistance   id R|1W_MACRO_Resistance|2026-01-12
+      ADA 10-05 12:00 R
+         было  [0.2596..0.262911] 4h_extreme_peak + 1W_high_PWH + 1M_high_PMH + 1d_extreme_peak   id R|4h_extreme_peak|2026-09-23
+         стало [0.2587..0.267029] 1W_high_PWH + 1M_high_PMH + 1d_extreme_peak   id R|1W_high_PWH|2026-09-27
+      ASTER 10-01 00:00 R
+         было  [0.7586..0.769027] 4h_extreme_peak + 1W_high_PWH   id R|4h_extreme_peak|2026-09-21
+         стало [0.7453..0.771174] 1W_high_PWH + 1M_close_PMC   id R|1W_high_PWH|2026-09-27
+   --- 4. основа жива в зоне, но основой стала другая точка — новая основа не старше
+      ATOM 10-05 00:00 S
+         было  [1.44719..1.47807] 4h_extreme_peak + 1W_low_PWL + 1d_extreme_peak   id S|4h_extreme_peak|2026-09-04
+         стало [1.46166..1.477] 4h_extreme_peak   id S|4h_extreme_peak|2026-09-16
+      GRAM 10-02 00:00 S
+         было  [1.45126..1.48] 4h_extreme_peak   id S|4h_extreme_peak|2026-09-30
+         стало [1.47429..1.52171] 1M_close_PMC + 4h_extreme_peak   id S|1M_close_PMC|2026-09-30
+      ZRO 10-02 00:00 R
+         было  [1.79684..1.88899] 4h_extreme_peak   id R|4h_extreme_peak|2026-09-30
+         стало [1.7749..1.86592] 1M_high_PMH + 4h_extreme_peak   id R|1M_high_PMH|2026-09-30
+      XAG 10-02 00:00 S
+         было  [59.9793..60.5768] 1M_low_PML   id S|1M_low_PML|2026-09-30
+         стало [60.0732..60.9268] 1M_close_PMC + 1M_low_PML   id S|1M_close_PMC|2026-09-30
+   --- 4. основа жива в зоне, но основой стала другая точка — новая основа старше
+      ATOM 10-02 12:00 S
+         было  [1.46166..1.477] 4h_extreme_peak   id S|4h_extreme_peak|2026-09-16
+         стало [1.44719..1.47807] 4h_extreme_peak + 1W_low_PWL + 1d_extreme_peak   id S|4h_extreme_peak|2026-09-04
+      DOGE 10-01 00:00 R
+         было  [0.09892..0.100038] 4h_extreme_peak   id R|4h_extreme_peak|2026-09-25
+         стало [0.0962638..0.1012] 1d_extreme_peak + 1M_high_PMH + 1W_MACRO_Resistance + 4h_extreme_peak + 1W_high_PWH   id R|1d_extreme_peak|2026-08-22
+      PENGU 10-06 00:00 S
+         было  [0.00775031..0.00794873] 1W_low_PWL   id S|1W_low_PWL|2026-09-27
+         стало [0.00658502..0.00846645] 1W_MACRO_Support + 1M_MACRO_Support + 4h_extreme_peak + 1d_extreme_peak + 1W_low_PWL + 1M_low_PML   id S|1W_MACRO_Support|2025-10-06
+
+8) Мерцание сырых точек W (всего разных точек: 8254):
+   жива -> нет -> жива снова: 0   (должно быть 0)
+   появилась позже, чем стала известна: 32   (должно быть 0)
+      1M_close_PMC: 32
+   --- поздно AAVE 1M_close_PMC 2026-09-30 S  по снимкам: 00001111111111  впервые 10-02 00:00, известна с 10-01 00:00
+   --- поздно 1000PEPE 1M_close_PMC 2026-09-30 S  по снимкам: 00001100000000  впервые 10-02 00:00, известна с 10-01 00:00
+   --- поздно APT 1M_close_PMC 2026-09-30 S  по снимкам: 00001111111111  впервые 10-02 00:00, известна с 10-01 00:00
+   --- поздно AVAX 1M_close_PMC 2026-09-30 S  по снимкам: 00001100000000  впервые 10-02 00:00, известна с 10-01 00:00
+   --- поздно BCH 1M_close_PMC 2026-09-30 S  по снимкам: 00001111111111  впервые 10-02 00:00, известна с 10-01 00:00
+   --- поздно BZ 1M_close_PMC 2026-09-30 S  по снимкам: 00001111111111  впервые 10-02 00:00, известна с 10-01 00:00
+   --- поздно CASHCAT 1M_close_PMC 2026-09-30 S  по снимкам: 00001100000000  впервые 10-02 00:00, известна с 10-01 00:00
+   --- поздно CL 1M_close_PMC 2026-09-30 S  по снимкам: 00001111111100  впервые 10-02 00:00, известна с 10-01 00:00
+   --- поздно BNB 1M_close_PMC 2026-09-30 S  по снимкам: 00001100000000  впервые 10-02 00:00, известна с 10-01 00:00
+   --- поздно BTC 1M_close_PMC 2026-09-30 S  по снимкам: 00001111111111  впервые 10-02 00:00, известна с 10-01 00:00
+   --- поздно GRAM 1M_close_PMC 2026-09-30 S  по снимкам: 00001111111111  впервые 10-02 00:00, известна с 10-01 00:00
+   --- поздно GRASS 1M_close_PMC 2026-09-30 S  по снимкам: 00001111110000  впервые 10-02 00:00, известна с 10-01 00:00
+
+5) Макро-зоны, построенные НЕ по дневной свече (запасной путь), в W — за все снимки:
+   всего макро-точек (до склейки, сумма по снимкам): 15220
+   запасной путь: нет дневной свечи 0, экстремум дня не совпал с ценой свинга 0   (1M: 0, 1W: 0)
+   зон шире 10% в выдаче W: 53 (по снимкам); самые широкие:
+       25.0%  WIF      10-01 12:00  [0.154485..0.198624] 1M_MACRO_Support + 4h_extreme_peak + 1d_extreme_peak + 1W_low_PWL + 1M_low_PML
+       25.0%  WIF      09-30 12:00  [0.154485..0.198624] 1M_MACRO_Support + 4h_extreme_peak + 1d_extreme_peak + 1W_low_PWL
+       25.0%  PENGU    10-06 12:00  [0.00658502..0.00846645] 1W_MACRO_Support + 1M_MACRO_Support + 4h_extreme_peak + 1d_extreme_peak + 1W_low_PWL + 1M_low_PML
+       14.0%  XPL      10-01 12:00  [0.0685779..0.07894] 1M_MACRO_Support + 1M_close_PMC + 1M_low_PML + 1d_extreme_peak + 1W_MACRO_Support + 1W_low_PWL + 4h_extreme_peak
+       12.1%  GRASS    10-06 12:00  [0.9376..1.05861] 1W_MACRO_Resistance
+       11.7%  PHA      10-06 12:00  [0.0736393..0.0828031] 1W_MACRO_Resistance + 1M_close_PMC + 4h_extreme_peak + 1W_high_PWH+4h_poc
+       11.7%  PHA      10-04 12:00  [0.0736393..0.0828031] 1W_MACRO_Resistance + 1M_close_PMC + 4h_extreme_peak+4h_poc
+       11.7%  PHA      10-01 00:00  [0.0736393..0.0828031] 1W_MACRO_Resistance + 1M_close_PMC+4h_poc
+       11.7%  PHA      09-30 12:00  [0.0736393..0.0828031] 1W_MACRO_Resistance+4h_poc
+       11.0%  GRASS    10-04 12:00  [0.59215..0.661285] 1W_MACRO_Resistance
+       11.0%  GRASS    09-30 12:00  [0.59215..0.661285] 1W_MACRO_Resistance + 1M_MACRO_Resistance
+       10.3%  DASH     10-06 12:00  [65.3486..72.4451] 1M_MACRO_Resistance + 1W_high_PWH
+   --- AAVE 09-30 00:00
+      A R   3.0%  [202.29..208.399] 1W_MACRO_Resistance + 1d_extreme_peak
+      A R   1.8%  [177.895..181.164] 1W_MACRO_Resistance + 1d_extreme_peak
+      A S   1.6%  [143.565..145.82] 4h_extreme_peak
+      A S   3.7%  [133.788..138.86] 1W_low_PWL + 4h_extreme_peak
+      W R   3.0%  [202.29..208.399] 1d_extreme_peak + 1W_MACRO_Resistance
+      W R   1.8%  [177.895..181.164] 1d_extreme_peak + 1W_MACRO_Resistance
+      W S   1.6%  [143.565..145.82] 4h_extreme_peak
+      W S   2.2%  [132.803..135.72] 4h_extreme_peak + 1W_low_PWL
+   --- AAVE 09-30 12:00
+      A R   3.0%  [202.29..208.399] 1W_MACRO_Resistance + 1d_extreme_peak
+      A R   1.8%  [177.895..181.164] 1W_MACRO_Resistance + 1d_extreme_peak
+      A S   1.6%  [143.565..145.82] 4h_extreme_peak
+      A S   3.7%  [133.788..138.86] 1W_low_PWL + 4h_extreme_peak
+      W R   3.0%  [202.29..208.399] 1d_extreme_peak + 1W_MACRO_Resistance
+      W R   1.8%  [177.895..181.164] 1d_extreme_peak + 1W_MACRO_Resistance
+      W S   1.6%  [143.565..145.82] 4h_extreme_peak
+      W S   2.2%  [132.803..135.72] 4h_extreme_peak + 1W_low_PWL
+   --- AAVE 10-01 00:00
+      A R   5.0%  [167.035..175.601] 1M_high_PMH + 4h_extreme_peak
+      A R   3.8%  [156.356..162.404] 1M_close_PMC
+      A S   1.6%  [143.565..145.82] 4h_extreme_peak
+      A S   3.7%  [133.788..138.86] 1W_low_PWL + 4h_extreme_peak
+      W R   3.2%  [171.23..176.868] 4h_extreme_peak + 1M_high_PMH
+      W R   3.8%  [156.356..162.404] 1M_close_PMC
+      W S   1.6%  [143.565..145.82] 4h_extreme_peak
+      W S   2.2%  [132.803..135.72] 4h_extreme_peak + 1W_low_PWL
+   --- AAVE 10-01 12:00
+      A R   5.0%  [167.035..175.601] 1M_high_PMH + 4h_extreme_peak
+      A R   3.8%  [156.356..162.404] 1M_close_PMC
+      A S   1.6%  [143.565..145.82] 4h_extreme_peak
+      A S   3.7%  [133.788..138.86] 1W_low_PWL + 4h_extreme_peak
+      W R   3.2%  [171.23..176.868] 4h_extreme_peak + 1M_high_PMH
+      W R   3.8%  [156.356..162.404] 1M_close_PMC
+      W S   1.6%  [143.565..145.82] 4h_extreme_peak
+      W S   2.2%  [132.803..135.72] 4h_extreme_peak + 1W_low_PWL
+   --- AAVE 10-02 00:00
+      A R   1.8%  [177.895..181.164] 1W_MACRO_Resistance + 1d_extreme_peak
+      A R   5.0%  [167.035..175.601] 1M_high_PMH + 4h_extreme_peak
+      A S   3.8%  [156.356..162.404] 1M_close_PMC + 4h_extreme_peak
+      A S   1.6%  [143.565..145.82] 4h_extreme_peak
+      W R   1.8%  [177.895..181.164] 1d_extreme_peak + 1W_MACRO_Resistance
+      W R   3.2%  [171.23..176.868] 4h_extreme_peak + 1M_high_PMH
+      W S   3.8%  [156.356..162.404] 1M_close_PMC + 4h_extreme_peak
+      W S   1.6%  [143.565..145.82] 4h_extreme_peak
+   --- AAVE 10-05 00:00
+      A R   2.2%  [183.97..188.037] 4h_extreme_peak
+      A R   1.8%  [177.895..181.164] 1W_MACRO_Resistance + 1W_high_PWH
+      A S   3.8%  [156.356..162.404] 1M_close_PMC + 4h_extreme_peak
+      A S   4.4%  [142.867..149.36] 1W_low_PWL + 4h_extreme_peak
+      W R   2.2%  [183.97..188.037] 4h_extreme_peak
+      W R   1.8%  [177.895..181.164] 1W_MACRO_Resistance + 1W_high_PWH
+      W S   3.8%  [156.356..162.404] 1M_close_PMC + 4h_extreme_peak
+      W S   1.6%  [143.565..145.82] 4h_extreme_peak + 1W_low_PWL
+   --- AAVE 10-05 12:00
+      A R   2.2%  [183.97..188.037] 4h_extreme_peak
+      A R   1.8%  [177.895..181.164] 1W_MACRO_Resistance + 1W_high_PWH
+      A S   3.8%  [156.356..162.404] 1M_close_PMC + 4h_extreme_peak
+      A S   4.4%  [142.867..149.36] 1W_low_PWL + 4h_extreme_peak
+      W R   2.2%  [183.97..188.037] 4h_extreme_peak
+      W R   1.8%  [177.895..181.164] 1W_MACRO_Resistance + 1W_high_PWH
+      W S   3.8%  [156.356..162.404] 1M_close_PMC + 4h_extreme_peak
+      W S   1.6%  [143.565..145.82] 4h_extreme_peak + 1W_low_PWL
+   --- AKE 09-30 00:00
+      A R   5.0%  [0.171458..0.180251] 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak
+      A R   5.0%  [0.0604422..0.0635418] 1W_high_PWH + 4h_extreme_peak
+      A S   5.0%  [0.029663..0.0311841] 1W_low_PWL + 4h_extreme_peak
+      A S   5.0%  [0.0175923..0.0184945] 4h_extreme_peak
+      W R   5.0%  [0.171458..0.180251] 1W_high_PWH + 4h_extreme_peak + 1d_extreme_peak
+      W R   5.0%  [0.060448..0.0635479] 4h_extreme_peak + 1W_high_PWH
+      W S   5.0%  [0.029663..0.0311841] 1W_low_PWL + 4h_extreme_peak
+      W S   5.0%  [0.0175923..0.0184945] 4h_extreme_peak
