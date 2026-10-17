@@ -3,6 +3,8 @@
 from typing import Optional
 import os
 
+from .candle_patterns import check_c1, check_c2, check_c3
+
 
 class BounceWatcher:
 
@@ -22,6 +24,9 @@ class BounceWatcher:
     _MAX_LOG_LINES = 5000     # потолок на файл — при частых рестартах не даём ему расти бесконечно
 
     CONFIG = {
+        'ENTRY_MODE': 'volume',    # как искать свечу входа после пробоя: 'volume' — объём (VOL_SPIKE_MULT и т.д.),
+                                   # 'patterns' — свечные паттерны C1->C2->C3 (candle_patterns.py). Берётся из
+                                   # config.json -> crypto.bounce_entry_mode при рождении вотчера и дальше не меняется.
         'IGNORE_POC_LEVELS': False,  # True = полностью игнорировать POC-уровни
         'MIN_SCORE': 1.0,          
         'VOL_SPIKE_MULT': 2.5,     
@@ -67,6 +72,8 @@ class BounceWatcher:
         # SHORT_CLIMAX_MODE и вели бы себя одинаково. mode — просто метка для
         # лога/фокуса ('CLIMAX'/'MIRROR'/None), сама логика идёт через CONFIG.
         self.CONFIG = {**BounceWatcher.CONFIG, **(config_overrides or {})}
+        # Режим входа, заданный явно (симулятор в режиме Sim), главнее config.json.
+        _explicit_entry_mode = (config_overrides or {}).get('ENTRY_MODE')
         # Динамически подтягиваем TP/SL из config.json, перетирая дефолты
         import os
         from backend.modules.cryptano.utils.storage import load_json
@@ -83,6 +90,10 @@ class BounceWatcher:
                 self.CONFIG['FIXED_TP_PCT'] = float(live_cfg["bounce_tp_pct"])
             if "bounce_sl_pct" in live_cfg:
                 self.CONFIG['SL_PCT'] = float(live_cfg["bounce_sl_pct"])
+            if "bounce_entry_mode" in live_cfg:
+                _em = str(live_cfg["bounce_entry_mode"]).strip().lower()
+                if _em in ('volume', 'patterns'):
+                    self.CONFIG['ENTRY_MODE'] = _em
             # Свой TP/SL монеты (jsonbank/coin_settings.json) — приоритет над общим.
             # Подхватывается только НОВЫМИ вотчерами (уже живые держат свой CONFIG).
             from backend.modules.cryptano.utils.coin_settings import get_coin_tpsl
@@ -95,6 +106,8 @@ class BounceWatcher:
                 self.CONFIG['SL_PCT'] = float(own_sl)
         except Exception as e:
             pass # Если файл битый или ключей нет - останутся дефолты из класса
+        if _explicit_entry_mode in ('volume', 'patterns'):
+            self.CONFIG['ENTRY_MODE'] = _explicit_entry_mode
         self.mode = mode
         # В общем реестре bounce_mgr (один инстанс на ВСЕ монеты, как и у
         # VBottomManager) вотчеры разных монет ничем, кроме min/max, не
@@ -172,6 +185,11 @@ class BounceWatcher:
         self._step2_logged = False  # то же самое для ШАГ 2 (WAIT_MAX->WAIT_BUFFER)
         self._step3_logged = False  # то же самое для ШАГ 3 (WAIT_BUFFER->SEARCHING, "старт поиска")
 
+        # --- Режим входа 'patterns' (CONFIG['ENTRY_MODE']): цепочка C1 -> C2 -> C3 ---
+        self._pat_stage = None    # None -> 'C2' (C1 найдена, ждём реакцию) -> 'C3' (ждём подтверждение)
+        self._pat_c1 = None       # данные свечи C1
+        self._pat_routes = []     # маршруты паттерна (1/2/3), живые на данный момент
+
     def reset_for_rescan(self):
         """Откатывает вотчера к состоянию 'только родился' — ТОТ ЖЕ объект,
         тот же level_id/coin/min/max/trade_type/mode (identity не трогаем),
@@ -206,6 +224,7 @@ class BounceWatcher:
         self._step1_logged = False
         self._step2_logged = False
         self._step3_logged = False
+        self._pat_reset()
         self._last_event_price = None
         self.pierced_bottom = False
         self.currently_pierced = False
@@ -277,7 +296,7 @@ class BounceWatcher:
         if v >= 1_000: return f"{v/1_000:.1f}k"
         return str(int(v))
 
-    def update(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, level_score=0, candle_time=None, vol_90=0.0, is_focus=True, c_atr=0.0):
+    def update(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, level_score=0, candle_time=None, vol_90=0.0, is_focus=True, c_atr=0.0, baseline_mean=0.0):
         """
         Тонкая обёртка над _update_impl() — сама логика ниже НЕ менялась ни
         строкой, только вынесена в отдельный метод. Обёртка нужна, чтобы
@@ -289,7 +308,7 @@ class BounceWatcher:
         is_first_call = not self._started_logged
         result = self._update_impl(
             c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels,
-            level_score, candle_time, vol_90, is_focus, c_atr
+            level_score, candle_time, vol_90, is_focus, c_atr, baseline_mean
         )
         if is_first_call:
             mode_label = self.mode if self.mode else "-"
@@ -319,7 +338,7 @@ class BounceWatcher:
         if len(self.event_log) > 100:
             self.event_log = self.event_log[-100:]
 
-    def _update_impl(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, level_score=0, candle_time=None, vol_90=0.0, is_focus=True, c_atr=0.0):
+    def _update_impl(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, level_score=0, candle_time=None, vol_90=0.0, is_focus=True, c_atr=0.0, baseline_mean=0.0):
         is_first_candle = (self._last_time is None)
         
         self._last_time = candle_time
@@ -551,6 +570,7 @@ class BounceWatcher:
                 self._dbg(f"🟠 ПРОКОЛ {threshold_label} (#{self.pierce_count}) | Хай свечи: {c_high:.4f} >= Порог: {trigger_short:.4f}")
 
         if runaway_this_candle:
+            self._pat_reset()   # пробой аннулирован — цепочка паттерна тоже
             if not self.currently_runaway:
                 self.currently_runaway = True
                 self.last_event_type = "RUNAWAY"
@@ -602,6 +622,18 @@ class BounceWatcher:
         body_pct = (body / hl * 100.0) if hl > 0 else 0.0
         top_shadow_pct = (top_shadow / hl * 100.0) if hl > 0 else 0.0
         bottom_shadow_pct = (bottom_shadow / hl * 100.0) if hl > 0 else 0.0
+
+        # --- РЕЖИМ ВХОДА 'patterns': вместо проверки одной свечи по объёму — цепочка C1->C2->C3 ---
+        # Всё, что выше (пробой, отбой, фокус, бюджет сделок), общее для обоих режимов.
+        # Фон объёма для паттернов — СРЕДНЕЕ за 50 свечей (как в V_RED_TOP), а не 90-й перцентиль.
+        if self.CONFIG.get('ENTRY_MODE', 'volume') == 'patterns':
+            max_per_pierce = self.CONFIG.get('MAX_TRADES_PER_PIERCE', 1)
+            is_pierce_budget_ok = (max_per_pierce <= 0) or (self.trades_since_pierce < max_per_pierce)
+            if not self.pierced_bottom:
+                self._pat_reset()
+                return None
+            return self._pattern_step(c_open, c_high, c_low, c_close, c_vol, baseline_mean,
+                                      is_focus, is_pierce_budget_ok)
 
         if self.trade_type == 'LONG':
             max_per_pierce = self.CONFIG.get('MAX_TRADES_PER_PIERCE', 1)
@@ -666,6 +698,58 @@ class BounceWatcher:
                         
                         self._dbg(f"🟡 ПРОПУСК | КРАСНАЯ | {', '.join(fail_reasons)} | V:{v_str}")
 
+        return None
+
+    def _pat_reset(self):
+        self._pat_stage = None
+        self._pat_c1 = None
+        self._pat_routes = []
+
+    def _pattern_step(self, o, h, l, c, v, baseline_mean, is_focus, is_pierce_budget_ok):
+        """Один шаг цепочки паттерна (candle_patterns.py) на закрытой свече.
+        C1 -> C2 -> C3, вход по закрытию C3. Если цепочка сломалась на C2/C3 —
+        эта же свеча сразу проверяется как новая C1. Вход требует фокус и бюджет
+        сделок, как и в режиме объёма."""
+        d = self.trade_type   # 'LONG' / 'SHORT' — то же имя направления в candle_patterns
+        stage = getattr(self, '_pat_stage', None)
+        base = float(baseline_mean) if baseline_mean and baseline_mean > 0 else 0.0
+        vol_mult = (float(v) / base) if base > 0 else 0.0
+
+        if stage == 'C3':
+            routes = list(self._pat_routes)
+            c1 = self._pat_c1
+            self._pat_reset()
+            route = check_c3(c1, routes, o, h, l, c, v, d)
+            if route is not None:
+                if is_focus and is_pierce_budget_ok:
+                    self.last_event_type = "GOOD_GREEN" if d == 'LONG' else "GOOD_RED"
+                    self._dbg(f"🧩 [С3] Подтверждение: маршрут {route}")
+                    return self._enter(c, vol_mult, v, base, base, pattern_route=route)
+                reasons = []
+                if not is_focus: reasons.append("не в фокусе (пробит более свежий уровень)")
+                if not is_pierce_budget_ok: reasons.append(f"Бюджет пробоя #{self.pierce_count} исчерпан, жду новый")
+                self._dbg(f"🟡 ПРОПУСК | ПАТТЕРН {route} | {', '.join(reasons)}")
+            else:
+                self._dbg(f"❌ Отмена [С3]: подтверждения нет, маршруты {routes}")
+        elif stage == 'C2':
+            routes = list(self._pat_routes)
+            survivors = check_c2(self._pat_c1, o, h, l, c, v, routes, d)
+            if survivors:
+                self._pat_routes = survivors
+                self._pat_stage = 'C3'
+                self._dbg(f"⏳ [С2] Выжили маршруты {survivors}, жду С3")
+                return None
+            self._dbg(f"❌ Отмена [С2]: реакции нет, маршруты {routes}")
+            self._pat_reset()
+
+        # поиск C1 (в том числе на свече, где сломалась прошлая цепочка)
+        routes, c1 = check_c1(o, h, l, c, v, base, d)
+        if routes:
+            self._pat_c1 = c1
+            self._pat_routes = routes
+            self._pat_stage = 'C2'
+            self.last_event_type = "SCAN"
+            self._dbg(f"🎯 [С1] Якорь паттерна: маршруты {routes} | V x{vol_mult:.1f} от среднего")
         return None
 
     def _update_climax_short(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol,
@@ -798,7 +882,7 @@ class BounceWatcher:
                     return None
 
             return None
-    def _enter(self, actual_entry, vol_mult, c_vol, logic_vol, baseline_vol):
+    def _enter(self, actual_entry, vol_mult, c_vol, logic_vol, baseline_vol, pattern_route=None):
         tp_pct = self.CONFIG['FIXED_TP_PCT'] / 100.0
         sl_pct = self.CONFIG['SL_PCT'] / 100.0
 
@@ -830,7 +914,8 @@ class BounceWatcher:
         v_str = self._fmt(c_vol)
         
         # Короткий и чёткий лог: сделка X из общего лимита, в рамках пробоя #N
-        reason_str = f"BOUNCE (пробой #{self.pierce_count}, сделка {self.trades_count}/{max_trades_total if max_trades_total > 0 else '∞'}) | V:{v_str} (x{vol_mult:.1f})"
+        pat_tag = f" | ПАТТЕРН R{pattern_route}" if pattern_route else ""
+        reason_str = f"BOUNCE (пробой #{self.pierce_count}, сделка {self.trades_count}/{max_trades_total if max_trades_total > 0 else '∞'}) | V:{v_str} (x{vol_mult:.1f}){pat_tag}"
         self._dbg(f"✅ ВХОД: {actual_entry:.4f} | {reason_str}")
 
         if self.state == "TRIGGERED":
@@ -851,4 +936,6 @@ class BounceWatcher:
             "reborn": getattr(self, 'reborn', False),
             "volume": c_vol,
             "volume_mult": vol_mult,
+            "method": "pattern" if pattern_route else "volume",
+            "pattern_route": pattern_route,
         }

@@ -9,16 +9,6 @@
         "reaction_count": 1,
         "level_id": "R|4h_extreme_peak|2026-09-29"
     },
-    "RAYDIUM_VRT_SHORT": {
-        "min": 2.0569,
-        "max": 2.099307857142857,
-        "score": 4.5,
-        "type": "4h_extreme_peak",
-        "date": "2026-09-30",
-        "activated_at": "2026-10-01",
-        "reaction_count": 1,
-        "level_id": "R|4h_extreme_peak|2026-09-30"
-    },
     "MORPHO_VRT_SHORT": {
         "min": 2.67,
         "max": 2.713964285714286,
@@ -159,16 +149,6 @@
         "activated_at": "2026-08-31",
         "reaction_count": 1,
         "level_id": "R|1M_high_PMH|2026-08-31"
-    },
-    "JUP_VRT_SHORT": {
-        "min": 0.32198214285714283,
-        "max": 0.33741785714285716,
-        "score": 5.5,
-        "type": "1M_close_PMC + 4h_extreme_peak",
-        "date": "2026-09-30",
-        "activated_at": "2026-09-30",
-        "reaction_count": 1,
-        "level_id": "R|1M_close_PMC|2026-09-30"
     },
     "AAVE_VRT_SHORT": {
         "min": 177.89464285714286,
@@ -371,5 +351,186 @@
         "activated_at": "2026-10-05",
         "reaction_count": 0,
         "level_id": "R|4h_extreme_peak|2026-10-04"
+    },
+    "XAU_VRT_SHORT": {
+        "min": 4173.68,
+        "max": 4190.9457142857145,
+        "score": 4.0,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-06",
+        "activated_at": "2026-10-07",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-10-06"
+    },
+    "JUP_VRT_SHORT": {
+        "min": 0.3676053571428572,
+        "max": 0.3776778571428572,
+        "score": 5.5,
+        "type": "1M_high_PMH + 1W_high_PWH + 1d_extreme_peak",
+        "date": "2026-09-30",
+        "activated_at": "2026-09-30",
+        "reaction_count": 1,
+        "level_id": "R|1M_high_PMH|2026-09-30"
+    },
+    "WLD_VRT_SHORT": {
+        "min": 0.5238,
+        "max": 0.5352921428571429,
+        "score": 4.5,
+        "type": "4h_extreme_peak+4h_poc",
+        "date": "2026-10-08",
+        "activated_at": "2026-10-09",
+        "reaction_count": 0,
+        "level_id": "R|4h_extreme_peak|2026-10-08"
+    },
+    "TIA_VRT_SHORT": {
+        "min": 0.4880357142857143,
+        "max": 0.5246264285714286,
+        "score": 8.0,
+        "type": "1M_MACRO_Resistance + 1M_high_PMH + 1W_MACRO_Resistance + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak+4h_poc",
+        "date": "2026-05-01",
+        "activated_at": "2026-07-01",
+        "reaction_count": 5,
+        "class": "MACRO",
+        "level_id": "R|1M_MACRO_Resistance|2026-05-01"
+    },
+    "MON_VRT_SHORT": {
+        "min": 0.02471,
+        "max": 0.025356,
+        "score": 4.0,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-09",
+        "activated_at": "2026-10-10",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-10-09"
+    },
+    "1000BONK_VRT_SHORT": {
+        "min": 0.00341,
+        "max": 0.0034578928571428573,
+        "score": 4.0,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-10",
+        "activated_at": "2026-10-11",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-10-10"
+    },
+    "XLM_VRT_SHORT": {
+        "min": 0.19756428571428572,
+        "max": 0.19887428571428573,
+        "score": 4.0,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-10",
+        "activated_at": "2026-10-11",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-10-10"
+    },
+    "NEAR_VRT_SHORT": {
+        "min": 5.20455,
+        "max": 5.47145,
+        "score": 6.5,
+        "type": "1M_close_PMC + 1M_high_PMH + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
+        "date": "2026-09-30",
+        "activated_at": "2026-09-30",
+        "reaction_count": 3,
+        "level_id": "R|1M_close_PMC|2026-09-30"
+    },
+    "1000PEPE_VRT_SHORT": {
+        "min": 0.004028,
+        "max": 0.004085514285714286,
+        "score": 4.0,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-10",
+        "activated_at": "2026-10-11",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-10-10"
+    },
+    "BTC_VRT_SHORT": {
+        "min": 83210.0,
+        "max": 83585.15642857143,
+        "score": 3.5,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-09",
+        "activated_at": "2026-10-10",
+        "reaction_count": 0,
+        "level_id": "R|4h_extreme_peak|2026-10-09"
+    },
+    "XRP_VRT_SHORT": {
+        "min": 1.4059,
+        "max": 1.4150278571428572,
+        "score": 3.5,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-10",
+        "activated_at": "2026-10-11",
+        "reaction_count": 0,
+        "level_id": "R|4h_extreme_peak|2026-10-10"
+    },
+    "UNI_VRT_SHORT": {
+        "min": 7.625,
+        "max": 7.72565,
+        "score": 4.0,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-10",
+        "activated_at": "2026-10-11",
+        "reaction_count": 1,
+        "level_id": "R|4h_extreme_peak|2026-10-10"
+    },
+    "LINK_VRT_SHORT": {
+        "min": 13.129,
+        "max": 13.268285714285714,
+        "score": 3.5,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-10",
+        "activated_at": "2026-10-11",
+        "reaction_count": 0,
+        "level_id": "R|4h_extreme_peak|2026-10-10"
+    },
+    "WIF_VRT_SHORT": {
+        "min": 0.2193,
+        "max": 0.22334714285714286,
+        "score": 3.5,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-10",
+        "activated_at": "2026-10-11",
+        "reaction_count": 0,
+        "level_id": "R|4h_extreme_peak|2026-10-10"
+    },
+    "CASHCAT_VRT_SHORT": {
+        "min": 0.11559,
+        "max": 0.12059600000000001,
+        "score": 3.5,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-10",
+        "activated_at": "2026-10-11",
+        "reaction_count": 0,
+        "level_id": "R|4h_extreme_peak|2026-10-10"
+    },
+    "SHIB1000_VRT_SHORT": {
+        "min": 0.005488,
+        "max": 0.005531292857142857,
+        "score": 3.5,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-10",
+        "activated_at": "2026-10-11",
+        "reaction_count": 0,
+        "level_id": "R|4h_extreme_peak|2026-10-10"
+    },
+    "GRASS_VRT_SHORT": {
+        "min": 0.7760394107142858,
+        "max": 0.8158363035714287,
+        "score": 6.0,
+        "type": "1M_high_PMH + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
+        "date": "2026-09-30",
+        "activated_at": "2026-09-30",
+        "reaction_count": 1,
+        "level_id": "R|1M_high_PMH|2026-09-30"
+    },
+    "PHA_VRT_SHORT": {
+        "min": 0.06164,
+        "max": 0.06344357142857142,
+        "score": 3.5,
+        "type": "4h_extreme_peak",
+        "date": "2026-10-10",
+        "activated_at": "2026-10-11",
+        "reaction_count": 0,
+        "level_id": "R|4h_extreme_peak|2026-10-10"
     }
 }

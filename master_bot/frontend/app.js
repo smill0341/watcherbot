@@ -84,16 +84,18 @@ function filterWatchlist(query) {
 // Закладки (см. renderActiveStrategyTabs ниже) — чисто фронтовый фильтр,
 // activeWatchersCache и так весь целиком лежит в памяти (см. loadActiveWatchers),
 // backend трогать незачем: поле w.strategy уже есть в каждой записи.
+// Одна закладка может собирать несколько стратегий: VL — V_BOTTOM и
+// V_GREEN_BOTTOM одним списком (сами стратегии и их вотчеры раздельные).
 const STRATEGY_TAB_DEFS = [
-  { tag: "VB", strategy: "V_BOTTOM" },
-  { tag: "VGB", strategy: "V_GREEN_BOTTOM" },
-  { tag: "VRT", strategy: "V_RED_TOP" },
-  { tag: "BO", strategy: "BOUNCE" },
-  { tag: "H", strategy: "VOL_SPIKE", fullName: "Ручные (объёмные триггеры)" },
+  { tag: "VL", strategies: ["V_BOTTOM", "V_GREEN_BOTTOM"], fullName: "V Long (V-Bottom + V-Green)" },
+  { tag: "VRT", strategies: ["V_RED_TOP"] },
+  { tag: "BO", strategies: ["BOUNCE"] },
+  { tag: "BB", strategies: ["BUYBACK"], fullName: "Buyback (выкуп)" },
+  { tag: "H", strategies: ["VOL_SPIKE"], fullName: "Ручные (объёмные триггеры)" },
 ];
 // null = ни одна закладка не выбрана -> показываем все стратегии разом
 // (по решению Jack закладки "Все" нет — повторный клик по активной снимает
-// фильтр сам).
+// фильтр сам). Хранит tag закладки.
 let activeStrategyTab = null;
 
 function filterActiveWatchers(query) {
@@ -102,7 +104,9 @@ function filterActiveWatchers(query) {
 
   let filtered = activeWatchersCache;
   if (activeStrategyTab) {
-    filtered = filtered.filter((w) => w.strategy === activeStrategyTab);
+    const tab = STRATEGY_TAB_DEFS.find((t) => t.tag === activeStrategyTab);
+    const tabStrategies = tab ? tab.strategies : [];
+    filtered = filtered.filter((w) => tabStrategies.includes(w.strategy));
   }
   if (q) {
     filtered = filtered.filter((w) => (w.coin || "").toLowerCase().includes(q));
@@ -119,19 +123,19 @@ function filterActiveWatchers(query) {
 function renderActiveStrategyTabs() {
   const el = document.getElementById("active-strategy-tabs");
   if (!el) return;
-  el.innerHTML = STRATEGY_TAB_DEFS.map(({ tag, strategy, fullName }) => {
-    const count = activeWatchersCache.filter((w) => w.strategy === strategy).length;
-    const color = STRATEGY_COLORS[strategy] || "#8a8f98";
-    const isActive = activeStrategyTab === strategy;
+  el.innerHTML = STRATEGY_TAB_DEFS.map(({ tag, strategies, fullName }) => {
+    const count = activeWatchersCache.filter((w) => strategies.includes(w.strategy)).length;
+    const color = STRATEGY_COLORS[strategies[0]] || "#8a8f98";
+    const isActive = activeStrategyTab === tag;
     const titleText = (fullName || tag) + (count ? ` — ${count}` : "");
-    return `<span class="strategy-tab${isActive ? " active" : ""}" data-strategy="${strategy}" title="${titleText}">
+    return `<span class="strategy-tab${isActive ? " active" : ""}" data-tag="${tag}" title="${titleText}">
       <span class="st-dot" style="background:${color};"></span>${tag}${count ? ` <span class="st-count">${count}</span>` : ""}
     </span>`;
   }).join("");
   el.querySelectorAll(".strategy-tab").forEach((chip) => {
     chip.onclick = () => {
-      const strategy = chip.dataset.strategy;
-      activeStrategyTab = activeStrategyTab === strategy ? null : strategy;
+      const tag = chip.dataset.tag;
+      activeStrategyTab = activeStrategyTab === tag ? null : tag;
       renderActiveStrategyTabs();
       filterActiveWatchers(activeSearchEl ? activeSearchEl.value : "");
     };
@@ -485,6 +489,7 @@ const STRATEGY_COLORS = {
   V_GREEN_BOTTOM: "#26a69a",
   V_RED_TOP: "#ff9800",
   BOUNCE: "#29b6f6",
+  BUYBACK: "#ab47bc",
   VOL_SPIKE: "#f2c14e",
 };
 
@@ -524,9 +529,9 @@ const EVENT_MARKER_STYLE = {
 
 function friendlyStrategyWithMode(strategy, mode) {
   const base = friendlyStrategy(strategy);
-  if (strategy !== "BOUNCE" || !mode) return base;
-  if (mode === "CLIMAX") return "Bounce C";
-  if (mode === "MIRROR") return "Bounce M";
+  if ((strategy !== "BOUNCE" && strategy !== "BUYBACK") || !mode) return base;
+  if (mode === "CLIMAX") return `${base} C`;
+  if (mode === "MIRROR") return `${base} M`;
   return base;
 }
 let currentPrecision = 4;
@@ -1289,6 +1294,7 @@ const STRATEGY_LABELS = {
   V_GREEN_BOTTOM: "V-Green",
   V_RED_TOP: "V-Red",
   BOUNCE: "Bounce",
+  BUYBACK: "Buyback",
   VOL_SPIKE: "Объём"
 };
 
@@ -1879,7 +1885,9 @@ async function buildFocusFromLevelId(coin, levelId) {
     const data = await res.json();
     
     // Ищем точное совпадение в history по ключу
-    const histKey = `${coin}_BOUNCE_${levelId}`;
+    // Ключ архива: "{coin}_{strategy}_{level_id}" — BUYBACK по префиксу "BB_".
+    const histStrategy = levelId.startsWith("BB_") ? "BUYBACK" : "BOUNCE";
+    const histKey = `${coin}_${histStrategy}_${levelId}`;
     let w = (data.history || []).find((x) => x.key === histKey);
     
     // Если не нашли в history - ищем в active строго по level_id
@@ -2346,6 +2354,7 @@ const STRATEGY_TOGGLE_LABELS = {
   VGB: "V_GREEN_BOTTOM",
   VRT: "V_RED_TOP",
   BOUNCE: "BOUNCE",
+  BUYBACK: "BUYBACK",
 };
 
 function buildStrategiesPanel() {
@@ -3131,15 +3140,20 @@ function openTpSlModal() {
   if (titleEl) titleEl.textContent = "Конфиг BOUNCE";
   if (hintEl) hintEl.style.display = "none";
   if (resetBtn) resetBtn.style.display = "none";
+  const entryRow = document.getElementById("tpsl-entry-row");
+  if (entryRow) entryRow.style.display = "flex";
 
   // Подтягиваем текущие значения с бэкенда
   Promise.all([
     fetch("/api/config/bounce_tpsl").then(r => r.json()),
     fetch("/api/config/level_filter").then(r => r.json()),
+    fetch("/api/config/bounce_entry_mode").then(r => r.json()),
   ])
-    .then(([data, lf]) => {
+    .then(([data, lf, em]) => {
       document.getElementById("tpsl-tp").value = data.bounce_tp_pct;
       document.getElementById("tpsl-sl").value = data.bounce_sl_pct;
+      const emSel = document.getElementById("tpsl-entry-mode");
+      if (emSel) emSel.value = (em && em.bounce_entry_mode) || "volume";
       document.getElementById("lf-short").value = lf.short_min != null ? lf.short_min : "";
       document.getElementById("lf-long").value = lf.long_max != null ? lf.long_max : "";
       _lfSetOffRowsVisible(false);
@@ -3167,6 +3181,8 @@ function openCoinTpSlModal(coin) {
     hintEl.textContent = "Пусто — используется общий. Заполненное поле — приоритет над общим для этой монеты (TP/SL — оба сразу, фильтр — каждое поле отдельно).";
     hintEl.style.display = "block";
   }
+  const entryRowCoin = document.getElementById("tpsl-entry-row");
+  if (entryRowCoin) entryRowCoin.style.display = "none";   // режим входа — общий, не по монетам
 
   Promise.all([
     fetch(`/api/config/coin_tpsl/${encodeURIComponent(coin)}`).then(r => r.json()),
@@ -3259,6 +3275,19 @@ async function submitTpSl() {
     if (!resLf.ok) {
       showError(dataLf.detail || "Не удалось сохранить фильтр");
       return;
+    }
+    const emSel = document.getElementById("tpsl-entry-mode");
+    if (emSel) {
+      const resEm = await fetch("/api/config/bounce_entry_mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bounce_entry_mode: emSel.value }),
+      });
+      const dataEm = await resEm.json();
+      if (!resEm.ok) {
+        showError(dataEm.detail || "Не удалось сохранить режим входа");
+        return;
+      }
     }
     closeTpSlModal();
   } catch (e) {

@@ -28,7 +28,7 @@ class BounceManager:
         'GRAVEYARD_ESCAPE_PCT': 5.0,
     }
 
-    def __init__(self, log_dir_override=None):
+    def __init__(self, log_dir_override=None, entry_mode=None):
         """Свой реестр вотчеров BOUNCE (_watchers), не пересекается с VBottomManager.
 
         log_dir_override — своя папка логов для ВСЕХ вотчеров, созданных
@@ -39,6 +39,9 @@ class BounceManager:
         self._watchers = {}
         self.burned_levels = set()
         self.log_dir_override = log_dir_override
+        # Режим входа вотчеров ('volume' / 'patterns'), заданный явно — только симулятор
+        # в режиме Sim. None (бой, симулятор в режиме Watcher) — режим берётся из config.json.
+        self.entry_mode = entry_mode if entry_mode in ('volume', 'patterns') else None
         # Счётчик реальных пробоев — источник для "конверсии" (пробитые уровни -> сделки).
         # Считается по событию SWEEP_BOTTOM, не по старому tracked_support (его для
         # BOUNCE больше нет — см. шаг 3 изоляции).
@@ -75,8 +78,14 @@ class BounceManager:
 
     @staticmethod
     def _same_zone(a, b):
-        """Та же зона — те же границы (точно, без допусков)."""
+        """Та же зона — те же границы (точно, без допусков). Для чистки кладбища (prune_graveyard)."""
         return float(a['min']) == float(b['min']) and float(a['max']) == float(b['max'])
+
+    @staticmethod
+    def _same_place(a, b):
+        """То же место — зоны пересекаются по цене (геометрия, без допусков). Уровни пересчитываются,
+        границы зоны могут сместиться, но место остаётся тем же."""
+        return min(float(a['max']), float(b['max'])) - max(float(a['min']), float(b['min'])) > 0
 
     def set_ema_dist_fn(self, coin, fn):
         """Вызывающий код (скан/рескан/симулятор) кладёт сюда функцию
@@ -215,7 +224,8 @@ class BounceManager:
         return len(removed_ids)
 
     def _find_graveyard_match(self, level, trade_type, mode=None, coin="UNKNOWN"):
-        """'clone'  — совпал с ещё не отпущенной мёртвой зоной, блокировать.
+        """Совпадение — по месту (зоны пересекаются), не по точным границам.
+        'clone'  — совпал с ещё не отпущенной мёртвой зоной, блокировать.
         'reborn' — совпал с уже отпущенной (цена сбегала и вернулась), разрешить.
         None     — совпадений в кладбище нет.
         Фильтр по coin обязателен — без него новый уровень монеты A мог
@@ -228,7 +238,7 @@ class BounceManager:
                 continue
             if entry['trade_type'] != trade_type or entry.get('mode') != mode:
                 continue
-            if self._same_zone(entry, level):
+            if self._same_place(entry, level):
                 if entry['escaped']:
                     matched_escaped = True
                 else:
@@ -244,8 +254,9 @@ class BounceManager:
              CURRENT_SUPPORTS/RESISTANCES выкинет уровень, пока по нему ещё
              идёт сканирование)
           2. плюс новые уровни, которых свеча только что коснулась (touched_levels).
-             Та же зона = тот же level_id (границы зоны постоянны) — второй вотчер
-             не заводится. CLIMAX и MIRROR живут независимо (mode в level_id).
+             Если зона нового уровня пересекается с зоной живого вотчера (того же mode) — это то
+             же место, второй вотчер не заводится: живой держит свои границы, пока не закончится.
+             CLIMAX и MIRROR живут независимо (mode в level_id).
 
         КРИТИЧНО (найденный баг): self._watchers — ОДИН общий реестр на ВЕСЬ
         бот, не один на монету, как было в testswing/симуляторе. Без фильтра
@@ -277,6 +288,8 @@ class BounceManager:
                 level_id = f"{level_id}__{mode}"
             if level_id in levels_to_eval:
                 continue   # по этой зоне уже есть живой вотчер (тот же id = те же границы)
+            if any(self._same_place(lvl, other) for other in levels_to_eval.values()):
+                continue   # на этом месте уже есть живой вотчер (или зона, принятая на этой свече)
 
             grave_status = self._find_graveyard_match(lvl, trade_type, mode=mode, coin=coin)
             if grave_status == 'clone':
@@ -560,12 +573,15 @@ class BounceManager:
 
         if level_id not in self._watchers:
             _ema_dist = self._ema_level_dist(level, trade_type, df, coin)
-            config_overrides = None
+            config_overrides = {}
             if trade_type == 'SHORT' and mode:
                 # CLIMAX -> SHORT_CLIMAX_MODE=True, MIRROR -> False. Фиксируется
                 # НАВСЕГДА в момент рождения вотчера, независимо от того, что
                 # сейчас стоит в BounceWatcher.CONFIG по умолчанию.
-                config_overrides = {'SHORT_CLIMAX_MODE': (mode == 'CLIMAX')}
+                config_overrides['SHORT_CLIMAX_MODE'] = (mode == 'CLIMAX')
+            if self.entry_mode:
+                config_overrides['ENTRY_MODE'] = self.entry_mode
+            config_overrides = config_overrides or None
             self._watchers[level_id] = BounceWatcher(level['min'], level['max'], trade_type,
                                                        config_overrides=config_overrides, mode=mode,
                                                        coin=coin, log_dir_override=self.log_dir_override)
@@ -621,6 +637,8 @@ class BounceManager:
 
         # Считаем 90-й перцентиль (отсекаем мусор и ночной флэт)
         baseline_vol = float(df['volume'].iloc[-52:-2].quantile(0.9))
+        # Фон для режима паттернов — СРЕДНЕЕ за то же окно (как в V_RED_TOP/vbottom_manager)
+        baseline_mean = float(df['volume'].iloc[-52:-2].mean())
 
         c = df.iloc[-1]
         c_open, c_high, c_low, c_close, c_vol = (
@@ -630,7 +648,7 @@ class BounceManager:
         signal = watcher.update(
             c_open, c_high, c_low, c_close, c_vol, baseline_vol,
             all_opposite_levels, level_score=level.get('score', 0), candle_time=df.index[-1],
-            is_focus=is_focus, c_atr=c_atr
+            is_focus=is_focus, c_atr=c_atr, baseline_mean=baseline_mean
         )
 
         if watcher.state in ("DEAD", "TRIGGERED"):

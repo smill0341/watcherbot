@@ -6,14 +6,13 @@ import datetime
 import uuid
 from backend.modules.cryptano.utils.storage import load_json, save_json_atomic
 import pandas as pd
-import gc
 import traceback
+from dataclasses import dataclass
+from typing import Callable
 from backend.modules.cryptano.utils.bybit import (
     exchange, resolve_symbol, KNOWN_TICKER_ALIASES, load_markets_cached,
 )
 from backend.modules.cryptano.utils.indicators import calculate_atr, calculate_ema, calculate_rsi
-from backend.modules.cryptano.strategy.vbottom_manager import VBottomManager
-from backend.modules.cryptano.strategy.bounce_manager import BounceManager
 from backend.modules.cryptano.utils.paths import MACRO_LEVELS_FILE, CUSTOM_LEVELS_FILE, BOUNCE_ERRORS_FILE, SIGNALS_FILE
 from backend.modules.cryptano.levels.history import save_signal
 
@@ -21,8 +20,7 @@ from backend.modules.cryptano.levels.history import save_signal
 def get_merged_levels_for_coin(coin):
     """Supports/resistances монеты — macro (swing_hunter) + ручные
     (custom_levels.json), слитые в один словарь. ОДНА точка правды для
-    всех четырёх стратегий (check_v_bottom/check_v_green_bottom/
-    check_v_red_top/check_bounce) — раньше каждая из них независимо делала
+    всех стратегий (check_v для VB/VGB/VRT и check_bounce) — раньше каждая из них независимо делала
     те же 2 строки (load_json + .get с алиасом), custom_levels.json тогда
     пришлось бы добавлять в четырёх местах отдельно, с риском забыть одно
     (та же ловушка, что раньше была с MIN_VOLUME_USD/MAX_COINS в
@@ -57,8 +55,8 @@ def get_merged_levels_for_coin(coin):
     return merged
 
 
-# {coin: (date, coin_macro)} — ТОЛЬКО для check_v_bottom (см. ниже). Все
-# остальные стратегии (check_v_green_bottom/check_v_red_top/check_bounce)
+# {coin: (date, coin_macro)} — ТОЛЬКО для V_BOTTOM (см. ниже). Все
+# остальные стратегии (VGB, VRT, check_bounce)
 # по-прежнему зовут get_merged_levels_for_coin() напрямую и продолжают
 # видеть уровни сразу, как только swing_hunter их пересчитает (~раз в
 # 12ч) — этот кэш их не касается вообще.
@@ -202,456 +200,174 @@ def _drop_forming_candle(df: pd.DataFrame) -> pd.DataFrame:
     return df[df.index + pd.Timedelta(seconds=_CANDLE_SEC) <= now]
 
 
-# --- Настройки origin-tracking для V_BOTTOM/V_GREEN_BOTTOM ---
-# Должны совпадать с тем, что реально тестируется в test_simulator.py,
-# иначе бой и симулятор снова разъедутся.
-VBOTTOM_BREATH_BUFFER_PCT = 3.0  # см. test_simulator.py:VBOTTOM_BREATH_BUFFER_PCT
-MIN_LEVEL_SCORE = 1.0            # см. test_simulator.py:MIN_LEVEL_SCORE
+# Минимальный score уровня для V-стратегий — как в симуляторе (слабые уровни не рассматриваем).
+MIN_LEVEL_SCORE = 1.0
 
 
-def _find_fresh_breach(levels, c_close, c_low, prev_close):
-    """
-    Ищет уровень, который цена только что пробила вниз — та же логика,
-    что в test_simulator.py: сначала ищем "свежий" пробой (только что
-    пересекли границу), если такого нет — берём любой уровень, под
-    которым цена уже находится (fallback на случай гэпа/пропуска свечи).
-    """
-    for lvl in levels:
-        if (c_close < lvl['min'] or c_low < lvl['min']) and prev_close >= lvl['min']:
-            return lvl
-    for lvl in levels:
-        if c_close < lvl['min'] or c_low < lvl['min']:
-            return lvl
-    return None
-
-
-def _find_fresh_breach_up(levels, c_close, c_high, prev_close):
-    """
-    Зеркало _find_fresh_breach для SHORT-стратегий от сопротивления:
-    ищет уровень, который цена только что пробила ВВЕРХ (через lvl['max']).
-    Сначала "свежий" пробой, если такого нет — fallback на любой уровень,
-    над которым цена уже находится.
-    """
-    for lvl in levels:
-        if (c_close > lvl['max'] or c_high > lvl['max']) and prev_close <= lvl['max']:
-            return lvl
-    for lvl in levels:
-        if c_close > lvl['max'] or c_high > lvl['max']:
-            return lvl
-    return None
-
-
-def _v_signal_events(vbottom_mgr, level_id):
+def _v_signal_events(w):
     """Путь V-вотчера (event_log) — копией, в сам сигнал (поле events), как у
     BOUNCE (см. _signal_level_snapshot). Сайт рисует точки сигнала именно из
     s.events. Копия, а не ссылка: сигнал навсегда остаётся с тем путём,
     который был на момент сделки."""
-    w = vbottom_mgr._watchers.get(level_id) if vbottom_mgr is not None else None
     return [dict(ev) for ev in (getattr(w, "event_log", None) or [])]
 
 
-def check_v_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None):
+def _val(series, ts):
+    """Значение индикатора на свече ts или None, если нет/NaN."""
+    v = series.get(ts)
+    return float(v) if v is not None and v == v else None
+
+
+def _indicators_vb(df):
+    return lambda ts: {}  # V_BOTTOM индикаторов не использует
+
+
+def _indicators_vgb(df):
+    atr = calculate_atr(df, 14)
+    return lambda ts: {"c_atr": _val(atr, ts)}
+
+
+def _indicators_vrt(df):
+    atr = calculate_atr(df, 14)
+    atr_slow = atr.rolling(window=100).mean()
+    ema = calculate_ema(df, period=50)
+    rsi = pd.Series(calculate_rsi(df.reset_index(drop=True)).values, index=df.index)
+
+    def at(ts):
+        c_atr = _val(atr, ts)
+        slow = _val(atr_slow, ts)
+        return {"c_atr": c_atr, "c_atr_slow": c_atr if slow is None else slow,
+                "c_ema": _val(ema, ts), "c_rsi": _val(rsi, ts)}
+    return at
+
+
+@dataclass(frozen=True)
+class VSpec:
+    """Чем отличаются V-стратегии друг от друга. Всё остальное (свечи,
+    отслеживание уровня, сигнал, отчёт) у них общее — см. check_v."""
+    source: str                   # имя в сигнале и логах
+    title: str                    # имя в отчёте
+    min_candles: int
+    levels_for: Callable[[str], dict]
+    indicators: Callable[[pd.DataFrame], Callable[[pd.Timestamp], dict]]
+
+
+V_SPECS = {
+    "VB": VSpec("V_BOTTOM", "V-BOTTOM", 52, _get_levels_for_vbottom, _indicators_vb),
+    "VGB": VSpec("V_GREEN_BOTTOM", "V-GREEN-BOTTOM", 52, get_merged_levels_for_coin, _indicators_vgb),
+    # 100 свечей, а не 52: ATR_slow (SMA100 от ATR) требует запаса истории
+    "VRT": VSpec("V_RED_TOP", "V-RED-TOP", 100, get_merged_levels_for_coin, _indicators_vrt),
+}
+
+
+def check_v(coin, mgr):
     """
-    Проверяет V-BOTTOM паттерн — теперь по той же модели, что в симуляторе:
-    отслеживаем ОДИН активный (пробитый) уровень за раз на монету, а не
-    прогоняем все supports разом каждый скан. Как только уровень пробит —
-    notify_breach(), дальше кормим свечами именно его, пока либо не
-    сработает сигнал, либо цена не уйдёт выше буфера (force_reset_watcher).
+    Проверка одной V-стратегии (mgr — её VManager, параметры в V_SPECS) по одной
+    монете. Как check_bounce: свечи от последней обработанной (mgr.last_processed_time)
+    до текущей идут через вотчер ПО ОЧЕРЕДИ — пропущенное за время простоя бота
+    досматривается, каждое событие ложится на свою свечу.
 
-    tracked_levels — персистентный словарь {f"{coin}_LONG": level_dict},
-    должен жить между вызовами (передаётся из live_scan.py).
+    Правила слежения за уровнем (какой взять, когда снять) — в VManager.step,
+    их же использует симулятор.
 
-    Возвращает (is_ready, report_text, levels_checked).
+    Возвращает (отчёты_по_сигналам, число_оценок_уровня).
     """
-    # SHORT для V_BOTTOM не реализован в самом вотчере (всегда return None
-    # внутри update()) — не тратим лишний поход на биржу впустую.
-    if direction != "LONG":
-        return False, None, 0
-
-    if tracked_levels is None:
-        tracked_levels = {}
-
+    spec = V_SPECS[mgr.tag]
+    long_side = mgr.direction == "LONG"
     try:
         time.sleep(0.3)
-
         coin = coin.upper().replace("USDT", "").replace("/", "").strip()
 
-        # Резолвим символ на бирже (учитывает алиасы тикеров типа TON/GRAM)
         markets = load_markets_cached(exchange)
-        symbol = resolve_symbol(coin, markets)
+        symbol = resolve_symbol(coin, markets)  # учитывает алиасы тикеров типа TON/GRAM
         if not symbol:
-            return False, f"❌ Монета *{coin}* не найдена на Bybit.", 0
+            return [], 0
 
-        # Тянем 15m-свечи (сначала из локальной базы дашборда, глубже и быстрее,
-        # см. _fetch_candles_df; подстраховка на биржу — только если базы ещё нет)
-        df, fetch_err = _fetch_candles_df(symbol, coin, 52, "V_BOTTOM")
+        df, _ = _fetch_candles_df(symbol, coin, spec.min_candles, spec.source)
         if df is None:
-            return False, fetch_err, 0
+            return [], 0
 
-        # Загружаем макро-уровни — ТОЛЬКО для V_BOTTOM обновляются не чаще
-        # раза в сутки (см. _get_levels_for_vbottom выше), остальные
-        # стратегии по-прежнему видят уровни сразу после пересчёта.
-        coin_macro = _get_levels_for_vbottom(coin)
-
+        coin_macro = spec.levels_for(coin)
         if not coin_macro:
-            return False, f"⚠️ Нет уровней для {coin} (ни macro, ни custom).", 0
+            return [], 0
+        own_side, opposite_side = ("supports", "resistances") if long_side else ("resistances", "supports")
+        # Слабые уровни (score) не рассматриваем — как в симуляторе
+        levels = [z for z in coin_macro.get(own_side, []) if z.get('score', 0) >= MIN_LEVEL_SCORE]
+        opposite = coin_macro.get(opposite_side, [])
+        if not levels:
+            return [], 0
 
-        if vbottom_mgr is None:
-            vbottom_mgr = VBottomManager()
-
-        # Фильтр по score — как в симуляторе, слабые уровни вообще не рассматриваем
-        supports = [s for s in coin_macro.get("supports", []) if s.get('score', 0) >= MIN_LEVEL_SCORE]
-        resistances = coin_macro.get("resistances", [])
-
-        if not supports:
-            return False, f"⚠️ Нет поддержек для V-BOTTOM на {coin} (после фильтра score).", 0
-
-        track_key = f"{coin}_LONG"
-        c_close = float(df['close'].iloc[-1])
-        c_low = float(df['low'].iloc[-1])
-        prev_close = float(df['close'].iloc[-2]) if len(df) > 1 else c_close
-
-        tracked = tracked_levels.get(track_key)
-
-        if tracked is None:
-            # Уровень пока не отслеживается — ищем свежий пробой вниз
-            found = _find_fresh_breach(supports, c_close, c_low, prev_close)
-            if found is None:
-                return False, None, 0
-            tracked = dict(found)
-            tracked_levels[track_key] = tracked
-            vbottom_mgr.notify_breach(tracked, 'LONG')
+        last_t = mgr.last_processed_time.get(coin)
+        if last_t is None:
+            replay_df = df.iloc[[-1]]  # первый скан монеты — только текущая свеча
         else:
-            # Уже отслеживаем — проверяем не ушла ли цена выше буфера отмены
-            origin_max = tracked['max'] * (1 + VBOTTOM_BREATH_BUFFER_PCT / 100.0)
-            if c_close > origin_max:
-                vbottom_mgr.force_reset_watcher(tracked, 'LONG')
-                del tracked_levels[track_key]
-                return False, None, 0
+            replay_df = df[df.index > pd.Timestamp(int(last_t), unit="s", tz="UTC")]
+            if replay_df.empty:
+                return [], 0
 
-        # Кормим свечой именно отслеживаемый уровень — не весь список
-        result = vbottom_mgr.evaluate_v_bottom(tracked, df, "LONG", resistances, trend="UNKNOWN", c_atr=None, coin=coin)
-        levels_checked = 1
+        indicators_at = spec.indicators(df)
+        reports = []
+        evaluated = 0
+        for ts in replay_df.index:
+            pos = df.index.searchsorted(ts, side="right")  # позиция сразу ПОСЛЕ этой свечи
+            window = df.iloc[:pos]
+            ts_naive = ts.tz_localize(None) if ts.tzinfo is not None else ts
+            # Только уровни, уже активные на эту свечу (activated_at)
+            active = [z for z in levels if (_level_active_from(z) or ts_naive) <= ts_naive]
 
-        if not result.get('allow'):
-            return False, None, levels_checked
+            tracked, result, cancelled = mgr.step(coin, active, opposite, window, **indicators_at(ts))
+            if tracked is None or cancelled:
+                continue
+            evaluated += 1
 
-        # Сигнал сработал — уровень отработал, снимаем со слежения
-        del tracked_levels[track_key]
+            if not result:
+                continue
 
-        entry_price = result.get('entry_price', 0.0)
-        sl = result.get('sl', 0.0)
-        tp = result.get('tp', 0.0)
-        history_log = result.get('history_log', '')
-        level_id = result.get('level_id', 'unknown')
+            entry_price, sl, tp = result['entry_price'], result['sl'], result['tp']
+            level_id = result['level_id']
+            # level_*/time/events нужны дашборду, чтобы по клику на сигнал
+            # нарисовать зону уровня и путь вотчера
+            save_signal({
+                "type": "WATCHER_LONG" if long_side else "SHORT_PUMP",
+                "coin": coin,
+                "source": spec.source,
+                "price": entry_price,
+                "take_profit": tp,
+                "stop_loss": sl,
+                "level_type": tracked.get("type"),
+                "level_id": level_id,
+                "level_min": tracked.get("min"),
+                "level_max": tracked.get("max"),
+                "level_date": tracked.get("date"),
+                "level_score": tracked.get("score"),
+                "level_reaction_count": tracked.get("reaction_count"),
+                "time": int(ts.timestamp()),
+                "events": _v_signal_events(mgr._watchers.get(level_id)),
+            })
 
-        # save_signal() кладёт запись в signals.json (общий список "Результаты") —
-        # раньше вотчерные входы туда вообще не попадали, только шли сообщением.
-        # level_id/level_min/level_max/level_date/level_score/time — раньше
-        # отсутствовали (в отличие от BOUNCE), из-за чего клик по сигналу в
-        # дашборде (app.js) не мог найти зону уровня для отрисовки (ни
-        # напрямую по level_min/max, ни через buildFocusFromLevelId по
-        # level_id) — сигнал открывался без подсветки уровня на графике.
-        save_signal({
-            "type": "WATCHER_LONG",
-            "coin": coin,
-            "source": "V_BOTTOM",
-            "price": entry_price,
-            "take_profit": tp,
-            "stop_loss": sl,
-            "level_type": tracked.get("type"),
-            "level_id": level_id,
-            "level_min": tracked.get("min"),
-            "level_max": tracked.get("max"),
-            "level_date": tracked.get("date"),
-            "level_score": tracked.get("score"),
-            "level_reaction_count": tracked.get("reaction_count"),
-            "time": int(df.index[-1].timestamp()),
-            "events": _v_signal_events(vbottom_mgr, level_id),
-        })
+            if long_side:
+                rr = (tp - entry_price) / (entry_price - sl) if entry_price > sl else 0
+            else:
+                rr = (entry_price - tp) / (sl - entry_price) if sl > entry_price else 0
+            reports.append(
+                f"{'🟢' if long_side else '🔴'} *{spec.title} {mgr.direction}* _{coin}_\n\n"
+                f"Entry: `{entry_price:.8f}`\n"
+                f"SL: `{sl:.8f}`\n"
+                f"TP: `{tp:.8f}`\n"
+                f"R/R: `{rr:.2f}`\n\n"
+                f"📊 {result['history_log']}\n"
+                f"Level: `{level_id}`"
+            )
 
-        report = (
-            f"🟢 *V-BOTTOM LONG* _{coin}_\n\n"
-            f"Entry: `{entry_price:.8f}`\n"
-            f"SL: `{sl:.8f}`\n"
-            f"TP: `{tp:.8f}`\n"
-            f"R/R: `{(tp-entry_price)/(entry_price-sl) if entry_price > sl else 0:.2f}`\n\n"
-            f"📊 {history_log}\n"
-            f"Level: `{level_id}`"
-        )
-
-        return True, report, levels_checked
-
-    except Exception as e:
-        print(f"\n[V_BOTTOM ERROR] ❌ ОШИБКА ПРИ ПРОВЕРКЕ V-BOTTOM ({coin}): {e}")
-        traceback.print_exc()
-        return False, f"❌ Ошибка V-BOTTOM анализа {coin}: {e}", 0
-
-def check_v_green_bottom(coin, direction, vbottom_mgr=None, tracked_levels=None):
-    """
-    Проверяет V-GREEN-BOTTOM паттерн (лестница ям + режим кульминации)
-    на 15-минутных свечах. Работает только для LONG. Та же модель
-    origin-tracking, что и check_v_bottom — см. комментарий там.
-    """
-    if direction != "LONG":
-        return False, None, 0
-
-    if tracked_levels is None:
-        tracked_levels = {}
-
-    try:
-        time.sleep(0.3)
-
-        coin = coin.upper().replace("USDT", "").replace("/", "").strip()
-
-        # Резолвим символ на бирже (учитывает алиасы тикеров типа TON/GRAM)
-        markets = load_markets_cached(exchange)
-        symbol = resolve_symbol(coin, markets)
-        if not symbol:
-            return False, f"❌ Монета *{coin}* не найдена на Bybit.", 0
-
-        # Тянем 15m-свечи (сначала из локальной базы дашборда, глубже и быстрее,
-        # см. _fetch_candles_df; подстраховка на биржу — только если базы ещё нет)
-        df, fetch_err = _fetch_candles_df(symbol, coin, 52, "V_GREEN_BOTTOM")
-        if df is None:
-            return False, fetch_err, 0
-
-        # V-GREEN-BOTTOM реально использует ATR (в отличие от V-BOTTOM) — считаем по-настоящему
-        atr_series = calculate_atr(df, 14)
-        c_atr = float(atr_series.iloc[-1]) if not atr_series.empty and atr_series.iloc[-1] == atr_series.iloc[-1] else None
-
-        # Загружаем макро-уровни
-        coin_macro = get_merged_levels_for_coin(coin)  # macro + custom (см. get_merged_levels_for_coin)
-
-        if not coin_macro:
-            return False, f"⚠️ Нет уровней для {coin} (ни macro, ни custom).", 0
-
-        if vbottom_mgr is None:
-            vbottom_mgr = VBottomManager()
-
-        # Фильтр по score — как в симуляторе
-        supports = [s for s in coin_macro.get("supports", []) if s.get('score', 0) >= MIN_LEVEL_SCORE]
-        resistances = coin_macro.get("resistances", [])
-
-        if not supports:
-            return False, f"⚠️ Нет поддержек для V-GREEN-BOTTOM на {coin} (после фильтра score).", 0
-
-        track_key = f"{coin}_VGB_LONG"
-        c_close = float(df['close'].iloc[-1])
-        c_low = float(df['low'].iloc[-1])
-        prev_close = float(df['close'].iloc[-2]) if len(df) > 1 else c_close
-
-        tracked = tracked_levels.get(track_key)
-
-        if tracked is None:
-            found = _find_fresh_breach(supports, c_close, c_low, prev_close)
-            if found is None:
-                return False, None, 0
-            tracked = dict(found)
-            tracked_levels[track_key] = tracked
-            vbottom_mgr.notify_breach(tracked, 'LONG')
-        else:
-            origin_max = tracked['max'] * (1 + VBOTTOM_BREATH_BUFFER_PCT / 100.0)
-            if c_close > origin_max:
-                vbottom_mgr.force_reset_watcher(tracked, 'LONG')
-                del tracked_levels[track_key]
-                return False, None, 0
-
-        result = vbottom_mgr.evaluate_v_green_bottom(tracked, df, "LONG", resistances, trend="UNKNOWN", c_atr=c_atr, coin=coin)
-        levels_checked = 1
-
-        if not result.get('allow'):
-            return False, None, levels_checked
-
-        del tracked_levels[track_key]
-
-        entry_price = result.get('entry_price', 0.0)
-        sl = result.get('sl', 0.0)
-        tp = result.get('tp', 0.0)
-        history_log = result.get('history_log', '')
-        level_id = result.get('level_id', 'unknown')
-
-        # См. комментарий у save_signal() в check_v_bottom() — тот же пробел
-        # (не хватало level_id/level_min/max/date/score/time).
-        save_signal({
-            "type": "WATCHER_LONG",
-            "coin": coin,
-            "source": "V_GREEN_BOTTOM",
-            "price": entry_price,
-            "take_profit": tp,
-            "stop_loss": sl,
-            "level_type": tracked.get("type"),
-            "level_id": level_id,
-            "level_min": tracked.get("min"),
-            "level_max": tracked.get("max"),
-            "level_date": tracked.get("date"),
-            "level_score": tracked.get("score"),
-            "level_reaction_count": tracked.get("reaction_count"),
-            "time": int(df.index[-1].timestamp()),
-            "events": _v_signal_events(vbottom_mgr, level_id),
-        })
-
-        report = (
-            f"🟢 *V-GREEN-BOTTOM LONG* _{coin}_\n\n"
-            f"Entry: `{entry_price:.8f}`\n"
-            f"SL: `{sl:.8f}`\n"
-            f"TP: `{tp:.8f}`\n"
-            f"R/R: `{(tp-entry_price)/(entry_price-sl) if entry_price > sl else 0:.2f}`\n\n"
-            f"📊 {history_log}\n"
-            f"Level: `{level_id}`"
-        )
-
-        return True, report, levels_checked
+        mgr.last_processed_time[coin] = int(replay_df.index[-1].timestamp())
+        return reports, evaluated
 
     except Exception as e:
-        print(f"\n[V_GREEN_BOTTOM ERROR] ❌ ОШИБКА ПРИ ПРОВЕРКЕ V-GREEN-BOTTOM ({coin}): {e}")
+        print(f"\n[{spec.source} ERROR] ❌ ОШИБКА ПРИ ПРОВЕРКЕ {spec.title} ({coin}): {e}")
         traceback.print_exc()
-        return False, f"❌ Ошибка V-GREEN-BOTTOM анализа {coin}: {e}", 0
+        return [], 0
 
 
-def check_v_red_top(coin, direction, vbottom_mgr=None, tracked_levels=None):
-    """
-    Проверяет V-RED-TOP паттерн (шорт от сопротивления, "три индейца" +
-    якорь/реакция/подтверждение). Работает только для SHORT.
-
-    В отличие от check_v_bottom/check_v_green_bottom, ОДИН пробитый уровень
-    может дать НЕСКОЛЬКО сигналов подряд (вотчер сам крутится обратно в
-    WAIT_C1 после сделки, пока не упрётся в MAX_TRADES_PER_LEVEL) — поэтому
-    уровень снимается со слежения только когда вотчер реально завершил
-    работу (TRIGGERED/DEAD/IDLE), а не после первого же сигнала.
-
-    tracked_levels — персистентный словарь {f"{coin}_VRT_SHORT": level_dict},
-    должен жить между вызовами (передаётся из live_scan.py), отдельный от
-    словаря V_BOTTOM/V_GREEN_BOTTOM.
-
-    Возвращает (is_ready, report_text, levels_checked).
-    """
-    if direction != "SHORT":
-        return False, None, 0
-
-    if tracked_levels is None:
-        tracked_levels = {}
-
-    try:
-        time.sleep(0.3)
-
-        coin = coin.upper().replace("USDT", "").replace("/", "").strip()
-
-        markets = load_markets_cached(exchange)
-        symbol = resolve_symbol(coin, markets)
-        if not symbol:
-            return False, f"❌ Монета *{coin}* не найдена на Bybit.", 0
-
-        # Тянем 15m-свечи (сначала из локальной базы дашборда, глубже и быстрее,
-        # см. _fetch_candles_df; подстраховка на биржу — только если базы ещё нет).
-        # 100, а не 52 — ATR_slow (SMA100 от ATR) требует запаса истории.
-        df, fetch_err = _fetch_candles_df(symbol, coin, 100, "V_RED_TOP")
-        if df is None:
-            return False, fetch_err, 0
-
-        atr_series = calculate_atr(df, 14)
-        c_atr = float(atr_series.iloc[-1]) if not atr_series.empty and atr_series.iloc[-1] == atr_series.iloc[-1] else None
-
-        atr_slow_series = atr_series.rolling(window=100).mean()
-        c_atr_slow = float(atr_slow_series.iloc[-1]) if not atr_slow_series.empty and atr_slow_series.iloc[-1] == atr_slow_series.iloc[-1] else c_atr
-
-        ema_series = calculate_ema(df, period=50)
-        c_ema = float(ema_series.iloc[-1]) if not ema_series.empty and ema_series.iloc[-1] == ema_series.iloc[-1] else None
-
-        df_rsi = df.reset_index(drop=True)  # calculate_rsi не завязан на индекс, но не рискуем
-        rsi_series = calculate_rsi(df_rsi)
-        c_rsi = float(rsi_series.iloc[-1]) if not rsi_series.empty and rsi_series.iloc[-1] == rsi_series.iloc[-1] else None
-
-        coin_macro = get_merged_levels_for_coin(coin)  # macro + custom (см. get_merged_levels_for_coin)
-
-        if not coin_macro:
-            return False, f"⚠️ Нет уровней для {coin} (ни macro, ни custom).", 0
-
-        if vbottom_mgr is None:
-            vbottom_mgr = VBottomManager()
-
-        resistances = [r for r in coin_macro.get("resistances", []) if r.get('score', 0) >= MIN_LEVEL_SCORE]
-        supports = coin_macro.get("supports", [])
-
-        if not resistances:
-            return False, f"⚠️ Нет сопротивлений для V-RED-TOP на {coin} (после фильтра score).", 0
-
-        track_key = f"{coin}_VRT_SHORT"
-        c_close = float(df['close'].iloc[-1])
-        c_high = float(df['high'].iloc[-1])
-        prev_close = float(df['close'].iloc[-2]) if len(df) > 1 else c_close
-
-        tracked = tracked_levels.get(track_key)
-
-        if tracked is None:
-            found = _find_fresh_breach_up(resistances, c_close, c_high, prev_close)
-            if found is None:
-                return False, None, 0
-            tracked = dict(found)
-            tracked_levels[track_key] = tracked
-            vbottom_mgr.notify_breach(tracked, 'SHORT')
-
-        result = vbottom_mgr.evaluate_v_red_top(
-            tracked, df, "SHORT", supports, trend="UNKNOWN",
-            c_atr=c_atr, c_atr_slow=c_atr_slow, c_ema=c_ema, c_rsi=c_rsi, coin=coin
-        )
-        levels_checked = 1
-
-        # Уровень снимаем со слежения, только если вотчер реально завершился —
-        # иначе следующий скан снова словит "fresh breach" и notify_breach()
-        # дёрнет on_breach_start(), сбросив накопленные пики/сделки впустую.
-        vrt_level_id = f"VRT_SHORT_{tracked['min']}_{tracked['max']}"
-        watcher = vbottom_mgr._watchers.get(vrt_level_id)
-        if watcher is not None and getattr(watcher, "state", None) in ("TRIGGERED", "DEAD", "IDLE"):
-            del tracked_levels[track_key]
-
-        if not result.get('allow'):
-            return False, None, levels_checked
-
-        entry_price = result.get('entry_price', 0.0)
-        sl = result.get('sl', 0.0)
-        tp = result.get('tp', 0.0)
-        history_log = result.get('history_log', '')
-        level_id = result.get('level_id', 'unknown')
-
-        # "type": "SHORT_PUMP" -> save_signal() трактует именно как SHORT-запись.
-        # level_id/level_min/max/date/score/time — тот же пробел, что и у
-        # check_v_bottom()/check_v_green_bottom() (см. комментарий там).
-        save_signal({
-            "type": "SHORT_PUMP",
-            "coin": coin,
-            "source": "V_RED_TOP",
-            "price": entry_price,
-            "take_profit": tp,
-            "stop_loss": sl,
-            "level_type": tracked.get("type"),
-            "level_id": level_id,
-            "level_min": tracked.get("min"),
-            "level_max": tracked.get("max"),
-            "level_date": tracked.get("date"),
-            "level_score": tracked.get("score"),
-            "level_reaction_count": tracked.get("reaction_count"),
-            "time": int(df.index[-1].timestamp()),
-            "events": _v_signal_events(vbottom_mgr, level_id),
-        })
-
-        report = (
-            f"🔴 *V-RED-TOP SHORT* _{coin}_\n\n"
-            f"Entry: `{entry_price:.8f}`\n"
-            f"SL: `{sl:.8f}`\n"
-            f"TP: `{tp:.8f}`\n"
-            f"R/R: `{(entry_price-tp)/(sl-entry_price) if sl > entry_price else 0:.2f}`\n\n"
-            f"📊 {history_log}\n"
-            f"Level: `{level_id}`"
-        )
-
-        return True, report, levels_checked
-
-    except Exception as e:
-        print(f"\n[V_RED_TOP ERROR] ❌ ОШИБКА ПРИ ПРОВЕРКЕ V-RED-TOP ({coin}): {e}")
-        traceback.print_exc()
-        return False, f"❌ Ошибка V-RED-TOP анализа {coin}: {e}", 0
-    
 # Сколько последних ошибок check_bounce храним (bounce_errors.json) — чтобы
 # файл не рос бесконечно, если проблема реально повторяется каждый цикл.
 BOUNCE_ERRORS_MAX = 500
@@ -725,10 +441,13 @@ def _level_active_from(level):
         return None
 
 
-def check_bounce(coin, allow_long, allow_short, bounce_mgr):
+def check_bounce(coin, allow_long, allow_short, bounce_mgr, strategy="BOUNCE"):
     """BOUNCE сам ведёт свои вотчеры внутри bounce_mgr — внешний
     tracked_levels не нужен, process_candle() получает полный список
     текущих уровней и сам решает, что уже отслеживается.
+
+    strategy — имя стратегии в сигнале и уведомлении: "BOUNCE" (основной
+    менеджер) или "BUYBACK" (менеджер выкупа, background_tasks.buyback_mgr).
 
     РЕПЛЕЙ (см. bounce_mgr.last_processed_time, персистится в bounce_state.json):
     бот перезапускается много раз в день, и раньше сюда всегда шла только ОДНА
@@ -876,7 +595,7 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr):
                 # (см. evaluate_bounce() в bounce_manager.py) — берём режим прямо оттуда.
                 level_id_val = d.get('level_id', '') or ''
                 mode = level_id_val.split('__')[-1] if '__' in level_id_val else None
-                source_label = f"BOUNCE_{tt}" + (f"_{mode}" if tt == "SHORT" and mode else "")
+                source_label = f"{strategy}_{tt}" + (f"_{mode}" if tt == "SHORT" and mode else "")
                 save_signal({
                     "type": "SHORT_PUMP" if tt == "SHORT" else "WATCHER_LONG",
                     "coin": coin,
@@ -894,9 +613,10 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr):
                     # поля volume/volume_mult). На будущее заложено как
                     # method/method_value/method_mult — появятся другие методы,
                     # просто передавай их сюда тем же способом.
-                    "method": "volume" if d.get("volume") is not None else None,
+                    "method": d.get("method") or ("volume" if d.get("volume") is not None else None),
                     "method_value": d.get("volume"),
                     "method_mult": d.get("volume_mult"),
+                    "pattern_route": d.get("pattern_route"),
                     "level_type": d.get("level_type") or d.get("type"),
                     # Уровень + путь вотчера на момент сделки — в сам сигнал
                     # (см. _signal_level_snapshot / history.py::save_signal).
@@ -904,7 +624,7 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr):
                 })
 
                 reports.append(
-                    f"{emoji} *BOUNCE {tt}*{' 🪦' if d.get('reborn') else ''} _{coin}_\n\n"
+                    f"{emoji} *{strategy} {tt}*{' 🪦' if d.get('reborn') else ''} _{coin}_\n\n"
                     f"Entry: `{entry:.8f}`\nSL: `{sl:.8f}`\nTP: `{tp:.8f}`\nR/R: `{rr:.2f}`\n\n"
                     f"{d.get('reason', '')}\nLevel: `{d.get('level_id', 'unknown')}`"
                 )
@@ -933,9 +653,9 @@ def check_volume_triggers(coin):
     добавляются через модалку ➕ -> "Объем (Volume)" на дашборде,
     см. app.py::add_custom_level).
 
-    СОЗНАТЕЛЬНО не похоже на check_bounce/check_v_bottom и т.д. — тут нет
-    ни зоны (min/max), ни стратегии, ни TP/SL, ни BounceManager/
-    VBottomManager. Просто: объём последней ЗАКРЫТОЙ 15m свечи >= target
+    СОЗНАТЕЛЬНО не похоже на check_bounce/check_v и т.д. — тут нет
+    ни зоны (min/max), ни стратегии, ни TP/SL, ни менеджеров.
+    Просто: объём последней ЗАКРЫТОЙ 15m свечи >= target
     -> кладём "ручного вотчера" в MANUAL_WATCHERS_FILE (напоминание для
     дашборда, живёт, пока пользователь сам не нажмёт ❌ в панели "В работе",
     см. app.py::get_active_watchers/delete_watchers) и УДАЛЯЕМ сработавший
@@ -1113,44 +833,30 @@ def _resolve_historical_signal_status(df, entry_ts, direction, entry, target, st
     return "⏳", None, None
 
 
-def rescan_single_bounce_watcher(coin, level_id, bounce_mgr):
-    """Рескан ЗОНЫ вотчера (кнопка 🎯 и "рескан всех").
+def rescan_single_bounce_watcher(coin, level_id, bounce_mgr, strategy="BOUNCE"):
+    """Рескан ОДНОГО живого вотчера (кнопка 🎯 и "рескан всех").
+    strategy — как в check_bounce: "BOUNCE" или "BUYBACK" (имя в сигнале).
 
-    ================================================================
-    КАК РАБОТАЕТ (простыми словами):
-    1. Берём зону вотчера (min/max) и отматываем назад: от activated_at
-       уровня, но не дальше RESCAN_MAX_LOOKBACK_DAYS (2 недели).
-    2. Идём по свечам вперёд. РОЛЬ ЗОНЫ решает путь цены, а не ярлык и не
-       направление старого вотчера:
-         цена была НАД зоной и пришла к ней  -> поддержка     -> LONG;
-         цена была ПОД зоной и пришла к ней  -> сопротивление -> SHORT.
-       "Была над/под" — в начале отрезка это просто где стоит цена; дальше
-       сторона меняется ТОЛЬКО когда цена закрылась дальше
-       GRAVEYARD_ESCAPE_PCT (5%) от зоны — реально ушла, а не ткнула одной
-       свечой.
-    3. Касание -> "жизнь" вотчера в этом направлении (обычные правила
-       BounceWatcher: пробой середины, вход, смерть...).
-    4. Жизнь закончилась (сделка/смерть) -> новая жизнь только когда:
-         сделка закрыта по свечам (TP/SL/время), И цена ушла от зоны
-         дальше 5%, И потом снова касание. Направление новой жизни — с той
-         стороны, куда цена ушла.
-       Это ровно те же условия, что у живого бота (кладбище, см.
-       bounce_manager.py::_update_graveyard).
-    5. Сделки всех жизней -> в сигналы (уже записанные — не дублируются),
-       статус сразу считается по свечам.
-    6. Итог — последняя жизнь:
-         ещё идёт   -> остаётся вотчер В ЕЁ НАПРАВЛЕНИИ (если направление
-                       другое, чем у исходного вотчера — исходный закрывается,
-                       на зоне ставится вотчер нужной стороны);
-         закончилась и нового касания нет -> вотчера нет, кладбище не даст
-                       живому боту сразу завести его снова.
-    ================================================================
+    Зачем: пересчитать путь вотчера с нуля по свечам — если его состояние
+    расходится с реальностью (после сбоя, остановки бота, смены правил).
+
+    Как:
+    1. Берём зону вотчера и её направление — НАПРАВЛЕНИЕ НЕ ПЕРЕСМАТРИВАЕТСЯ.
+    2. Отматываем назад: от activated_at, но не дальше RESCAN_MAX_LOOKBACK_DAYS.
+    3. Находим первое касание зоны с этой стороны (LONG — цена опустилась до
+       верха зоны, SHORT — поднялась до низа). Касания не было -> NOT_TOUCHED,
+       вотчер не трогаем.
+    4. Сбрасываем вотчера и проигрываем свечи от касания обычными правилами
+       BounceWatcher (пробой середины, вход, смерть...) — до сделки или смерти.
+       Дальше не идём: следующая "жизнь" зоны — дело живого бота (кладбище).
+    5. Сделка -> в сигналы (уже записанные не дублируются), статус считается
+       по свечам.
 
     is_focus в реплее всегда True (соседей не реплеим параллельно).
     НЕ трогает bounce_mgr.last_processed_time[coin].
 
-    Возвращает {"error": ...} либо {"level_id" (итоговый), "coin", "since",
-    "final_state", "direction", "lives", "orders", "event_log", ...}.
+    Возвращает {"error": ...} либо {"level_id", "coin", "activated_at", "since",
+    "final_state", "direction", "orders", "event_log", ...}.
     """
     orig = bounce_mgr._watchers.get(level_id)
     if orig is None or getattr(orig, 'coin', None) != coin:
@@ -1192,6 +898,10 @@ def rescan_single_bounce_watcher(coin, level_id, bounce_mgr):
         return {"error": "Нет свечей с момента activated_at этого вотчера"}
 
     zmin, zmax = float(orig.min), float(orig.max)
+    direction = orig.trade_type
+    mode = getattr(orig, 'mode', None)
+    if direction == 'SHORT' and not mode:
+        mode = 'MIRROR'
     level = {
         'min': zmin, 'max': zmax,
         'type': getattr(orig, 'level_type', 'UNKNOWN'),
@@ -1200,59 +910,26 @@ def rescan_single_bounce_watcher(coin, level_id, bounce_mgr):
         'date': getattr(orig, 'level_date', None),
         'activated_at': getattr(orig, 'activated_at', None),
     }
-    orig_dir = orig.trade_type
-    orig_mode = getattr(orig, 'mode', None)
 
-    escape_tol = float(getattr(bounce_mgr, 'CONFIG', {}).get('GRAVEYARD_ESCAPE_PCT', 5.0)) / 100.0
-    escape_low = zmin * (1 - escape_tol)
-    escape_high = zmax * (1 + escape_tol)
-
-    # --- сторона цены относительно зоны и касания (см. п.2 докстринга) ---
-    # side: 'above' / 'below' / None. Начало отрезка — просто где цена;
-    # дальше меняется только уходом дальше escape (5%).
-    first_close = float(candidate_df['close'].iloc[0])
-    side = 'above' if first_close > zmax else ('below' if first_close < zmin else None)
-    touches = {}          # ts -> 'LONG'/'SHORT' — касание с учётом стороны ДО этой свечи
-    escape_side_at = {}   # ts -> 'above'/'below' — на этой свече цена ушла дальше 5%
-    for ts, row in candidate_df.iterrows():
-        lo, hi, cl = float(row['low']), float(row['high']), float(row['close'])
-        if side == 'above' and lo <= zmax:
-            touches[ts] = 'LONG'
-        elif side == 'below' and hi >= zmin:
-            touches[ts] = 'SHORT'
-        if cl > escape_high:
-            side = 'above'; escape_side_at[ts] = 'above'
-        elif cl < escape_low:
-            side = 'below'; escape_side_at[ts] = 'below'
-        elif side is None:
-            side = 'above' if cl > zmax else ('below' if cl < zmin else None)
-
-    if not touches:
-        # Касаний с понятной стороны нет. Если исходный вотчер РОДИЛСЯ
-        # внутри отрезка — он родился неправильно (старая дыра) -> закрываем.
-        born_raw = getattr(orig, 'born_at', None)
-        born_dt = _parse_dt(born_raw) if born_raw and 'T' in str(born_raw) else None
-        if born_dt is not None and born_dt >= since_dt:
-            orig.state = "DEAD"
-            orig.last_event_type = "RUNAWAY"
-            orig.history_log = "Рескан: касания зоны с понятной стороны не было — вотчер родился неправильно. Закрыт."
-            final_state = "DEAD"
-        else:
-            final_state = "NOT_TOUCHED"
+    # Первое касание зоны со стороны вотчера
+    touched = candidate_df['low'] <= zmax if direction == 'LONG' else candidate_df['high'] >= zmin
+    if not touched.any():
         return {
             "level_id": level_id, "coin": coin,
+            "activated_at": since_dt.strftime('%Y-%m-%d %H:%M'),
             "since": since_dt.strftime('%Y-%m-%d %H:%M'),
             "clamped_to_available_history": clamped,
-            "final_state": final_state, "direction": orig_dir, "lives": 0,
+            "final_state": "NOT_TOUCHED", "direction": direction,
             "orders": [], "event_log": [],
-            "note": "Касания зоны с понятной стороны на отрезке нет.",
+            "note": "Касания зоны на отрезке нет.",
         }
+    start_ts = touched[touched].index[0]
 
     from backend.modules.cryptano.strategy.bounce_watcher import BounceWatcher
     max_hold_days = BounceWatcher.CONFIG.get("MAX_HOLD_DAYS", 14)
 
-    # Все зоны монеты (macro + custom) — для "противоположной стороны" по
-    # ПОЛОЖЕНИЮ, а не по ярлыку: для LONG — зоны выше этой, для SHORT — ниже.
+    # Все зоны монеты (macro + custom) — "противоположная сторона" по ПОЛОЖЕНИЮ:
+    # для LONG — зоны выше этой, для SHORT — ниже.
     _m = get_merged_levels_for_coin(coin) or {}
     all_zones = list(_m.get("supports", [])) + list(_m.get("resistances", []))
 
@@ -1262,21 +939,13 @@ def rescan_single_bounce_watcher(coin, level_id, bounce_mgr):
         if isinstance(s, dict)
     }
 
-    def _life_id_and_mode(direction):
-        """level_id и mode вотчера для этой стороны зоны. SHORT — режим
-        исходного вотчера, если он сам SHORT, иначе MIRROR."""
-        mode = None
-        if direction == 'SHORT':
-            mode = orig_mode if (orig_dir == 'SHORT' and orig_mode) else 'MIRROR'
-        lid = bounce_mgr._level_id(level, direction)
-        if mode:
-            lid = f"{lid}__{mode}"
-        return lid, mode
+    life_lid = bounce_mgr._level_id(level, direction)
+    if direction == 'SHORT':
+        life_lid = f"{life_lid}__{mode}"
 
     # Лимит сделок на уровень (bounce_mgr.level_trades): рескан проигрывает
     # историю зоны заново с since_ts — сделки этой зоны с этого момента
-    # забываем, рескан найдёт их сам. После первой сделки (при лимите 1)
-    # evaluate_bounce не даст новой "жизни" войти второй раз.
+    # забываем, рескан найдёт их сам.
     _base_long = bounce_mgr._level_id(level, 'LONG')
     _base_short = bounce_mgr._level_id(level, 'SHORT')
     bounce_mgr.forget_level_trades_since(
@@ -1287,57 +956,25 @@ def rescan_single_bounce_watcher(coin, level_id, bounce_mgr):
     atr_series = calculate_atr(df)
     from backend.modules.cryptano.simulator.outcome import make_ema_dist_fn, load_candles_4h
     bounce_mgr.set_ema_dist_fn(coin, make_ema_dist_fn(df, candles_4h=load_candles_4h(candle_store, symbol)))  # EMA для отчёта (ema_dist_birth); рескан уже существующего вотчера фильтром не режется
+
+    w = bounce_mgr._watchers.get(life_lid)
+    if w is not None:
+        w.reset_for_rescan()
+
     WINDOW = 60
     df_index = df.index
     orders = []
-    lives = 0
-    life_dir = life_mode = life_lid = None
-    life_start_ts = None
-    life_active = False
-    life_trade_close = None     # None / pd.Timestamp / "OPEN"
-    blocked_until = None
-    escaped_after_end = True    # для первой жизни ухода не требуем
-    used_ids = set()
 
-    for ts, row in candidate_df.iterrows():
+    for ts, row in candidate_df[candidate_df.index >= start_ts].iterrows():
         ts_n = ts.tz_localize(None) if ts.tzinfo is not None else ts
-
-        if not life_active:
-            # Ждём закрытия сделки прошлой жизни и ухода цены на 5%.
-            if blocked_until is not None and ts_n <= blocked_until:
-                continue
-            if not escaped_after_end:
-                if ts in escape_side_at:
-                    escaped_after_end = True
-                continue
-            if ts not in touches:
-                continue
-            # Новая жизнь: направление — по стороне, откуда пришла цена.
-            life_dir = touches[ts]
-            life_lid, life_mode = _life_id_and_mode(life_dir)
-            w = bounce_mgr._watchers.get(life_lid)
-            if w is not None:
-                w.reset_for_rescan()
-            life_active = True
-            life_start_ts = ts
-            life_trade_close = None
-            lives += 1
-            used_ids.add(life_lid)
-
         pos = df_index.searchsorted(ts, side="right")
         df_slice = df.iloc[max(0, pos - WINDOW):pos]
         if len(df_slice) < 52:
             continue
         c_atr = float(atr_series.loc[ts]) if ts in atr_series.index else 0.0
 
-        # same_side (все зоны той же стороны, для paired_level) убран вместе
-        # с самим paired_level — см. bounce_manager.py::
-        # kill_short_watchers_behind_pierced_neighbor. Рескан одного вотчера
-        # намеренно ведёт только ОДИН вотчер и соседей не реплеит параллельно
-        # (см. докстринг функции выше, "is_focus в реплее всегда True"), так
-        # что этой проверке тут и применяться не к чему.
         _active = lambda z: (lambda t: t is None or t <= ts_n)(_level_active_from(z))
-        if life_dir == 'LONG':
+        if direction == 'LONG':
             opp_side = [z for z in all_zones if z['min'] > zmax and _active(z)]
         else:
             opp_side = [z for z in all_zones if z['max'] < zmin and _active(z)]
@@ -1345,29 +982,25 @@ def rescan_single_bounce_watcher(coin, level_id, bounce_mgr):
         # evaluate_bounce сам создаёт вотчер этой стороны, если его ещё нет
         # (born_at = время этой свечи, activated_at — из уровня).
         decision = bounce_mgr.evaluate_bounce(
-            level, df_slice, life_dir, opp_side,
+            level, df_slice, direction, opp_side,
             is_focus=True, c_atr=c_atr,
-            mode=life_mode, coin=coin,
+            mode=mode, coin=coin,
         )
         w = bounce_mgr._watchers.get(life_lid)
 
         if decision.get('allow'):
             entry, sl, tp = decision.get('entry_price', 0.0), decision.get('sl', 0.0), decision.get('tp', 0.0)
-            orders.append({'time': ts_n.isoformat(), 'direction': life_dir,
+            orders.append({'time': ts_n.isoformat(), 'direction': direction,
                            'entry': entry, 'sl': sl, 'tp': tp, 'reason': decision.get('reason', '')})
             status, result_percent, closed_at = _resolve_historical_signal_status(
-                df, ts, life_dir, entry, tp, sl, max_hold_days
+                df, ts, direction, entry, tp, sl, max_hold_days
             )
-            # closed_at теперь с зоной (+00:00) — для сравнения со свечами
-            # (ts_n — наивный UTC) убираем зону обратно.
-            life_trade_close = "OPEN" if status == "⏳" or not closed_at \
-                else pd.Timestamp(closed_at).tz_convert("UTC").tz_localize(None)
             sig_key = (life_lid, int(ts.timestamp()))
             if sig_key not in existing_signal_keys:
                 existing_signal_keys.add(sig_key)
-                source_label = f"BOUNCE_{life_dir}" + (f"_{life_mode}" if life_dir == "SHORT" and life_mode else "")
+                source_label = f"{strategy}_{direction}" + (f"_{mode}" if direction == "SHORT" and mode else "")
                 save_signal({
-                    "type": "SHORT_PUMP" if life_dir == "SHORT" else "WATCHER_LONG",
+                    "type": "SHORT_PUMP" if direction == "SHORT" else "WATCHER_LONG",
                     "coin": coin,
                     "source": source_label,
                     "price": entry,
@@ -1375,9 +1008,10 @@ def rescan_single_bounce_watcher(coin, level_id, bounce_mgr):
                     "stop_loss": sl,
                     "time": int(ts.timestamp()),
                     "level_id": life_lid,
-                    "method": "volume" if decision.get("volume") is not None else None,
+                    "method": decision.get("method") or ("volume" if decision.get("volume") is not None else None),
                     "method_value": decision.get("volume"),
                     "method_mult": decision.get("volume_mult"),
+                    "pattern_route": decision.get("pattern_route"),
                     "level_type": decision.get("level_type") or level.get("type"),
                     "status": status,
                     "result_percent": result_percent,
@@ -1386,36 +1020,21 @@ def rescan_single_bounce_watcher(coin, level_id, bounce_mgr):
                 })
 
         if w is not None and w.state in ("TRIGGERED", "DEAD"):
-            life_active = False
-            escaped_after_end = False
-            if life_trade_close == "OPEN":
-                break  # сделка до сих пор открыта — дальше по этой зоне смотреть нечего
-            blocked_until = life_trade_close if isinstance(life_trade_close, pd.Timestamp) else None
+            break  # путь вотчера закончен
 
-    final_w = bounce_mgr._watchers.get(life_lid) if life_lid else None
-    if final_w is not None and life_start_ts is not None:
-        _ls = life_start_ts.tz_localize(None) if life_start_ts.tzinfo is not None else life_start_ts
+    final_w = bounce_mgr._watchers.get(life_lid)
+    if final_w is not None:
+        _ls = start_ts.tz_localize(None) if start_ts.tzinfo is not None else start_ts
         final_w.born_at = _ls.strftime('%Y-%m-%dT%H:%M:%S')
 
-    # Исходный вотчер: если итог — другая сторона/другой вотчер, а он сам в
-    # рескане не участвовал — закрываем: роль зоны по пути цены другая.
-    if level_id not in used_ids and orig.state not in ("TRIGGERED", "DEAD"):
-        orig.state = "DEAD"
-        orig.last_event_type = "RUNAWAY"
-        orig.history_log = (f"Рескан: по пути цены зона сейчас работает как "
-                            f"{'поддержка (LONG)' if life_dir == 'LONG' else 'сопротивление (SHORT)'} — "
-                            f"этот вотчер ({orig_dir}) закрыт.")
-
     return {
-        "level_id": life_lid or level_id,
-        "original_level_id": level_id,
+        "level_id": life_lid,
         "coin": coin,
         "activated_at": since_dt.strftime('%Y-%m-%d %H:%M'),
-        "since": min(touches).tz_localize(None).strftime('%Y-%m-%d %H:%M') if min(touches).tzinfo is not None else min(touches).strftime('%Y-%m-%d %H:%M'),
+        "since": (start_ts.tz_localize(None) if start_ts.tzinfo is not None else start_ts).strftime('%Y-%m-%d %H:%M'),
         "clamped_to_available_history": clamped,
         "final_state": final_w.state if final_w is not None else orig.state,
-        "direction": life_dir,
-        "lives": lives,
+        "direction": direction,
         "orders": orders,
         "event_log": list(getattr(final_w, 'event_log', []) if final_w is not None else []),
     }

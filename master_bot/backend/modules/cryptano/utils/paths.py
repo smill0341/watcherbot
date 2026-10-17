@@ -31,6 +31,8 @@ CUSTOM_LEVELS_FILE = os.path.join(JSONBANK_DIR, "custom_levels.json")
 WATCHER_STATE_FILE = os.path.join(JSONBANK_DIR, "watcher_state.json")
 RESCAN_STATUS_FILE = os.path.join(JSONBANK_DIR, "rescan_status.json")
 BOUNCE_STATE_FILE = os.path.join(JSONBANK_DIR, "bounce_state.json")
+# BUYBACK — отдельный менеджер bounce в режиме выкупа (bounce_manager_buyback.py), своё состояние.
+BUYBACK_STATE_FILE = os.path.join(JSONBANK_DIR, "buyback_state.json")
 TRACKED_LONG_FILE = os.path.join(JSONBANK_DIR, "tracked_origin_levels.json")
 TRACKED_VRT_FILE = os.path.join(JSONBANK_DIR, "tracked_origin_levels_vrt.json")
 WATCHER_HISTORY_FILE = os.path.join(JSONBANK_DIR, "watcher_history.json")

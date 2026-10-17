@@ -1,49 +1,33 @@
 # modules/cryptano/simulator/simulate_engine.py
 """
-Симулятор стратегий "как будто это было онлайн".
+Ядро симулятора: ОДИН файл на все стратегии (BOUNCE, BUYBACK, VB/VGB/VRT).
 
-Идея: пользователь кликает точку старта на графике → мы
-1) берём 15m-свечи периода из архива симулятора (candle_archive, база
-   sim_candles.db; недостающее докачивается с биржи автоматически);
-2) прогоняем их по одной через ТЕ ЖЕ САМЫЕ производственные классы
-   вотчеров (VBottomManager + evaluate_v_bottom/v_green_bottom/v_red_top),
-   что и в бою — никаких отдельных копий логики, чтобы бой и симулятор
-   не расходились, как разошлись master_bot и test/testswing;
-3) уровни (supports/resistances) на каждом шаге берём из локальной базы
-   снимков (levels_history.py::get_levels_snapshot()) — та же "машина
-   времени", что и у BOUNCE-симулятора.
+Что делает: идёт по истории 15m-свечей из архива симулятора (candle_archive,
+sim_candles.db), на каждой свече берёт уровни из локальной базы снимков
+(levels_history.py), отдаёт свечу БОЕВЫМ менеджерам стратегий (те же классы,
+что в боте — никакой отдельной копии логики) и собирает сделки с честным
+исходом (outcome.py).
 
-Уровни ОБНОВЛЯЮТСЯ раз в календарный день по ходу прогона (см.
-_refresh_levels_if_needed), а не замораживаются один раз на дату старта.
-Причина: при заморозке уровень, появившийся ПОСЛЕ даты старта (бот
-пересчитал macro_levels уже во время прогона), был для симулятора
-невидим до конца теста — хотя цена его реально пробивала. Уже открытый
-tracked-уровень при обновлении не меняется, обновление касается только
-поиска НОВЫХ пробоев и opposite_levels для расчёта TP.
+Три семейства (ключ стратегии для файлов результата и прогресса):
+  "BOUNCE", "BUYBACK" — BounceManager / BuybackManager.process_candle,
+                        уровни из 12-часовых снимков на каждую свечу;
+  "V"                 — VManager.step для VB / VGB / VRT (какие из трёх —
+                        параметр strategies), уровни обновляются раз в день.
 
-Ничего в боевые файлы (macro_levels.json, watcher_state.json,
-tracked_origin_levels*.json) не пишет — только читает. Единственная
-точка, где симулятор трогает боевое состояние — кнопка "Добавить в
-работу" на фронте, это отдельный явный шаг, сюда не входит.
+Общее для всех: пути к файлам, последний результат, bulk по всем монетам
+(параллельные процессы, прогресс, сводка), докачка архива, сбор сделок.
+У каждого семейства свои файлы результата и прогресса — прогоны не затирают
+друг друга.
 
-🔥 РАСШИРЕНИЕ (паритет с BOUNCE-симулятором, bounce_simulate.py):
-- Можно выбрать, какие из V_BOTTOM/V_GREEN_BOTTOM/V_RED_TOP реально
-  гонять (strategies=None — все три, как раньше).
-- Результат теперь несёт "trades" — тот же формат, что у BOUNCE
-  (entry/target/stop/status/result_percent/...), таблица сделок на
-  фронте больше не "не поддерживается бэкендом".
-- Есть bulk-прогон по всем монетам периода (run_bulk_v_simulation),
-  как run_bulk_bounce_simulation у BOUNCE — свой прогресс-файл и свой
-  файл последнего результата, не пересекаются с bounce-файлами.
+Точки входа:
+  run_simulation(coin, start, end, strategy="BOUNCE" | "BUYBACK" | "V", ...)
+  run_bulk_simulation(start, end, strategy=..., coin_filter, blocked, ...)
+  get_last_run / get_last_all_run / get_bulk_progress (strategy)
+  prefetch_archive(start, end)  — докачка свечей без сайта
+    python -m backend.modules.cryptano.simulator.simulate_engine 2026-07-01 2026-07-31
 
-Логирование внутри симулятора убрано целиком — будет сделано отдельно,
-внутри самих стратегий (там оно разное для каждой), а не здесь.
-
-Независимо найден и починен баг: _walk_short передавал в
-evaluate_v_red_top score-отфильтрованный supports вместо
-нефильтрованного, как в бою (watcher_plan.py::check_v_red_top).
+Боевых файлов не пишет. Логи вотчеров — modules/cryptano/simulator/logs/.
 """
-
 import os
 import sys
 import datetime
@@ -58,100 +42,592 @@ if _MASTER_BOT_ROOT not in sys.path:
 from backend.modules.cryptano.utils.bybit import exchange, resolve_symbol, load_markets_cached
 from backend.modules.cryptano.utils.indicators import calculate_atr, calculate_ema, calculate_rsi
 from backend.modules.cryptano.utils.storage import load_json, save_json_atomic
+from backend.modules.cryptano.utils.paths import DATABASE_DIR
 import backend.modules.cryptano.levels.candle_archive as candle_archive
-from backend.modules.cryptano.levels.levels_history import get_levels_snapshot
-from backend.modules.cryptano.strategy.vbottom_manager import VBottomManager
-from backend.modules.cryptano.strategy.v_bottom_watcher import VBottomWatcher
-from backend.modules.cryptano.strategy.v_green_bottom_watcher import VGreenBottomWatcher
-from backend.modules.cryptano.strategy.v_red_top_watcher import VRedTopWatcher
-from backend.modules.cryptano.backstage.watcher_plan import (
-    _find_fresh_breach,
-    _find_fresh_breach_up,
-    VBOTTOM_BREATH_BUFFER_PCT,
-    MIN_LEVEL_SCORE,
-)
+from backend.modules.cryptano.levels.levels_history import get_levels_snapshot, snapshot_bucket_start
+from backend.modules.cryptano.levels.level_filter import LevelFilter, _num
+from backend.modules.cryptano.strategy.bounce_manager import BounceManager
+from backend.modules.cryptano.strategy.bounce_watcher import BounceWatcher
+from backend.modules.cryptano.strategy.bounce_manager_buyback import BounceManager as BuybackManager
+from backend.modules.cryptano.strategy.bounce_watcher_buyback import BounceWatcher as BuybackWatcher, BUYBACK
+from backend.modules.cryptano.strategy.v_manager import VManager
+from backend.modules.cryptano.backstage.watcher_plan import MIN_LEVEL_SCORE
 from backend.modules.cryptano.simulator.outcome import compute_trade_outcome, make_ema_dist_fn
-# list_coins_with_levels/_aggregate_trades — тот же "какие монеты вообще
-# имели уровни в этом периоде" и "схлопнуть сделки в сводку по монете",
-# что уже строит bounce_simulate.py для своего bulk-отчёта. Переиспользуем
-# один код вместо копии — иначе отчёты BOUNCE/V бы неизбежно разъехались
-# при следующей независимой правке одного из файлов.
-from backend.modules.cryptano.simulator.bounce_simulate import (
-    list_coins_with_levels, _aggregate_trades, SIM_LOG_DIR, _reset_sim_log,
-    _candles_df, _ensure_archive_for_coins,
-)
 
-_WATCHER_CLS = {"VB": VBottomWatcher, "VGB": VGreenBottomWatcher, "VRT": VRedTopWatcher}
 
-# Теги стратегий V-семьи — те же самые, что уже используются как ключи
-# конфига вкл/выкл на боевом дашборде (см. app.py::STRATEGY_TAGS) и как
-# префикс level_id у боевых вотчеров (см. background_tasks.py::
-# _STRATEGY_BY_TAG). Здесь — список того, что вообще можно выбрать в
-# симуляторе; отсутствие параметра strategies = гонять все три (старое
-# поведение, обратная совместимость с уже существующими вызовами).
-ALL_V_STRATEGY_TAGS = ("VB", "VGB", "VRT")
-_TAG_TO_STRATEGY_NAME = {"VB": "V_BOTTOM", "VGB": "V_GREEN_BOTTOM", "VRT": "V_RED_TOP"}
+# ======================================================================
+# НАСТРОЙКИ И ФАЙЛЫ
+# ======================================================================
 
-# Локальный кэш симулятора — намеренно ОТДЕЛЬНАЯ папка от боевых JSON
-# (macro_levels.json и т.д.), чтобы повторные прогоны по одной и той же
-# монете/дате не дёргали биржу заново, и чтобы это никак не пересекалось
-# с боевыми файлами бота.
-SIM_CACHE_DIR = os.path.join(_THIS_DIR, "cache")
-os.makedirs(SIM_CACHE_DIR, exist_ok=True)
+# Сколько дней вперёд после конца периода нужны свечи для честного исхода сделки.
+FORWARD_DAYS = BounceWatcher.CONFIG.get("MAX_HOLD_DAYS", 14)
 
-# Сколько свечей контекста тянем в каждый шаг для индикаторов (ATR/ATR_slow(100)/
-# EMA50/RSI) — с запасом над ATR_slow, которому нужно 14+100 свечей.
-CANDLE_WINDOW = 300
-
-# Дедлайн для честного исхода сделки (compute_trade_outcome) — TP либо
-# закрытие по дедлайну, без искусственного стоп-лосса. То же значение по
-# умолчанию, что у BOUNCE (BounceWatcher.CONFIG['MAX_HOLD_DAYS']) — V-семья
-# своего отдельного конфига для этого не имеет, берём тот же ориентир,
-# чтобы результаты обеих семей были сравнимы друг с другом.
+# Дедлайн сделки V-семьи (своего конфига у неё нет) — тот же ориентир, что у BOUNCE.
 V_MAX_HOLD_DAYS = 14
 
-# Свои файлы — НЕ пересекаются с LAST_RUN_FILE/LAST_ALL_RUN_FILE/
-# BULK_PROGRESS_FILE у BOUNCE (bounce_simulate.py), иначе одиночный/bulk
-# прогон одной семьи затирал бы результат другой.
-LAST_RUN_FILE = os.path.join(_THIS_DIR, "last_run_v.json")
-LAST_ALL_RUN_FILE = os.path.join(_THIS_DIR, "last_all_run_v.json")
-BULK_PROGRESS_FILE = os.path.join(_THIS_DIR, "bulk_progress_v.json")
+# Окно свечей, которое менеджер получает на каждом шаге.
+WINDOW = 60           # bounce: evaluate читает максимум ~52 последние строки
+CANDLE_WINDOW = 300   # V: запас под ATR_slow(100), EMA50, RSI
 
-# Тот же принцип, что и BULK_MAX_WORKERS у BOUNCE — отдельная переменная
-# окружения, чтобы не делить один и тот же лимит между двумя семьями,
-# если когда-нибудь захочется гонять bulk BOUNCE и bulk V параллельно.
-BULK_MAX_WORKERS = int(os.environ.get("V_BULK_WORKERS", "4"))
+# Теги V-стратегий (те же, что ключи вкл/выкл на дашборде и префикс level_id).
+ALL_V_STRATEGY_TAGS = ("VB", "VGB", "VRT")
+
+# Сколько монет считать одновременно в bulk (отдельные ПРОЦЕССЫ, не потоки —
+# из-за GIL потоки такую CPU-работу не ускоряют). Меняется переменной
+# окружения BOUNCE_BULK_WORKERS.
+BULK_MAX_WORKERS = int(os.environ.get("BOUNCE_BULK_WORKERS", "4"))
+
+SIM_LOG_DIR = os.path.join(_THIS_DIR, "logs")
+SIM_LOG_DIR_BUYBACK = os.path.join(_THIS_DIR, "logs_buyback")
+
+# Файлы по семействам: результат одиночного прогона, результат bulk, прогресс bulk.
+_STRATEGY_FILES = {
+    "BOUNCE": {
+        "log_dir": SIM_LOG_DIR,
+        "last_run": os.path.join(_THIS_DIR, "last_run.json"),
+        "last_all_run": os.path.join(_THIS_DIR, "last_all_run.json"),
+        "bulk_progress": os.path.join(_THIS_DIR, "bulk_progress.json"),
+    },
+    "BUYBACK": {
+        "log_dir": SIM_LOG_DIR_BUYBACK,
+        "last_run": os.path.join(_THIS_DIR, "last_run_buyback.json"),
+        "last_all_run": os.path.join(_THIS_DIR, "last_all_run_buyback.json"),
+        "bulk_progress": os.path.join(_THIS_DIR, "bulk_progress_buyback.json"),
+    },
+    "V": {
+        "log_dir": SIM_LOG_DIR,
+        "last_run": os.path.join(_THIS_DIR, "last_run_v.json"),
+        "last_all_run": os.path.join(_THIS_DIR, "last_all_run_v.json"),
+        "bulk_progress": os.path.join(_THIS_DIR, "bulk_progress_v.json"),
+    },
+}
 
 
-def _levels_at(symbol, coin, target_ts_ms, start_dt=None):
-    """Уровни ровно на дату старта — ОДИН раз, до начала прохода по свечам,
-    и дальше статично на весь прогон (та же схема, что была и раньше —
-    меняется только ОТКУДА берутся данные, не когда и как часто).
+def _norm_strategy(strategy):
+    st = (strategy or "BOUNCE").strip().upper()
+    if st not in _STRATEGY_FILES:
+        raise ValueError(f"Неизвестная стратегия: {strategy}")
+    return st
 
-    Источник — локальная база снимков (levels_history.py::
-    get_levels_snapshot()), та же самая "машина времени", что уже
-    использует BOUNCE-симулятор (bounce_simulate.py). Снимок — это
-    macro_levels.json, который сам боевой бот сохранял во время своих
-    сканов (раз в ~12ч, см. snapshot_bucket_start), а не пересчёт заново
-    через build_levels() — то есть ровно то, что боевой бот "видел" на
-    эту дату, без похода на биржу вообще.
 
-    start_dt — tz-aware pandas.Timestamp даты старта симуляции (тот же
-    момент, что дал target_ts_ms). Если снимка на эту дату/месяц вообще
-    нет (see get_levels_snapshot — есть fallback на предыдущий месяц без
-    проверки свежести), coin_data будет пустым и вернём пустые списки —
-    вызывающий код (run_simulation) это уже умеет обрабатывать как
-    "уровней нет"."""
-    if start_dt is None:
-        start_dt = pd.Timestamp(target_ts_ms, unit="ms", tz="UTC")
-    start_naive = start_dt.tz_localize(None) if start_dt.tzinfo is not None else start_dt
-    snapshot = get_levels_snapshot(start_naive.to_pydatetime())
-    coin_data = (snapshot or {}).get(coin) or {}
+def _sim_path(strategy, key):
+    return _STRATEGY_FILES[_norm_strategy(strategy)][key]
+
+
+def _watcher_cls(strategy):
+    return BuybackWatcher if _norm_strategy(strategy) == "BUYBACK" else BounceWatcher
+
+
+def _new_mgr(tag):
+    """Свежий V-менеджер на один прогон; логи вотчеров — в папку симулятора."""
+    return VManager(tag, log_dir_override=_sim_path("V", "log_dir"))
+
+
+# ======================================================================
+# ОБЩЕЕ: свечи, монеты периода, сводка, прогресс, последний результат
+# ======================================================================
+
+def _reset_sim_log(coin, log_dir=None):
+    """Чистит лог этой монеты в SIM_LOG_DIR перед КАЖДЫМ новым прогоном
+    симуляции ЛЮБОЙ стратегии (BOUNCE и V-семейство делят один файл {coin}.log;
+    её же зовёт simulate_engine.run_simulation) — не ждём рестарта процесса. BounceWatcher._dbg() сам
+    ротирует/обрезает лог, но только один раз за жизнь процесса (по
+    (log_dir, coin) в BounceWatcher._initialized_log_coins) — сервер
+    симулятора не перезапускается между прогонами, поэтому без этой
+    функции каждый новый "Старт" молча дописывался бы в тот же файл
+    поверх предыдущего прогона. Специфично для симулятора: боевой лог
+    (bounce_logs/) эта функция не трогает и трогать не должна — там
+    история между рестартами бота нужна.
+    """
+    log_dir = log_dir or SIM_LOG_DIR
+    log_path = os.path.join(log_dir, f"{coin}.log")
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(f"=== Новый прогон симуляции {coin} — {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC ===\n")
+        # Старый отдельный лог V_BOTTOM ({coin}_V.log) больше не пишется —
+        # одна монета = один лог {coin}.log. Подчищаем остаток прошлых версий.
+        legacy = os.path.join(log_dir, f"{coin}_V.log")
+        if os.path.exists(legacy):
+            os.remove(legacy)
+    except Exception as e:
+        print(f"⚠️ [BOUNCE SIM] Не удалось очистить лог {coin}: {e}")
+
+
+def _candles_df(symbol, start_ts, end_ts, top_up=True, forward_days=FORWARD_DAYS):
+    """15m-свечи периода [start_ts, end_ts] из АРХИВА симулятора
+    (candle_archive, база sim_candles.db) — не из общей базы дашборда/бота.
+    В окно входят запас назад (7 суток) и запас вперёд (forward_days — для
+    честного исхода сделок в конце периода), см. candle_archive.sim_window.
+
+    top_up=True — перед чтением докачивает с биржи недостающее (одиночный
+    ручной прогон). top_up=False — только читает то, что уже лежит в архиве:
+    для bulk-прогона, где докачка уже сделана в главном процессе до раздачи
+    монет воркерам (см. _ensure_archive_for_coins).
+
+    start_ts/end_ts — pandas.Timestamp, tz-aware (UTC)."""
+    if top_up:
+        candle_archive.ensure_for_sim(exchange, symbol, start_ts, end_ts, forward_days)
+    candles = candle_archive.get_sim_candles(symbol, "15m", start_ts, end_ts, forward_days)
+    if not candles:
+        raise RuntimeError(f"Нет 15m-свечей {symbol} в архиве симулятора за этот период")
+
+    df = pd.DataFrame(candles)
+    df["timestamp"] = pd.to_datetime(df["time"], unit="s", utc=True)
+    df = df.drop(columns=["time"]).set_index("timestamp")
+    return df[["open", "high", "low", "close", "volume"]].astype(float)
+
+
+def _timeline_months_in_range(start_ts, end_ts):
+    """Список месячных ярлыков ('YYYY_MM'), которые нужно открыть, чтобы
+    покрыть весь период [start_ts, end_ts] — обычно один, два на границе
+    месяца."""
+    months = []
+    cur = start_ts.replace(day=1)
+    end_marker = end_ts.replace(day=1)
+    while cur <= end_marker:
+        months.append(cur.strftime("%Y_%m"))
+        cur = (cur + pd.offsets.MonthBegin(1))
+    return months
+
+
+def list_coins_with_levels(start_time_str, end_time_str=None):
+    """Список монет, у которых хотя бы В ОДНОМ снимке таймлайна внутри
+    периода [start_time_str, end_time_str] были уровни (supports ИЛИ
+    resistances не пустые) — объединение (union), не пересечение: монета,
+    получившая уровни в середине периода, всё равно должна попасть в
+    bulk-прогон, а не быть отсеяна как "не всегда присутствовала".
+
+    НЕ использует /api/macro/coins (macro_levels.json) — тот список
+    сегодняшний (топ-70 по текущему объёму), не имеет отношения к тому,
+    что реально было актуально в запрошенном историческом периоде.
+    Читает те же файлы database/levels_timeline_YYYY_MM.json, что и
+    get_levels_snapshot() — просто не одну точку времени, а весь диапазон.
+
+    Возвращает (coins_sorted, coverage) — coverage: {coin: {"snapshots_with_levels": N,
+    "snapshots_total": M}} — сколько из всех снимков периода у монеты реально
+    были уровни, для колонки "покрытие" в bulk-отчёте (честный ноль сделок
+    из-за отсутствия уровней большую часть периода должен отличаться от
+    честного ноля при наличии уровней всё время)."""
+    start_ts = pd.Timestamp(start_time_str)
+    end_ts = pd.Timestamp(end_time_str) if end_time_str else pd.Timestamp.utcnow().tz_localize(None)
+
+    coins = set()
+    coverage = {}
+    total_snapshots = 0
+
+    for month_label in _timeline_months_in_range(start_ts, end_ts):
+        path = os.path.join(DATABASE_DIR, f"levels_timeline_{month_label}.json")
+        timeline = load_json(path, default={})
+        if not isinstance(timeline, dict):
+            continue
+        for time_str, snapshot in timeline.items():
+            try:
+                ts = datetime.datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+            except (ValueError, TypeError):
+                continue
+            if ts < start_ts.to_pydatetime() or ts > end_ts.to_pydatetime():
+                continue
+            if not isinstance(snapshot, dict):
+                continue
+            total_snapshots += 1
+            for coin, data in snapshot.items():
+                if not isinstance(data, dict):
+                    continue
+                has_levels = bool(data.get("supports")) or bool(data.get("resistances"))
+                entry = coverage.setdefault(coin, {"snapshots_with_levels": 0})
+                if has_levels:
+                    entry["snapshots_with_levels"] += 1
+                    coins.add(coin)
+
+    for entry in coverage.values():
+        entry["snapshots_total"] = total_snapshots
+
+    return sorted(coins), coverage
+
+
+def _aggregate_trades(trades):
+    """Схлопывает список сделок ОДНОЙ монеты (тот же формат, что уже строит
+    _run_bounce в поле 'trades') в короткую сводку для строки
+    bulk-отчёта — та же честная разбивка по статусу (✅/🕐/⏳), что уже
+    видна в таблице одиночного симулятора, просто посчитана числом."""
+    long_trades = [t for t in trades if t["type"] == "LONG"]
+    short_trades = [t for t in trades if t["type"] == "SHORT"]
+
+    def _side_stats(side_trades):
+        closed = [t for t in side_trades if t["status"] in ("✅", "🕐")]
+        wins = [t for t in closed if (t.get("result_percent") or 0) > 0]
+        avg_result = (sum(t["result_percent"] for t in closed) / len(closed)) if closed else None
+        avg_mae = (sum(t["mae_pct"] for t in side_trades if t.get("mae_pct") is not None)
+                   / len([t for t in side_trades if t.get("mae_pct") is not None])) \
+            if any(t.get("mae_pct") is not None for t in side_trades) else None
+        return {
+            "count": len(side_trades),
+            "closed": len(closed),
+            "wins": len(wins),
+            "win_rate_pct": round(len(wins) / len(closed) * 100.0, 1) if closed else None,
+            "avg_result_pct": round(avg_result, 2) if avg_result is not None else None,
+            "avg_mae_pct": round(avg_mae, 2) if avg_mae is not None else None,
+        }
+
     return {
-        "supports": coin_data.get("supports", []),
-        "resistances": coin_data.get("resistances", []),
+        "total_trades": len(trades),
+        "long": _side_stats(long_trades),
+        "short": _side_stats(short_trades),
     }
 
+
+def _ensure_archive_for_coins(coins, markets, start_time_str, end_time_str, forward_days, progress_cb):
+    """Докачивает архив симулятора (15m + 4h) по списку монет на период —
+    ПОСЛЕДОВАТЕЛЬНО, по одной монете, в ГЛАВНОМ процессе, до раздачи монет
+    воркерам: докачка пишет в SQLite и ходит на биржу, ей нужна очередь, а не
+    параллельные процессы. Воркеры потом только читают готовое.
+
+    progress_cb(done, total, label) — запись прогресса (у BOUNCE и V-семьи
+    свои файлы прогресса). Возвращает {coin: текст ошибки} для монет, по
+    которым докачать не удалось — их считать нельзя (данных нет), они
+    попадают в отчёт как error."""
+    total = len(coins)
+    start_ts = pd.Timestamp(start_time_str, tz="UTC")
+    data_end_ts = pd.Timestamp(end_time_str, tz="UTC") if end_time_str else pd.Timestamp.now(tz="UTC")
+    failed = {}
+    for i, coin in enumerate(coins, 1):
+        progress_cb(i - 1, total, f"качаю свечи {coin}")
+        symbol = resolve_symbol(coin, markets)
+        if not symbol:
+            failed[coin] = f"Монета {coin} не найдена на бирже"
+            continue
+        try:
+            candle_archive.ensure_for_sim(exchange, symbol, start_ts, data_end_ts, forward_days)
+        except Exception as e:
+            failed[coin] = f"Нет данных: {e}"
+    return failed
+
+
+def _write_bulk_progress(done, total, current_coin, finished=False, strategy="BOUNCE"):
+    """Пишет прогресс bulk-прогона на диск после каждой монеты (читает его
+    лёгкий GET, пока основной POST ещё считает). Не должна ронять прогон."""
+    try:
+        save_json_atomic(_sim_path(strategy, "bulk_progress"), {
+            "done": done,
+            "total": total,
+            "current_coin": current_coin,
+            "finished": finished,
+            "updated_at": datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        }, indent=2)
+    except Exception as e:
+        print(f"⚠️ [SIM] Не удалось записать прогресс bulk-прогона: {e}")
+
+
+def get_bulk_progress(strategy="BOUNCE"):
+    """Прогресс bulk-прогона для опроса с фронта. {} если ни разу не запускали."""
+    data = load_json(_sim_path(strategy, "bulk_progress"), default={})
+    return data if isinstance(data, dict) and data else {}
+
+
+def get_last_run(strategy="BOUNCE"):
+    """Последний сохранённый результат одиночного прогона — страница
+    симулятора берёт его после F5. None, если ещё не запускали."""
+    data = load_json(_sim_path(strategy, "last_run"), default={})
+    return data if isinstance(data, dict) and data else None
+
+
+def get_last_all_run(strategy="BOUNCE"):
+    """Последний сохранённый результат bulk-прогона (свой файл)."""
+    data = load_json(_sim_path(strategy, "last_all_run"), default={})
+    return data if isinstance(data, dict) and data else None
+
+
+# ======================================================================
+# СЕМЕЙСТВО BOUNCE / BUYBACK: BounceManager.process_candle
+# ======================================================================
+
+def _sim_hold_days(sim_cfg, strategy="BOUNCE"):
+    """MAX_HOLD_DAYS для прогона: свои из sim_cfg (режим Sim) или боевые (Watcher)."""
+    if sim_cfg:
+        v = _num(sim_cfg.get("max_hold_days"))
+        if v is not None and v > 0:
+            return int(v)
+    return _watcher_cls(strategy).CONFIG.get("MAX_HOLD_DAYS", 14)
+
+
+def _settings_snapshot(sim_cfg, strategy="BOUNCE"):
+    """Какие настройки были у прогона — кладётся в результат, UI показывает их строкой."""
+    strategy = _norm_strategy(strategy)
+    if not sim_cfg:
+        snap: dict = {"mode": "watcher", "strategy": strategy}
+        if strategy == "BUYBACK":
+            snap["entry_mode"] = "buyback"
+            snap["buyback"] = dict(BUYBACK)
+        return snap
+    res: dict = {
+        "mode": "sim", "strategy": strategy,
+        "tp": sim_cfg.get("tp"), "sl": sim_cfg.get("sl"),
+        "short_min": sim_cfg.get("short_min"), "long_max": sim_cfg.get("long_max"),
+        "max_hold_days": _sim_hold_days(sim_cfg, strategy),
+        "entry_mode": "buyback" if strategy == "BUYBACK" else (sim_cfg.get("entry_mode") or "volume"),
+    }
+    if strategy == "BUYBACK":
+        res["buyback"] = dict(BUYBACK)
+    return res
+
+
+def _episode_bounce(watcher, level_id, coin, strategy="BOUNCE"):
+    return {
+        "level_id": level_id,
+        "coin": coin,
+        "strategy": strategy,
+        "mode": getattr(watcher, "mode", None),
+        "direction": getattr(watcher, "trade_type", None),
+        "state": getattr(watcher, "state", "UNKNOWN"),
+        "level_min": getattr(watcher, "min", None),
+        "level_max": getattr(watcher, "max", None),
+        "level_date": getattr(watcher, "level_date", None),
+        "level_type": getattr(watcher, "level_type", None),
+        "level_score": getattr(watcher, "level_score", None),
+        "level_reaction_count": getattr(watcher, "level_reaction_count", None),
+        "activated_at": getattr(watcher, "activated_at", None),
+        "born_at": getattr(watcher, "born_at", None),
+        "events": list(getattr(watcher, "event_log", [])),
+    }
+
+
+def _run_bounce(coin, start_time_str, end_time_str=None, top_up=True,
+                allow_long=True, allow_short=True, sim_cfg=None, strategy="BOUNCE"):
+    """
+    strategy: "BOUNCE" (основной) или "BUYBACK" (отдельная стратегия: свой
+        менеджер/вотчер, свои логи и файлы результата). BUYBACK берёт
+        направления из BUYBACK['ALLOW_LONG'/'ALLOW_SHORT'] (шорт выключен).
+    sim_cfg: None — режим Watcher (всё как в бою: TP/SL/пороги EMA из боевых
+        config.json и coin_settings.json). Словарь {tp, sl, short_min, long_max,
+        max_hold_days} — режим Sim: свои общие настройки симулятора (по монетам
+        не бывает), боевые файлы не читаются и не меняются.
+    coin: тикер, напр. 'BTC'
+    start_time_str: 'YYYY-MM-DD' или 'YYYY-MM-DD HH:MM' (UTC) — начало реплея
+    end_time_str: конец реплея, по умолчанию — самая свежая доступная свеча
+    top_up: докачивать ли недостающие свечи в архив симулятора перед
+        прогоном (см. _candles_df) — False используется bulk-прогоном
+        (run_bulk_simulation): там докачка уже сделана в главном
+        процессе до раздачи монет воркерам.
+    allow_long/allow_short: какие направления вообще пускать в поиск сделок
+        — та же пара флагов, что process_candle() в bounce_manager.py уже
+        принимает для боевого бота (см. watcher_plan.py::check_bounce).
+        По умолчанию оба включены — прежнее поведение не меняется, если
+        эндпоинт их не передаёт.
+
+    Возвращает {"coin", "start_time", "end_time", "active", "history",
+    "messages"} — active/history в том же формате events, что и боевой
+    /api/events/{coin} (фронт может рисовать теми же маркерами без
+    переделки), messages — готовые текстовые карточки найденных сделок
+    (для ленты внизу страницы симулятора).
+    """
+    strategy = _norm_strategy(strategy)
+    log_dir = _sim_path(strategy, "log_dir")
+    if strategy == "BUYBACK":
+        allow_long = bool(allow_long and BUYBACK["ALLOW_LONG"])
+        allow_short = bool(allow_short and BUYBACK["ALLOW_SHORT"])
+    coin = coin.upper().replace("USDT", "").replace("/", "").strip()
+
+    markets = load_markets_cached(exchange)
+    symbol = resolve_symbol(coin, markets)
+    if not symbol:
+        raise ValueError(f"Монета {coin} не найдена на бирже")
+
+    start_ts = pd.Timestamp(start_time_str, tz="UTC")
+    data_end_ts = pd.Timestamp(end_time_str, tz="UTC") if end_time_str else pd.Timestamp.now(tz="UTC")
+    hold_days = _sim_hold_days(sim_cfg, strategy)
+    fwd_days = max(FORWARD_DAYS, hold_days)
+    df_full = _candles_df(symbol, start_ts, data_end_ts, top_up=top_up, forward_days=fwd_days)
+
+    end_ts = pd.Timestamp(end_time_str, tz="UTC") if end_time_str else df_full.index[-1]
+    replay_df = df_full[(df_full.index >= start_ts) & (df_full.index <= end_ts)]
+    if replay_df.empty:
+        raise ValueError(f"Нет свечей в диапазоне {start_time_str} .. {end_time_str or 'сейчас'} для {coin}")
+
+    atr_series = calculate_atr(df_full)
+    # EMA200(4h): 4h-свечи из архива симулятора (запас 100 суток назад от старта), а не из 15m
+    ema_dist_fn = make_ema_dist_fn(
+        df_full, candles_4h=candle_archive.get_sim_candles(symbol, "4h", start_ts, data_end_ts, fwd_days),
+    )
+
+    # Свой, полностью изолированный менеджер — ничего общего с боевым
+    # bounce_mgr из background_tasks, ничего не пишет в
+    # боевые jsonbank/*.json. Своя папка логов, не bounce_logs/.
+    os.makedirs(log_dir, exist_ok=True)
+    _reset_sim_log(coin, log_dir)  # новый прогон — старый лог этой монеты не тащим
+    if strategy == "BUYBACK":
+        bounce_mgr = BuybackManager(log_dir_override=log_dir, entry_mode="buyback")
+    else:
+        bounce_mgr = BounceManager(log_dir_override=log_dir, entry_mode=(sim_cfg or {}).get("entry_mode"))
+    bounce_mgr.set_ema_dist_fn(coin, ema_dist_fn)  # EMA для отчёта (ema_dist_birth)
+    # Фильтр уровней по EMA (levels/level_filter.py) — те же пороги из config.json,
+    # что и в бою: общие + свои у монеты.
+    if sim_cfg:
+        # Режим Sim: пороги — свои общие (None = без фильтра), по монетам не бывает.
+        level_filter = LevelFilter(coin, ema_dist_fn,
+                                   thresholds=(_num(sim_cfg.get("short_min")), _num(sim_cfg.get("long_max"))))
+    else:
+        level_filter = LevelFilter(coin, ema_dist_fn)
+
+    messages = []
+    trades = []
+    df_index = df_full.index
+
+    # Снимок уровней физически меняется раз в 12 часов (см. levels_history.py::
+    # snapshot_bucket_start — та же сетка 00:00/12:00, на которой пишутся
+    # снимки), а свечей внутри одного бакета — до 48 (15м × 12ч). Без кэша
+    # get_levels_snapshot() звался бы заново на каждой из них с одним и тем же
+    # результатом. Тут держим последний бакет + его снимок и зовём функцию
+    # заново только при переходе в новый бакет — сам get_levels_snapshot()
+    # не тронут, его семантика (в т.ч. для боевого рескана) не меняется.
+    last_bucket = None
+    cached_snapshot = None
+
+    for ts, row in replay_df.iterrows():
+        pos = df_index.searchsorted(ts, side="right")
+        df_slice = df_full.iloc[max(0, pos - WINDOW):pos]
+        if len(df_slice) < 52:
+            continue  # недостаточно истории ДО этой свечи для индикаторов
+
+        c_high, c_low, c_close = float(row["high"]), float(row["low"]), float(row["close"])
+        c_atr = float(atr_series.loc[ts]) if ts in atr_series.index else 0.0
+
+        ts_naive = ts.tz_localize(None) if ts.tzinfo is not None else ts
+        ts_naive_dt = ts_naive.to_pydatetime()
+
+        bucket = snapshot_bucket_start(ts_naive_dt)
+        if bucket != last_bucket:
+            cached_snapshot = get_levels_snapshot(ts_naive_dt)
+            last_bucket = bucket
+        snapshot = cached_snapshot
+
+        if snapshot is not None:
+            coin_macro = snapshot.get(coin) or {}
+            supports = coin_macro.get("supports", [])
+            resistances = coin_macro.get("resistances", [])
+        else:
+            supports, resistances = [], []
+
+        supports, resistances = level_filter.apply(ts, supports, resistances)
+        orders, _draw_events = bounce_mgr.process_candle(
+            c_low, c_high, c_close, supports, resistances, df_slice,
+            allow_long=allow_long, allow_short=allow_short, c_atr=c_atr, coin=coin,
+        )
+
+        # Устанавливаем born_at на основе activated_at (дату активации уровня)
+        for watcher in bounce_mgr._watchers.values():
+            if not getattr(watcher, "born_at", None) and getattr(watcher, "activated_at", None):
+                activated_str = watcher.activated_at
+                try:
+                    activated_dt = datetime.datetime.fromisoformat(activated_str.replace('Z', '+00:00'))
+                    watcher.born_at = activated_dt.strftime('%Y-%m-%d')
+                except Exception:
+                    pass
+
+        for order in orders:
+            d = order["decision"]
+            tt = order["trade_type"]
+            entry, sl, tp = d.get("entry_price", 0.0), d.get("sl", 0.0), d.get("tp", 0.0)
+            if sim_cfg and entry:
+                # Режим Sim: TP/SL от цены входа по СВОИМ процентам симулятора
+                # (вотчер посчитал их по боевым — здесь пересчитываем).
+                _tp, _sl = _num(sim_cfg.get("tp")), _num(sim_cfg.get("sl"))
+                if _tp is not None:
+                    tp = entry * (1 + _tp / 100.0) if tt == "LONG" else entry * (1 - _tp / 100.0)
+                if _sl is not None:
+                    sl = entry * (1 - _sl / 100.0) if tt == "LONG" else entry * (1 + _sl / 100.0)
+            rr = ((tp - entry) / (entry - sl)) if tt == "LONG" and entry > sl else \
+                 ((entry - tp) / (sl - entry)) if tt == "SHORT" and sl > entry else 0
+
+            level_id_val = d.get("level_id", "") or ""
+            mode = level_id_val.split("__")[-1] if "__" in level_id_val else None
+            source_label = f"{strategy}_{tt}" + (f"_{mode}" if tt == "SHORT" and mode else "")
+
+            outcome = compute_trade_outcome(
+                ts, entry, tp, tt, df_full, hold_days,
+            )
+
+            trades.append({
+                "date": ts_naive.strftime("%Y-%m-%d %H:%M"),
+                "time": int(ts_naive.timestamp()),
+                "coin": coin,
+                "type": tt,
+                "source": source_label,
+                "entry": entry,
+                "target": tp,
+                "stop": sl,
+                "rr": round(rr, 2),
+                "level_id": level_id_val or None,
+                "level_min": order.get("level", {}).get("min"),
+                "level_max": order.get("level", {}).get("max"),
+                "level_type": d.get("level_type", ""),
+                "level_reaction_count": getattr(bounce_mgr._watchers.get(level_id_val), "level_reaction_count", None),
+                "volume": d.get("volume", float(row["volume"])),
+                "volume_mult": d.get("volume_mult"),
+                "reason": d.get("reason", ""),
+                # То же самое, что уже показывает боевой дашборд для реальных
+                # сигналов (см. history.py::save_signal/update_open_signals) —
+                # только тут исход честно посчитан по истории, а не ждёт
+                # реального тикера биржи.
+                "status": outcome["status"],
+                "result_percent": outcome["result_percent"],
+                "closed_at": outcome["closed_at"],
+                "mae_pct": outcome["mae_pct"],
+                # Та же цифра, по которой работал EMA-фильтр: край зоны (LONG — верх,
+                # SHORT — низ) от EMA200(4h) в момент рождения вотчера. Если вотчера
+                # нет/значения нет — старый расчёт по цене входа.
+                "ema_dist_pct": getattr(bounce_mgr._watchers.get(level_id_val), "ema_dist_birth", None),
+                "method": d.get("method", "volume"),
+                "pattern_route": d.get("pattern_route"),
+                "method_value": d.get("volume", float(row["volume"])),
+                "method_mult": d.get("volume_mult"),
+            })
+
+            emoji = "🟢" if tt == "LONG" else "🔴"
+            messages.append(
+                f"{emoji} *{strategy} {tt}* _{coin}_ — {ts_naive.strftime('%Y-%m-%d %H:%M')}\n"
+                f"Entry: `{entry:.8f}`  SL: `{sl:.8f}`  TP: `{tp:.8f}`  R/R: `{rr:.2f}`\n"
+                f"{d.get('reason', '')}  Level: `{d.get('level_id', 'unknown')}`"
+            )
+
+    active, history = [], []
+    for level_id, watcher in bounce_mgr._watchers.items():
+        ep = _episode_bounce(watcher, level_id, coin, strategy)
+        (history if ep["state"] in ("TRIGGERED", "DEAD") else active).append(ep)
+
+    # Только те зоны, где реально была сделка (TRIGGERED) — иначе за месяц
+    # это может быть десяток+ зон разом, друг на друге, нечитаемо.
+    # Несостоявшиеся попытки (DEAD/SCANNING) всё ещё видны как точки на
+    # графике — просто без своей линии зоны.
+    levels_out = [
+        {
+            "min": ep["level_min"], "max": ep["level_max"],
+            "is_support": ep["direction"] == "LONG",
+            "type": ep["level_type"], "score": ep["level_score"],
+        }
+        for ep in history
+        if ep["state"] == "TRIGGERED" and ep["level_min"] is not None and ep["level_max"] is not None
+    ]
+
+    result = {
+        "coin": coin,
+        "start_time": start_time_str,
+        "end_time": end_time_str or df_full.index[-1].strftime("%Y-%m-%d %H:%M:%S"),
+        "active": active,
+        "history": history,
+        "levels": levels_out,
+        "trades": trades,
+        "messages": messages,
+        "settings": _settings_snapshot(sim_cfg, strategy),
+        "strategy": strategy,
+    }
+
+    return result
+
+
+# ======================================================================
+# СЕМЕЙСТВО V (VB / VGB / VRT): VManager.step
+# ======================================================================
 
 def _levels_day_bucket(ts):
     """Календарный день (UTC, без времени) свечи — граница, на которой
@@ -168,8 +644,7 @@ def _levels_day_bucket(ts):
 
 def _refresh_levels_if_needed(coin, ts, cache):
     """Обновляет уровни НЕ ЧАЩЕ раза в календарный день — вместо заморозки
-    одного снимка на дату старта на весь прогон (см. _levels_at выше и
-    докстринг модуля): иначе уровень, появившийся ПОСЛЕ даты старта, весь
+    одного снимка на дату старта на весь прогон (см. докстринг модуля): иначе уровень, появившийся ПОСЛЕ даты старта, весь
     прогон оставался бы невидимым, хотя цена его реально пробивала.
 
     cache живёт на весь один _walk_long()/_walk_short() (создаётся там,
@@ -216,34 +691,7 @@ def _remember_seen_levels(seen, levels, is_support):
             }
 
 
-def _pre_register(mgr, level, trade_type, tag, coin):
-    """
-    Возвращает вотчер для этого уровня, создавая его только если он ещё
-    не существует (зеркалит is_new_watcher-ветку внутри evaluate_*, но без
-    срабатывания _replay_watcher — мы уже сами честно нашли точку пробоя
-    проходом по свечам, повторный реплей в узком окне CANDLE_WINDOW только
-    всё портит).
-
-    on_breach_start() вызывается ТОЛЬКО если вотчер уже существовал —
-    ровно как в бою: на первом пробитии вотчера ещё нет физически, поэтому
-    notify_breach() там не находит его и ничего не делает; на повторном
-    заходе тот же вотчер переиспользуется и breach_count растёт."""
-    level_id = mgr._level_id(level, trade_type, tag)
-    watcher = mgr._watchers.get(level_id)
-    if watcher is None:
-        # log_dir_override=SIM_LOG_DIR — та же папка, что у BOUNCE-симулятора
-        # (modules/cryptano/simulator/logs/), но файл называется {coin}_V.log,
-        # не {coin}.log, чтобы не пересекаться с логами BOUNCE (см.
-        # VBottomWatcher._dbg). Без этого V-вотчеры писали в боевую
-        # logs/watchers/ — симулятор их логи там никто не смотрит.
-        watcher = _WATCHER_CLS[tag](level["min"], level["max"], trade_type, coin=coin, log_dir_override=SIM_LOG_DIR)
-        mgr._watchers[level_id] = watcher
-    elif hasattr(watcher, "on_breach_start"):
-        watcher.on_breach_start()
-    return level_id, watcher
-
-
-def _episode(mgr, level_id, strategy, direction, coin, level=None):
+def _episode_v(mgr, level_id, strategy, direction, coin, level=None):
     """level — тот самый словарь уровня (min/max/type/date/score), на
     котором создан вотчер (см. вызовы ниже — там ещё есть `tracked` в
     скоупе, поэтому передаём его напрямую, а не пытаемся угадывать через
@@ -254,7 +702,7 @@ def _episode(mgr, level_id, strategy, direction, coin, level=None):
     отсутствовали в episode вовсе — фронт (sim.js::drawTradeDetail) не
     находил границы зоны и молча ничего не рисовал: ни полосы уровня, ни
     маркеров пути, ни даже точки входа (тот же формат, что уже строит
-    _episode() в bounce_simulate.py, чтобы фронт рисовал обе семьи одним
+    _episode_bounce(), чтобы фронт рисовал обе семьи одним
     и тем же кодом)."""
     watcher = mgr._watchers.get(level_id)
     if watcher is None:
@@ -277,11 +725,10 @@ def _episode(mgr, level_id, strategy, direction, coin, level=None):
 
 
 def _build_trade(result, tracked, strategy, direction, coin, entry_ts, df_full, ema_dist_fn=None):
-    """Собирает запись сделки из результата evaluate_v_bottom/
-    v_green_bottom/v_red_top (result — тот же словарь entry_price/sl/tp/
-    level_id, что уже уходит в save_signal() в watcher_plan.py, см. её
-    check_v_bottom/check_v_green_bottom/check_v_red_top) — тот же формат,
-    что и trades у BOUNCE (bounce_simulate.py), чтобы фронт рисовал обе
+    """Собирает запись сделки из результата VManager.feed (result — тот же
+    словарь entry_price/sl/tp/level_id, что уходит в save_signal() в
+    watcher_plan.py, см. check_v) — тот же формат,
+    что и trades у BOUNCE (_run_bounce), чтобы фронт рисовал обе
     семьи ОДНОЙ и той же таблицей/функцией без переделки.
 
     level_type берём из tracked (не из result — result его не несёт, ровно
@@ -331,13 +778,13 @@ def _build_trade(result, tracked, strategy, direction, coin, entry_ts, df_full, 
 def _walk_long(df_full, start_i, end_i, strategy, coin, seen_levels=None, ema_dist_fn=None):
     """
     Прогоняет V_BOTTOM или V_GREEN_BOTTOM от свечи start_i до end_i —
-    зеркало check_v_bottom()/check_v_green_bottom() из watcher_plan.py,
+    зеркало check_v() из watcher_plan.py,
     только свечи идут одна за одной по истории, а не по одной за реальный
     скан.
 
     🔥 В отличие от прежней версии — после срабатывания сигнала уровень
     СНИМАЕТСЯ со слежения (tracked = None), а не держится до конца периода
-    навсегда. Это зеркалит check_v_bottom() в бою (там — явный
+    навсегда. Это зеркалит check_v() в бою (там — явный
     `del tracked_levels[track_key]` сразу после сигнала) и нужно, чтобы на
     длинном историческом периоде (недели/месяцы, особенно в bulk-прогоне)
     находились ВСЕ независимые пробои подряд, а не только самый первый.
@@ -350,8 +797,7 @@ def _walk_long(df_full, start_i, end_i, strategy, coin, seen_levels=None, ema_di
     обновление касается только поиска НОВЫХ пробоев и opposite_levels для
     расчёта TP."""
     tag = "VB" if strategy == "V_BOTTOM" else "VGB"
-    mgr = VBottomManager()
-    tracked = None
+    mgr = _new_mgr(tag)
     episodes = []
     trades = []
     levels_cache = {}
@@ -369,53 +815,27 @@ def _walk_long(df_full, start_i, end_i, strategy, coin, seen_levels=None, ema_di
         _remember_seen_levels(seen_levels, supports, True)
         _remember_seen_levels(seen_levels, levels_cache["resistances_scored"], False)
 
-        c_close = float(window["close"].iloc[-1])
-        c_low = float(window["low"].iloc[-1])
-        prev_close = float(window["close"].iloc[-2])
-
         c_atr = None
         if strategy == "V_GREEN_BOTTOM":
             atr_series = calculate_atr(window, 14)
             if not atr_series.empty and pd.notna(atr_series.iloc[-1]):
                 c_atr = float(atr_series.iloc[-1])
 
+        # replay=False: путь вотчера мы ведём сами, свеча за свечой
+        tracked, result, cancelled = mgr.step(coin, supports, resistances, window, c_atr=c_atr, replay=False)
         if tracked is None:
-            found = _find_fresh_breach(supports, c_close, c_low, prev_close)
-            if found is None:
-                continue
-            tracked = dict(found)
-            level_id, watcher = _pre_register(mgr, tracked, "LONG", tag, coin)
-        else:
-            origin_max = tracked["max"] * (1 + VBOTTOM_BREATH_BUFFER_PCT / 100.0)
-            if c_close > origin_max:
-                level_id = mgr._level_id(tracked, "LONG", tag)
-                watcher = mgr._watchers.get(level_id)
-                if watcher is not None and hasattr(watcher, "_reset_chain"):
-                    watcher._reset_chain()
-                ep = _episode(mgr, level_id, strategy, "LONG", coin, tracked)
-                if ep:
-                    episodes.append(ep)
-                tracked = None
-                continue
+            continue
 
-        if strategy == "V_BOTTOM":
-            result = mgr.evaluate_v_bottom(tracked, window, "LONG", resistances, trend="UNKNOWN", c_atr=None, coin=coin)
-        else:
-            result = mgr.evaluate_v_green_bottom(tracked, window, "LONG", resistances, trend="UNKNOWN", c_atr=c_atr, coin=coin)
-
-        if result and result.get("allow"):
-            entry_ts = window.index[-1]
-            trades.append(_build_trade(result, tracked, strategy, "LONG", coin, entry_ts, df_full, ema_dist_fn))
-
-            level_id = mgr._level_id(tracked, "LONG", tag)
-            ep = _episode(mgr, level_id, strategy, "LONG", coin, tracked)
+        if cancelled or result:
+            if result:
+                trades.append(_build_trade(result, tracked, strategy, "LONG", coin, window.index[-1], df_full, ema_dist_fn))
+            ep = _episode_v(mgr, mgr.level_id(tracked), strategy, "LONG", coin, tracked)
             if ep:
                 episodes.append(ep)
-            tracked = None
 
+    tracked = mgr.tracked.get(coin)  # уровень, который вели до конца периода
     if tracked is not None:
-        level_id = mgr._level_id(tracked, "LONG", tag)
-        ep = _episode(mgr, level_id, strategy, "LONG", coin, tracked)
+        ep = _episode_v(mgr, mgr.level_id(tracked), strategy, "LONG", coin, tracked)
         if ep:
             episodes.append(ep)
 
@@ -423,23 +843,22 @@ def _walk_long(df_full, start_i, end_i, strategy, coin, seen_levels=None, ema_di
 
 
 def _walk_short(df_full, start_i, end_i, coin, seen_levels=None, ema_dist_fn=None):
-    """Зеркало check_v_red_top() — один уровень может дать несколько
+    """Зеркало check_v() — один уровень может дать несколько
     сигналов подряд, поэтому снимаем со слежения только когда вотчер
     реально закончил работу (TRIGGERED/DEAD/IDLE), а не после 1-го сигнала
     (это уже так и было — V_RED_TOP, в отличие от VB/VGB выше, и раньше
     умел находить несколько сделок подряд на одном уровне).
 
     resistances — score-отфильтрованный (для поиска пробоя, зеркалит
-    check_v_red_top). supports_all — БЕЗ фильтра по score (opposite_levels
-    для evaluate_v_red_top) — 🐛 раньше сюда по ошибке передавался
-    отфильтрованный supports; в бою (watcher_plan.py::check_v_red_top,
+    check_v). supports_all — БЕЗ фильтра по score (opposite_levels
+    для V_RED_TOP) — 🐛 раньше сюда по ошибке передавался
+    отфильтрованный supports; в бою (watcher_plan.py::check_v,
     строка `supports = coin_macro.get("supports", [])`) фильтра там нет
     вообще — починил, чтобы не расходиться с боевым поведением.
 
     Уровни, как и в _walk_long, обновляются раз в календарный день (см.
     _refresh_levels_if_needed), а не заморожены на дату старта."""
-    mgr = VBottomManager()
-    tracked = None
+    mgr = _new_mgr("VRT")
     seen_ids = set()
     trades = []
     recorded_keys = set()
@@ -465,10 +884,6 @@ def _walk_short(df_full, start_i, end_i, coin, seen_levels=None, ema_dist_fn=Non
         _remember_seen_levels(seen_levels, levels_cache["supports"], True)
         _remember_seen_levels(seen_levels, resistances, False)
 
-        c_close = float(window["close"].iloc[-1])
-        c_high = float(window["high"].iloc[-1])
-        prev_close = float(window["close"].iloc[-2])
-
         atr_series = calculate_atr(window, 14)
         c_atr = float(atr_series.iloc[-1]) if not atr_series.empty and pd.notna(atr_series.iloc[-1]) else None
         atr_slow_series = atr_series.rolling(window=100).mean()
@@ -482,42 +897,31 @@ def _walk_short(df_full, start_i, end_i, coin, seen_levels=None, ema_dist_fn=Non
         rsi_series = calculate_rsi(window.reset_index(drop=True))
         c_rsi = float(rsi_series.iloc[-1]) if not rsi_series.empty and pd.notna(rsi_series.iloc[-1]) else None
 
+        tracked, result, _ = mgr.step(coin, resistances, supports_all, window, c_atr=c_atr, replay=False,
+                                      c_atr_slow=c_atr_slow, c_ema=c_ema, c_rsi=c_rsi)
         if tracked is None:
-            found = _find_fresh_breach_up(resistances, c_close, c_high, prev_close)
-            if found is None:
-                continue
-            tracked = dict(found)
-            level_id, watcher = _pre_register(mgr, tracked, "SHORT", "VRT", coin)
+            continue
 
-        result = mgr.evaluate_v_red_top(
-            tracked, window, "SHORT", supports_all, trend="UNKNOWN",
-            c_atr=c_atr, c_atr_slow=c_atr_slow, c_ema=c_ema, c_rsi=c_rsi, coin=coin,
-        )
-
-        level_id = mgr._level_id(tracked, "SHORT", "VRT")
+        level_id = mgr.level_id(tracked)
         seen_ids.add(level_id)
         level_by_id.setdefault(level_id, tracked)
 
-        if result and result.get("allow"):
+        if result:
             entry_ts = window.index[-1]
             dedup_key = (level_id, result.get("level_id"), str(entry_ts))
             if dedup_key not in recorded_keys:
                 recorded_keys.add(dedup_key)
                 trades.append(_build_trade(result, tracked, "V_RED_TOP", "SHORT", coin, entry_ts, df_full, ema_dist_fn))
 
-        watcher = mgr._watchers.get(level_id)
-        if watcher is not None and getattr(watcher, "state", None) in ("TRIGGERED", "DEAD", "IDLE"):
-            tracked = None
-
     episodes = []
     for level_id in seen_ids:
-        ep = _episode(mgr, level_id, "V_RED_TOP", "SHORT", coin, level_by_id.get(level_id))
+        ep = _episode_v(mgr, level_id, "V_RED_TOP", "SHORT", coin, level_by_id.get(level_id))
         if ep:
             episodes.append(ep)
     return episodes, trades
 
 
-def run_simulation(coin, start_time_str, end_time_str=None, strategies=None, top_up=True, save_last_run=True):
+def _run_v(coin, start_time_str, end_time_str=None, top_up=True, strategies=None):
     """
     coin: тикер, напр. 'BTC'
     start_time_str: дата/время старта, 'YYYY-MM-DD' или 'YYYY-MM-DD HH:MM' (UTC)
@@ -526,14 +930,12 @@ def run_simulation(coin, start_time_str, end_time_str=None, strategies=None, top
         какие из трёх реально гонять. None (по умолчанию) = все три, старое
         поведение не меняется для вызовов без этого параметра.
     top_up: докачивать ли недостающие свечи в архив симулятора перед
-        прогоном — False для bulk (см. run_bulk_v_simulation): там докачка
+        прогоном — False для bulk (см. run_bulk_simulation): там докачка
         уже сделана в главном процессе до раздачи монет воркерам.
-    save_last_run: сохранять ли результат в LAST_RUN_FILE для восстановления
-        одиночной страницы симулятора после F5 — False для bulk.
 
     Возвращает {"coin", "start_time", "end_time", "active", "history",
     "levels", "trades"} — trades в том же формате, что у BOUNCE-симулятора
-    (bounce_simulate.py::run_bounce_simulation), events — тот же формат,
+    (_run_bounce), events — тот же формат,
     что и боевой /api/events/{coin}.
     """
     coin = coin.upper().replace("USDT", "").replace("/", "").strip()
@@ -546,7 +948,6 @@ def run_simulation(coin, start_time_str, end_time_str=None, strategies=None, top
         raise ValueError(f"Монета {coin} не найдена на бирже")
 
     start_ts = pd.Timestamp(start_time_str, tz="UTC")
-    target_ts_ms = int(start_ts.timestamp() * 1000)
 
     # ⚠️ Больше НЕТ единой проверки "а есть ли уровни на дату старта" —
     # раньше от неё зависело, запускать ли вообще проход (`if supports:`).
@@ -557,7 +958,7 @@ def run_simulation(coin, start_time_str, end_time_str=None, strategies=None, top
     # случаи, ради которых это всё и делалось.
     data_end_ts = pd.Timestamp(end_time_str, tz="UTC") if end_time_str else pd.Timestamp.now(tz="UTC")
     df_full = _candles_df(symbol, start_ts, data_end_ts, top_up=top_up, forward_days=V_MAX_HOLD_DAYS)
-    _reset_sim_log(coin)  # новый прогон — лог монеты перезаписывается (одна монета = один лог)
+    _reset_sim_log(coin, _sim_path("V", "log_dir"))  # новый прогон — лог монеты перезаписывается (одна монета = один лог)
     start_idx = int(df_full.index.searchsorted(start_ts))
     start_idx = max(0, min(start_idx, len(df_full) - 1))
 
@@ -606,6 +1007,7 @@ def run_simulation(coin, start_time_str, end_time_str=None, strategies=None, top
         "coin": coin,
         "start_time": start_time_str,
         "end_time": end_time_str or df_full.index[-1].strftime("%Y-%m-%d %H:%M:%S"),
+        "strategy": "V",
         "strategies": strategies,
         "active": active,
         "history": history,
@@ -613,109 +1015,99 @@ def run_simulation(coin, start_time_str, end_time_str=None, strategies=None, top
         "trades": trades,
     }
 
-    # Переживает обновление страницы — та же схема, что и у BOUNCE
-    # (LAST_RUN_FILE у каждой семьи свой, см. докстринг модуля).
-    if save_last_run:
-        try:
-            save_json_atomic(LAST_RUN_FILE, result, indent=2)
-        except Exception as e:
-            print(f"⚠️ [V SIM] Не удалось сохранить последний результат: {e}")
-
     return result
 
 
-def get_last_run():
-    """Последний сохранённый результат V-симуляции — для восстановления
-    страницы после F5 (см. /api/simulate/last в app.py). None, если ни
-    разу ещё не запускали (или файл почистили)."""
-    data = load_json(LAST_RUN_FILE, default={})
-    return data if isinstance(data, dict) and data else None
+# ======================================================================
+# ОДИН ВХОД: одиночный прогон и bulk
+# ======================================================================
 
+def run_simulation(coin, start_time_str, end_time_str=None, strategy="BOUNCE", top_up=True,
+                   save_last_run=True, **opts):
+    """Один прогон по одной монете.
 
-def _write_bulk_progress(done, total, current_coin, finished=False):
-    """Тот же приём, что и у BOUNCE (см. bounce_simulate.py) — свой файл,
-    не пересекается с BULK_PROGRESS_FILE у BOUNCE."""
-    try:
-        save_json_atomic(BULK_PROGRESS_FILE, {
-            "done": done,
-            "total": total,
-            "current_coin": current_coin,
-            "finished": finished,
-            "updated_at": datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-        }, indent=2)
-    except Exception as e:
-        print(f"⚠️ [V SIM] Не удалось записать прогресс bulk-прогона: {e}")
-
-
-def get_bulk_progress():
-    """Прогресс bulk V-прогона для опроса с фронта. {} если ни разу не запускали."""
-    data = load_json(BULK_PROGRESS_FILE, default={})
-    return data if isinstance(data, dict) and data else {}
+    strategy: "BOUNCE" | "BUYBACK" | "V".
+    opts зависят от семейства:
+      BOUNCE/BUYBACK: allow_long, allow_short, sim_cfg (см. _run_bounce);
+      V: strategies — список тегов из ALL_V_STRATEGY_TAGS (пусто = все три).
+    top_up: докачивать ли свечи в архив перед прогоном (False у bulk — там
+        докачка уже сделана в главном процессе).
+    save_last_run: сохранять ли результат для восстановления страницы после
+        F5 (False у bulk, чтобы цикл по монетам не затирал файл).
+    """
+    strategy = _norm_strategy(strategy)
+    run = _run_v if strategy == "V" else _run_bounce
+    if strategy != "V":
+        opts["strategy"] = strategy
+    result = run(coin, start_time_str, end_time_str, top_up=top_up, **opts)
+    if save_last_run:
+        try:
+            save_json_atomic(_sim_path(strategy, "last_run"), result, indent=2)
+        except Exception as e:
+            print(f"⚠️ [SIM {strategy}] Не удалось сохранить последний результат: {e}")
+    return result
 
 
 def _simulate_one_coin_worker(task):
-    """Раннер ОДНОЙ монеты в отдельном процессе (см. тот же приём и то же
-    объяснение — модульный уровень, не замыкание — в
-    bounce_simulate.py::_simulate_one_coin_worker: multiprocessing на
-    Windows использует spawn, аргументы и функция маршалятся через pickle,
-    вложенные функции pickle не берёт."""
-    coin, start_time_str, end_time_str, strategies, top_up = task
+    """Одна монета в отдельном процессе. Функция модульного уровня (на Windows
+    multiprocessing = spawn, вложенные функции pickle не берёт). Ничего не
+    пишет сама — прогресс и файлы пишет главный процесс (нет гонки записи).
+    task = (coin, start, end, strategy, opts). Возвращает (coin, payload, error)."""
+    coin, start_time_str, end_time_str, strategy, opts = task
     try:
-        sim_result = run_simulation(
-            coin, start_time_str, end_time_str,
-            strategies=strategies, top_up=top_up, save_last_run=False,
-        )
+        sim_result = run_simulation(coin, start_time_str, end_time_str, strategy=strategy,
+                                    top_up=False, save_last_run=False, **opts)
         payload = {"trades": sim_result.get("trades", []), "history": sim_result.get("history", [])}
         return coin, payload, None
     except Exception as e:
         return coin, None, str(e)
 
 
-def run_bulk_v_simulation(start_time_str, end_time_str=None, strategies=None, coin_filter=None):
-    """Гоняет run_simulation по КАЖДОЙ монете из list_coins_with_levels за
-    период — та же функция, что уже фильтрует монеты для bulk BOUNCE
-    (bounce_simulate.py), список монет с уровнями в периоде общий для
-    обеих семей, отдельного своего искать незачем.
+def run_bulk_simulation(start_time_str, end_time_str=None, strategy="BOUNCE", coin_filter=None,
+                        blocked=None, **opts):
+    """Прогон по ВСЕМ монетам, у которых были уровни в периоде (list_coins_with_levels).
 
-    coin_filter — необязательное множество тикеров (см. app.py::
-    _coin_source_filter_set). Если задано, из coins остаются только те,
-    что входят и в историю за период, И в этот набор — второй режим bulk
-    ("по выбранному списку"), не по всем монетам сразу.
+    coin_filter — множество тикеров (текущий whitelist/greylist) или None =
+        все монеты периода. blocked — монеты, заблокированные в симуляторе.
+    opts — те же, что у run_simulation (allow_long/allow_short/sim_cfg или strategies).
 
-    Уровни для каждой монеты читаются из локальной БД снимков (_levels_at)
-    — без похода на биржу. Свечи — из архива симулятора: недостающее
-    докачивается ДО раздачи монет воркерам (последовательно, в главном
-    процессе, см. _ensure_archive_for_coins), воркеры только читают
-    (top_up=False).
+    Свечи докачиваются ДО раздачи монет воркерам (последовательно, в главном
+    процессе); воркеры только читают. Одна упавшая монета не валит прогон —
+    её ошибка попадает в results[coin]["error"].
 
-    Возвращает тот же формат, что и run_bulk_bounce_simulation (results/
-    trades/history_by_coin), чтобы фронт (renderBulkReport/
-    renderBulkTradesTable в sim.js) рисовал обе семьи одним и тем же кодом
-    без переделки."""
+    Возвращает {results (сводка по монете), trades (плоский список всех
+    сделок), history_by_coin (эпизоды только для монет со сделками), ...} и
+    сохраняет всё в last_all_run файл семейства."""
+    strategy = _norm_strategy(strategy)
     coins, coverage = list_coins_with_levels(start_time_str, end_time_str)
     if coin_filter is not None:
         coins = [c for c in coins if c in coin_filter]
+    if blocked:
+        coins = [c for c in coins if c not in blocked]
     total = len(coins)
+
+    if strategy == "V":
+        forward_days = V_MAX_HOLD_DAYS
+    else:
+        forward_days = max(FORWARD_DAYS, _sim_hold_days(opts.get("sim_cfg"), strategy))
 
     results = {}
     all_trades = []
     history_by_coin = {}
     coins_with_trades = 0
 
-    _write_bulk_progress(0, total, None, finished=False)
+    _write_bulk_progress(0, total, None, finished=False, strategy=strategy)
 
-    # Монеты, по которым свечи докачать не удалось, не считаем (нет данных) —
-    # они идут в отчёт как error. Остальные — воркерам, они только читают.
     failed = _ensure_archive_for_coins(
-        coins, load_markets_cached(exchange), start_time_str, end_time_str, V_MAX_HOLD_DAYS,
-        lambda d, t, label: _write_bulk_progress(d, t, label, finished=False),
+        coins, load_markets_cached(exchange), start_time_str, end_time_str, forward_days,
+        lambda d, t, label: _write_bulk_progress(d, t, label, finished=False, strategy=strategy),
     )
     for coin, err in failed.items():
         results[coin] = {"error": err}
-    tasks = [(coin, start_time_str, end_time_str, strategies, False) for coin in coins if coin not in failed]
+    tasks = [(coin, start_time_str, end_time_str, strategy, opts) for coin in coins if coin not in failed]
 
     done = len(failed)
-    _write_bulk_progress(done, total, None, finished=False)
+    _write_bulk_progress(done, total, None, finished=False, strategy=strategy)
     with ProcessPoolExecutor(max_workers=BULK_MAX_WORKERS) as executor:
         future_to_coin = {executor.submit(_simulate_one_coin_worker, task): task[0] for task in tasks}
         for future in as_completed(future_to_coin):
@@ -723,6 +1115,7 @@ def run_bulk_v_simulation(start_time_str, end_time_str=None, strategies=None, co
             try:
                 _, payload, error = future.result()
             except Exception as e:
+                # сам процесс-воркер мог упасть целиком — не даём одной монете обрушить batch
                 payload, error = None, str(e)
 
             if error is not None:
@@ -742,31 +1135,61 @@ def run_bulk_v_simulation(start_time_str, end_time_str=None, strategies=None, co
                     history_by_coin[coin] = (payload or {}).get("history", [])
 
             done += 1
-            _write_bulk_progress(done, total, coin, finished=False)
+            _write_bulk_progress(done, total, coin, finished=False, strategy=strategy)
 
-    _write_bulk_progress(total, total, None, finished=True)
+    _write_bulk_progress(total, total, None, finished=True, strategy=strategy)
 
     result = {
         "start_time": start_time_str,
         "end_time": end_time_str,
-        "strategies": list(strategies) if strategies else list(ALL_V_STRATEGY_TAGS),
         "coins_scanned": len(coins),
         "coins_with_trades": coins_with_trades,
         "results": results,
         "trades": all_trades,
         "history_by_coin": history_by_coin,
+        "strategy": strategy,
     }
+    if strategy == "V":
+        result["strategies"] = list(opts.get("strategies") or ALL_V_STRATEGY_TAGS)
+    else:
+        result["settings"] = _settings_snapshot(opts.get("sim_cfg"), strategy)
 
     try:
-        save_json_atomic(LAST_ALL_RUN_FILE, result, indent=2)
+        save_json_atomic(_sim_path(strategy, "last_all_run"), result, indent=2)
     except Exception as e:
-        print(f"⚠️ [V SIM] Не удалось сохранить bulk-результат: {e}")
+        print(f"⚠️ [SIM {strategy}] Не удалось сохранить bulk-результат: {e}")
 
     return result
 
 
-def get_last_all_run():
-    """Последний сохранённый результат bulk V-прогона — свой файл, не
-    пересекается с get_last_all_run() у BOUNCE."""
-    data = load_json(LAST_ALL_RUN_FILE, default={})
-    return data if isinstance(data, dict) and data else None
+def prefetch_archive(start_time_str, end_time_str=None):
+    """Заранее докачивает архив симулятора (15m + 4h) за период — без сайта.
+    Монеты те же, что у bulk (list_coins_with_levels): для периода уже должен
+    быть посчитан файл уровней levels_timeline_*.json (precalc_for_bot.py).
+    Уже скачанное повторно не качается. Возвращает {coin: текст ошибки}."""
+    coins, _ = list_coins_with_levels(start_time_str, end_time_str)
+    if not coins:
+        print("❌ За этот период нет монет с уровнями. Сначала посчитай уровни "
+              "(precalc_for_bot.py, MONTHS_TO_CALC) на этот период.")
+        return {}
+    markets = load_markets_cached(exchange)
+    print(f"📦 Период {start_time_str} .. {end_time_str or 'сейчас'}: монет {len(coins)}. "
+          f"Качаю недостающие свечи (15m + 4h) в архив симулятора...")
+    failed = _ensure_archive_for_coins(
+        coins, markets, start_time_str, end_time_str, FORWARD_DAYS,
+        lambda d, t, label: print(f"[{d + 1}/{t}] {label}"),
+    )
+    if failed:
+        print(f"⚠️ Не удалось докачать {len(failed)} монет (в bulk они попадут в отчёт как error):")
+        for coin, err in failed.items():
+            print(f"   {coin}: {err}")
+    print(f"✅ Готово: {len(coins) - len(failed)} из {len(coins)} монет в архиве.")
+    return failed
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Использование: python -m backend.modules.cryptano.simulator.simulate_engine "
+              "ГГГГ-ММ-ДД [ГГГГ-ММ-ДД конец]")
+        sys.exit(1)
+    prefetch_archive(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)

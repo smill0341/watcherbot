@@ -43,9 +43,8 @@ get_top_symbols() сама по себе никуда не делась (бой 
 константой MERGE_WITH_EXISTING = True (нужно, только если гонять whitelist и greylist отдельными прогонами).
 
 Ничего не дублирует: build_levels берётся из levels/levels_builder.py.
-Снимки считаются СТРОГО ПОДРЯД по времени, и для каждой монеты между снимками передаётся реестр зон
-(registry): зона, один раз выданная, стоит с теми же границами, пока её не пробьют закрытием. Реестр
-начинается пустым с первого снимка первого периода и живёт только внутри одного прогона.
+Каждый снимок считается независимо, только из свечей на момент снимка (памяти между снимками нет):
+один и тот же результат в любом запуске. Свечей берётся WINDOWS + LOOKBACK по каждому таймфрейму (см. levels_builder.py).
 
 ВАЖНО: запускать из корня master_bot/ (python precalc_for_bot.py) — только
 читает/качает данные и пишет в database/, ничего в bounce_state.json/
@@ -67,8 +66,9 @@ if ROOT_DIR not in sys.path:
 
 from backend.modules.cryptano.utils.bybit import exchange, resolve_symbol, KNOWN_TICKER_ALIASES
 from backend.modules.cryptano.utils.storage import load_json
-from backend.modules.cryptano.levels.levels_builder import build_levels
+from backend.modules.cryptano.levels.levels_builder import build_levels, WINDOWS, LOOKBACK
 from backend.modules.cryptano.utils.paths import DATABASE_DIR
+from backend.modules.cryptano.levels.levels_history import scan_times_utc
 # get_battle_symbols — ОДНА точка правды, из swing_hunter.py: та же функция,
 # которой бой строит macro_levels.json. "whitelist" в этом файле теперь
 # означает ровно то же самое, что и в бою — не отдельная копия логики,
@@ -96,6 +96,7 @@ CACHE_BUILD_THREADS = 4
 # Можно указать несколько периодов подряд, как в test/precalc.py.
 MONTHS_TO_CALC = [
     {"start": "2026-08-01", "end": "2026-08-31"},
+    {"start": "2026-09-01", "end": "2026-09-30"},
 ]
 
 
@@ -148,6 +149,18 @@ def get_valid_symbols():
     return symbols
 
 
+def _history_limits(extra_candles):
+    """Сколько свечей каждого таймфрейма держать в кэше: окно + прогрев билдера (WINDOWS + LOOKBACK)
+    плюс всё, что уезжает назад за период пересчёта (extra_candles ~ (дней периода + 40) * 6)."""
+    days = extra_candles // 6
+    return {
+        "1M": WINDOWS["1M"] + LOOKBACK["1M"] + days // 28 + 4,
+        "1W": WINDOWS["1W"] + LOOKBACK["1W"] + days // 7 + 4,
+        "1d": WINDOWS["1d"] + LOOKBACK["1d"] + days + 10,
+        "4h": WINDOWS["4h"] + LOOKBACK["4h"] + extra_candles,
+    }
+
+
 def _ensure_fresh(valid_symbols, extra_candles):
     """ФАЗА 1/2 — докачка. Идём по монетам СТРОГО ПО ОДНОЙ, с паузой, как
     было всегда — здесь биржа ещё в игре, ей нужна очередь, а не толпа
@@ -160,14 +173,13 @@ def _ensure_fresh(valid_symbols, extra_candles):
     смог докачаться). Дальше в дело вступает фаза 2, которая уже с биржей
     не общается вообще."""
     total = len(valid_symbols)
+    limits = _history_limits(extra_candles)
     print(f"📡 Фаза 1/2: проверяю/докачиваю базу по {total} монетам (по одной, с паузой — бережём биржу)...")
     for i, symbol in enumerate(valid_symbols, 1):
         time.sleep(0.3)
         try:
-            _safe_fetch_ohlcv(symbol, "1M", 60)
-            _safe_fetch_ohlcv(symbol, "1W", 150)
-            _safe_fetch_ohlcv(symbol, "1d", max(365, extra_candles // 4))
-            _safe_fetch_ohlcv(symbol, "4h", extra_candles)
+            for tf, lim in limits.items():
+                _safe_fetch_ohlcv(symbol, tf, lim)
         except Exception as e:
             print(f"[FRESH ERROR] {symbol}: {e}")
         if i % 10 == 0 or i == total:
@@ -181,10 +193,11 @@ def _build_cache_entry(symbol, extra_candles):
     трогает вообще — можно смело гонять параллельно в несколько потоков
     (см. CACHE_BUILD_THREADS)."""
     coin = symbol.split("/")[0].replace(":USDT", "")
-    ohlcv_1M = _safe_fetch_ohlcv(symbol, "1M", 60)
-    ohlcv_1W = _safe_fetch_ohlcv(symbol, "1W", 150)
-    ohlcv_1d = _safe_fetch_ohlcv(symbol, "1d", max(365, extra_candles // 4))
-    ohlcv_4h = _safe_fetch_ohlcv(symbol, "4h", extra_candles)
+    limits = _history_limits(extra_candles)
+    ohlcv_1M = _safe_fetch_ohlcv(symbol, "1M", limits["1M"])
+    ohlcv_1W = _safe_fetch_ohlcv(symbol, "1W", limits["1W"])
+    ohlcv_1d = _safe_fetch_ohlcv(symbol, "1d", limits["1d"])
+    ohlcv_4h = _safe_fetch_ohlcv(symbol, "4h", limits["4h"])
 
     cols = ["timestamp", "open", "high", "low", "close", "volume"]
     entry = {
@@ -252,27 +265,24 @@ def _slice_by_time(df, target_ts_ms, tail_n, tf):
 MERGE_WITH_EXISTING = False
 
 
-def build_snapshot_for_date(target_time_str, cache, registries):
-    """Один снимок на одну дату: build_levels по каждой монете с её реестром (registries[coin] обновляется)."""
+def build_snapshot_for_date(target_time_str, cache):
+    """Один снимок на одну дату: build_levels по каждой монете, только из свечей на момент снимка."""
     dt_obj = datetime.datetime.strptime(target_time_str, "%Y-%m-%d %H:%M:%S")
     # время снимка — UTC (как свечи и симулятор); .timestamp() у наивной даты брал местное время ПК
     target_ts_ms = int(dt_obj.replace(tzinfo=datetime.timezone.utc).timestamp() * 1000)
-    snap_day = dt_obj.strftime("%Y-%m-%d")
 
     macro_base = {}
     for coin, tf_data in cache.items():
         try:
-            df_1M = _slice_by_time(tf_data["1M"], target_ts_ms, 60, "1M")
-            df_1W = _slice_by_time(tf_data["1W"], target_ts_ms, 150, "1W")
-            df_1d = _slice_by_time(tf_data["1d"], target_ts_ms, 365, "1d")
-            df_4h = _slice_by_time(tf_data["4h"], target_ts_ms, 200, "4h")
+            df_1M = _slice_by_time(tf_data["1M"], target_ts_ms, WINDOWS["1M"] + LOOKBACK["1M"], "1M")
+            df_1W = _slice_by_time(tf_data["1W"], target_ts_ms, WINDOWS["1W"] + LOOKBACK["1W"], "1W")
+            df_1d = _slice_by_time(tf_data["1d"], target_ts_ms, WINDOWS["1d"] + LOOKBACK["1d"], "1d")
+            df_4h = _slice_by_time(tf_data["4h"], target_ts_ms, WINDOWS["4h"] + LOOKBACK["4h"], "4h")
 
             if df_1d is None or len(df_1d) < 50:
                 continue
 
-            levels = build_levels(df_1M, df_1W, df_1d, df_4h, coin,
-                                  registry=registries.get(coin), snap_day=snap_day, return_registry=True)
-            registries[coin] = levels["registry"]
+            levels = build_levels(df_1M, df_1W, df_1d, df_4h, coin)
             has_any = (levels["supports"] or levels["resistances"])
             if has_any:
                 macro_base[coin] = {
@@ -289,9 +299,10 @@ def build_snapshot_for_date(target_time_str, cache, registries):
     return macro_base
 
 
-def build_timeline_for_month(start_date, end_date, cache, registries):
+def build_timeline_for_month(start_date, end_date, cache):
     month_label = pd.to_datetime(start_date).strftime("%Y_%m")
-    dates = pd.date_range(start=start_date, end=end_date, freq='12h')
+    # Снимки — в моменты пересчёта уровней боевым ботом (03:05 и 15:05 по Киеву каждого дня), ключи в UTC.
+    dates = [t for d in pd.date_range(start=start_date, end=end_date, freq='D') for t in scan_times_utc(d.date())]
 
     output_path = os.path.join(DATABASE_DIR, f"levels_timeline_{month_label}.json")
     os.makedirs(DATABASE_DIR, exist_ok=True)
@@ -311,7 +322,7 @@ def build_timeline_for_month(start_date, end_date, cache, registries):
     for dt in dates:
         time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
         print(f"⏳ Сбор уровней на момент: {time_str}")
-        levels_dict = build_snapshot_for_date(time_str, cache, registries)
+        levels_dict = build_snapshot_for_date(time_str, cache)
         # СЛИЯНИЕ, не замена: valid_symbols фиксируется ОДИН раз на весь прогон
         # (по объёму ПРЯМО СЕЙЧАС, для выбранного COIN_SOURCE) и одинаков для
         # всех дат обоих месяцев — монета, которая сегодня не прошла отбор
@@ -347,11 +358,10 @@ if __name__ == "__main__":
 
     cache = build_full_history_cache(valid_symbols, extra_candles=extra_candles)
 
-    registries = {}  # реестр зон по монетам, переходит из снимка в снимок и из периода в период
     for period in sorted(MONTHS_TO_CALC, key=lambda p: p["start"]):
         print("==============================================")
         print(f"📅 ОБРАБОТКА ПЕРИОДА: {period['start']} -> {period['end']}")
         print("==============================================")
-        build_timeline_for_month(period['start'], period['end'], cache, registries)
+        build_timeline_for_month(period['start'], period['end'], cache)
 
     print("🎉 ГОТОВО! Симулятор (simulate_engine.py / bounce_simulate.py) увидит пересчитанную историю.")

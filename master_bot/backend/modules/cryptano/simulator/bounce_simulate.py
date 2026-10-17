@@ -27,6 +27,8 @@ from backend.modules.cryptano.utils.paths import DATABASE_DIR
 from backend.modules.cryptano.levels.levels_history import get_levels_snapshot, snapshot_bucket_start
 from backend.modules.cryptano.strategy.bounce_manager import BounceManager
 from backend.modules.cryptano.strategy.bounce_watcher import BounceWatcher
+from backend.modules.cryptano.strategy.bounce_manager_buyback import BounceManager as BuybackManager
+from backend.modules.cryptano.strategy.bounce_watcher_buyback import BounceWatcher as BuybackWatcher, BUYBACK
 import backend.modules.cryptano.levels.candle_archive as candle_archive
 
 
@@ -36,6 +38,7 @@ import backend.modules.cryptano.levels.candle_archive as candle_archive
 FORWARD_DAYS = BounceWatcher.CONFIG.get("MAX_HOLD_DAYS", 14)
 
 SIM_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+SIM_LOG_DIR_BUYBACK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs_buyback")
 LAST_RUN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_run.json")
 # Отдельный файл под результат bulk-прогона (все монеты разом) — НЕ тот же
 # LAST_RUN_FILE, что у одиночного симулятора. Иначе прогон по списку монет
@@ -50,6 +53,37 @@ LAST_ALL_RUN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "la
 # в app.py и опрос в sim.js::runBulkSimulation).
 BULK_PROGRESS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bulk_progress.json")
 
+# BUYBACK — отдельная стратегия: свои логи и свои файлы результата/прогресса,
+# чтобы прогоны BOUNCE и BUYBACK не затирали друг друга.
+_SIM_DIR = os.path.dirname(os.path.abspath(__file__))
+_STRATEGY_FILES = {
+    "BOUNCE": {
+        "log_dir": SIM_LOG_DIR, "last_run": LAST_RUN_FILE,
+        "last_all_run": LAST_ALL_RUN_FILE, "bulk_progress": BULK_PROGRESS_FILE,
+    },
+    "BUYBACK": {
+        "log_dir": SIM_LOG_DIR_BUYBACK,
+        "last_run": os.path.join(_SIM_DIR, "last_run_buyback.json"),
+        "last_all_run": os.path.join(_SIM_DIR, "last_all_run_buyback.json"),
+        "bulk_progress": os.path.join(_SIM_DIR, "bulk_progress_buyback.json"),
+    },
+}
+
+
+def _norm_strategy(strategy):
+    st = (strategy or "BOUNCE").strip().upper()
+    if st not in _STRATEGY_FILES:
+        raise ValueError(f"Неизвестная стратегия: {strategy}")
+    return st
+
+
+def _sim_path(strategy, key):
+    return _STRATEGY_FILES[_norm_strategy(strategy)][key]
+
+
+def _watcher_cls(strategy):
+    return BuybackWatcher if _norm_strategy(strategy) == "BUYBACK" else BounceWatcher
+
 WINDOW = 60  # то же окно, что и в боевом реплее (watcher_plan.py::check_bounce) — evaluate_bounce
              # читает максимум последние ~52 строки, окно с запасом, не вся история разом.
 
@@ -63,7 +97,7 @@ WINDOW = 60  # то же окно, что и в боевом реплее (watch
 BULK_MAX_WORKERS = int(os.environ.get("BOUNCE_BULK_WORKERS", "4"))
 
 
-def _reset_sim_log(coin):
+def _reset_sim_log(coin, log_dir=None):
     """Чистит лог этой монеты в SIM_LOG_DIR перед КАЖДЫМ новым прогоном
     симуляции ЛЮБОЙ стратегии (BOUNCE и V-семейство делят один файл {coin}.log;
     её же зовёт simulate_engine.run_simulation) — не ждём рестарта процесса. BounceWatcher._dbg() сам
@@ -75,14 +109,15 @@ def _reset_sim_log(coin):
     (bounce_logs/) эта функция не трогает и трогать не должна — там
     история между рестартами бота нужна.
     """
-    log_path = os.path.join(SIM_LOG_DIR, f"{coin}.log")
+    log_dir = log_dir or SIM_LOG_DIR
+    log_path = os.path.join(log_dir, f"{coin}.log")
     try:
-        os.makedirs(SIM_LOG_DIR, exist_ok=True)
+        os.makedirs(log_dir, exist_ok=True)
         with open(log_path, "w", encoding="utf-8") as f:
             f.write(f"=== Новый прогон симуляции {coin} — {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC ===\n")
         # Старый отдельный лог V_BOTTOM ({coin}_V.log) больше не пишется —
         # одна монета = один лог {coin}.log. Подчищаем остаток прошлых версий.
-        legacy = os.path.join(SIM_LOG_DIR, f"{coin}_V.log")
+        legacy = os.path.join(log_dir, f"{coin}_V.log")
         if os.path.exists(legacy):
             os.remove(legacy)
     except Exception as e:
@@ -113,11 +148,11 @@ def _candles_df(symbol, start_ts, end_ts, top_up=True, forward_days=FORWARD_DAYS
     return df[["open", "high", "low", "close", "volume"]].astype(float)
 
 
-def _episode(watcher, level_id, coin):
+def _episode(watcher, level_id, coin, strategy="BOUNCE"):
     return {
         "level_id": level_id,
         "coin": coin,
-        "strategy": "BOUNCE",
+        "strategy": strategy,
         "mode": getattr(watcher, "mode", None),
         "direction": getattr(watcher, "trade_type", None),
         "state": getattr(watcher, "state", "UNKNOWN"),
@@ -142,30 +177,42 @@ from backend.modules.cryptano.simulator.outcome import compute_trade_outcome as 
 from backend.modules.cryptano.levels.level_filter import LevelFilter, _num
 
 
-def _sim_hold_days(sim_cfg):
+def _sim_hold_days(sim_cfg, strategy="BOUNCE"):
     """MAX_HOLD_DAYS для прогона: свои из sim_cfg (режим Sim) или боевые (Watcher)."""
     if sim_cfg:
         v = _num(sim_cfg.get("max_hold_days"))
         if v is not None and v > 0:
             return int(v)
-    return BounceWatcher.CONFIG.get("MAX_HOLD_DAYS", 14)
+    return _watcher_cls(strategy).CONFIG.get("MAX_HOLD_DAYS", 14)
 
 
-def _settings_snapshot(sim_cfg):
+def _settings_snapshot(sim_cfg, strategy="BOUNCE"):
     """Какие настройки были у прогона — кладётся в результат, UI показывает их строкой."""
+    strategy = _norm_strategy(strategy)
     if not sim_cfg:
-        return {"mode": "watcher"}
-    return {
-        "mode": "sim",
+        snap: dict = {"mode": "watcher", "strategy": strategy}
+        if strategy == "BUYBACK":
+            snap["entry_mode"] = "buyback"
+            snap["buyback"] = dict(BUYBACK)
+        return snap
+    res: dict = {
+        "mode": "sim", "strategy": strategy,
         "tp": sim_cfg.get("tp"), "sl": sim_cfg.get("sl"),
         "short_min": sim_cfg.get("short_min"), "long_max": sim_cfg.get("long_max"),
-        "max_hold_days": _sim_hold_days(sim_cfg),
+        "max_hold_days": _sim_hold_days(sim_cfg, strategy),
+        "entry_mode": "buyback" if strategy == "BUYBACK" else (sim_cfg.get("entry_mode") or "volume"),
     }
+    if strategy == "BUYBACK":
+        res["buyback"] = dict(BUYBACK)
+    return res
 
 
 def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, save_last_run=True,
-                           allow_long=True, allow_short=True, sim_cfg=None):
+                           allow_long=True, allow_short=True, sim_cfg=None, strategy="BOUNCE"):
     """
+    strategy: "BOUNCE" (основной) или "BUYBACK" (отдельная стратегия: свой
+        менеджер/вотчер, свои логи и файлы результата). BUYBACK берёт
+        направления из BUYBACK['ALLOW_LONG'/'ALLOW_SHORT'] (шорт выключен).
     sim_cfg: None — режим Watcher (всё как в бою: TP/SL/пороги EMA из боевых
         config.json и coin_settings.json). Словарь {tp, sl, short_min, long_max,
         max_hold_days} — режим Sim: свои общие настройки симулятора (по монетам
@@ -194,6 +241,11 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, 
     переделки), messages — готовые текстовые карточки найденных сделок
     (для ленты внизу страницы симулятора).
     """
+    strategy = _norm_strategy(strategy)
+    log_dir = _sim_path(strategy, "log_dir")
+    if strategy == "BUYBACK":
+        allow_long = bool(allow_long and BUYBACK["ALLOW_LONG"])
+        allow_short = bool(allow_short and BUYBACK["ALLOW_SHORT"])
     coin = coin.upper().replace("USDT", "").replace("/", "").strip()
 
     markets = load_markets_cached(exchange)
@@ -203,7 +255,7 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, 
 
     start_ts = pd.Timestamp(start_time_str, tz="UTC")
     data_end_ts = pd.Timestamp(end_time_str, tz="UTC") if end_time_str else pd.Timestamp.now(tz="UTC")
-    hold_days = _sim_hold_days(sim_cfg)
+    hold_days = _sim_hold_days(sim_cfg, strategy)
     fwd_days = max(FORWARD_DAYS, hold_days)
     df_full = _candles_df(symbol, start_ts, data_end_ts, top_up=top_up, forward_days=fwd_days)
 
@@ -221,9 +273,12 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, 
     # Свой, полностью изолированный менеджер — ничего общего с боевым
     # bounce_mgr (модуль modules.cryptano.live_scan), ничего не пишет в
     # боевые jsonbank/*.json. Своя папка логов, не bounce_logs/.
-    os.makedirs(SIM_LOG_DIR, exist_ok=True)
-    _reset_sim_log(coin)  # новый прогон — старый лог этой монеты не тащим
-    bounce_mgr = BounceManager(log_dir_override=SIM_LOG_DIR)
+    os.makedirs(log_dir, exist_ok=True)
+    _reset_sim_log(coin, log_dir)  # новый прогон — старый лог этой монеты не тащим
+    if strategy == "BUYBACK":
+        bounce_mgr = BuybackManager(log_dir_override=log_dir, entry_mode="buyback")
+    else:
+        bounce_mgr = BounceManager(log_dir_override=log_dir, entry_mode=(sim_cfg or {}).get("entry_mode"))
     bounce_mgr.set_ema_dist_fn(coin, ema_dist_fn)  # EMA для отчёта (ema_dist_birth)
     # Фильтр уровней по EMA (levels/level_filter.py) — те же пороги из config.json,
     # что и в бою: общие + свои у монеты.
@@ -306,7 +361,7 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, 
 
             level_id_val = d.get("level_id", "") or ""
             mode = level_id_val.split("__")[-1] if "__" in level_id_val else None
-            source_label = f"BOUNCE_{tt}" + (f"_{mode}" if tt == "SHORT" and mode else "")
+            source_label = f"{strategy}_{tt}" + (f"_{mode}" if tt == "SHORT" and mode else "")
 
             outcome = _compute_trade_outcome(
                 ts, entry, tp, tt, df_full, hold_days,
@@ -342,21 +397,22 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, 
                 # SHORT — низ) от EMA200(4h) в момент рождения вотчера. Если вотчера
                 # нет/значения нет — старый расчёт по цене входа.
                 "ema_dist_pct": getattr(bounce_mgr._watchers.get(level_id_val), "ema_dist_birth", None),
-                "method": "volume",
+                "method": d.get("method", "volume"),
+                "pattern_route": d.get("pattern_route"),
                 "method_value": d.get("volume", float(row["volume"])),
                 "method_mult": d.get("volume_mult"),
             })
 
             emoji = "🟢" if tt == "LONG" else "🔴"
             messages.append(
-                f"{emoji} *BOUNCE {tt}* _{coin}_ — {ts_naive.strftime('%Y-%m-%d %H:%M')}\n"
+                f"{emoji} *{strategy} {tt}* _{coin}_ — {ts_naive.strftime('%Y-%m-%d %H:%M')}\n"
                 f"Entry: `{entry:.8f}`  SL: `{sl:.8f}`  TP: `{tp:.8f}`  R/R: `{rr:.2f}`\n"
                 f"{d.get('reason', '')}  Level: `{d.get('level_id', 'unknown')}`"
             )
 
     active, history = [], []
     for level_id, watcher in bounce_mgr._watchers.items():
-        ep = _episode(watcher, level_id, coin)
+        ep = _episode(watcher, level_id, coin, strategy)
         (history if ep["state"] in ("TRIGGERED", "DEAD") else active).append(ep)
 
     # Только те зоны, где реально была сделка (TRIGGERED) — иначе за месяц
@@ -382,7 +438,8 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, 
         "levels": levels_out,
         "trades": trades,
         "messages": messages,
-        "settings": _settings_snapshot(sim_cfg),
+        "settings": _settings_snapshot(sim_cfg, strategy),
+        "strategy": strategy,
     }
 
     # Переживает обновление страницы — при открытии /simulator фронт сам
@@ -390,18 +447,18 @@ def run_bounce_simulation(coin, start_time_str, end_time_str=None, top_up=True, 
     # не нужно перезапускать симуляцию заново после F5.
     if save_last_run:
         try:
-            save_json_atomic(LAST_RUN_FILE, result, indent=2)
+            save_json_atomic(_sim_path(strategy, "last_run"), result, indent=2)
         except Exception as e:
             print(f"⚠️ [BOUNCE SIM] Не удалось сохранить последний результат: {e}")
 
     return result
 
 
-def get_last_run():
+def get_last_run(strategy="BOUNCE"):
     """Последний сохранённый результат симуляции — для восстановления
     страницы после F5 (см. /api/simulate_bounce/last в app.py). None, если
     ни разу ещё не запускали в этом jsonbank (или файл почистили)."""
-    data = load_json(LAST_RUN_FILE, default={})
+    data = load_json(_sim_path(strategy, "last_run"), default={})
     return data if isinstance(data, dict) and data else None
 
 
@@ -504,13 +561,13 @@ def _aggregate_trades(trades):
     }
 
 
-def _write_bulk_progress(done, total, current_coin, finished=False):
+def _write_bulk_progress(done, total, current_coin, finished=False, strategy="BOUNCE"):
     """Пишет прогресс bulk-прогона на диск — вызывается после каждой
     монеты. Не должна ронять сам прогон, если запись не удалась (диск
     занят и т.п.) — это вспомогательная информация для UI, не критичная
     для результата."""
     try:
-        save_json_atomic(BULK_PROGRESS_FILE, {
+        save_json_atomic(_sim_path(strategy, "bulk_progress"), {
             "done": done,
             "total": total,
             "current_coin": current_coin,
@@ -521,10 +578,10 @@ def _write_bulk_progress(done, total, current_coin, finished=False):
         print(f"⚠️ [BOUNCE SIM] Не удалось записать прогресс bulk-прогона: {e}")
 
 
-def get_bulk_progress():
+def get_bulk_progress(strategy="BOUNCE"):
     """Текущий прогресс bulk-прогона для опроса с фронта (см.
     /api/simulate_bounce_bulk/progress). {} если ни разу не запускали."""
-    data = load_json(BULK_PROGRESS_FILE, default={})
+    data = load_json(_sim_path(strategy, "bulk_progress"), default={})
     return data if isinstance(data, dict) and data else {}
 
 
@@ -570,12 +627,12 @@ def _simulate_one_coin_worker(task):
     Возвращает (coin, payload, error) — сама функция ничего не пишет
     (ни прогресс, ни файлы): запись — забота главного процесса, чтобы не
     ловить гонку записи от нескольких процессов разом в один файл."""
-    coin, start_time_str, end_time_str, top_up, allow_long, allow_short, sim_cfg = task
+    coin, start_time_str, end_time_str, top_up, allow_long, allow_short, sim_cfg, strategy = task
     try:
         sim_result = run_bounce_simulation(
             coin, start_time_str, end_time_str,
             top_up=top_up, save_last_run=False,
-            allow_long=allow_long, allow_short=allow_short, sim_cfg=sim_cfg,
+            allow_long=allow_long, allow_short=allow_short, sim_cfg=sim_cfg, strategy=strategy,
         )
         payload = {"trades": sim_result.get("trades", []), "history": sim_result.get("history", [])}
         return coin, payload, None
@@ -584,7 +641,7 @@ def _simulate_one_coin_worker(task):
 
 
 def run_bulk_bounce_simulation(start_time_str, end_time_str=None, allow_long=True, allow_short=True, coin_filter=None, sim_cfg=None,
-                              blocked=None):
+                              blocked=None, strategy="BOUNCE"):
     """Гоняет run_bounce_simulation по КАЖДОЙ монете из list_coins_with_levels
     за период, без перезаписи LAST_RUN_FILE одиночного симулятора
     (save_last_run=False — свой файл, LAST_ALL_RUN_FILE).
@@ -633,6 +690,7 @@ def run_bulk_bounce_simulation(start_time_str, end_time_str=None, allow_long=Tru
     страницы, и клик по сделке работают с уже готовыми данными, без
     повторного прогона симуляции.
     """
+    strategy = _norm_strategy(strategy)
     coins, coverage = list_coins_with_levels(start_time_str, end_time_str)
     if coin_filter is not None:
         coins = [c for c in coins if c in coin_filter]
@@ -647,7 +705,7 @@ def run_bulk_bounce_simulation(start_time_str, end_time_str=None, allow_long=Tru
     history_by_coin = {}
     coins_with_trades = 0
 
-    _write_bulk_progress(0, total, None, finished=False)
+    _write_bulk_progress(0, total, None, finished=False, strategy=strategy)
 
     # Сначала докачиваем архив свечей (в главном процессе, по одной монете),
     # потом раздаём монеты воркерам — они только читают. Монеты, по которым
@@ -656,16 +714,16 @@ def run_bulk_bounce_simulation(start_time_str, end_time_str=None, allow_long=Tru
     # первый досчитал, тот первый и вернулся) — это нормально, прогресс
     # просто считает готовые штуки, не заботится о порядке.
     failed = _ensure_archive_for_coins(
-        coins, markets, start_time_str, end_time_str, max(FORWARD_DAYS, _sim_hold_days(sim_cfg)),
-        lambda d, t, label: _write_bulk_progress(d, t, label, finished=False),
+        coins, markets, start_time_str, end_time_str, max(FORWARD_DAYS, _sim_hold_days(sim_cfg, strategy)),
+        lambda d, t, label: _write_bulk_progress(d, t, label, finished=False, strategy=strategy),
     )
     for coin, err in failed.items():
         results[coin] = {"error": err}
-    tasks = [(coin, start_time_str, end_time_str, False, allow_long, allow_short, sim_cfg)
+    tasks = [(coin, start_time_str, end_time_str, False, allow_long, allow_short, sim_cfg, strategy)
              for coin in coins if coin not in failed]
 
     done = len(failed)
-    _write_bulk_progress(done, total, None, finished=False)
+    _write_bulk_progress(done, total, None, finished=False, strategy=strategy)
     with ProcessPoolExecutor(max_workers=BULK_MAX_WORKERS) as executor:
         future_to_coin = {executor.submit(_simulate_one_coin_worker, task): task[0] for task in tasks}
         for future in as_completed(future_to_coin):
@@ -696,9 +754,9 @@ def run_bulk_bounce_simulation(start_time_str, end_time_str=None, allow_long=Tru
                     history_by_coin[coin] = (payload or {}).get("history", [])
 
             done += 1
-            _write_bulk_progress(done, total, coin, finished=False)
+            _write_bulk_progress(done, total, coin, finished=False, strategy=strategy)
 
-    _write_bulk_progress(total, total, None, finished=True)
+    _write_bulk_progress(total, total, None, finished=True, strategy=strategy)
 
     result = {
         "start_time": start_time_str,
@@ -708,21 +766,22 @@ def run_bulk_bounce_simulation(start_time_str, end_time_str=None, allow_long=Tru
         "results": results,
         "trades": all_trades,
         "history_by_coin": history_by_coin,
-        "settings": _settings_snapshot(sim_cfg),
+        "settings": _settings_snapshot(sim_cfg, strategy),
+        "strategy": strategy,
     }
 
     try:
-        save_json_atomic(LAST_ALL_RUN_FILE, result, indent=2)
+        save_json_atomic(_sim_path(strategy, "last_all_run"), result, indent=2)
     except Exception as e:
         print(f"⚠️ [BOUNCE SIM] Не удалось сохранить bulk-результат: {e}")
 
     return result
 
 
-def get_last_all_run():
+def get_last_all_run(strategy="BOUNCE"):
     """Последний сохранённый результат bulk-прогона — свой файл, не
     пересекается с get_last_run() одиночного симулятора."""
-    data = load_json(LAST_ALL_RUN_FILE, default={})
+    data = load_json(_sim_path(strategy, "last_all_run"), default={})
     return data if isinstance(data, dict) and data else None
 
 

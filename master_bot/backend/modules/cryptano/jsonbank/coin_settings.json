@@ -20,5 +20,15 @@
             "short_off": true,
             "long_off": true
         }
+    },
+    "CL": {
+        "tp": 3.0,
+        "sl": 10.0,
+        "level_filter": {
+            "short_min": 2.0,
+            "long_max": 5.0,
+            "short_off": false,
+            "long_off": false
+        }
     }
 }

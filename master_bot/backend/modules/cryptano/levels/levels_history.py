@@ -2,9 +2,10 @@
 modules/cryptano/levels_history.py
 ===================================
 История уровней — снимки того, что было в macro_levels.json на каждый
-момент пересчёта (~раз в 12 часов), отдельно от самого macro_levels.json
-(тот остаётся "как есть прямо сейчас", для живого скана — этот модуль его
-не трогает и не заменяет).
+момент пересчёта (два раза в день: 03:05 и 15:05 по Киеву), отдельно от
+самого macro_levels.json (тот остаётся "как есть прямо сейчас", для живого
+скана — этот модуль его не трогает и не заменяет). Только ЧТЕНИЕ снимков:
+пишет их precalc_for_bot.py, боевой бот сюда не обращается.
 
 Нужно для реплея/рескана (см. watcher_plan.py::check_bounce): без этого
 прошлые свечи проверялись против СЕГОДНЯШНИХ уровней — а уровень мог за
@@ -19,12 +20,11 @@ modules/cryptano/levels_history.py
 """
 import os
 import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 from backend.modules.cryptano.utils.paths import DATABASE_DIR
-from backend.modules.cryptano.utils.storage import load_json, save_json_atomic
-
-TIMELINE_RETENTION_MONTHS = 6  # держим полгода снимков, старше — чистим (см. cleanup_old_timelines)
+from backend.modules.cryptano.utils.storage import load_json
 
 # Кэш уже распарсенных таймлайнов месяца — {month_label: (mtime, timeline_dict)}.
 # Инвалидируется по mtime файла, не по времени/счётчику: если файл на диске не
@@ -58,42 +58,29 @@ def _load_timeline_cached(month_label: str) -> Dict[str, Any]:
     return timeline
 
 
+# Время пересчёта уровней — то же, что у боевого бота (swing_hunter.py: TIME_ASIAN_CLOSE / TIME_US_OPEN,
+# по киевскому времени). Снимки симулятора стоят ровно в эти моменты, ключи хранятся в UTC.
+SCAN_TZ = ZoneInfo("Europe/Kyiv")
+SCAN_TIMES = ("03:05", "15:05")
+
+
+def scan_times_utc(day: datetime.date) -> List[datetime.datetime]:
+    """Моменты пересчёта уровней за киевский календарный день `day` — наивный UTC."""
+    out = []
+    for hm in SCAN_TIMES:
+        h, m = (int(x) for x in hm.split(":"))
+        local = datetime.datetime(day.year, day.month, day.day, h, m, tzinfo=SCAN_TZ)
+        out.append(local.astimezone(datetime.timezone.utc).replace(tzinfo=None))
+    return out
+
+
 def snapshot_bucket_start(when: datetime.datetime) -> datetime.datetime:
-    """Начало 12-часового бакета (00:00 или 12:00), на который попадает `when`
-    — ТА ЖЕ сетка, на которой save_levels_snapshot() кладёт ключи снимков.
-    Вынесено в отдельную функцию и переиспользуется и на запись (ниже), и на
-    чтение (bounce_simulate.py — чтобы решить, нужно ли вообще звать
-    get_levels_snapshot() заново для соседней свечи), чтобы кэш на стороне
-    читателя никогда не мог разъехаться с реальной гранулярностью данных."""
-    hour_bucket = 0 if when.hour < 12 else 12
-    return when.replace(hour=hour_bucket, minute=0, second=0, microsecond=0)
-
-
-def save_levels_snapshot(macro_base: Dict[str, Any], when: Optional[datetime.datetime] = None) -> None:
-    """Дописывает снимок уровней в таймлайн — вызывать сразу после каждого
-    пересчёта swing_hunter, тем же словарём, что ушёл в macro_levels.json
-    (см. swing_hunter.py::build_macro_levels).
-
-    Время округляется ВНИЗ до ближайших 00:00/12:00 — та же сетка, на
-    которой тестер (precalc.py) строит свои снимки (pd.date_range(...,
-    freq='12h') от полуночи), чтобы файлы бота и подложенные вручную файлы
-    тестера были на одной временной решётке. Хранится как наивный UTC (без
-    tzinfo) — то же самое, что у меток свечей после ccxt/pandas, чтобы
-    сравнение в get_levels_snapshot не спотыкалось об разницу поясов."""
-    when = when or datetime.datetime.utcnow()
-    snapshot_time = snapshot_bucket_start(when)
-    time_str = snapshot_time.strftime("%Y-%m-%d %H:%M:%S")
-    month_label = snapshot_time.strftime("%Y_%m")
-
-    path = _timeline_path(month_label)
-    os.makedirs(DATABASE_DIR, exist_ok=True)
-    timeline = load_json(path, default={})
-    if not isinstance(timeline, dict):
-        timeline = {}
-    if time_str in timeline:
-        return  # снимок на эту 12-часовую точку в этом скан-цикле уже есть — не дублируем
-    timeline[time_str] = macro_base
-    save_json_atomic(path, timeline)
+    """Последний момент пересчёта уровней (03:05 или 15:05 по Киеву), не позже `when` (наивный UTC)
+    — ТА ЖЕ сетка, на которой лежат ключи снимков. Используется на запись (ниже) и на чтение
+    (bounce_simulate.py — чтобы решить, нужно ли звать get_levels_snapshot() заново для соседней свечи)."""
+    local_day = when.replace(tzinfo=datetime.timezone.utc).astimezone(SCAN_TZ).date()
+    candidates = scan_times_utc(local_day - datetime.timedelta(days=1)) + scan_times_utc(local_day)
+    return max(t for t in candidates if t <= when.replace(microsecond=0))
 
 
 def _latest_in_timeline(timeline: Dict[str, Any], before_or_at: Optional[datetime.datetime] = None):
@@ -141,27 +128,3 @@ def get_levels_snapshot(when: datetime.datetime) -> Optional[Dict[str, Any]]:
         return _latest_in_timeline(prev_timeline)  # последний снимок предыдущего месяца целиком
 
     return None
-
-
-def cleanup_old_timelines(keep_months: int = TIMELINE_RETENTION_MONTHS) -> None:
-    """Удаляет файлы таймлайна старше keep_months — та же идея, что
-    RETENTION_DAYS у candle_store, только тут по месяцам целиком, а не
-    построчно (один файл = один месяц). Вызывать периодически, не на
-    каждом скане (например, раз в сутки из background_tasks.py)."""
-    if not os.path.isdir(DATABASE_DIR):
-        return
-    cutoff = datetime.datetime.now() - datetime.timedelta(days=keep_months * 31)
-    for fname in os.listdir(DATABASE_DIR):
-        if not (fname.startswith("levels_timeline_") and fname.endswith(".json")):
-            continue
-        label = fname[len("levels_timeline_"):-len(".json")]
-        try:
-            file_dt = datetime.datetime.strptime(label, "%Y_%m")
-        except ValueError:
-            continue
-        if file_dt < cutoff:
-            try:
-                os.remove(os.path.join(DATABASE_DIR, fname))
-                print(f"🧹 [LEVELS HISTORY] Удалён старый снимок: {fname}")
-            except Exception as e:
-                print(f"⚠️ [LEVELS HISTORY] Не смог удалить {fname}: {e}")

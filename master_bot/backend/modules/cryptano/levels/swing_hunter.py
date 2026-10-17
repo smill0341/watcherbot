@@ -6,7 +6,7 @@ import pandas as pd
 import schedule
 from backend.modules.cryptano.utils.bybit import exchange, resolve_symbol, KNOWN_TICKER_ALIASES
 from backend.modules.cryptano.utils.storage import load_json, save_json_atomic
-from backend.modules.cryptano.levels.levels_builder import build_levels, MACRO_LAYER_STATS
+from backend.modules.cryptano.levels.levels_builder import build_levels, MACRO_LAYER_STATS, WINDOWS, LOOKBACK
 
 # =========================================================
 # ⚙️ НАСТРОЙКИ РАСПИСАНИЯ
@@ -63,18 +63,11 @@ MAX_COINS = _config.get("crypto", {}).get("max_coins", 80)
 GREYLIST_MAX_COINS = _config.get("crypto", {}).get("greylist_max_coins", 50)
 GREYLIST_STALE_DAYS = _config.get("crypto", {}).get("greylist_stale_days", 4)
 
-def _prev_registry(base, coin):
-    """Реестр зон монеты с прошлого пересчёта (хранится в той же записи монеты, ключ "registry")."""
-    entry = base.get(coin)
-    return entry.get("registry") if isinstance(entry, dict) else None
-
-
 def _coin_entry(levels, scan_time):
-    """Запись монеты для macro_levels.json / greylist_levels.json: уровни + реестр для следующего пересчёта."""
+    """Запись монеты для macro_levels.json / greylist_levels.json: уровни и время пересчёта."""
     return {
         "supports": levels["supports"],
         "resistances": levels["resistances"],
-        "registry": levels.get("registry"),
         "updated_at": scan_time,
     }
 
@@ -207,21 +200,21 @@ def _safe_fetch_ohlcv(sym, tf, lim):
     raise Exception("Биржа заблокировала запросы после 5 попыток")
 
 
-def _fetch_and_build_levels(symbol, coin, registry=None):
+def _fetch_and_build_levels(symbol, coin):
     """Общий для боевого потока (build_macro_levels, build_levels_for_single_coin)
     и радара (build_greylist_candidates) кусок: скачать 1M/1W/1d/4h свечи
     (через _safe_fetch_ohlcv — сначала локальная БД, потом биржа) и
     построить зоны через build_levels() (одна точка для всех трёх мест).
 
-    registry — реестр зон монеты с прошлого пересчёта (см. levels_builder.build_levels).
-    Возвращает (levels, df_1d) — levels с ключом "registry" для следующего пересчёта —
-    или None, если по монете меньше 50 дневных свечей. Сохранением не занимается —
+    Свечей берётся WINDOWS + LOOKBACK по каждому таймфрейму (окно поиска + прогрев, см. levels_builder.py);
+    памяти между пересчётами нет — зоны целиком выводятся из свечей.
+    Возвращает (levels, df_1d) или None, если по монете меньше 50 дневных свечей. Сохранением не занимается —
     куда положить результат, решает вызывающий код (macro_levels.json или greylist_levels.json)."""
     _t0 = time.time()
-    ohlcv_1M = _safe_fetch_ohlcv(symbol, "1M", 60)
-    ohlcv_1W = _safe_fetch_ohlcv(symbol, "1W", 150)
-    ohlcv_1d = _safe_fetch_ohlcv(symbol, "1d", 365)
-    ohlcv_4h = _safe_fetch_ohlcv(symbol, "4h", 200)
+    ohlcv_1M = _safe_fetch_ohlcv(symbol, "1M", WINDOWS["1M"] + LOOKBACK["1M"])
+    ohlcv_1W = _safe_fetch_ohlcv(symbol, "1W", WINDOWS["1W"] + LOOKBACK["1W"])
+    ohlcv_1d = _safe_fetch_ohlcv(symbol, "1d", WINDOWS["1d"] + LOOKBACK["1d"])
+    ohlcv_4h = _safe_fetch_ohlcv(symbol, "4h", WINDOWS["4h"] + LOOKBACK["4h"])
     _FETCH_TIME["candles"] += time.time() - _t0
 
     if len(ohlcv_1d) < 50:
@@ -233,7 +226,7 @@ def _fetch_and_build_levels(symbol, coin, registry=None):
     df_4h = pd.DataFrame(ohlcv_4h, columns=["timestamp", "open", "high", "low", "close", "volume"]) if len(ohlcv_4h) >= 50 else None
 
     _t1 = time.time()
-    levels = build_levels(df_1M, df_1W, df_1d, df_4h, coin, registry=registry, return_registry=True)
+    levels = build_levels(df_1M, df_1W, df_1d, df_4h, coin)
     _FETCH_TIME["levels"] += time.time() - _t1
 
     return levels, df_1d
@@ -386,7 +379,7 @@ def build_greylist_candidates(exclude_symbols):
     GREYLIST_MAX_COINS.
 
     Кандидаты, честно прошедшие фильтр, получают полный расчёт уровней —
-    ту же build_levels() с реестром, что и боевые —
+    ту же build_levels(), что и боевые —
     но результат уходит ТОЛЬКО в greylist_levels.json. macro_levels.json
     этот проход не трогает вообще — watcher_plan.py физически не видит
     ни один из этих уровней."""
@@ -427,7 +420,7 @@ def build_greylist_candidates(exclude_symbols):
         seen_coins.add(coin)  # реально дошли до расчёта — точка отсчёта для "протухания"
         net_before = _network_calls()
         try:
-            result = _fetch_and_build_levels(sym, coin, _prev_registry(greylist_levels, coin))
+            result = _fetch_and_build_levels(sym, coin)
             if result is None:
                 continue
             levels, df_1d = result
@@ -540,7 +533,7 @@ def build_macro_levels():
                 # в _fetch_and_build_levels (см. её докстринг) — тот же он
                 # переиспользуется build_levels_for_single_coin() и радаром
                 # (build_greylist_candidates).
-                result = _fetch_and_build_levels(symbol, coin, _prev_registry(macro_base, coin))
+                result = _fetch_and_build_levels(symbol, coin)
                 if result is None:
                     continue
                 levels, df_1d = result
@@ -643,7 +636,7 @@ def build_levels_for_single_coin(coin):
             return None
 
         macro_base = load_json(MACRO_LEVELS_FILE, default={})
-        result = _fetch_and_build_levels(symbol, coin, _prev_registry(macro_base, coin))
+        result = _fetch_and_build_levels(symbol, coin)
         if result is None:
             return None
         levels, df_1d = result

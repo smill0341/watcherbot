@@ -1,0 +1,292 @@
+{
+  "coin": "BTC",
+  "start_time": "2026-08-31 21:00",
+  "end_time": "2026-09-29 21:00",
+  "strategies": [
+    "VB"
+  ],
+  "active": [
+    {
+      "level_id": "VB_LONG_76364.01_77712.6",
+      "coin": "BTC",
+      "strategy": "V_BOTTOM",
+      "direction": "LONG",
+      "state": "SEARCHING",
+      "level_min": 76364.01,
+      "level_max": 77712.6,
+      "level_date": "2026-08-30",
+      "level_type": "1W_low_PWL + 4h_extreme_peak",
+      "level_score": 5.5,
+      "level_reaction_count": 1,
+      "events": [
+        {
+          "time": 1788337800,
+          "type": "ORIENTIR",
+          "price": 76932.9
+        },
+        {
+          "time": 1788338700,
+          "type": "START",
+          "price": 76818.9
+        },
+        {
+          "time": 1788341400,
+          "type": "PEAK",
+          "price": 76521.8
+        },
+        {
+          "time": 1788356700,
+          "type": "PEAK",
+          "price": 77119.2
+        },
+        {
+          "time": 1788361200,
+          "type": "PEAK",
+          "price": 76777.9
+        },
+        {
+          "time": 1788412500,
+          "type": "PEAK",
+          "price": 77161.3
+        }
+      ]
+    },
+    {
+      "level_id": "VB_LONG_75904.30571428571_77298.1",
+      "coin": "BTC",
+      "strategy": "V_BOTTOM",
+      "direction": "LONG",
+      "state": "SEARCHING",
+      "level_min": 75904.30571428571,
+      "level_max": 77298.1,
+      "level_date": "2026-09-06",
+      "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+      "level_score": 5.5,
+      "level_reaction_count": 1,
+      "events": [
+        {
+          "time": 1789141500,
+          "type": "ORIENTIR",
+          "price": 77686.0
+        },
+        {
+          "time": 1789497000,
+          "type": "START",
+          "price": 75740.2
+        },
+        {
+          "time": 1789583400,
+          "type": "PEAK",
+          "price": 75937.1
+        }
+      ]
+    }
+  ],
+  "history": [],
+  "levels": [
+    {
+      "min": 75395.53428571428,
+      "max": 76016.4,
+      "type": "4h_extreme_peak",
+      "score": 3.5,
+      "is_support": true
+    },
+    {
+      "min": 76713.85285714286,
+      "max": 77547.7,
+      "type": "4h_extreme_peak + 1W_low_PWL",
+      "score": 4.5,
+      "is_support": true
+    },
+    {
+      "min": 80450.8,
+      "max": 81383.80142857143,
+      "type": "4h_extreme_peak",
+      "score": 4.0,
+      "is_support": false
+    },
+    {
+      "min": 81394.2,
+      "max": 83001.57857142857,
+      "type": "1d_extreme_peak + 1W_MACRO_Resistance + 1M_high_PMH + 1M_MACRO_Resistance + 4h_extreme_peak + 1W_high_PWH",
+      "score": 6.0,
+      "is_support": false
+    },
+    {
+      "min": 76364.01,
+      "max": 77712.6,
+      "type": "1W_low_PWL + 4h_extreme_peak",
+      "score": 5.5,
+      "is_support": true
+    },
+    {
+      "min": 77759.53035714287,
+      "max": 79324.06964285714,
+      "type": "1M_close_PMC + 4h_extreme_peak",
+      "score": 5.0,
+      "is_support": false
+    },
+    {
+      "min": 77759.53035714287,
+      "max": 79324.06964285714,
+      "type": "1M_close_PMC + 4h_extreme_peak+4h_poc",
+      "score": 6.5,
+      "is_support": false
+    },
+    {
+      "min": 76364.01,
+      "max": 77712.6,
+      "type": "1W_low_PWL",
+      "score": 5.5,
+      "is_support": true
+    },
+    {
+      "min": 81394.2,
+      "max": 83001.57857142857,
+      "type": "1M_MACRO_Resistance + 1M_high_PMH + 1W_MACRO_Resistance + 1W_high_PWH + 1d_extreme_peak",
+      "score": 7.0,
+      "is_support": false
+    },
+    {
+      "min": 92636.1,
+      "max": 94900.90357142857,
+      "type": "1W_MACRO_Resistance",
+      "score": 5.5,
+      "is_support": false
+    },
+    {
+      "min": 81394.2,
+      "max": 83001.57857142857,
+      "type": "1M_MACRO_Resistance + 1M_high_PMH + 1W_MACRO_Resistance + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
+      "score": 7.0,
+      "is_support": false
+    },
+    {
+      "min": 76364.01,
+      "max": 77712.6,
+      "type": "1W_low_PWL + 4h_extreme_peak+4h_poc",
+      "score": 6.5,
+      "is_support": true
+    },
+    {
+      "min": 76364.01,
+      "max": 77712.6,
+      "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+      "score": 5.5,
+      "is_support": true
+    },
+    {
+      "min": 80299.6,
+      "max": 80566.00857142857,
+      "type": "4h_extreme_peak",
+      "score": 4.0,
+      "is_support": false
+    },
+    {
+      "min": 62081.33714285714,
+      "max": 62790.3,
+      "type": "1M_low_PML + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+      "score": 5.0,
+      "is_support": true
+    },
+    {
+      "min": 75904.30571428571,
+      "max": 77298.1,
+      "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+      "score": 5.5,
+      "is_support": true
+    },
+    {
+      "min": 79287.8,
+      "max": 79818.00928571429,
+      "type": "4h_extreme_peak",
+      "score": 3.5,
+      "is_support": false
+    },
+    {
+      "min": 75904.30571428571,
+      "max": 77298.1,
+      "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak+4h_poc",
+      "score": 6.5,
+      "is_support": true
+    },
+    {
+      "min": 79805.04464285714,
+      "max": 80656.18214285714,
+      "type": "1W_high_PWH + 4h_extreme_peak",
+      "score": 5.0,
+      "is_support": false
+    },
+    {
+      "min": 78950.9,
+      "max": 79649.90714285715,
+      "type": "4h_extreme_peak",
+      "score": 3.5,
+      "is_support": false
+    },
+    {
+      "min": 62081.33714285714,
+      "max": 62790.3,
+      "type": "1M_low_PML + 1W_low_PWL + 1d_extreme_peak",
+      "score": 5.0,
+      "is_support": true
+    },
+    {
+      "min": 62081.33714285714,
+      "max": 62790.3,
+      "type": "1M_low_PML + 1d_extreme_peak",
+      "score": 5.0,
+      "is_support": true
+    },
+    {
+      "min": 74692.33428571429,
+      "max": 75608.0,
+      "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+      "score": 5.0,
+      "is_support": true
+    },
+    {
+      "min": 80000.55642857144,
+      "max": 80460.9,
+      "type": "4h_extreme_peak",
+      "score": 3.5,
+      "is_support": true
+    },
+    {
+      "min": 81394.2,
+      "max": 83001.57857142857,
+      "type": "1M_MACRO_Resistance + 1W_MACRO_Resistance",
+      "score": 7.0,
+      "is_support": false
+    },
+    {
+      "min": 86579.8,
+      "max": 87490.81928571429,
+      "type": "4h_extreme_peak",
+      "score": 4.0,
+      "is_support": false
+    },
+    {
+      "min": 84535.2,
+      "max": 85349.71071428571,
+      "type": "4h_extreme_peak",
+      "score": 3.5,
+      "is_support": false
+    },
+    {
+      "min": 80569.555,
+      "max": 81446.1125,
+      "type": "1W_low_PWL",
+      "score": 5.5,
+      "is_support": true
+    },
+    {
+      "min": 81394.2,
+      "max": 83001.57857142857,
+      "type": "1M_MACRO_Resistance",
+      "score": 7.0,
+      "is_support": false
+    }
+  ],
+  "trades": []
+}

@@ -3,7 +3,8 @@
     "blocked": [],
     "tp": 5.0,
     "sl": 20.0,
-    "short_min": 10.0,
-    "long_max": null,
-    "max_hold_days": 14.0
+    "short_min": null,
+    "long_max": 20.0,
+    "max_hold_days": 14.0,
+    "entry_mode": "volume"
 }

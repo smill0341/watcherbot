@@ -58,6 +58,7 @@ def save_signal(signal: dict):
         "method": signal.get("method"),
         "method_value": signal.get("method_value"),
         "method_mult": signal.get("method_mult"),
+        "pattern_route": signal.get("pattern_route"),
         "closed_at": closed_at,
         "level_min": signal.get("level_min"),
         "level_max": signal.get("level_max"),
@@ -91,7 +92,7 @@ def update_open_signals():
     замечено (для точного отслеживания нужна была бы история свечей с
     момента входа, а не разовая текущая цена — этого тут нет).
     """
-    from backend.modules.cryptano.strategy.bounce_watcher import BounceWatcher
+    from backend.modules.cryptano.strategy.bounce_watchermain import BounceWatcher
 
     max_hold_days = BounceWatcher.CONFIG.get("MAX_HOLD_DAYS", 14)
     signals = _load_signals()

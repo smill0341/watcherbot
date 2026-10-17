@@ -125,7 +125,7 @@ function formatDuration(fromUnixSec, toDate) {
 }
 
 // === ДУБЛИРОВАНО ИЗ app.js::friendlyStrategy/friendlyLevelType ===
-const STRATEGY_LABELS = { V_BOTTOM: "V-Bottom", V_GREEN_BOTTOM: "V-Green", V_RED_TOP: "V-Red", BOUNCE: "Bounce" };
+const STRATEGY_LABELS = { V_BOTTOM: "V-Bottom", V_GREEN_BOTTOM: "V-Green", V_RED_TOP: "V-Red", BOUNCE: "Bounce", BUYBACK: "Buyback" };
 function friendlyStrategy(code) {
   return STRATEGY_LABELS[code] || code || "?";
 }
@@ -806,8 +806,8 @@ async function drawSnapshotLevels(coin, whenSec) {
     ];
     zones.forEach((z) => {
       if (z.min == null || z.max == null) return;
-      // Используем activated_at если есть, иначе дату уровня
-      const zoneStartSec = (z.activated_at || z.date) ? dateInputToUnixSec(z.activated_at || z.date) : null;
+      // Дата уровня — календарная дата в UTC (как в боте и снимках): 00:00 UTC, не 00:00 по Киеву
+      const zoneStartSec = (z.activated_at || z.date) ? Math.floor(Date.parse(String(z.activated_at || z.date).slice(0, 10) + "T00:00:00Z") / 1000) : null;
       let candlesForZone = globalCandles;
       if (zoneStartSec != null) {
         const sliced = globalCandles.filter((c) => c.time >= zoneStartSec);
@@ -967,7 +967,10 @@ function _simcfgFill(cfg) {
   set("simcfg-short", cfg.short_min);
   set("simcfg-long", cfg.long_max);
   set("simcfg-hold", cfg.max_hold_days);
+  set("simcfg-entry", cfg.entry_mode || "volume");
 }
+
+function _simcfgEntryLabel(v) { return v === "patterns" ? "паттерны" : v === "buyback" ? "выкуп" : "объём"; }
 
 function _simcfgRenderWatcher(cfg) {
   const el = document.getElementById("simcfg-watcher");
@@ -975,7 +978,8 @@ function _simcfgRenderWatcher(cfg) {
   const b = cfg.battle || {};
   let html = `<div class="muted" style="font-size:12px;margin-bottom:6px;">Как в бою: общие настройки из config.json и свои настройки монет из coin_settings.json. Здесь только показ — менять в боевом «⚙️ Конфиг».</div>` +
     `<div style="font-size:13px;line-height:1.6;">TP: <b>${_simcfgFmt(b.tp)}%</b> · SL: <b>${_simcfgFmt(b.sl)}%</b><br>` +
-    `SHORT выше EMA ≥ <b>${_simcfgFmt(b.short_min)}%</b> · LONG выше EMA ≤ <b>${_simcfgFmt(b.long_max)}%</b></div>`;
+    `SHORT выше EMA ≥ <b>${_simcfgFmt(b.short_min)}%</b> · LONG выше EMA ≤ <b>${_simcfgFmt(b.long_max)}%</b><br>` +
+    `Вход: <b>${_simcfgEntryLabel(b.entry_mode)}</b></div>`;
   const coins = cfg.battle_coins || {};
   const keys = Object.keys(coins).sort();
   if (keys.length) {
@@ -1023,6 +1027,7 @@ async function saveSimCfg() {
     const tp = parseFloat(val("simcfg-tp")), sl = parseFloat(val("simcfg-sl")), hold = parseFloat(val("simcfg-hold"));
     if (!(tp > 0) || !(sl > 0) || !(hold > 0)) { showErr("TP, SL и MAX_HOLD — числа больше 0"); return; }
     body.tp = tp; body.sl = sl; body.max_hold_days = hold;
+    body.entry_mode = val("simcfg-entry") || "volume";
     body.short_min = val("simcfg-short") === "" ? null : parseFloat(val("simcfg-short"));
     body.long_max = val("simcfg-long") === "" ? null : parseFloat(val("simcfg-long"));
     if ((body.short_min !== null && isNaN(body.short_min)) || (body.long_max !== null && isNaN(body.long_max))) {
@@ -1074,7 +1079,7 @@ function showSimSettingsNote(st) {
   if (!st || !st.mode) { el.textContent = ""; return; }
   if (st.mode === "watcher") { el.textContent = "Настройки: Watcher (как в бою)"; return; }
   const f = (v) => (v === null || v === undefined ? "—" : v);
-  el.textContent = `Настройки: Sim · TP ${f(st.tp)}% · SL ${f(st.sl)}% · SHORT ≥ ${f(st.short_min)}% · LONG ≤ ${f(st.long_max)}% · hold ${f(st.max_hold_days)}д`;
+  el.textContent = `Настройки: Sim · TP ${f(st.tp)}% · SL ${f(st.sl)}% · SHORT ≥ ${f(st.short_min)}% · LONG ≤ ${f(st.long_max)}% · hold ${f(st.max_hold_days)}д · вход ${_simcfgEntryLabel(st.entry_mode)}`;
 }
 
 // === Загрузка графика монеты — НИКОГДА не тянет боевые уровни/события/
@@ -1635,7 +1640,9 @@ function _tradeRowHtml(t, i) {
   const emaText = t.ema_dist_pct == null ? "—" : `${t.ema_dist_pct > 0 ? "+" : ""}${t.ema_dist_pct}%`;
   const methodText = t.method === "volume" && t.method_value != null
     ? formatVolume(t.method_value) + (t.method_mult != null ? " / x" + t.method_mult.toFixed(1) : "")
-    : "—";
+    : (t.method === "pattern"
+        ? "Паттерн R" + (t.pattern_route ?? "?") + (t.method_mult != null ? " / x" + t.method_mult.toFixed(1) : "")
+        : "—");
   const levelTypeStr = t.level_type ? friendlyLevelType(t.level_type) : "—"; // <--- Добавили форматирование
   return `
     <tr data-idx="${i}">
@@ -1751,17 +1758,34 @@ function directionQueryParams() {
 // просьбе Jack это убрали: "каждая живёт отдельно", объединение возможно
 // позже. Клик по любому тегу делает его единственным выбранным (см.
 // обработчик в renderSimStrategiesPanel) — не нужно сначала гасить старый.
-const simStrategyState = { BOUNCE: true, VB: false, VGB: false, VRT: false };
-const SIM_STRATEGY_LABELS = { VB: "V_BOTTOM", VGB: "V_GREEN_BOTTOM", VRT: "V_RED_TOP", BOUNCE: "BOUNCE" };
+// VL = V_BOTTOM + V_GREEN_BOTTOM, считаются вместе (как одна вкладка VL в боте).
+// BUYBACK — отдельная bounce-стратегия со своими файлами результатов.
+const simStrategyState = { BOUNCE: true, BUYBACK: false, VL: false, VRT: false };
+const SIM_STRATEGY_LABELS = { VL: "VL (V_BOTTOM + V_GREEN)", VRT: "V_RED_TOP", BOUNCE: "BOUNCE", BUYBACK: "BUYBACK" };
+const SIM_STRATEGY_ORDER = ["VL", "VRT", "BOUNCE", "BUYBACK"];
 
+// Bounce-семья: BOUNCE и BUYBACK (одни эндпоинты /api/simulate_bounce*, разница в параметре strategy).
 function isBounceSelected() {
-  return !!simStrategyState.BOUNCE;
+  return !!(simStrategyState.BOUNCE || simStrategyState.BUYBACK);
 }
 
-// Отмеченные VB/VGB/VRT -> ["VB","VGB","VRT"] для параметра strategies=
-// в /api/simulate и /api/simulate_bulk.
+// Какая именно bounce-стратегия выбрана: "BOUNCE" | "BUYBACK".
+function bounceStrategy() {
+  return simStrategyState.BUYBACK ? "BUYBACK" : "BOUNCE";
+}
+
+// Единственная выбранная стратегия (тег) — чтобы понять, что сменилась.
+function currentSimTag() {
+  return SIM_STRATEGY_ORDER.find((t) => simStrategyState[t]) || "";
+}
+
+// Отмеченные V-стратегии -> ["VB","VGB","VRT"] для параметра strategies=
+// в /api/simulate и /api/simulate_bulk. VL = VB + VGB.
 function selectedVStrategies() {
-  return ["VB", "VGB", "VRT"].filter((tag) => simStrategyState[tag]);
+  const out = [];
+  if (simStrategyState.VL) out.push("VB", "VGB");
+  if (simStrategyState.VRT) out.push("VRT");
+  return out;
 }
 
 // Попап "🧩 Стратегии" — визуально тот же компонент, что и на боевом
@@ -1798,7 +1822,7 @@ function renderSimStrategiesPanel() {
   const toggle = document.getElementById("sim-strategies-toggle");
   if (!container) return;
   container.innerHTML = "";
-  for (const tag of ["VB", "VGB", "VRT", "BOUNCE"]) {
+  for (const tag of SIM_STRATEGY_ORDER) {
     const enabled = !!simStrategyState[tag];
     const btn = document.createElement("button");
     btn.type = "button";
@@ -1818,13 +1842,13 @@ function renderSimStrategiesPanel() {
       // отсоединённым от DOM (panel.contains(e.target) === false) и
       // закрывал попап на КАЖДЫЙ клик по стратегии, даже свой собственный.
       e.stopPropagation();
-      const wasBounce = isBounceSelected();
+      const prevTag = currentSimTag();
       // Строго одна стратегия за раз из всех четырёх — по просьбе Jack.
       // Раньше внутри V-семьи можно было включить сразу несколько
       // (VB+VGB и т.п.) и приходилось гасить старую отдельным кликом,
       // прежде чем включить новую. Теперь клик по тегу сразу делает его
       // единственным выбранным.
-      for (const t of ["VB", "VGB", "VRT", "BOUNCE"]) simStrategyState[t] = (t === tag);
+      for (const t of SIM_STRATEGY_ORDER) simStrategyState[t] = (t === tag);
       renderSimStrategiesPanel();
       applyStrategyModeUI();
       // Сменилась семья (V <-> BOUNCE) — перечитываем "последний прогон"/
@@ -1837,7 +1861,7 @@ function renderSimStrategiesPanel() {
       // семьи без спроса, а старый снимок уровней (от прошлой семьи/даты)
       // так и остался бы висеть поверх — та самая "каша", о которой Jack
       // писал (типичный сценарий: переключил VB->BOUNCE с включённым "Фон").
-      if (wasBounce !== isBounceSelected()) {
+      if (prevTag !== currentSimTag()) {
         if (typeof resetSimOverlayToggles === "function") resetSimOverlayToggles();
         restoreLastSimIfAny();
         restoreLastBulkSimIfAny();
@@ -1846,8 +1870,8 @@ function renderSimStrategiesPanel() {
     container.appendChild(btn);
   }
   if (toggle) {
-    const active = isBounceSelected() ? ["BOUNCE"] : selectedVStrategies();
-    toggle.textContent = active.length ? `🧩 ${active.join("+")}` : "🧩 Стратегии";
+    const active = currentSimTag();
+    toggle.textContent = active ? `🧩 ${active}` : "🧩 Стратегии";
   }
 }
 
@@ -1863,7 +1887,11 @@ function renderSimStrategiesPanel() {
 function applyStrategyModeUI() {
   const sel = document.getElementById("sim-direction-select");
   if (!sel) return;
-  if (isBounceSelected()) {
+  if (simStrategyState.BUYBACK) {
+    sel.value = "long";
+    sel.disabled = true;
+    sel.title = "BUYBACK ищет только LONG";
+  } else if (isBounceSelected()) {
     sel.disabled = false;
     sel.title = "Какие направления сделок искать";
   } else {
@@ -1872,7 +1900,7 @@ function applyStrategyModeUI() {
     const hasShort = strategies.includes("VRT");
     sel.value = hasLong && hasShort ? "both" : hasShort ? "short" : "long";
     sel.disabled = true;
-    sel.title = "Направление задано выбранными стратегиями (VB/VGB — LONG, VRT — SHORT)";
+    sel.title = "Направление задано выбранными стратегиями (VL — LONG, VRT — SHORT)";
   }
 }
 
@@ -1904,7 +1932,7 @@ async function runSimulation() {
   const startIso = new Date(simStartTime * 1000).toISOString();
   const startParam = startIso.slice(0, 16).replace("T", " ");
   let endpoint = isBounce
-    ? `/api/simulate_bounce/${encodeURIComponent(selectedCoin)}?start=${encodeURIComponent(startParam)}`
+    ? `/api/simulate_bounce/${encodeURIComponent(selectedCoin)}?start=${encodeURIComponent(startParam)}&strategy=${bounceStrategy()}`
     : `/api/simulate/${encodeURIComponent(selectedCoin)}?start=${encodeURIComponent(startParam)}`;
   // "До" указано — период ограничен, иначе (как раньше) до конца графика.
   // Теперь понимают оба эндпоинта (V-семья тоже поддерживает end=).
@@ -2105,8 +2133,9 @@ async function runBulkSimulation() {
   const startIso = new Date(simStartTime * 1000).toISOString();
   const startParam = startIso.slice(0, 16).replace("T", " ");
   const bulkEndpointBase = isBounce ? "/api/simulate_bounce_bulk" : "/api/simulate_bulk";
-  const bulkProgressEndpoint = isBounce ? "/api/simulate_bounce_bulk/progress" : "/api/simulate_bulk/progress";
+  const bulkProgressEndpoint = isBounce ? `/api/simulate_bounce_bulk/progress?strategy=${bounceStrategy()}` : "/api/simulate_bulk/progress";
   let endpoint = `${bulkEndpointBase}?start=${encodeURIComponent(startParam)}`;
+  if (isBounce) endpoint += `&strategy=${bounceStrategy()}`;
   if (simEndTime) {
     const endIso = new Date(simEndTime * 1000).toISOString();
     const endParam = endIso.slice(0, 16).replace("T", " ");
@@ -2201,7 +2230,7 @@ function applyBulkResult(data) {
 // перечитывает результат ДРУГОЙ семьи (см. renderSimStrategiesPanel).
 async function restoreLastBulkSimIfAny() {
   const isBounce = isBounceSelected();
-  const endpoint = isBounce ? "/api/simulate_bounce_bulk/last" : "/api/simulate_bulk/last";
+  const endpoint = isBounce ? `/api/simulate_bounce_bulk/last?strategy=${bounceStrategy()}` : "/api/simulate_bulk/last";
   try {
     const res = await fetch(endpoint);
     const data = await res.json();
@@ -2242,7 +2271,7 @@ async function restoreLastSimIfAny() {
   const tradesBody = document.getElementById("sim-trades-body");
   if (!tradesBody) return;
   const isBounce = isBounceSelected();
-  const endpoint = isBounce ? "/api/simulate_bounce/last" : "/api/simulate/last";
+  const endpoint = isBounce ? `/api/simulate_bounce/last?strategy=${bounceStrategy()}` : "/api/simulate/last";
   try {
     const res = await fetch(endpoint);
     const data = await res.json();

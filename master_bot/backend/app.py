@@ -105,7 +105,7 @@ RESCAN_STATUS_PATH = os.path.join(JSONBANK_DIR, "rescan_status.json")
 ACTIVE_WATCHERS_PATH = os.path.join(JSONBANK_DIR, "active_watchers.json")
 WATCHER_HISTORY_PATH = os.path.join(JSONBANK_DIR, "watcher_history.json")
 # Сработавшие объёмные триггеры (watcher_plan.py::check_volume_triggers) —
-# СВОЙ файл, не пересекается с bounce_mgr/v_bottom_mgr вообще: это не
+# СВОЙ файл, не пересекается с менеджерами стратегий вообще: это не
 # вотчер стратегии, а просто "напоминание" без TP/SL/состояний.
 # get_active_watchers подмешивает его в общий список "В работе",
 # delete_watchers умеет удалять из него же по level_id.
@@ -339,7 +339,7 @@ def get_active_watchers(all_states: bool = Query(default=False)):
 
     🔥 НОВОЕ: Добавляем source и added_at из watchlist для приоритизации ручных.
 
-    ЧИТАЕТ НАПРЯМУЮ ИЗ ПАМЯТИ (bounce_mgr/v_bottom_mgr), а не из
+    ЧИТАЕТ НАПРЯМУЮ ИЗ ПАМЯТИ (менеджеры стратегий), а не из
     active_watchers.json на диске. Раньше (во времена, когда дашборд был
     отдельным процессом) этот файл был единственным честным способом
     что-либо узнать о состоянии сканера — но он обновлялся только раз в
@@ -353,11 +353,10 @@ def get_active_watchers(all_states: bool = Query(default=False)):
     пишет save_watcher_state()/_write_active_watchers_snapshot() (нужен для
     персистентности между рестартами), просто дашборд его больше не читает.
     """
-    from backend.modules.cryptano.backstage.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
-    from backend.background_tasks import _build_active_watchers_export
+    from backend.background_tasks import _build_active_watchers_export, _watcher_lock
 
     with _watcher_lock:
-        raw = _build_active_watchers_export(v_bottom_mgr, bounce_mgr)
+        raw = _build_active_watchers_export()
     wl = _read_json(WATCHLIST_PATH, default={})  # 🔥 Загружаем watchlist
 
     if all_states:
@@ -376,7 +375,7 @@ def get_active_watchers(all_states: bool = Query(default=False)):
     ]
 
     # 🎯 Ручные объёмные триггеры — читаются напрямую из manual_watchers.json,
-    # никак не связаны с bounce_mgr/v_bottom_mgr (см. watcher_plan.py::
+    # никак не связаны с менеджерами стратегий (см. watcher_plan.py::
     # check_volume_triggers). Подмешиваем ДО блока ниже, который проставляет
     # source/added_at/favorite по watchlist — он отработает и для них тоже
     # (монета уже есть в watchlist с source="MANUAL", см. add_custom_level).
@@ -518,7 +517,7 @@ def get_watcher_debug_log(level_id: str, coin: str = Query(default=None, descrip
     1. ЖИВОЙ вотчер — кольцевой буфер watcher.debug_ring в памяти (см.
        _DEBUG_RING_SIZE в BounceWatcher/VBottomWatcher/VGreenBottomWatcher/
        VRedTopWatcher), последние ~400 строк. level_id ищем и в
-       v_bottom_mgr._watchers (VB/VGB/VRT), и в bounce_mgr._watchers
+       vb/vgb/vrt_mgr._watchers (find_v_watcher), и в bounce_mgr._watchers
        (BOUNCE) — один и тот же id не может быть сразу в обоих.
     2. АРХИВ (вотчер уже умер) — снимок debug_log, который
        background_tasks.py::export_dashboard_state/crypto_orchestrator
@@ -528,7 +527,7 @@ def get_watcher_debug_log(level_id: str, coin: str = Query(default=None, descrip
        по себе (координаты уровня) не гарантирует уникальность без монеты,
        а strategy восстанавливаем из TAG в самом level_id.
     """
-    from backend.modules.cryptano.backstage.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
+    from backend.background_tasks import bounce_mgr, find_v_watcher, _watcher_lock
 
     # BOUNCE (BC_...): лог берём из файла монеты по метке вотчера — у
     # BounceWatcher нет кольца debug_ring в памяти, раньше тут всегда было пусто.
@@ -549,7 +548,7 @@ def get_watcher_debug_log(level_id: str, coin: str = Query(default=None, descrip
     if level_id.split("_", 1)[0] in _V_LOG_NAME:
         w_coin = coin
         with _watcher_lock:
-            w_live = v_bottom_mgr._watchers.get(level_id)
+            w_live = find_v_watcher(level_id)
             if w_live is not None:
                 w_coin = getattr(w_live, "coin", None) or coin
         v_lines = _v_watcher_log_lines(level_id, w_coin)
@@ -557,7 +556,7 @@ def get_watcher_debug_log(level_id: str, coin: str = Query(default=None, descrip
             return {"level_id": level_id, "coin": w_coin, "lines": v_lines, "source": "file"}
 
     with _watcher_lock:
-        watcher = v_bottom_mgr._watchers.get(level_id) or bounce_mgr._watchers.get(level_id)
+        watcher = find_v_watcher(level_id) or bounce_mgr._watchers.get(level_id)
         if watcher is not None:
             ring = getattr(watcher, "debug_ring", None)
             lines = list(ring) if ring is not None else []
@@ -594,7 +593,7 @@ def get_watcher_debug_log(level_id: str, coin: str = Query(default=None, descrip
 
 
 @app.post("/api/rescan_watcher/{coin}")
-def trigger_single_watcher_rescan(coin: str, level_id: str = Query(..., description="level_id конкретного BOUNCE-вотчера (как в /api/watchers)")):
+def trigger_single_watcher_rescan(coin: str, level_id: str = Query(..., description="level_id конкретного BOUNCE-вотчера (как в /api/watchers); BOUNCE или BUYBACK")):
     """Точечный рескан ОДНОГО существующего BOUNCE-вотчера — в отличие от
     старого (удалённого) рескана монеты НЕ трогает остальных живых вотчеров этой же монеты
     (см. watcher_plan.py::rescan_single_bounce_watcher за полным объяснением
@@ -605,18 +604,21 @@ def trigger_single_watcher_rescan(coin: str, level_id: str = Query(..., descript
     Использует _watcher_lock — та же блокировка, что и боевой скан/рескан
     монеты, чтобы не читать/писать вотчер параллельно с боевым циклом."""
     coin = coin.upper().strip()
-    from backend.modules.cryptano.backstage.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
+    from backend.background_tasks import find_bounce_strategy, _watcher_lock
     from backend.modules.cryptano.backstage.watcher_plan import rescan_single_bounce_watcher
     from backend.background_tasks import export_dashboard_state
 
     _watcher_lock.acquire()
     try:
-        result = rescan_single_bounce_watcher(coin, level_id, bounce_mgr)
+        st = find_bounce_strategy(level_id)
+        if st is None:
+            raise HTTPException(status_code=400, detail=f"Вотчер {level_id} не найден для {coin}")
+        result = rescan_single_bounce_watcher(coin, level_id, st.mgr, strategy=st.name)
         # Без этого watcher.state меняется только в памяти bounce_mgr —
         # active_watchers.json (тот самый файл, из которого /api/watchers
         # отдаёт список "в работе") пересобирается ТОЛЬКО этой функцией, и
         # без явного вызова остаётся старым до следующего боевого скан-цикла.
-        export_dashboard_state(v_bottom_mgr, bounce_mgr)
+        export_dashboard_state()
     finally:
         _watcher_lock.release()
 
@@ -645,7 +647,7 @@ def trigger_rescan_all_watchers():
     Сводка по всей пачке выводится одним уведомлением после завершения
     рескана.
     """
-    from backend.modules.cryptano.backstage.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
+    from backend.background_tasks import BOUNCE_STRATEGIES, _watcher_lock
     from backend.modules.cryptano.backstage.watcher_plan import rescan_single_bounce_watcher
     from backend.background_tasks import export_dashboard_state
 
@@ -664,16 +666,17 @@ def trigger_rescan_all_watchers():
         # вотчер и так со дня на день уберёт обычная автоматическая чистка
         # (clear_dead_watchers, каждые 15 мин) — трогать его тут незачем.
         targets = [
-            (getattr(w, "coin", None), level_id, getattr(w, "state", None))
-            for level_id, w in list(bounce_mgr._watchers.items())
+            (st, getattr(w, "coin", None), level_id, getattr(w, "state", None))
+            for st in BOUNCE_STRATEGIES
+            for level_id, w in list(st.mgr._watchers.items())
             if getattr(w, "state", None) not in ("DEAD", "TRIGGERED")
         ]
 
         results: list[dict[str, Any]] = []
-        for coin, level_id, state_before in targets:
+        for st, coin, level_id, state_before in targets:
             r: dict[str, Any]
             try:
-                r = rescan_single_bounce_watcher(coin, level_id, bounce_mgr)
+                r = rescan_single_bounce_watcher(coin, level_id, st.mgr, strategy=st.name)
             except Exception as e:
                 r = {"error": str(e)}
             r["coin"] = coin
@@ -684,7 +687,7 @@ def trigger_rescan_all_watchers():
         # Один общий пересбор active_watchers.json в конце всей пачки —
         # не после каждого вотчера (то же соображение, что в докстринге
         # trigger_single_watcher_rescan, просто один раз на всех).
-        export_dashboard_state(v_bottom_mgr, bounce_mgr)
+        export_dashboard_state()
     finally:
         _watcher_lock.release()
 
@@ -700,7 +703,7 @@ def trigger_rescan_all_watchers():
         if r.get("final_state") not in ("DEAD", "TRIGGERED")
     ]
 
-    lines = [f"🔄 Рескан всех BOUNCE-вотчеров: проверено {len(targets)}"]
+    lines = [f"🔄 Рескан всех вотчеров BOUNCE/BUYBACK: проверено {len(targets)}"]
     if newly_dead:
         coin_list = ", ".join(f"{r['coin']} ({r['level_id']})" for r in newly_dead)
         lines.append(f"❌ Оказались мёртвыми ({len(newly_dead)}): {coin_list}")
@@ -725,9 +728,9 @@ def trigger_rescan_all_watchers():
 @app.post("/api/reset_watchers")
 def trigger_reset_watchers():
     """
-    Полный сброс живых вотчеров (не уровней!). Чистит v_bottom_mgr/
-    bounce_mgr (вотчеры+кладбище), tracked_origin_levels(_vrt),
-    watcher_cooldown_cache. НЕ трогает macro_levels.json/watchlist.json —
+    Полный сброс живых вотчеров (не уровней!). Чистит менеджеры V-стратегий
+    (вотчеры, отслеживаемые уровни), bounce_mgr и buyback_mgr
+    (вотчеры+кладбище). НЕ трогает macro_levels.json/watchlist.json —
     для пересчёта самих уровней отдельная кнопка (/api/rebuild_levels).
 
     Вызывает dashboard_actions.py::reset_all_watchers() напрямую и синхронно —
@@ -736,7 +739,7 @@ def trigger_reset_watchers():
     "заявка принята, проверь через секунду". Раньше это была заявка через
     reset_watchers.flag, который run_web.py проверял отдельным опросом
     каждую секунду — тот же процесс, что и сейчас, только раньше это был
-    ОТДЕЛЬНЫЙ процесс без прямого доступа к bounce_mgr/v_bottom_mgr
+    ОТДЕЛЬНЫЙ процесс без прямого доступа к менеджерам стратегий
     дашборда (см. докстринг run_web.py)."""
     from backend.modules.cryptano.backstage.dashboard_actions import reset_all_watchers
     try:
@@ -844,7 +847,7 @@ def get_bounce_direction():
     """LONG/SHORT — вкл/выкл направления сделок BOUNCE. ОДИН И ТОТ ЖЕ ключ
     (crypto.allow_long/allow_short в config.json) читают и боевой бот
     (run_web.py/background_tasks.py::check_bounce), и симулятор
-    (bounce_simulate.py) — единая точка правды, не два места, которые
+    (simulate_engine.py) — единая точка правды, не два места, которые
     могут разойтись. Отсутствие ключа — ВКЛЮЧЕНО (True), та же конвенция,
     что у /api/strategies (см. get_strategies выше)."""
     config = _read_json(CONFIG_FILE, default={})
@@ -898,6 +901,35 @@ def set_bounce_tpsl(payload: TpSlRequest):
         config["crypto"]["bounce_sl_pct"] = payload.bounce_sl_pct
         _write_json_atomic(CONFIG_FILE, config)
         return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+_ENTRY_MODES = ("volume", "patterns")
+
+
+def _norm_entry_mode(v):
+    v = str(v or "").strip().lower()
+    return v if v in _ENTRY_MODES else "volume"
+
+
+@app.get("/api/config/bounce_entry_mode")
+def get_bounce_entry_mode():
+    """Как BOUNCE ищет свечу входа после пробоя: volume — всплеск объёма, patterns — свечные
+    паттерны C1->C2->C3. Читается новыми вотчерами при рождении (живые не меняются)."""
+    crypto_cfg = _read_json(CONFIG_FILE, default={}).get("crypto", {})
+    return {"bounce_entry_mode": _norm_entry_mode(crypto_cfg.get("bounce_entry_mode"))}
+
+
+@app.post("/api/config/bounce_entry_mode")
+def set_bounce_entry_mode(payload: dict = Body(...)):
+    mode = str(payload.get("bounce_entry_mode", "")).strip().lower()
+    if mode not in _ENTRY_MODES:
+        raise HTTPException(status_code=400, detail="bounce_entry_mode: 'volume' или 'patterns'")
+    try:
+        config = _read_json(CONFIG_FILE, default={})
+        config.setdefault("crypto", {})["bounce_entry_mode"] = mode
+        _write_json_atomic(CONFIG_FILE, config)
+        return {"status": "ok", "bounce_entry_mode": mode}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -999,6 +1031,7 @@ def _battle_general() -> dict[str, Any]:
         "short_min": lf.get("short_min"),
         "long_max": lf.get("long_max"),
         "max_hold_days": 14,
+        "entry_mode": _norm_entry_mode(crypto.get("bounce_entry_mode")),
     }
 
 
@@ -1018,6 +1051,7 @@ def _sim_cfg_load() -> dict[str, Any]:
         cfg[k] = _sim_num(raw[k]) if k in raw else _sim_num(base.get(k))
     if cfg["max_hold_days"] is None:
         cfg["max_hold_days"] = 14
+    cfg["entry_mode"] = _norm_entry_mode(raw["entry_mode"]) if "entry_mode" in raw else _norm_entry_mode(base.get("entry_mode"))
     blocked = raw.get("blocked") or []
     cfg["blocked"] = sorted({str(c).upper().strip() for c in blocked if str(c).strip()})
     return cfg
@@ -1027,6 +1061,7 @@ def _sim_cfg_save(cfg):
     out: dict[str, Any] = {"mode": cfg["mode"], "blocked": cfg.get("blocked", [])}
     for k in _SIM_NUM_KEYS:
         out[k] = cfg.get(k)
+    out["entry_mode"] = _norm_entry_mode(cfg.get("entry_mode"))
     _write_json_atomic(SIM_CONFIG_PATH, out)
 
 
@@ -1035,7 +1070,9 @@ def _sim_cfg_effective():
     cfg = _sim_cfg_load()
     if cfg["mode"] != "sim":
         return None
-    return {k: cfg.get(k) for k in _SIM_NUM_KEYS}
+    out = {k: cfg.get(k) for k in _SIM_NUM_KEYS}
+    out["entry_mode"] = _norm_entry_mode(cfg.get("entry_mode"))
+    return out
 
 
 def _sim_blocked_set():
@@ -1070,6 +1107,10 @@ def set_sim_config(payload: dict = Body(...)):
             if k in ("tp", "sl", "max_hold_days") and (v is None or v <= 0):
                 raise HTTPException(status_code=400, detail=f"{k}: нужно число больше 0")
             cfg[k] = v
+    if "entry_mode" in payload:
+        if str(payload["entry_mode"]).strip().lower() not in _ENTRY_MODES:
+            raise HTTPException(status_code=400, detail="entry_mode: 'volume' или 'patterns'")
+        cfg["entry_mode"] = _norm_entry_mode(payload["entry_mode"])
     try:
         _sim_cfg_save(cfg)
     except Exception as e:
@@ -1085,11 +1126,12 @@ def sim_config_copy_from_battle():
     b = _battle_general()
     for k in ("tp", "sl", "short_min", "long_max"):
         cfg[k] = _sim_num(b.get(k))
+    cfg["entry_mode"] = _norm_entry_mode(b.get("entry_mode"))
     try:
         _sim_cfg_save(cfg)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Не удалось сохранить sim_config.json: {e}")
-    return {"status": "ok", **{k: cfg[k] for k in ("tp", "sl", "short_min", "long_max")}}
+    return {"status": "ok", **{k: cfg[k] for k in ("tp", "sl", "short_min", "long_max", "entry_mode")}}
 
 
 @app.post("/api/sim_config/block")
@@ -2036,7 +2078,7 @@ def get_levels_at(coin: str, when: int = Query(..., description="Unix-время
     """То же самое, что /api/levels/{coin}, но не 'сейчас', а честный
     исторический снимок на момент `when` — через levels_history.py::
     get_levels_snapshot(), ту же функцию, что использует рескан и
-    bounce_simulate.py (см. levels/levels_history.py). Читает
+    симулятор (simulate_engine.py, см. levels/levels_history.py). Читает
     database/levels_timeline_YYYY_MM.json (снимки раз в ~12ч), а не
     сегодняшний macro_levels.json — нужно для симулятора: при выборе даты
     "От" показывать то, что бот реально видел в тот момент, а не текущее
@@ -2081,7 +2123,7 @@ def get_levels_at(coin: str, when: int = Query(..., description="Unix-время
         raise HTTPException(status_code=404, detail=f"No levels for {coin} at this time")
     
     # Добавляем snapshot_time к каждому уровню чтобы фронт знал точное время появления
-    snapshot_unix = int(snapshot_time.timestamp()) if snapshot_time else None
+    snapshot_unix = int(snapshot_time.replace(tzinfo=datetime.timezone.utc).timestamp()) if snapshot_time else None
     result = dict(data)
     for side in ('supports', 'resistances'):
         for z in result.get(side, []):
@@ -2153,9 +2195,8 @@ def simulate_watcher(
     strategies: Optional[str] = Query(default=None, description="VB,VGB,VRT через запятую — какие из V-стратегий гонять. Пусто = все три (как раньше)"),
 ):
     """
-    Прогоняет боевые классы вотчеров (VBottomManager + evaluate_v_bottom/
-    v_green_bottom/v_red_top — те же, что использует бот, без отдельной
-    копии логики) по истории от указанной даты до сейчас.
+    Прогоняет боевые классы вотчеров (VManager — тот же, что использует
+    бот, без отдельной копии логики) по истории от указанной даты до сейчас.
 
     Импорт торговой логики — намеренно ЛОКАЛЬНЫЙ (внутри функции, а не
     на верху файла): дашборд в остальном read-only и не тянет модули
@@ -2163,13 +2204,13 @@ def simulate_watcher(
     и то только когда его реально дёрнули.
 
     Ничего не пишет: результат просто возвращается, боевые
-    macro_levels.json / watcher_state.json / tracked_origin_levels*.json
+    macro_levels.json / watcher_state.json
     не трогаются.
     """
     from backend.modules.cryptano.simulator.simulate_engine import run_simulation
     tags = [t.strip().upper() for t in strategies.split(",") if t.strip()] if strategies else None
     try:
-        return run_simulation(coin, start, end, strategies=tags)
+        return run_simulation(coin, start, end, strategy="V", strategies=tags)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -2181,9 +2222,9 @@ def simulate_watcher_last():
     """Последний сохранённый результат V-симуляции (V_BOTTOM/VGB/VRT) —
     фронт дёргает это при открытии /simulator, чтобы результат пережил F5,
     тот же принцип, что и у /api/simulate_bounce/last, свой файл (см.
-    simulate_engine.py::LAST_RUN_FILE)."""
+    simulate_engine.py, семейство V)."""
     from backend.modules.cryptano.simulator.simulate_engine import get_last_run
-    return get_last_run() or {}
+    return get_last_run("V") or {}
 
 
 @app.post("/api/simulate_bounce/{coin}")
@@ -2193,6 +2234,7 @@ def simulate_bounce(
     end: Optional[str] = Query(default=None, description="Конец периода, по умолчанию — самая свежая доступная свеча"),
     allow_long: bool = Query(default=True, description="Искать LONG-сделки"),
     allow_short: bool = Query(default=True, description="Искать SHORT-сделки"),
+    strategy: str = Query(default="BOUNCE", description="BOUNCE | BUYBACK — какую bounce-стратегию симулировать"),
 ):
     """
     То же самое, что /api/simulate/{coin}, только для BOUNCE — прогоняет
@@ -2201,10 +2243,10 @@ def simulate_bounce(
     ~12ч), а не замороженные на дату старта. Свой изолированный менеджер —
     ничего боевого не трогает, свои логи (modules/cryptano/simulator/logs/).
     """
-    from backend.modules.cryptano.simulator.bounce_simulate import run_bounce_simulation
+    from backend.modules.cryptano.simulator.simulate_engine import run_simulation
     try:
-        return run_bounce_simulation(coin, start, end, allow_long=allow_long, allow_short=allow_short,
-                                     sim_cfg=_sim_cfg_effective())
+        return run_simulation(coin, start, end, strategy=strategy, allow_long=allow_long, allow_short=allow_short,
+                              sim_cfg=_sim_cfg_effective())
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -2212,12 +2254,15 @@ def simulate_bounce(
 
 
 @app.get("/api/simulate_bounce/last")
-def simulate_bounce_last():
+def simulate_bounce_last(strategy: str = Query(default="BOUNCE")):
     """Последний сохранённый результат BOUNCE-симуляции — фронт дёргает это
     при открытии /simulator, чтобы результат пережил F5 (см.
-    bounce_simulate.get_last_run/save_json_atomic(LAST_RUN_FILE, ...))."""
-    from backend.modules.cryptano.simulator.bounce_simulate import get_last_run
-    return get_last_run() or {}
+    simulate_engine.get_last_run)."""
+    from backend.modules.cryptano.simulator.simulate_engine import get_last_run
+    try:
+        return get_last_run(strategy) or {}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/simulate_bounce_bulk")
@@ -2227,11 +2272,12 @@ def simulate_bounce_bulk(
     allow_long: bool = Query(default=True, description="Искать LONG-сделки"),
     allow_short: bool = Query(default=True, description="Искать SHORT-сделки"),
     coin_source: Optional[str] = Query(default=None, description="'whitelist' | 'greylist' — ограничить прогон только монетами этого списка (сейчас, на момент запуска). Пусто/не задано = все монеты с историей за период, как раньше."),
+    strategy: str = Query(default="BOUNCE", description="BOUNCE | BUYBACK — какую bounce-стратегию симулировать"),
 ):
     """
     Прогоняет BOUNCE-симуляцию по ВСЕМ монетам, у которых были уровни
     хоть в одном снимке таймлайна за указанный период (см.
-    bounce_simulate.list_coins_with_levels) — НЕ по сегодняшнему топ-70
+    simulate_engine.list_coins_with_levels) — НЕ по сегодняшнему топ-70
     из /api/macro/coins, это разные списки для исторического периода.
     coin_source дополнительно пересекает этот список с текущим
     whitelist/greylist (см. _coin_source_filter_set) — два режима сразу:
@@ -2239,37 +2285,45 @@ def simulate_bounce_bulk(
 
     Без сетевой докачки свечей (top_up=False на каждую монету) и без
     перезаписи last_run.json одиночного симулятора (свой файл,
-    last_all_run.json) — см. докстринг run_bulk_bounce_simulation.
+    last_all_run.json) — см. докстринг run_bulk_simulation.
 
     Одна упавшая монета не валит весь прогон — её ошибка просто попадает
     в results[coin]['error'], остальные монеты считаются как обычно.
     """
-    from backend.modules.cryptano.simulator.bounce_simulate import run_bulk_bounce_simulation
+    from backend.modules.cryptano.simulator.simulate_engine import run_bulk_simulation
     coin_filter = _coin_source_filter_set(coin_source)
     try:
-        return run_bulk_bounce_simulation(start, end, allow_long=allow_long, allow_short=allow_short,
-                                          coin_filter=coin_filter, sim_cfg=_sim_cfg_effective(),
-                                          blocked=_sim_blocked_set())
+        return run_bulk_simulation(start, end, strategy=strategy, coin_filter=coin_filter,
+                                   blocked=_sim_blocked_set(), allow_long=allow_long,
+                                   allow_short=allow_short, sim_cfg=_sim_cfg_effective())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка bulk-симуляции BOUNCE: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка bulk-симуляции {strategy}: {e}")
 
 
 @app.get("/api/simulate_bounce_bulk/progress")
-def simulate_bounce_bulk_progress():
+def simulate_bounce_bulk_progress(strategy: str = Query(default="BOUNCE")):
     """Прогресс идущего сейчас (или последнего завершённого) bulk-прогона —
     фронт опрашивает это раз в секунду, пока ждёт ответ на сам
     POST /api/simulate_bounce_bulk (тот долгий, отвечает только в конце).
     {} если bulk ещё ни разу не запускали."""
-    from backend.modules.cryptano.simulator.bounce_simulate import get_bulk_progress
-    return get_bulk_progress() or {}
+    from backend.modules.cryptano.simulator.simulate_engine import get_bulk_progress
+    try:
+        return get_bulk_progress(strategy) or {}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/api/simulate_bounce_bulk/last")
-def simulate_bounce_bulk_last():
+def simulate_bounce_bulk_last(strategy: str = Query(default="BOUNCE")):
     """Последний сохранённый результат bulk-прогона — свой файл
     (last_all_run.json), не пересекается с одиночным /api/simulate_bounce/last."""
-    from backend.modules.cryptano.simulator.bounce_simulate import get_last_all_run
-    return get_last_all_run() or {}
+    from backend.modules.cryptano.simulator.simulate_engine import get_last_all_run
+    try:
+        return get_last_all_run(strategy) or {}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/simulate_bulk")
@@ -2290,14 +2344,12 @@ def simulate_bulk(
     Уровни для каждой монеты читаются из локальной базы снимков
     (levels_history.py), сеть не трогают — см. докстринг simulate_engine.py.
     """
-    from backend.modules.cryptano.simulator.simulate_engine import run_bulk_v_simulation
+    from backend.modules.cryptano.simulator.simulate_engine import run_bulk_simulation
     tags = [t.strip().upper() for t in strategies.split(",") if t.strip()] if strategies else None
     coin_filter = _coin_source_filter_set(coin_source)
     try:
-        blocked = _sim_blocked_set()
-        if blocked and coin_filter is not None:
-            coin_filter = {c for c in coin_filter if c not in blocked}
-        return run_bulk_v_simulation(start, end, strategies=tags, coin_filter=coin_filter)
+        return run_bulk_simulation(start, end, strategy="V", coin_filter=coin_filter,
+                                   blocked=_sim_blocked_set(), strategies=tags)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка bulk-симуляции V: {e}")
 
@@ -2308,7 +2360,7 @@ def simulate_bulk_progress():
     V-семьи — фронт опрашивает раз в секунду, пока ждёт основной POST.
     {} если bulk ещё ни разу не запускали."""
     from backend.modules.cryptano.simulator.simulate_engine import get_bulk_progress
-    return get_bulk_progress() or {}
+    return get_bulk_progress("V") or {}
 
 
 @app.get("/api/simulate_bulk/last")
@@ -2316,7 +2368,7 @@ def simulate_bulk_last():
     """Последний сохранённый результат bulk-прогона V-семьи — свой файл,
     не пересекается с /api/simulate_bounce_bulk/last."""
     from backend.modules.cryptano.simulator.simulate_engine import get_last_all_run
-    return get_last_all_run() or {}
+    return get_last_all_run("V") or {}
 
 
 @app.get("/api/signals")
@@ -2683,7 +2735,7 @@ def delete_watchers(level_ids: list = Body(...)):
     только из файла-снимка active_watchers.json.
 
     Раньше это редактировало ТОЛЬКО файл: bounce_mgr._watchers/
-    v_bottom_mgr._watchers в памяти ничего не знали об удалении, и
+    менеджеры V в памяти ничего не знали об удалении, и
     следующий же export_dashboard_state() (плановый 15-минутный скан-цикл
     или любой рескан монеты) пересобирал active_watchers.json заново из
     памяти — удалённые вотчеры молча возвращались обратно на дашборд.
@@ -2717,7 +2769,7 @@ def delete_watchers(level_ids: list = Body(...)):
     зону" теперь одно действие. Ответ содержит removed_custom_levels —
     сколько зон подчистилось заодно (0, если среди удалённых не было
     ручных)."""
-    from backend.modules.cryptano.backstage.live_scan import v_bottom_mgr, bounce_mgr, _watcher_lock
+    from backend.background_tasks import V_MANAGERS, bounce_mgr, _watcher_lock
     from backend.background_tasks import export_dashboard_state
 
     _watcher_lock.acquire()
@@ -2772,14 +2824,15 @@ def delete_watchers(level_ids: list = Body(...)):
                         print(f"⚠️ [WATCHERS DELETE] Не удалось проверить/удалить ручную зону {w_coin} {w_side} {w_min}-{w_max}: {e}")
                 del bounce_mgr._watchers[level_id]
                 found = True
-            if level_id in v_bottom_mgr._watchers:
-                del v_bottom_mgr._watchers[level_id]
-                found = True
+            for v_mgr in V_MANAGERS.values():
+                if level_id in v_mgr._watchers:
+                    del v_mgr._watchers[level_id]
+                    found = True
             if found:
                 deleted_count += 1
 
         # 🎯 Ручные объёмные триггеры (manual_watchers.json) — не в
-        # bounce_mgr/v_bottom_mgr вообще, поэтому отдельная независимая
+        # менеджеров вообще, поэтому отдельная независимая
         # чистка тем же списком level_ids — тот же "❌ Удалить" в панели
         # "В работе" одинаково работает и для них.
         manual_watchers = _read_json(MANUAL_WATCHERS_PATH, default=[])
@@ -2803,7 +2856,7 @@ def delete_watchers(level_ids: list = Body(...)):
             # Пересобирает active_watchers.json из уже очищенной памяти —
             # тот же приём, что и после точечного рескана выше, без него
             # дашборд не увидел бы удаление до следующего планового цикла.
-            export_dashboard_state(v_bottom_mgr, bounce_mgr)
+            export_dashboard_state()
     finally:
         _watcher_lock.release()
 

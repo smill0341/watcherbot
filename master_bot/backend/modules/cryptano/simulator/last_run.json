@@ -1,0 +1,107 @@
+{
+  "coin": "BTC",
+  "start_time": "2026-09-30 21:00",
+  "end_time": "2026-10-30 22:00",
+  "active": [],
+  "history": [
+    {
+      "level_id": "BC_LONG_82320.95357142857_84826.64642857143",
+      "coin": "BTC",
+      "strategy": "BOUNCE",
+      "mode": null,
+      "direction": "LONG",
+      "state": "TRIGGERED",
+      "level_min": 82320.95357142857,
+      "level_max": 84826.64642857143,
+      "level_date": "2026-09-30",
+      "level_type": "1M_close_PMC",
+      "level_score": 5.5,
+      "level_reaction_count": 1,
+      "activated_at": "2026-09-30",
+      "born_at": "2026-10-01T17:30:00",
+      "events": [
+        {
+          "time": 1790875800,
+          "type": "ZONE_TOUCH",
+          "price": 84750.0
+        },
+        {
+          "time": 1791338400,
+          "type": "SWEEP_BOTTOM",
+          "price": 83470.9
+        },
+        {
+          "time": 1791367200,
+          "type": "SCAN",
+          "price": 83799.9
+        },
+        {
+          "time": 1791380700,
+          "type": "SCAN",
+          "price": 83140.1
+        },
+        {
+          "time": 1791429300,
+          "type": "SCAN",
+          "price": 82924.8
+        },
+        {
+          "time": 1791432900,
+          "type": "ENTRY",
+          "price": 82834.8
+        }
+      ]
+    }
+  ],
+  "levels": [
+    {
+      "min": 82320.95357142857,
+      "max": 84826.64642857143,
+      "is_support": true,
+      "type": "1M_close_PMC",
+      "score": 5.5
+    }
+  ],
+  "trades": [
+    {
+      "date": "2026-10-08 04:15",
+      "time": 1791432900,
+      "coin": "BTC",
+      "type": "LONG",
+      "source": "BOUNCE_LONG",
+      "entry": 82834.8,
+      "target": 86976.54000000001,
+      "stop": 66267.84000000001,
+      "rr": 0.25,
+      "level_id": "BC_LONG_82320.95357142857_84826.64642857143",
+      "level_min": 82320.95357142857,
+      "level_max": 84826.64642857143,
+      "level_type": "1M_close_PMC",
+      "level_reaction_count": 1,
+      "volume": 3820.084,
+      "volume_mult": 5.396376314101749,
+      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:3.8k (x5.4)",
+      "status": "⏳",
+      "result_percent": null,
+      "closed_at": null,
+      "mae_pct": -3.0,
+      "ema_dist_pct": 2.9,
+      "method": "volume",
+      "pattern_route": null,
+      "method_value": 3820.084,
+      "method_mult": 5.396376314101749
+    }
+  ],
+  "messages": [
+    "🟢 *BOUNCE LONG* _BTC_ — 2026-10-08 04:15\nEntry: `82834.80000000`  SL: `66267.84000000`  TP: `86976.54000000`  R/R: `0.25`\nBOUNCE (пробой #1, сделка 1/1) | V:3.8k (x5.4)  Level: `BC_LONG_82320.95357142857_84826.64642857143`"
+  ],
+  "settings": {
+    "mode": "sim",
+    "tp": 5.0,
+    "sl": 20.0,
+    "short_min": 10.0,
+    "long_max": 20.0,
+    "max_hold_days": 14,
+    "entry_mode": "volume"
+  }
+}
