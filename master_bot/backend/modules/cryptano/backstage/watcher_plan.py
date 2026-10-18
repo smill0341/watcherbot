@@ -12,7 +12,7 @@ from typing import Callable
 from backend.modules.cryptano.utils.bybit import (
     exchange, resolve_symbol, KNOWN_TICKER_ALIASES, load_markets_cached,
 )
-from backend.modules.cryptano.utils.indicators import calculate_atr, calculate_ema, calculate_rsi
+from backend.modules.cryptano.utils.indicators import calculate_atr, calculate_adx, calculate_ema, calculate_rsi
 from backend.modules.cryptano.utils.paths import MACRO_LEVELS_FILE, CUSTOM_LEVELS_FILE, BOUNCE_ERRORS_FILE, SIGNALS_FILE
 from backend.modules.cryptano.levels.history import save_signal
 
@@ -496,6 +496,7 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr, strategy="BOUNCE"):
             return 0, [], 0
 
         atr_series = calculate_atr(df)
+        adx_series = calculate_adx(df)
         # EMA200(4h): для отчёта (ema_dist_birth) и для фильтра уровней
         # (levels/level_filter.py — пороги из config.json: общие + свои у монеты)
         from backend.modules.cryptano.simulator.outcome import make_ema_dist_fn, load_candles_4h
@@ -563,6 +564,7 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr, strategy="BOUNCE"):
 
             c_high, c_low, c_close = float(row['high']), float(row['low']), float(row['close'])
             c_atr = float(atr_series.loc[ts]) if ts in atr_series.index else 0.0
+            c_adx = float(adx_series.loc[ts]) if ts in adx_series.index else None
 
             # Только уровни, которые на момент ЭТОЙ свечи уже активны
             # (activated_at <= время свечи). Уже живые вотчеры кормятся свечой
@@ -579,7 +581,7 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr, strategy="BOUNCE"):
 
             orders, draw_events = bounce_mgr.process_candle(
                 c_low, c_high, c_close, candle_supports, candle_resistances, df_slice,
-                allow_long=allow_long, allow_short=allow_short, c_atr=c_atr, coin=coin
+                allow_long=allow_long, allow_short=allow_short, c_atr=c_atr, coin=coin, c_adx=c_adx
             )
             total_orders += len(orders)
 
@@ -954,6 +956,7 @@ def rescan_single_bounce_watcher(coin, level_id, bounce_mgr, strategy="BOUNCE"):
     )
 
     atr_series = calculate_atr(df)
+    adx_series = calculate_adx(df)
     from backend.modules.cryptano.simulator.outcome import make_ema_dist_fn, load_candles_4h
     bounce_mgr.set_ema_dist_fn(coin, make_ema_dist_fn(df, candles_4h=load_candles_4h(candle_store, symbol)))  # EMA для отчёта (ema_dist_birth); рескан уже существующего вотчера фильтром не режется
 
@@ -972,6 +975,7 @@ def rescan_single_bounce_watcher(coin, level_id, bounce_mgr, strategy="BOUNCE"):
         if len(df_slice) < 52:
             continue
         c_atr = float(atr_series.loc[ts]) if ts in atr_series.index else 0.0
+        c_adx = float(adx_series.loc[ts]) if ts in adx_series.index else None
 
         _active = lambda z: (lambda t: t is None or t <= ts_n)(_level_active_from(z))
         if direction == 'LONG':
@@ -983,7 +987,7 @@ def rescan_single_bounce_watcher(coin, level_id, bounce_mgr, strategy="BOUNCE"):
         # (born_at = время этой свечи, activated_at — из уровня).
         decision = bounce_mgr.evaluate_bounce(
             level, df_slice, direction, opp_side,
-            is_focus=True, c_atr=c_atr,
+            is_focus=True, c_atr=c_atr, c_adx=c_adx,
             mode=mode, coin=coin,
         )
         w = bounce_mgr._watchers.get(life_lid)

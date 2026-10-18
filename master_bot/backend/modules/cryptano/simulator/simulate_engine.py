@@ -40,7 +40,7 @@ if _MASTER_BOT_ROOT not in sys.path:
     sys.path.insert(0, _MASTER_BOT_ROOT)
 
 from backend.modules.cryptano.utils.bybit import exchange, resolve_symbol, load_markets_cached
-from backend.modules.cryptano.utils.indicators import calculate_atr, calculate_ema, calculate_rsi
+from backend.modules.cryptano.utils.indicators import calculate_atr, calculate_adx, calculate_ema, calculate_rsi
 from backend.modules.cryptano.utils.storage import load_json, save_json_atomic
 from backend.modules.cryptano.utils.paths import DATABASE_DIR
 import backend.modules.cryptano.levels.candle_archive as candle_archive
@@ -445,6 +445,7 @@ def _run_bounce(coin, start_time_str, end_time_str=None, top_up=True,
         raise ValueError(f"Нет свечей в диапазоне {start_time_str} .. {end_time_str or 'сейчас'} для {coin}")
 
     atr_series = calculate_atr(df_full)
+    adx_series = calculate_adx(df_full)
     # EMA200(4h): 4h-свечи из архива симулятора (запас 100 суток назад от старта), а не из 15m
     ema_dist_fn = make_ema_dist_fn(
         df_full, candles_4h=candle_archive.get_sim_candles(symbol, "4h", start_ts, data_end_ts, fwd_days),
@@ -491,6 +492,7 @@ def _run_bounce(coin, start_time_str, end_time_str=None, top_up=True,
 
         c_high, c_low, c_close = float(row["high"]), float(row["low"]), float(row["close"])
         c_atr = float(atr_series.loc[ts]) if ts in atr_series.index else 0.0
+        c_adx = float(adx_series.loc[ts]) if ts in adx_series.index else None
 
         ts_naive = ts.tz_localize(None) if ts.tzinfo is not None else ts
         ts_naive_dt = ts_naive.to_pydatetime()
@@ -511,7 +513,7 @@ def _run_bounce(coin, start_time_str, end_time_str=None, top_up=True,
         supports, resistances = level_filter.apply(ts, supports, resistances)
         orders, _draw_events = bounce_mgr.process_candle(
             c_low, c_high, c_close, supports, resistances, df_slice,
-            allow_long=allow_long, allow_short=allow_short, c_atr=c_atr, coin=coin,
+            allow_long=allow_long, allow_short=allow_short, c_atr=c_atr, coin=coin, c_adx=c_adx,
         )
 
         # Устанавливаем born_at на основе activated_at (дату активации уровня)

@@ -441,7 +441,7 @@ class BounceManager:
             self._record_death(w, 'LONG', lid)
 
     def process_candle(self, c_low, c_high, c_close, current_supports, current_resistances,
-                        df_slice, allow_long=True, allow_short=True, c_atr=0.0, coin="UNKNOWN"):
+                        df_slice, allow_long=True, allow_short=True, c_atr=0.0, coin="UNKNOWN", c_adx=None):
         self._update_graveyard(c_close, coin=coin)
         self.kill_short_watchers_behind_pierced_neighbor(c_high, coin=coin)
 
@@ -489,7 +489,7 @@ class BounceManager:
                     'LONG', touched_long,
                     lambda lid, l: self.evaluate_bounce(
                         l, df_slice, 'LONG', current_resistances,
-                        is_focus=(focus_long_id is None or lid == focus_long_id), c_atr=c_atr,
+                        is_focus=(focus_long_id is None or lid == focus_long_id), c_atr=c_atr, c_adx=c_adx,
                         coin=coin),
                     coin=coin):
                 _collect_event(level_id, 'LONG')
@@ -515,7 +515,7 @@ class BounceManager:
                         'SHORT', touched_short,
                         lambda lid, l, _mode=mode, _focus=focus_short_id: self.evaluate_bounce(
                             l, df_slice, 'SHORT', current_supports,
-                            is_focus=(_focus is None or lid == _focus), c_atr=c_atr,
+                            is_focus=(_focus is None or lid == _focus), c_atr=c_atr, c_adx=c_adx,
                             mode=_mode, coin=coin),
                         mode=mode, coin=coin):
                     _collect_event(level_id, 'SHORT')
@@ -552,7 +552,7 @@ class BounceManager:
     # BOUNCE (Отбой от макро-уровня)
     # -------------------------------------------------------------------------
     def evaluate_bounce(self, level, df, trade_type, all_opposite_levels, is_focus=True,
-                        c_atr=0.0, mode=None, coin="UNKNOWN"):
+                        c_atr=0.0, mode=None, coin="UNKNOWN", c_adx=None):
         level_id = self._level_id(level, trade_type)
         if mode:
             level_id = f"{level_id}__{mode}"
@@ -648,7 +648,7 @@ class BounceManager:
         signal = watcher.update(
             c_open, c_high, c_low, c_close, c_vol, baseline_vol,
             all_opposite_levels, level_score=level.get('score', 0), candle_time=df.index[-1],
-            is_focus=is_focus, c_atr=c_atr, baseline_mean=baseline_mean
+            is_focus=is_focus, c_atr=c_atr, baseline_mean=baseline_mean, c_adx=c_adx
         )
 
         if watcher.state in ("DEAD", "TRIGGERED"):

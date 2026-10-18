@@ -41,6 +41,8 @@ class BounceWatcher:
     )
     _MAX_LOG_LINES = 5000     # потолок на файл — при частых рестартах не даём ему расти бесконечно
 
+    _c_adx = None   # ADX текущей свечи (приходит в update)
+
     CONFIG = {
         'ENTRY_MODE': 'volume',    # как искать свечу входа после пробоя: 'volume' — объём (VOL_SPIKE_MULT и т.д.),
                                    # 'patterns' — свечные паттерны C1->C2->C3 (candle_patterns.py). Берётся из
@@ -72,6 +74,8 @@ class BounceWatcher:
                                           # вообще (ждём, пока появится). False — старое зеркальное поведение.
         'CLIMAX_ATR_BUFFER': 2.0,      # см. SHORT_CLIMAX_MODE — множитель ATR над дальней зоной, стартовое
                                           # значение, откалибровать по логам (см. историю обсуждения проекта)
+        'MIN_ADX': 30.0,           # Вход только если ADX (14) на свече входа >= этого значения; иначе вход на этой
+                                   # свече пропускается, условия входа проверяются заново на следующей. 0 = фильтр выключен.
         'DEBUG': True,
         'MANUAL_MIDPOINT_ENTRY_ENABLED': True,  # True = у вотчеров с ручной зоной (custom_levels.json,
                                           # self.simple_entry=True) вход происходит сразу по достижению
@@ -314,7 +318,7 @@ class BounceWatcher:
         if v >= 1_000: return f"{v/1_000:.1f}k"
         return str(int(v))
 
-    def update(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, level_score=0, candle_time=None, vol_90=0.0, is_focus=True, c_atr=0.0, baseline_mean=0.0):
+    def update(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, level_score=0, candle_time=None, vol_90=0.0, is_focus=True, c_atr=0.0, baseline_mean=0.0, c_adx=None):
         """
         Тонкая обёртка над _update_impl() — сама логика ниже НЕ менялась ни
         строкой, только вынесена в отдельный метод. Обёртка нужна, чтобы
@@ -323,10 +327,11 @@ class BounceWatcher:
         обычный путь) закончился конкретный вызов — раньше пришлось бы
         вставлять _record_event() в каждый return по отдельности.
         """
+        self._c_adx = None if (c_adx is None or c_adx != c_adx) else float(c_adx)
         is_first_call = not self._started_logged
         result = self._update_impl(
             c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels,
-            level_score, candle_time, vol_90, is_focus, c_atr, baseline_mean
+            level_score, candle_time, vol_90, is_focus, c_atr, baseline_mean, c_adx
         )
         if is_first_call:
             mode_label = self.mode if self.mode else "-"
@@ -356,7 +361,7 @@ class BounceWatcher:
         if len(self.event_log) > 100:
             self.event_log = self.event_log[-100:]
 
-    def _update_impl(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, level_score=0, candle_time=None, vol_90=0.0, is_focus=True, c_atr=0.0, baseline_mean=0.0):
+    def _update_impl(self, c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels, level_score=0, candle_time=None, vol_90=0.0, is_focus=True, c_atr=0.0, baseline_mean=0.0, c_adx=None):
         is_first_candle = (self._last_time is None)
         
         self._last_time = candle_time
@@ -457,6 +462,9 @@ class BounceWatcher:
                 # свече, пока цена так и сидит за серединой зоны. Новый вход
                 # возможен только после того, как цена вернётся на безопасную
                 # сторону и зайдёт заново (см. ветку "not reached" выше).
+                return None
+            if not self._adx_ok():
+                self._dbg(f"🟡 ПРОПУСК | ЗОНА | {self._adx_fail()}")
                 return None
             self._simple_entry_fired = True
             vol_mult = (c_vol / baseline_vol) if baseline_vol > 0 else 0.0
@@ -677,13 +685,14 @@ class BounceWatcher:
                 self._dbg(f"⚪ ВЫКУП нет | {prev_name} (x{pm:.2f} от фона) + {cur_name}: объём {cur_gen} x{ratio:.2f} от {prev_gen} (< x{BUYBACK['GREEN_VOL_RATIO']:g}) | V:{v_str}")
                 return None
             self.last_event_type = "SCAN"
-            if is_focus and is_pierce_budget_ok:
+            if is_focus and is_pierce_budget_ok and self._adx_ok():
                 self.last_event_type = "GOOD_GREEN" if self.trade_type == 'LONG' else "GOOD_RED"
                 self._dbg(f"🟢 ВЫКУП | {prev_name} (x{pm:.2f} от фона) + {cur_name}, объём x{ratio:.2f} от {prev_gen} (>= x{BUYBACK['GREEN_VOL_RATIO']:g}) | V:{v_str}")
                 return self._enter(c_close, vol_mult, c_vol, logic_vol, baseline_vol, method="buyback")
             reasons = []
             if not is_focus: reasons.append("не в фокусе (пробит более свежий уровень)")
             if not is_pierce_budget_ok: reasons.append(f"Бюджет пробоя #{self.pierce_count} исчерпан, жду новый")
+            if not self._adx_ok(): reasons.append(self._adx_fail())
             self._dbg(f"🟡 ПРОПУСК | ВЫКУП найден (x{ratio:.2f}), но {', '.join(reasons)} | V:{v_str}")
             return None
 
@@ -717,8 +726,9 @@ class BounceWatcher:
                     is_vol_ok = vol_mult >= self.CONFIG['VOL_SPIKE_MULT']
                     is_body_ok = body_pct >= self.CONFIG['MIN_BODY_PCT']
                     is_shadow_ok = top_shadow_pct <= self.CONFIG['MAX_WICKS_PCT']
+                    is_adx_ok = self._adx_ok()
                     
-                    if is_vol_ok and is_body_ok and is_shadow_ok and is_pierce_budget_ok and is_focus:
+                    if is_vol_ok and is_body_ok and is_shadow_ok and is_pierce_budget_ok and is_focus and is_adx_ok:
                         self.last_event_type = "GOOD_GREEN"
                         return self._enter(c_close, vol_mult, c_vol, logic_vol, baseline_vol)
                     else:
@@ -729,6 +739,7 @@ class BounceWatcher:
                         if not is_vol_ok: fail_reasons.append(f"V:x{vol_mult:.1f}(<{self.CONFIG['VOL_SPIKE_MULT']})")
                         if not is_body_ok: fail_reasons.append(f"Тело:{body_pct:.0f}%(<{self.CONFIG['MIN_BODY_PCT']}%)")
                         if not is_shadow_ok: fail_reasons.append(f"В.Тень:{top_shadow_pct:.0f}%(>{self.CONFIG['MAX_WICKS_PCT']}%)")
+                        if not is_adx_ok: fail_reasons.append(self._adx_fail())
                         
                         self._dbg(f"🟡 ПРОПУСК | ЗЕЛЕНАЯ | {', '.join(fail_reasons)} | V:{v_str}")
 
@@ -748,8 +759,9 @@ class BounceWatcher:
                     is_vol_ok = vol_mult >= self.CONFIG['VOL_SPIKE_MULT']
                     is_body_ok = body_pct >= self.CONFIG['MIN_BODY_PCT']
                     is_shadow_ok = bottom_shadow_pct <= self.CONFIG['MAX_WICKS_PCT']
+                    is_adx_ok = self._adx_ok()
                     
-                    if is_vol_ok and is_body_ok and is_shadow_ok and is_pierce_budget_ok and is_focus:
+                    if is_vol_ok and is_body_ok and is_shadow_ok and is_pierce_budget_ok and is_focus and is_adx_ok:
                         self.last_event_type = "GOOD_RED"
                         return self._enter(c_close, vol_mult, c_vol, logic_vol, baseline_vol)
                     else:
@@ -759,10 +771,27 @@ class BounceWatcher:
                         if not is_vol_ok: fail_reasons.append(f"V:x{vol_mult:.1f}(<{self.CONFIG['VOL_SPIKE_MULT']})")
                         if not is_body_ok: fail_reasons.append(f"Тело:{body_pct:.0f}%(<{self.CONFIG['MIN_BODY_PCT']}%)")
                         if not is_shadow_ok: fail_reasons.append(f"Н.Тень:{bottom_shadow_pct:.0f}%(>{self.CONFIG['MAX_WICKS_PCT']}%)")
+                        if not is_adx_ok: fail_reasons.append(self._adx_fail())
                         
                         self._dbg(f"🟡 ПРОПУСК | КРАСНАЯ | {', '.join(fail_reasons)} | V:{v_str}")
 
         return None
+
+    def _adx_ok(self):
+        """Фильтр входа по силе тренда: ADX свечи >= CONFIG['MIN_ADX']. 0 / не задано — фильтр выключен.
+        Если ADX посчитать не удалось (мало истории), вход не подтверждён — не входим.
+        Порог берётся из CONFIG КЛАССА, а не из копии вотчера (та запекается в сохранённое состояние):
+        так смена значения действует и на уже живые вотчеры."""
+        min_adx = type(self).CONFIG.get('MIN_ADX') or 0
+        if min_adx <= 0:
+            return True
+        adx = self._c_adx
+        return adx is not None and adx == adx and adx >= min_adx
+
+    def _adx_fail(self):
+        adx = self._c_adx
+        shown = "нет данных" if (adx is None or adx != adx) else f"{adx:.1f}"
+        return f"ADX:{shown}(<{type(self).CONFIG.get('MIN_ADX'):g})"
 
     def _pat_reset(self):
         self._pat_stage = None
@@ -785,13 +814,14 @@ class BounceWatcher:
             self._pat_reset()
             route = check_c3(c1, routes, o, h, l, c, v, d)
             if route is not None:
-                if is_focus and is_pierce_budget_ok:
+                if is_focus and is_pierce_budget_ok and self._adx_ok():
                     self.last_event_type = "GOOD_GREEN" if d == 'LONG' else "GOOD_RED"
                     self._dbg(f"🧩 [С3] Подтверждение: маршрут {route}")
                     return self._enter(c, vol_mult, v, base, base, pattern_route=route)
                 reasons = []
                 if not is_focus: reasons.append("не в фокусе (пробит более свежий уровень)")
                 if not is_pierce_budget_ok: reasons.append(f"Бюджет пробоя #{self.pierce_count} исчерпан, жду новый")
+                if not self._adx_ok(): reasons.append(self._adx_fail())
                 self._dbg(f"🟡 ПРОПУСК | ПАТТЕРН {route} | {', '.join(reasons)}")
             else:
                 self._dbg(f"❌ Отмена [С3]: подтверждения нет, маршруты {routes}")
@@ -924,8 +954,9 @@ class BounceWatcher:
                 is_vol_ok = vol_mult >= self.CONFIG['VOL_SPIKE_MULT']
                 is_body_ok = body_pct >= self.CONFIG['MIN_BODY_PCT']
                 is_shadow_ok = bottom_shadow_pct <= self.CONFIG['MAX_WICKS_PCT']
+                is_adx_ok = self._adx_ok()
 
-                if is_vol_ok and is_body_ok and is_shadow_ok and is_pierce_budget_ok:
+                if is_vol_ok and is_body_ok and is_shadow_ok and is_pierce_budget_ok and is_adx_ok:
                     self.last_event_type = "GOOD_RED"
                     decision = self._enter(c_close, vol_mult, c_vol, logic_vol, baseline_vol)
                     
@@ -940,6 +971,7 @@ class BounceWatcher:
                     if not is_vol_ok: fail_reasons.append(f"V:x{vol_mult:.1f}(<{self.CONFIG['VOL_SPIKE_MULT']})")
                     if not is_body_ok: fail_reasons.append(f"Тело:{body_pct:.0f}%")
                     if not is_shadow_ok: fail_reasons.append(f"Н.Тень:{bottom_shadow_pct:.0f}%")
+                    if not is_adx_ok: fail_reasons.append(self._adx_fail())
                     
                     v_str = self._fmt(c_vol)
                     self._dbg(f"🟡 Скан | {', '.join(fail_reasons)} | V:{v_str}")

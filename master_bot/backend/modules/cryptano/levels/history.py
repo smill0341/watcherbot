@@ -92,7 +92,7 @@ def update_open_signals():
     замечено (для точного отслеживания нужна была бы история свечей с
     момента входа, а не разовая текущая цена — этого тут нет).
     """
-    from backend.modules.cryptano.strategy.bounce_watchermain import BounceWatcher
+    from backend.modules.cryptano.strategy.bounce_watcher import BounceWatcher
 
     max_hold_days = BounceWatcher.CONFIG.get("MAX_HOLD_DAYS", 14)
     signals = _load_signals()

@@ -2642,7 +2642,7 @@ def get_indicators(coin: str, timeframe: str = "15m", source: Optional[str] = No
     if not symbol or timeframe not in candle_store.TIMEFRAME_MS:
         return {"indicators": {}}
     try:
-        from backend.modules.cryptano.levels.chart_indicators import compute_indicators  # type: ignore
+        from backend.modules.cryptano.utils.indicators import compute_indicators  # type: ignore
         candles = (_sim_archive_candles(symbol, timeframe) if source == "sim" else []) \
             or candle_store.get_candles(symbol, timeframe, limit=None, around=None)
         last = candles[-1] if candles else None
