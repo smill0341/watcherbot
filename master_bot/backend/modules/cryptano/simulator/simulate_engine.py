@@ -581,8 +581,9 @@ def _run_bounce(coin, start_time_str, end_time_str=None, top_up=True,
                 "ema_dist_pct": getattr(bounce_mgr._watchers.get(level_id_val), "ema_dist_birth", None),
                 "method": d.get("method", "volume"),
                 "pattern_route": d.get("pattern_route"),
-                "method_value": d.get("volume", float(row["volume"])),
-                "method_mult": d.get("volume_mult"),
+                "method_value": d.get("method_value", d.get("volume", float(row["volume"]))),
+                "method_mult": d.get("method_mult", d.get("volume_mult")),
+                "method_ratio": d.get("method_ratio"),
             })
 
             emoji = "🟢" if tt == "LONG" else "🔴"

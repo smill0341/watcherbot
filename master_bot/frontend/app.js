@@ -552,6 +552,15 @@ function formatVolume(v) {
   return String(Math.round(v));
 }
 
+// Метод «выкуп» (BUYBACK): объём красной свечи (x — во сколько раз выше среднего) / объём зелёной в % от красной.
+// Пример: 100.0k (x2.3) / 105%
+function buybackMethodText(t) {
+  const red = formatVolume(t.method_value);
+  const mult = t.method_mult != null ? " (x" + t.method_mult.toFixed(1) + ")" : "";
+  const ratio = t.method_ratio != null ? " / " + Math.round(t.method_ratio * 100) + "%" : "";
+  return red + mult + ratio;
+}
+
 function formatDuration(fromUnixSec, toDate) {
   if (fromUnixSec === null || fromUnixSec === undefined) return "—";
   const fromMs = fromUnixSec * 1000;
@@ -1956,7 +1965,7 @@ async function loadSignals(page = signalsPage) {
       : (s.closed_at ? formatDuration(s.time, new Date(s.closed_at)) : "—");
     const methodText = s.method === "volume" && s.method_value != null
       ? formatVolume(s.method_value) + (s.method_mult != null ? " / x" + s.method_mult.toFixed(1) : "")
-      : "—";
+      : (s.method === "buyback" && s.method_value != null ? buybackMethodText(s) : "—");
     
     // 🔥 НОВОЕ: Checkbox в начале
     tr.innerHTML = `

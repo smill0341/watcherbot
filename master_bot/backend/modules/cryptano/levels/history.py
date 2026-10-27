@@ -1,4 +1,5 @@
 import datetime
+import pandas as pd
 from backend.modules.cryptano.utils.bybit import exchange, resolve_symbol, load_markets_cached
 from backend.modules.cryptano.utils.storage import load_json, save_json_atomic
 from backend.modules.cryptano.utils.paths import SIGNALS_FILE
@@ -58,6 +59,7 @@ def save_signal(signal: dict):
         "method": signal.get("method"),
         "method_value": signal.get("method_value"),
         "method_mult": signal.get("method_mult"),
+        "method_ratio": signal.get("method_ratio"),
         "pattern_route": signal.get("pattern_route"),
         "closed_at": closed_at,
         "level_min": signal.get("level_min"),
@@ -87,12 +89,16 @@ def update_open_signals():
         закрывает по ТЕКУЩЕЙ цене на этот момент (не обязательно в плюс),
         статус ✅/❌ по знаку итогового результата.
 
-    Честное ограничение: проверка раз в 15 минут, не по каждой свече — если
-    цена пробила TP и вернулась обратно ДО следующей проверки, это не будет
-    замечено (для точного отслеживания нужна была бы история свечей с
-    момента входа, а не разовая текущая цена — этого тут нет).
+    TP/SL проверяются по ВСЕМ закрытым 15м свечам от входа до сейчас (high/low),
+    а не по разовой цене с тикера — касание таргета фитилём между проверками
+    не теряется. Формула закрытия — та же, что в симуляторе и рескане
+    (watcher_plan._resolve_historical_signal_status). Тикер нужен только для
+    промежуточного результата ещё открытой сделки.
     """
     from backend.modules.cryptano.strategy.bounce_watcher import BounceWatcher
+    from backend.modules.cryptano.backstage.watcher_plan import (
+        _fetch_candles_df, _resolve_historical_signal_status,
+    )
 
     max_hold_days = BounceWatcher.CONFIG.get("MAX_HOLD_DAYS", 14)
     signals = _load_signals()
@@ -107,6 +113,7 @@ def update_open_signals():
         return
 
     now = datetime.datetime.now()
+    candles_cache = {}  # symbol -> df закрытых 15м свечей (или None), один раз на проход
 
     for record in signals:
         if record.get("status") != "⏳":
@@ -121,6 +128,37 @@ def update_open_signals():
             symbol = resolve_symbol(coin, markets)
             if not symbol:
                 continue
+        except Exception as e:
+            print(f"[SIGNALS UPDATE] ⚠️ {coin}: не удалось определить символ: {e}")
+            continue
+
+        entry = float(entry)
+        target = record.get("target")
+        stop = record.get("stop")
+
+        # Закрытие по свечам от входа: TP/SL/MAX_HOLD_DAYS, как в симуляторе.
+        entry_unix = record.get("time")
+        if entry_unix:
+            if symbol not in candles_cache:
+                try:
+                    candles_cache[symbol] = _fetch_candles_df(symbol, coin, 1, "SIGNALS")[0]
+                except Exception as e:
+                    print(f"[SIGNALS UPDATE] ⚠️ {coin}: не удалось получить свечи: {e}")
+                    candles_cache[symbol] = None
+            df = candles_cache[symbol]
+            if df is not None:
+                status_c, pct_c, closed_c = _resolve_historical_signal_status(
+                    df, pd.Timestamp(int(entry_unix), unit="s", tz="UTC"), direction, entry,
+                    float(target) if target is not None else None,
+                    float(stop) if stop is not None else None, max_hold_days)
+                if status_c != "⏳":
+                    record["status"] = status_c
+                    record["result_percent"] = pct_c
+                    record["closed_at"] = closed_c
+                    changed = True
+                    continue
+
+        try:
             ticker = exchange.fetch_ticker(symbol)
             last_val = ticker.get("last") or ticker.get("close")
             if last_val is None:
@@ -129,10 +167,6 @@ def update_open_signals():
         except Exception as e:
             print(f"[SIGNALS UPDATE] ⚠️ {coin}: не удалось получить текущую цену: {e}")
             continue
-
-        entry = float(entry)
-        target = record.get("target")
-        stop = record.get("stop")
 
         if direction == "LONG":
             pct = (last_price - entry) / entry * 100.0

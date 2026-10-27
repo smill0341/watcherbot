@@ -110,6 +110,15 @@ function formatVolume(v) {
   return String(Math.round(v));
 }
 
+// Метод «выкуп» (BUYBACK): объём красной свечи (x — во сколько раз выше среднего) / объём зелёной в % от красной.
+// Пример: 100.0k (x2.3) / 105%
+function buybackMethodText(t) {
+  const red = formatVolume(t.method_value);
+  const mult = t.method_mult != null ? " (x" + t.method_mult.toFixed(1) + ")" : "";
+  const ratio = t.method_ratio != null ? " / " + Math.round(t.method_ratio * 100) + "%" : "";
+  return red + mult + ratio;
+}
+
 // === ДУБЛИРОВАНО ИЗ app.js::formatDuration ===
 function formatDuration(fromUnixSec, toDate) {
   if (fromUnixSec === null || fromUnixSec === undefined) return "—";
@@ -1640,7 +1649,9 @@ function _tradeRowHtml(t, i) {
   const emaText = t.ema_dist_pct == null ? "—" : `${t.ema_dist_pct > 0 ? "+" : ""}${t.ema_dist_pct}%`;
   const methodText = t.method === "volume" && t.method_value != null
     ? formatVolume(t.method_value) + (t.method_mult != null ? " / x" + t.method_mult.toFixed(1) : "")
-    : (t.method === "pattern"
+    : t.method === "buyback" && t.method_value != null
+      ? buybackMethodText(t)
+      : (t.method === "pattern"
         ? "Паттерн R" + (t.pattern_route ?? "?") + (t.method_mult != null ? " / x" + t.method_mult.toFixed(1) : "")
         : "—");
   const levelTypeStr = t.level_type ? friendlyLevelType(t.level_type) : "—"; // <--- Добавили форматирование
@@ -2045,6 +2056,49 @@ function renderBulkReport(data) {
   const _wrAll = _closedAll.length ? (_winsAll / _closedAll.length * 100).toFixed(1) + "%" : "-";
   const _profitColor = _profitAll > 0 ? "#4caf7d" : _profitAll < 0 ? "#e5654f" : "inherit";
   const _fmtProfit = p => `<span style="color:${p > 0 ? "#4caf7d" : p < 0 ? "#e5654f" : "inherit"}">${p > 0 ? "+" : ""}${p.toFixed(1)}%</span>`;
+  // Банк: стартовый банк и сумма одной сделки -> прибыль в $ и итоговый банк.
+  // Прибыль = сумма сделки * сумма % всех закрытых сделок / 100.
+  // "Нужно на пике" — только показ: сколько денег надо, чтобы все сделки пика были открыты разом.
+  const _bankInit = { bank: 5000, size: 100 };
+  try {
+    const saved = JSON.parse(localStorage.getItem("sim_bank") || "{}");
+    if (saved.bank > 0) _bankInit.bank = saved.bank;
+    if (saved.size > 0) _bankInit.size = saved.size;
+  } catch (e) {}
+  const _peakOpen = (() => {
+    const endSec = data.end_time ? Date.parse(String(data.end_time).replace(" ", "T") + "Z") / 1000 : NaN;
+    const lastSec = Math.max(...(_allTrades.length ? _allTrades.map(t => t.time || 0) : [0]));
+    const fallbackEnd = Number.isFinite(endSec) ? endSec : lastSec;
+    const ev = [];
+    _allTrades.forEach(t => {
+      if (!t.time) return;
+      let end = t.closed_at ? Date.parse(t.closed_at) / 1000 : NaN;
+      if (!Number.isFinite(end)) end = fallbackEnd;
+      ev.push([t.time, 1], [Math.max(end, t.time), -1]);
+    });
+    ev.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    let cur = 0, peak = 0;
+    ev.forEach(e => { cur += e[1]; if (cur > peak) peak = cur; });
+    return peak;
+  })();
+  const _bankLineHtml = () => `<div>Банк: <input type="number" id="sim-bank-init" value="${_bankInit.bank}" min="1" step="any" style="width:80px"> $ ·
+      сумма сделки: <input type="number" id="sim-bank-size" value="${_bankInit.size}" min="1" step="any" style="width:70px"> $ →
+      <span id="sim-bank-result"></span></div>`;
+  const _updateBankResult = () => {
+    const bank = parseFloat(document.getElementById("sim-bank-init")?.value);
+    const size = parseFloat(document.getElementById("sim-bank-size")?.value);
+    const out = document.getElementById("sim-bank-result");
+    if (!out) return;
+    if (!(bank > 0) || !(size > 0)) { out.textContent = "введи банк и сумму сделки"; return; }
+    try { localStorage.setItem("sim_bank", JSON.stringify({ bank, size })); } catch (e) {}
+    const profit = size * _profitAll / 100;
+    const final = bank + profit;
+    const col = profit > 0 ? "#4caf7d" : profit < 0 ? "#e5654f" : "inherit";
+    out.innerHTML = `прибыль <b style="color:${col}">${profit >= 0 ? "+" : ""}$${profit.toFixed(2)}</b> ·
+      банк ${bank.toFixed(0)} → <b style="color:${col}">${final.toFixed(2)}</b> (x${(final / bank).toFixed(2)}) ·
+      <span class="muted">пик открытых сделок: ${_peakOpen}, на пике нужно $${(_peakOpen * size).toFixed(0)}</span>`;
+  };
+
   // Такая же строка сводки отдельно по направлению (LONG / SHORT).
   const _dirLine = (dir) => {
     const all = _allTrades.filter(t => t.type === dir);
@@ -2092,7 +2146,8 @@ function renderBulkReport(data) {
     <div class="bulk-summary">
       <div>Период: ${data.start_time} → ${data.end_time || "сейчас"} ·
       монет: ${data.coins_scanned} · со сделками: ${data.coins_with_trades} ·
-      сделок: ${_allTrades.length} · WR: ${_wrAll} · прибыль: ${_fmtProfit(_profitAll)}</div>
+      сделок: ${_allTrades.length} · WR: ${_wrAll} · сумма % сделок (не доходность банка): ${_fmtProfit(_profitAll)}</div>
+      ${_bankLineHtml()}
       ${_dirLine("LONG")}
       ${_dirLine("SHORT")}
     </div>
@@ -2113,6 +2168,11 @@ function renderBulkReport(data) {
       <tbody>${rows}</tbody>
     </table>
   `;
+  ["sim-bank-init", "sim-bank-size"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", _updateBankResult);
+  });
+  _updateBankResult();
 }
 
 async function runBulkSimulation() {

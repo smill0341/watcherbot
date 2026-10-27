@@ -26,7 +26,47 @@
         "sl": 10.0,
         "level_filter": {
             "short_min": 2.0,
-            "long_max": 5.0,
+            "long_max": 2.0,
+            "short_off": false,
+            "long_off": false
+        }
+    },
+    "BTC": {
+        "tp": 3.0,
+        "sl": 10.0
+    },
+    "BZ": {
+        "tp": 3.0,
+        "sl": 10.0,
+        "level_filter": {
+            "short_min": null,
+            "long_max": 2.0,
+            "short_off": false,
+            "long_off": false
+        }
+    },
+    "GRAM": {
+        "tp": 5.0,
+        "sl": 20.0,
+        "level_filter": {
+            "short_min": 20.0,
+            "long_max": 2.0,
+            "short_off": false,
+            "long_off": false
+        }
+    },
+    "WLFI": {
+        "level_filter": {
+            "short_min": null,
+            "long_max": -4.0,
+            "short_off": false,
+            "long_off": false
+        }
+    },
+    "INJ": {
+        "level_filter": {
+            "short_min": null,
+            "long_max": -5.0,
             "short_off": false,
             "long_off": false
         }

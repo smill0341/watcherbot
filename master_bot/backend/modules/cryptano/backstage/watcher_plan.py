@@ -616,8 +616,9 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr, strategy="BOUNCE"):
                     # method/method_value/method_mult — появятся другие методы,
                     # просто передавай их сюда тем же способом.
                     "method": d.get("method") or ("volume" if d.get("volume") is not None else None),
-                    "method_value": d.get("volume"),
-                    "method_mult": d.get("volume_mult"),
+                    "method_value": d.get("method_value", d.get("volume")),
+                    "method_mult": d.get("method_mult", d.get("volume_mult")),
+                    "method_ratio": d.get("method_ratio"),
                     "pattern_route": d.get("pattern_route"),
                     "level_type": d.get("level_type") or d.get("type"),
                     # Уровень + путь вотчера на момент сделки — в сам сигнал
@@ -1013,8 +1014,9 @@ def rescan_single_bounce_watcher(coin, level_id, bounce_mgr, strategy="BOUNCE"):
                     "time": int(ts.timestamp()),
                     "level_id": life_lid,
                     "method": decision.get("method") or ("volume" if decision.get("volume") is not None else None),
-                    "method_value": decision.get("volume"),
-                    "method_mult": decision.get("volume_mult"),
+                    "method_value": decision.get("method_value", decision.get("volume")),
+                    "method_mult": decision.get("method_mult", decision.get("volume_mult")),
+                    "method_ratio": decision.get("method_ratio"),
                     "pattern_route": decision.get("pattern_route"),
                     "level_type": decision.get("level_type") or level.get("type"),
                     "status": status,

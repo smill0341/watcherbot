@@ -1,6 +1,12 @@
 {
     "mode": "watcher",
-    "blocked": [],
+    "blocked": [
+        "AKE",
+        "LIT",
+        "SKHYNIX",
+        "XAG",
+        "XAU"
+    ],
     "tp": 5.0,
     "sl": 20.0,
     "short_min": null,

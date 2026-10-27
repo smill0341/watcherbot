@@ -188,15 +188,15 @@
         "snapshots_total": 58
       }
     },
-    "AXS": {
-      "total_trades": 1,
+    "ATOM": {
+      "total_trades": 0,
       "long": {
-        "count": 1,
-        "closed": 1,
-        "wins": 1,
-        "win_rate_pct": 100.0,
-        "avg_result_pct": 5.0,
-        "avg_mae_pct": -3.57
+        "count": 0,
+        "closed": 0,
+        "wins": 0,
+        "win_rate_pct": null,
+        "avg_result_pct": null,
+        "avg_mae_pct": null
       },
       "short": {
         "count": 0,
@@ -211,15 +211,15 @@
         "snapshots_total": 58
       }
     },
-    "ATOM": {
-      "total_trades": 0,
+    "AXS": {
+      "total_trades": 1,
       "long": {
-        "count": 0,
-        "closed": 0,
-        "wins": 0,
-        "win_rate_pct": null,
-        "avg_result_pct": null,
-        "avg_mae_pct": null
+        "count": 1,
+        "closed": 1,
+        "wins": 1,
+        "win_rate_pct": 100.0,
+        "avg_result_pct": 5.0,
+        "avg_mae_pct": -3.57
       },
       "short": {
         "count": 0,
@@ -257,6 +257,29 @@
         "snapshots_total": 58
       }
     },
+    "BTC": {
+      "total_trades": 2,
+      "long": {
+        "count": 2,
+        "closed": 2,
+        "wins": 2,
+        "win_rate_pct": 100.0,
+        "avg_result_pct": 3.0,
+        "avg_mae_pct": -1.23
+      },
+      "short": {
+        "count": 0,
+        "closed": 0,
+        "wins": 0,
+        "win_rate_pct": null,
+        "avg_result_pct": null,
+        "avg_mae_pct": null
+      },
+      "levels_coverage": {
+        "snapshots_with_levels": 58,
+        "snapshots_total": 58
+      }
+    },
     "BCH": {
       "total_trades": 0,
       "long": {
@@ -280,15 +303,15 @@
         "snapshots_total": 58
       }
     },
-    "BTC": {
+    "BZ": {
       "total_trades": 2,
       "long": {
         "count": 2,
         "closed": 2,
         "wins": 2,
         "win_rate_pct": 100.0,
-        "avg_result_pct": 5.0,
-        "avg_mae_pct": -1.23
+        "avg_result_pct": 3.0,
+        "avg_mae_pct": -3.38
       },
       "short": {
         "count": 0,
@@ -349,52 +372,6 @@
         "snapshots_total": 58
       }
     },
-    "BNB": {
-      "total_trades": 0,
-      "long": {
-        "count": 0,
-        "closed": 0,
-        "wins": 0,
-        "win_rate_pct": null,
-        "avg_result_pct": null,
-        "avg_mae_pct": null
-      },
-      "short": {
-        "count": 0,
-        "closed": 0,
-        "wins": 0,
-        "win_rate_pct": null,
-        "avg_result_pct": null,
-        "avg_mae_pct": null
-      },
-      "levels_coverage": {
-        "snapshots_with_levels": 58,
-        "snapshots_total": 58
-      }
-    },
-    "BZ": {
-      "total_trades": 2,
-      "long": {
-        "count": 2,
-        "closed": 2,
-        "wins": 2,
-        "win_rate_pct": 100.0,
-        "avg_result_pct": 3.12,
-        "avg_mae_pct": -3.38
-      },
-      "short": {
-        "count": 0,
-        "closed": 0,
-        "wins": 0,
-        "win_rate_pct": null,
-        "avg_result_pct": null,
-        "avg_mae_pct": null
-      },
-      "levels_coverage": {
-        "snapshots_with_levels": 58,
-        "snapshots_total": 58
-      }
-    },
     "DASH": {
       "total_trades": 1,
       "long": {
@@ -404,6 +381,29 @@
         "win_rate_pct": 100.0,
         "avg_result_pct": 5.0,
         "avg_mae_pct": -8.49
+      },
+      "short": {
+        "count": 0,
+        "closed": 0,
+        "wins": 0,
+        "win_rate_pct": null,
+        "avg_result_pct": null,
+        "avg_mae_pct": null
+      },
+      "levels_coverage": {
+        "snapshots_with_levels": 58,
+        "snapshots_total": 58
+      }
+    },
+    "BNB": {
+      "total_trades": 0,
+      "long": {
+        "count": 0,
+        "closed": 0,
+        "wins": 0,
+        "win_rate_pct": null,
+        "avg_result_pct": null,
+        "avg_mae_pct": null
       },
       "short": {
         "count": 0,
@@ -510,15 +510,15 @@
         "snapshots_total": 58
       }
     },
-    "ETC": {
-      "total_trades": 0,
+    "ETH": {
+      "total_trades": 2,
       "long": {
-        "count": 0,
-        "closed": 0,
-        "wins": 0,
-        "win_rate_pct": null,
-        "avg_result_pct": null,
-        "avg_mae_pct": null
+        "count": 2,
+        "closed": 2,
+        "wins": 1,
+        "win_rate_pct": 50.0,
+        "avg_result_pct": -0.19,
+        "avg_mae_pct": -5.62
       },
       "short": {
         "count": 0,
@@ -533,15 +533,15 @@
         "snapshots_total": 58
       }
     },
-    "ETH": {
-      "total_trades": 2,
+    "ETC": {
+      "total_trades": 0,
       "long": {
-        "count": 2,
-        "closed": 2,
-        "wins": 1,
-        "win_rate_pct": 50.0,
-        "avg_result_pct": -0.19,
-        "avg_mae_pct": -5.62
+        "count": 0,
+        "closed": 0,
+        "wins": 0,
+        "win_rate_pct": null,
+        "avg_result_pct": null,
+        "avg_mae_pct": null
       },
       "short": {
         "count": 0,
@@ -579,15 +579,15 @@
         "snapshots_total": 58
       }
     },
-    "HYPE": {
-      "total_trades": 3,
+    "FIL": {
+      "total_trades": 1,
       "long": {
-        "count": 3,
-        "closed": 3,
-        "wins": 2,
-        "win_rate_pct": 66.7,
-        "avg_result_pct": 1.27,
-        "avg_mae_pct": -5.87
+        "count": 1,
+        "closed": 1,
+        "wins": 1,
+        "win_rate_pct": 100.0,
+        "avg_result_pct": 5.0,
+        "avg_mae_pct": -1.74
       },
       "short": {
         "count": 0,
@@ -602,15 +602,15 @@
         "snapshots_total": 58
       }
     },
-    "FIL": {
-      "total_trades": 1,
+    "HYPE": {
+      "total_trades": 3,
       "long": {
-        "count": 1,
-        "closed": 1,
-        "wins": 1,
-        "win_rate_pct": 100.0,
-        "avg_result_pct": 5.0,
-        "avg_mae_pct": -1.74
+        "count": 3,
+        "closed": 3,
+        "wins": 2,
+        "win_rate_pct": 66.7,
+        "avg_result_pct": 1.27,
+        "avg_mae_pct": -5.87
       },
       "short": {
         "count": 0,
@@ -740,29 +740,6 @@
         "snapshots_total": 58
       }
     },
-    "LDO": {
-      "total_trades": 1,
-      "long": {
-        "count": 1,
-        "closed": 1,
-        "wins": 1,
-        "win_rate_pct": 100.0,
-        "avg_result_pct": 5.0,
-        "avg_mae_pct": -4.66
-      },
-      "short": {
-        "count": 0,
-        "closed": 0,
-        "wins": 0,
-        "win_rate_pct": null,
-        "avg_result_pct": null,
-        "avg_mae_pct": null
-      },
-      "levels_coverage": {
-        "snapshots_with_levels": 58,
-        "snapshots_total": 58
-      }
-    },
     "JUP": {
       "total_trades": 1,
       "long": {
@@ -786,7 +763,30 @@
         "snapshots_total": 58
       }
     },
-    "LIT": {
+    "LDO": {
+      "total_trades": 1,
+      "long": {
+        "count": 1,
+        "closed": 1,
+        "wins": 1,
+        "win_rate_pct": 100.0,
+        "avg_result_pct": 5.0,
+        "avg_mae_pct": -4.66
+      },
+      "short": {
+        "count": 0,
+        "closed": 0,
+        "wins": 0,
+        "win_rate_pct": null,
+        "avg_result_pct": null,
+        "avg_mae_pct": null
+      },
+      "levels_coverage": {
+        "snapshots_with_levels": 58,
+        "snapshots_total": 58
+      }
+    },
+    "LINK": {
       "total_trades": 0,
       "long": {
         "count": 0,
@@ -809,7 +809,7 @@
         "snapshots_total": 58
       }
     },
-    "LINK": {
+    "LIT": {
       "total_trades": 0,
       "long": {
         "count": 0,
@@ -878,6 +878,29 @@
         "snapshots_total": 58
       }
     },
+    "NBIS": {
+      "total_trades": 2,
+      "long": {
+        "count": 2,
+        "closed": 2,
+        "wins": 2,
+        "win_rate_pct": 100.0,
+        "avg_result_pct": 5.0,
+        "avg_mae_pct": -3.69
+      },
+      "short": {
+        "count": 0,
+        "closed": 0,
+        "wins": 0,
+        "win_rate_pct": null,
+        "avg_result_pct": null,
+        "avg_mae_pct": null
+      },
+      "levels_coverage": {
+        "snapshots_with_levels": 58,
+        "snapshots_total": 58
+      }
+    },
     "MNT": {
       "total_trades": 1,
       "long": {
@@ -910,29 +933,6 @@
         "win_rate_pct": 100.0,
         "avg_result_pct": 5.0,
         "avg_mae_pct": -16.93
-      },
-      "short": {
-        "count": 0,
-        "closed": 0,
-        "wins": 0,
-        "win_rate_pct": null,
-        "avg_result_pct": null,
-        "avg_mae_pct": null
-      },
-      "levels_coverage": {
-        "snapshots_with_levels": 58,
-        "snapshots_total": 58
-      }
-    },
-    "NBIS": {
-      "total_trades": 2,
-      "long": {
-        "count": 2,
-        "closed": 2,
-        "wins": 2,
-        "win_rate_pct": 100.0,
-        "avg_result_pct": 5.0,
-        "avg_mae_pct": -3.69
       },
       "short": {
         "count": 0,
@@ -1016,7 +1016,7 @@
         "snapshots_total": 58
       }
     },
-    "OP": {
+    "PENDLE": {
       "total_trades": 0,
       "long": {
         "count": 0,
@@ -1039,7 +1039,7 @@
         "snapshots_total": 58
       }
     },
-    "PENDLE": {
+    "OP": {
       "total_trades": 0,
       "long": {
         "count": 0,
@@ -1085,7 +1085,7 @@
         "snapshots_total": 58
       }
     },
-    "POL": {
+    "QNT": {
       "total_trades": 0,
       "long": {
         "count": 0,
@@ -1108,7 +1108,7 @@
         "snapshots_total": 58
       }
     },
-    "QNT": {
+    "POL": {
       "total_trades": 0,
       "long": {
         "count": 0,
@@ -1246,7 +1246,7 @@
         "snapshots_total": 58
       }
     },
-    "SOL": {
+    "SHIB1000": {
       "total_trades": 1,
       "long": {
         "count": 1,
@@ -1254,7 +1254,7 @@
         "wins": 1,
         "win_rate_pct": 100.0,
         "avg_result_pct": 5.0,
-        "avg_mae_pct": -0.91
+        "avg_mae_pct": -0.63
       },
       "short": {
         "count": 0,
@@ -1269,7 +1269,7 @@
         "snapshots_total": 58
       }
     },
-    "SHIB1000": {
+    "SOL": {
       "total_trades": 1,
       "long": {
         "count": 1,
@@ -1277,7 +1277,7 @@
         "wins": 1,
         "win_rate_pct": 100.0,
         "avg_result_pct": 5.0,
-        "avg_mae_pct": -0.63
+        "avg_mae_pct": -0.91
       },
       "short": {
         "count": 0,
@@ -1476,15 +1476,15 @@
         "snapshots_total": 58
       }
     },
-    "WLFI": {
-      "total_trades": 1,
+    "WLD": {
+      "total_trades": 0,
       "long": {
-        "count": 1,
-        "closed": 1,
-        "wins": 1,
-        "win_rate_pct": 100.0,
-        "avg_result_pct": 5.0,
-        "avg_mae_pct": -1.14
+        "count": 0,
+        "closed": 0,
+        "wins": 0,
+        "win_rate_pct": null,
+        "avg_result_pct": null,
+        "avg_mae_pct": null
       },
       "short": {
         "count": 0,
@@ -1499,15 +1499,15 @@
         "snapshots_total": 58
       }
     },
-    "WLD": {
-      "total_trades": 0,
+    "WLFI": {
+      "total_trades": 1,
       "long": {
-        "count": 0,
-        "closed": 0,
-        "wins": 0,
-        "win_rate_pct": null,
-        "avg_result_pct": null,
-        "avg_mae_pct": null
+        "count": 1,
+        "closed": 1,
+        "wins": 1,
+        "win_rate_pct": 100.0,
+        "avg_result_pct": 5.0,
+        "avg_mae_pct": -1.14
       },
       "short": {
         "count": 0,
@@ -1591,15 +1591,15 @@
         "snapshots_total": 58
       }
     },
-    "XPL": {
-      "total_trades": 1,
+    "XLM": {
+      "total_trades": 0,
       "long": {
-        "count": 1,
-        "closed": 1,
-        "wins": 1,
-        "win_rate_pct": 100.0,
-        "avg_result_pct": 5.0,
-        "avg_mae_pct": -9.26
+        "count": 0,
+        "closed": 0,
+        "wins": 0,
+        "win_rate_pct": null,
+        "avg_result_pct": null,
+        "avg_mae_pct": null
       },
       "short": {
         "count": 0,
@@ -1614,15 +1614,15 @@
         "snapshots_total": 58
       }
     },
-    "XLM": {
-      "total_trades": 0,
+    "XPL": {
+      "total_trades": 1,
       "long": {
-        "count": 0,
-        "closed": 0,
-        "wins": 0,
-        "win_rate_pct": null,
-        "avg_result_pct": null,
-        "avg_mae_pct": null
+        "count": 1,
+        "closed": 1,
+        "wins": 1,
+        "win_rate_pct": 100.0,
+        "avg_result_pct": 5.0,
+        "avg_mae_pct": -9.26
       },
       "short": {
         "count": 0,
@@ -1733,8 +1733,9 @@
       "ema_dist_pct": 11.7,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 8605.56,
-      "method_mult": 1.650498080425906
+      "method_value": 7610.57,
+      "method_mult": 2.2682396321494864,
+      "method_ratio": 1.1307379079359365
     },
     {
       "date": "2026-09-28 04:00",
@@ -1761,8 +1762,9 @@
       "ema_dist_pct": 10.1,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 508854600.0,
-      "method_mult": 1.9801146685576387
+      "method_value": 311434500.0,
+      "method_mult": 2.165154512476096,
+      "method_ratio": 1.6339056848229725
     },
     {
       "date": "2026-09-11 12:15",
@@ -1789,8 +1791,9 @@
       "ema_dist_pct": 2.8,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 14815537.0,
-      "method_mult": 2.3522317734524236
+      "method_value": 7730430.0,
+      "method_mult": 2.4801044129402223,
+      "method_ratio": 1.9165217200078133
     },
     {
       "date": "2026-09-28 05:30",
@@ -1817,8 +1820,9 @@
       "ema_dist_pct": 2.5,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 1128410.0,
-      "method_mult": 3.2795199225291487
+      "method_value": 1013284.0,
+      "method_mult": 5.8193448806243016,
+      "method_ratio": 1.1136167155506256
     },
     {
       "date": "2026-09-15 18:45",
@@ -1845,8 +1849,9 @@
       "ema_dist_pct": -0.1,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 193269.1,
-      "method_mult": 7.917188453066669
+      "method_value": 102547.8,
+      "method_mult": 8.173428002071656,
+      "method_ratio": 1.8846732938200528
     },
     {
       "date": "2026-09-01 18:45",
@@ -1855,9 +1860,9 @@
       "type": "LONG",
       "source": "BUYBACK_LONG",
       "entry": 77116.0,
-      "target": 80971.8,
-      "stop": 61692.8,
-      "rr": 0.25,
+      "target": 79429.48,
+      "stop": 69404.40000000001,
+      "rr": 0.3,
       "level_id": "BB_LONG_76379.99079148959_77712.6",
       "level_min": 76379.99079148959,
       "level_max": 77712.6,
@@ -1867,14 +1872,15 @@
       "volume_mult": 1.8365843525135899,
       "reason": "BOUNCE (пробой #1, сделка 1/1) | V:3.1k (x1.8)",
       "status": "✅",
-      "result_percent": 5.0,
-      "closed_at": "2026-09-03T15:30:00+00:00",
+      "result_percent": 3.0,
+      "closed_at": "2026-09-03T14:15:00+00:00",
       "mae_pct": -1.19,
       "ema_dist_pct": 7.0,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 3051.032,
-      "method_mult": 1.8365843525135899
+      "method_value": 2485.433,
+      "method_mult": 2.907644225498047,
+      "method_ratio": 1.2275655791163955
     },
     {
       "date": "2026-09-15 18:45",
@@ -1883,9 +1889,9 @@
       "type": "LONG",
       "source": "BUYBACK_LONG",
       "entry": 75964.8,
-      "target": 79763.04000000001,
-      "stop": 60771.840000000004,
-      "rr": 0.25,
+      "target": 78243.744,
+      "stop": 68368.32,
+      "rr": 0.3,
       "level_id": "BB_LONG_75878.34538079685_77298.1",
       "level_min": 75878.34538079685,
       "level_max": 77298.1,
@@ -1895,14 +1901,15 @@
       "volume_mult": 4.766341602015412,
       "reason": "BOUNCE (пробой #1, сделка 1/1) | V:9.3k (x4.8)",
       "status": "✅",
-      "result_percent": 5.0,
-      "closed_at": "2026-09-18T13:45:00+00:00",
+      "result_percent": 3.0,
+      "closed_at": "2026-09-18T08:45:00+00:00",
       "mae_pct": -1.27,
       "ema_dist_pct": 1.6,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 9301.804,
-      "method_mult": 4.766341602015412
+      "method_value": 6329.763,
+      "method_mult": 6.802672989584944,
+      "method_ratio": 1.4695343253767954
     },
     {
       "date": "2026-09-17 13:00",
@@ -1911,9 +1918,9 @@
       "type": "LONG",
       "source": "BUYBACK_LONG",
       "entry": 98.61,
-      "target": 103.54050000000001,
-      "stop": 78.888,
-      "rr": 0.25,
+      "target": 101.56830000000001,
+      "stop": 88.749,
+      "rr": 0.3,
       "level_id": "BB_LONG_99.06155968923609_99.8611007769098",
       "level_min": 99.06155968923609,
       "level_max": 99.8611007769098,
@@ -1922,15 +1929,16 @@
       "volume": 13051.54,
       "volume_mult": 1.6896555697228215,
       "reason": "BOUNCE (пробой #1, сделка 1/1) | V:13.1k (x1.7)",
-      "status": "🕐",
-      "result_percent": 1.24,
-      "closed_at": "2026-10-01T13:00:00+00:00",
+      "status": "✅",
+      "result_percent": 3.0,
+      "closed_at": "2026-09-24T15:00:00+00:00",
       "mae_pct": -5.05,
       "ema_dist_pct": 4.7,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 13051.54,
-      "method_mult": 1.6896555697228215
+      "method_value": 9910.23,
+      "method_mult": 3.941130030570688,
+      "method_ratio": 1.3169764980227503
     },
     {
       "date": "2026-09-29 14:00",
@@ -1939,26 +1947,27 @@
       "type": "LONG",
       "source": "BUYBACK_LONG",
       "entry": 96.75,
-      "target": 101.5875,
-      "stop": 77.4,
-      "rr": 0.25,
-      "level_id": "BB_LONG_95.78273358112811_96.41266418871892",
-      "level_min": 95.78273358112811,
-      "level_max": 96.41266418871892,
-      "level_type": "4h_extreme_peak",
+      "target": 99.6525,
+      "stop": 87.075,
+      "rr": 0.3,
+      "level_id": "BB_LONG_95.55825943898687_96.56",
+      "level_min": 95.55825943898687,
+      "level_max": 96.56,
+      "level_type": "1W_low_PWL + 4h_extreme_peak",
       "level_reaction_count": 0,
       "volume": 4284.14,
       "volume_mult": 1.4520529744760207,
       "reason": "BOUNCE (пробой #1, сделка 1/1) | V:4.3k (x1.5)",
       "status": "✅",
-      "result_percent": 5.0,
-      "closed_at": "2026-10-01T15:00:00+00:00",
+      "result_percent": 3.0,
+      "closed_at": "2026-10-01T07:15:00+00:00",
       "mae_pct": -1.72,
-      "ema_dist_pct": 5.8,
+      "ema_dist_pct": 0.0,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 4284.14,
-      "method_mult": 1.4520529744760207
+      "method_value": 3342.39,
+      "method_mult": 2.510277643967002,
+      "method_ratio": 1.2817594595484072
     },
     {
       "date": "2026-09-13 09:30",
@@ -1985,8 +1994,9 @@
       "ema_dist_pct": 14.1,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 5688.68,
-      "method_mult": 2.9100459269854033
+      "method_value": 3772.97,
+      "method_mult": 3.03418483117478,
+      "method_ratio": 1.5077458871923182
     },
     {
       "date": "2026-09-01 18:45",
@@ -2013,8 +2023,9 @@
       "ema_dist_pct": 1.1,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 36120773.0,
-      "method_mult": 2.0071000701286428
+      "method_value": 24416945.0,
+      "method_mult": 2.0759253929930654,
+      "method_ratio": 1.4793322014691026
     },
     {
       "date": "2026-09-11 13:30",
@@ -2041,8 +2052,9 @@
       "ema_dist_pct": 17.8,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 15657542.0,
-      "method_mult": 1.8609622965949588
+      "method_value": 12843102.0,
+      "method_mult": 2.4278735592094165,
+      "method_ratio": 1.2191402046016608
     },
     {
       "date": "2026-09-15 18:45",
@@ -2069,8 +2081,9 @@
       "ema_dist_pct": 6.1,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 154101.3,
-      "method_mult": 4.708487213402667
+      "method_value": 151232.42,
+      "method_mult": 8.3605660561607,
+      "method_ratio": 1.0189700065634073
     },
     {
       "date": "2026-09-28 14:45",
@@ -2097,8 +2110,9 @@
       "ema_dist_pct": 4.4,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 36366.44,
-      "method_mult": 1.9679546441890574
+      "method_value": 29576.57,
+      "method_mult": 2.623196786521697,
+      "method_ratio": 1.2295692164439622
     },
     {
       "date": "2026-09-01 18:45",
@@ -2125,92 +2139,9 @@
       "ema_dist_pct": -4.4,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 231478.0,
-      "method_mult": 1.1526476617253625
-    },
-    {
-      "date": "2026-09-10 14:15",
-      "time": 1789049700,
-      "coin": "HYPE",
-      "type": "LONG",
-      "source": "BUYBACK_LONG",
-      "entry": 81.09,
-      "target": 85.14450000000001,
-      "stop": 64.872,
-      "rr": 0.25,
-      "level_id": "BB_LONG_80.05373047491801_81.2",
-      "level_min": 80.05373047491801,
-      "level_max": 81.2,
-      "level_type": "4h_extreme_peak+4h_poc",
-      "level_reaction_count": 1,
-      "volume": 73639.91,
-      "volume_mult": 1.220719339090735,
-      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:73.6k (x1.2)",
-      "status": "✅",
-      "result_percent": 5.0,
-      "closed_at": "2026-09-17T23:45:00+00:00",
-      "mae_pct": -7.4,
-      "ema_dist_pct": 5.1,
-      "method": "buyback",
-      "pattern_route": null,
-      "method_value": 73639.91,
-      "method_mult": 1.220719339090735
-    },
-    {
-      "date": "2026-09-13 10:45",
-      "time": 1789296300,
-      "coin": "HYPE",
-      "type": "LONG",
-      "source": "BUYBACK_LONG",
-      "entry": 77.27,
-      "target": 81.1335,
-      "stop": 61.816,
-      "rr": 0.25,
-      "level_id": "BB_LONG_76.17195290137913_78.95",
-      "level_min": 76.17195290137913,
-      "level_max": 78.95,
-      "level_type": "1W_low_PWL + 4h_extreme_peak",
-      "level_reaction_count": 1,
-      "volume": 106223.19,
-      "volume_mult": 3.5947951014790127,
-      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:106.2k (x3.6)",
-      "status": "✅",
-      "result_percent": 5.0,
-      "closed_at": "2026-09-14T17:45:00+00:00",
-      "mae_pct": -1.14,
-      "ema_dist_pct": 0.0,
-      "method": "buyback",
-      "pattern_route": null,
-      "method_value": 106223.19,
-      "method_mult": 3.5947951014790127
-    },
-    {
-      "date": "2026-09-25 15:45",
-      "time": 1790351100,
-      "coin": "HYPE",
-      "type": "LONG",
-      "source": "BUYBACK_LONG",
-      "entry": 90.84,
-      "target": 95.382,
-      "stop": 72.67200000000001,
-      "rr": 0.25,
-      "level_id": "BB_LONG_89.40006879368867_91.04",
-      "level_min": 89.40006879368867,
-      "level_max": 91.04,
-      "level_type": "4h_extreme_peak",
-      "level_reaction_count": 0,
-      "volume": 96692.4,
-      "volume_mult": 1.7762980702981763,
-      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:96.7k (x1.8)",
-      "status": "🕐",
-      "result_percent": -6.18,
-      "closed_at": "2026-10-09T15:45:00+00:00",
-      "mae_pct": -9.06,
-      "ema_dist_pct": 8.5,
-      "method": "buyback",
-      "pattern_route": null,
-      "method_value": 96692.4,
-      "method_mult": 1.7762980702981763
+      "method_value": 220589.1,
+      "method_mult": 2.053714493771882,
+      "method_ratio": 1.0493628198310796
     },
     {
       "date": "2026-09-23 16:00",
@@ -2237,8 +2168,96 @@
       "ema_dist_pct": 8.1,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 1005685.3,
-      "method_mult": 2.322389722920793
+      "method_value": 614691.2,
+      "method_mult": 2.2233392488676285,
+      "method_ratio": 1.6360821498664697
+    },
+    {
+      "date": "2026-09-10 14:15",
+      "time": 1789049700,
+      "coin": "HYPE",
+      "type": "LONG",
+      "source": "BUYBACK_LONG",
+      "entry": 81.09,
+      "target": 85.14450000000001,
+      "stop": 64.872,
+      "rr": 0.25,
+      "level_id": "BB_LONG_80.05373047491801_81.2",
+      "level_min": 80.05373047491801,
+      "level_max": 81.2,
+      "level_type": "4h_extreme_peak+4h_poc",
+      "level_reaction_count": 1,
+      "volume": 73639.91,
+      "volume_mult": 1.220719339090735,
+      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:73.6k (x1.2)",
+      "status": "✅",
+      "result_percent": 5.0,
+      "closed_at": "2026-09-17T23:45:00+00:00",
+      "mae_pct": -7.4,
+      "ema_dist_pct": 5.1,
+      "method": "buyback",
+      "pattern_route": null,
+      "method_value": 66277.63,
+      "method_mult": 2.0470758415595594,
+      "method_ratio": 1.1110824270572137
+    },
+    {
+      "date": "2026-09-13 10:45",
+      "time": 1789296300,
+      "coin": "HYPE",
+      "type": "LONG",
+      "source": "BUYBACK_LONG",
+      "entry": 77.27,
+      "target": 81.1335,
+      "stop": 61.816,
+      "rr": 0.25,
+      "level_id": "BB_LONG_76.17195290137913_78.95",
+      "level_min": 76.17195290137913,
+      "level_max": 78.95,
+      "level_type": "1W_low_PWL + 4h_extreme_peak",
+      "level_reaction_count": 1,
+      "volume": 106223.19,
+      "volume_mult": 3.5947951014790127,
+      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:106.2k (x3.6)",
+      "status": "✅",
+      "result_percent": 5.0,
+      "closed_at": "2026-09-14T17:45:00+00:00",
+      "mae_pct": -1.14,
+      "ema_dist_pct": 0.0,
+      "method": "buyback",
+      "pattern_route": null,
+      "method_value": 98428.37,
+      "method_mult": 5.201300588704184,
+      "method_ratio": 1.0791928180868993
+    },
+    {
+      "date": "2026-09-25 15:45",
+      "time": 1790351100,
+      "coin": "HYPE",
+      "type": "LONG",
+      "source": "BUYBACK_LONG",
+      "entry": 90.84,
+      "target": 95.382,
+      "stop": 72.67200000000001,
+      "rr": 0.25,
+      "level_id": "BB_LONG_89.40006879368867_91.04",
+      "level_min": 89.40006879368867,
+      "level_max": 91.04,
+      "level_type": "4h_extreme_peak",
+      "level_reaction_count": 0,
+      "volume": 96692.4,
+      "volume_mult": 1.7762980702981763,
+      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:96.7k (x1.8)",
+      "status": "🕐",
+      "result_percent": -6.18,
+      "closed_at": "2026-10-09T15:45:00+00:00",
+      "mae_pct": -9.06,
+      "ema_dist_pct": 8.5,
+      "method": "buyback",
+      "pattern_route": null,
+      "method_value": 87901.4,
+      "method_mult": 2.802323559145963,
+      "method_ratio": 1.100009783689452
     },
     {
       "date": "2026-09-02 17:00",
@@ -2265,8 +2284,9 @@
       "ema_dist_pct": -2.6,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 197173.0,
-      "method_mult": 1.3829966318158033
+      "method_value": 151070.0,
+      "method_mult": 2.147313037219145,
+      "method_ratio": 1.3051764082875488
     },
     {
       "date": "2026-09-15 18:45",
@@ -2293,8 +2313,9 @@
       "ema_dist_pct": 6.7,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 262257.9,
-      "method_mult": 5.126072167058203
+      "method_value": 158858.4,
+      "method_mult": 5.485179094316887,
+      "method_ratio": 1.6508909821576954
     },
     {
       "date": "2026-09-15 18:45",
@@ -2321,36 +2342,9 @@
       "ema_dist_pct": 5.5,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 192426.4,
-      "method_mult": 3.614844226097398
-    },
-    {
-      "date": "2026-09-23 14:30",
-      "time": 1790173800,
-      "coin": "LDO",
-      "type": "LONG",
-      "source": "BUYBACK_LONG",
-      "entry": 0.399,
-      "target": 0.41895000000000004,
-      "stop": 0.31920000000000004,
-      "rr": 0.25,
-      "level_id": "BB_LONG_0.3919193532480526_0.3998",
-      "level_min": 0.3919193532480526,
-      "level_max": 0.3998,
-      "level_type": "4h_extreme_peak",
-      "level_reaction_count": 0,
-      "volume": 1611411.4,
-      "volume_mult": 3.5250887238035298,
-      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:1.6M (x3.5)",
-      "status": "✅",
-      "result_percent": 5.0,
-      "closed_at": "2026-09-24T14:00:00+00:00",
-      "mae_pct": -4.66,
-      "ema_dist_pct": 5.4,
-      "method": "buyback",
-      "pattern_route": null,
-      "method_value": 1611411.4,
-      "method_mult": 3.5250887238035298
+      "method_value": 143565.4,
+      "method_mult": 4.383495106797722,
+      "method_ratio": 1.3403396640137526
     },
     {
       "date": "2026-09-15 14:45",
@@ -2377,8 +2371,38 @@
       "ema_dist_pct": 3.4,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 828319.0,
-      "method_mult": 1.9123095843459705
+      "method_value": 595126.0,
+      "method_mult": 2.2343385753209146,
+      "method_ratio": 1.3918380309379863
+    },
+    {
+      "date": "2026-09-23 14:30",
+      "time": 1790173800,
+      "coin": "LDO",
+      "type": "LONG",
+      "source": "BUYBACK_LONG",
+      "entry": 0.399,
+      "target": 0.41895000000000004,
+      "stop": 0.31920000000000004,
+      "rr": 0.25,
+      "level_id": "BB_LONG_0.3919193532480526_0.3998",
+      "level_min": 0.3919193532480526,
+      "level_max": 0.3998,
+      "level_type": "4h_extreme_peak",
+      "level_reaction_count": 0,
+      "volume": 1611411.4,
+      "volume_mult": 3.5250887238035298,
+      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:1.6M (x3.5)",
+      "status": "✅",
+      "result_percent": 5.0,
+      "closed_at": "2026-09-24T14:00:00+00:00",
+      "mae_pct": -4.66,
+      "ema_dist_pct": 5.4,
+      "method": "buyback",
+      "pattern_route": null,
+      "method_value": 976347.9,
+      "method_mult": 3.1765836849972655,
+      "method_ratio": 1.6504479601994329
     },
     {
       "date": "2026-09-15 18:45",
@@ -2405,8 +2429,9 @@
       "ema_dist_pct": 1.2,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 47969.9,
-      "method_mult": 6.269190205039671
+      "method_value": 24120.9,
+      "method_mult": 5.954463385119433,
+      "method_ratio": 1.9887276179578706
     },
     {
       "date": "2026-09-27 03:45",
@@ -2433,64 +2458,9 @@
       "ema_dist_pct": 3.1,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 0.75,
-      "method_mult": 1.2057877813504823
-    },
-    {
-      "date": "2026-09-28 08:00",
-      "time": 1790582400,
-      "coin": "MNT",
-      "type": "LONG",
-      "source": "BUYBACK_LONG",
-      "entry": 0.6517,
-      "target": 0.6842849999999999,
-      "stop": 0.5213599999999999,
-      "rr": 0.25,
-      "level_id": "BB_LONG_0.6551474631996288_0.6631",
-      "level_min": 0.6551474631996288,
-      "level_max": 0.6631,
-      "level_type": "4h_extreme_peak",
-      "level_reaction_count": 0,
-      "volume": 399391.4,
-      "volume_mult": 1.5400290074603942,
-      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:399.4k (x1.5)",
-      "status": "✅",
-      "result_percent": 5.0,
-      "closed_at": "2026-09-30T04:30:00+00:00",
-      "mae_pct": -1.24,
-      "ema_dist_pct": 10.5,
-      "method": "buyback",
-      "pattern_route": null,
-      "method_value": 399391.4,
-      "method_mult": 1.5400290074603942
-    },
-    {
-      "date": "2026-09-09 20:30",
-      "time": 1788985800,
-      "coin": "MON",
-      "type": "LONG",
-      "source": "BUYBACK_LONG",
-      "entry": 0.02498,
-      "target": 0.026229,
-      "stop": 0.019984000000000002,
-      "rr": 0.25,
-      "level_id": "BB_LONG_0.025235146955913224_0.026496904303708886",
-      "level_min": 0.025235146955913224,
-      "level_max": 0.026496904303708886,
-      "level_type": "1W_low_PWL + 4h_extreme_peak",
-      "level_reaction_count": 0,
-      "volume": 11749454.0,
-      "volume_mult": 2.1182412501889143,
-      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:11.7M (x2.1)",
-      "status": "✅",
-      "result_percent": 5.0,
-      "closed_at": "2026-09-21T11:00:00+00:00",
-      "mae_pct": -16.93,
-      "ema_dist_pct": 2.6,
-      "method": "buyback",
-      "pattern_route": null,
-      "method_value": 11749454.0,
-      "method_mult": 2.1182412501889143
+      "method_value": 0.74,
+      "method_mult": 3.186907838070629,
+      "method_ratio": 1.0135135135135136
     },
     {
       "date": "2026-09-13 09:30",
@@ -2517,8 +2487,9 @@
       "ema_dist_pct": 0.9,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 982.23,
-      "method_mult": 3.495667028489065
+      "method_value": 547.25,
+      "method_mult": 4.499974509052576,
+      "method_ratio": 1.794846962083143
     },
     {
       "date": "2026-09-14 09:30",
@@ -2545,8 +2516,67 @@
       "ema_dist_pct": -3.0,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 806.44,
-      "method_mult": 1.5553686874141734
+      "method_value": 616.75,
+      "method_mult": 2.6031378626876953,
+      "method_ratio": 1.3075638427239562
+    },
+    {
+      "date": "2026-09-28 08:00",
+      "time": 1790582400,
+      "coin": "MNT",
+      "type": "LONG",
+      "source": "BUYBACK_LONG",
+      "entry": 0.6517,
+      "target": 0.6842849999999999,
+      "stop": 0.5213599999999999,
+      "rr": 0.25,
+      "level_id": "BB_LONG_0.6551474631996288_0.6631",
+      "level_min": 0.6551474631996288,
+      "level_max": 0.6631,
+      "level_type": "4h_extreme_peak",
+      "level_reaction_count": 0,
+      "volume": 399391.4,
+      "volume_mult": 1.5400290074603942,
+      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:399.4k (x1.5)",
+      "status": "✅",
+      "result_percent": 5.0,
+      "closed_at": "2026-09-30T04:30:00+00:00",
+      "mae_pct": -1.24,
+      "ema_dist_pct": 10.5,
+      "method": "buyback",
+      "pattern_route": null,
+      "method_value": 362758.6,
+      "method_mult": 2.4304510834389217,
+      "method_ratio": 1.1009839601321652
+    },
+    {
+      "date": "2026-09-09 20:30",
+      "time": 1788985800,
+      "coin": "MON",
+      "type": "LONG",
+      "source": "BUYBACK_LONG",
+      "entry": 0.02498,
+      "target": 0.026229,
+      "stop": 0.019984000000000002,
+      "rr": 0.25,
+      "level_id": "BB_LONG_0.025235146955913224_0.026496904303708886",
+      "level_min": 0.025235146955913224,
+      "level_max": 0.026496904303708886,
+      "level_type": "1W_low_PWL + 4h_extreme_peak",
+      "level_reaction_count": 0,
+      "volume": 11749454.0,
+      "volume_mult": 2.1182412501889143,
+      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:11.7M (x2.1)",
+      "status": "✅",
+      "result_percent": 5.0,
+      "closed_at": "2026-09-21T11:00:00+00:00",
+      "mae_pct": -16.93,
+      "ema_dist_pct": 2.6,
+      "method": "buyback",
+      "pattern_route": null,
+      "method_value": 7541622.0,
+      "method_mult": 2.637195742856177,
+      "method_ratio": 1.5579478791167205
     },
     {
       "date": "2026-09-03 12:45",
@@ -2573,8 +2603,9 @@
       "ema_dist_pct": 7.8,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 112822.0,
-      "method_mult": 4.406575766215809
+      "method_value": 105308.0,
+      "method_mult": 9.890824116374128,
+      "method_ratio": 1.0713526037907852
     },
     {
       "date": "2026-09-13 09:30",
@@ -2601,8 +2632,9 @@
       "ema_dist_pct": 15.1,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 1518477.9,
-      "method_mult": 3.6507267949119013
+      "method_value": 500200.1,
+      "method_mult": 2.4649932345755987,
+      "method_ratio": 3.0357408964932233
     },
     {
       "date": "2026-09-13 09:30",
@@ -2629,8 +2661,9 @@
       "ema_dist_pct": -7.5,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 41216850.0,
-      "method_mult": 2.2908858074002594
+      "method_value": 26799610.0,
+      "method_mult": 3.0909690741967704,
+      "method_ratio": 1.5379645450064385
     },
     {
       "date": "2026-09-13 23:00",
@@ -2657,36 +2690,9 @@
       "ema_dist_pct": -1.2,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 52454.3,
-      "method_mult": 1.534275897229199
-    },
-    {
-      "date": "2026-09-02 10:45",
-      "time": 1788345900,
-      "coin": "SOL",
-      "type": "LONG",
-      "source": "BUYBACK_LONG",
-      "entry": 98.18,
-      "target": 103.08900000000001,
-      "stop": 78.54400000000001,
-      "rr": 0.25,
-      "level_id": "BB_LONG_100.04841682428598_101.7",
-      "level_min": 100.04841682428598,
-      "level_max": 101.7,
-      "level_type": "4h_extreme_peak",
-      "level_reaction_count": 1,
-      "volume": 257011.9,
-      "volume_mult": 1.637924859310681,
-      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:257.0k (x1.6)",
-      "status": "✅",
-      "result_percent": 5.0,
-      "closed_at": "2026-09-03T14:30:00+00:00",
-      "mae_pct": -0.91,
-      "ema_dist_pct": 13.4,
-      "method": "buyback",
-      "pattern_route": null,
-      "method_value": 257011.9,
-      "method_mult": 1.637924859310681
+      "method_value": 34415.7,
+      "method_mult": 2.230938648911656,
+      "method_ratio": 1.5241386925153348
     },
     {
       "date": "2026-09-16 17:45",
@@ -2713,8 +2719,38 @@
       "ema_dist_pct": 5.3,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 44219550.0,
-      "method_mult": 1.8030396083148128
+      "method_value": 33714030.0,
+      "method_mult": 2.0962574134661307,
+      "method_ratio": 1.3116067702377912
+    },
+    {
+      "date": "2026-09-02 10:45",
+      "time": 1788345900,
+      "coin": "SOL",
+      "type": "LONG",
+      "source": "BUYBACK_LONG",
+      "entry": 98.18,
+      "target": 103.08900000000001,
+      "stop": 78.54400000000001,
+      "rr": 0.25,
+      "level_id": "BB_LONG_100.04841682428598_101.7",
+      "level_min": 100.04841682428598,
+      "level_max": 101.7,
+      "level_type": "4h_extreme_peak",
+      "level_reaction_count": 1,
+      "volume": 257011.9,
+      "volume_mult": 1.637924859310681,
+      "reason": "BOUNCE (пробой #1, сделка 1/1) | V:257.0k (x1.6)",
+      "status": "✅",
+      "result_percent": 5.0,
+      "closed_at": "2026-09-03T14:30:00+00:00",
+      "mae_pct": -0.91,
+      "ema_dist_pct": 13.4,
+      "method": "buyback",
+      "pattern_route": null,
+      "method_value": 214052.7,
+      "method_mult": 3.1317245089838317,
+      "method_ratio": 1.2006945018679978
     },
     {
       "date": "2026-09-13 09:30",
@@ -2741,8 +2777,9 @@
       "ema_dist_pct": 4.4,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 257.168,
-      "method_mult": 1.4994186988883564
+      "method_value": 191.215,
+      "method_mult": 2.250167454869559,
+      "method_ratio": 1.3449154093559605
     },
     {
       "date": "2026-09-28 01:45",
@@ -2769,8 +2806,9 @@
       "ema_dist_pct": 0.0,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 299.951,
-      "method_mult": 1.298711251491056
+      "method_value": 226.364,
+      "method_mult": 2.3591737993345316,
+      "method_ratio": 1.3250826103090598
     },
     {
       "date": "2026-09-15 18:45",
@@ -2797,8 +2835,9 @@
       "ema_dist_pct": -0.1,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 3245543.2,
-      "method_mult": 4.438176942884382
+      "method_value": 1941734.7,
+      "method_mult": 5.982959325305073,
+      "method_ratio": 1.6714658289827133
     },
     {
       "date": "2026-09-15 14:45",
@@ -2825,8 +2864,9 @@
       "ema_dist_pct": 9.1,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 5254.227,
-      "method_mult": 1.9473460957935023
+      "method_value": 5034.228,
+      "method_mult": 3.202187617178443,
+      "method_ratio": 1.0437006428791067
     },
     {
       "date": "2026-09-13 04:00",
@@ -2853,8 +2893,9 @@
       "ema_dist_pct": 4.7,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 1078595.0,
-      "method_mult": 2.4501055031314745
+      "method_value": 915230.0,
+      "method_mult": 4.36145019946595,
+      "method_ratio": 1.178496115730472
     },
     {
       "date": "2026-09-11 12:30",
@@ -2881,8 +2922,9 @@
       "ema_dist_pct": -4.5,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 23621536.0,
-      "method_mult": 1.4014476285547612
+      "method_value": 16996829.0,
+      "method_mult": 2.1377191573129686,
+      "method_ratio": 1.3897613490139837
     },
     {
       "date": "2026-09-10 13:00",
@@ -2909,8 +2951,9 @@
       "ema_dist_pct": -0.1,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 31421.071,
-      "method_mult": 2.389132518367332
+      "method_value": 16890.656,
+      "method_mult": 2.746760385374932,
+      "method_ratio": 1.8602635090075839
     },
     {
       "date": "2026-09-11 04:00",
@@ -2937,8 +2980,9 @@
       "ema_dist_pct": -1.3,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 1138.653,
-      "method_mult": 3.4120245944401497
+      "method_value": 591.422,
+      "method_mult": 2.8045569652427127,
+      "method_ratio": 1.9252800876531477
     },
     {
       "date": "2026-09-16 15:00",
@@ -2965,8 +3009,9 @@
       "ema_dist_pct": 12.4,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 944.63,
-      "method_mult": 1.9561850012632167
+      "method_value": 679.28,
+      "method_mult": 2.5861294404841493,
+      "method_ratio": 1.3906342009186197
     },
     {
       "date": "2026-09-14 20:15",
@@ -2993,8 +3038,9 @@
       "ema_dist_pct": -0.8,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 4579036.0,
-      "method_mult": 1.2020504367367457
+      "method_value": 4373581.0,
+      "method_mult": 2.087452457581685,
+      "method_ratio": 1.0469763793102265
     },
     {
       "date": "2026-09-16 17:45",
@@ -3021,8 +3067,9 @@
       "ema_dist_pct": 5.3,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 12939727.2,
-      "method_mult": 1.9541612281306264
+      "method_value": 9199114.5,
+      "method_mult": 2.589438907460015,
+      "method_ratio": 1.4066274748509762
     },
     {
       "date": "2026-09-18 08:15",
@@ -3049,8 +3096,9 @@
       "ema_dist_pct": 6.7,
       "method": "buyback",
       "pattern_route": null,
-      "method_value": 7932521.3,
-      "method_mult": 1.4819497556582932
+      "method_value": 6734786.8,
+      "method_mult": 2.112796850805936,
+      "method_ratio": 1.1778429719556973
     }
   ],
   "history_by_coin": {
@@ -3477,72 +3525,6 @@
     ],
     "BZ": [
       {
-        "level_id": "BB_LONG_95.78273358112811_96.41266418871892",
-        "coin": "BZ",
-        "strategy": "BUYBACK",
-        "mode": null,
-        "direction": "LONG",
-        "state": "TRIGGERED",
-        "level_min": 95.78273358112811,
-        "level_max": 96.41266418871892,
-        "level_date": "2026-09-07",
-        "level_type": "4h_extreme_peak",
-        "level_score": 4.0,
-        "level_reaction_count": 0,
-        "activated_at": "2026-09-08",
-        "born_at": "2026-09-08T16:30:00",
-        "events": [
-          {
-            "time": 1788885000,
-            "type": "ZONE_TOUCH",
-            "price": 96.4
-          },
-          {
-            "time": 1790000100,
-            "type": "SWEEP_BOTTOM",
-            "price": 95.77
-          },
-          {
-            "time": 1790353800,
-            "type": "SCAN",
-            "price": 96.86
-          },
-          {
-            "time": 1790690400,
-            "type": "ENTRY",
-            "price": 96.75
-          }
-        ]
-      },
-      {
-        "level_id": "BB_LONG_100.13993716931216_101.3506283068783",
-        "coin": "BZ",
-        "strategy": "BUYBACK",
-        "mode": null,
-        "direction": "LONG",
-        "state": "DEAD",
-        "level_min": 100.13993716931216,
-        "level_max": 101.3506283068783,
-        "level_date": "2026-09-14",
-        "level_type": "4h_extreme_peak",
-        "level_score": 4.5,
-        "level_reaction_count": 1,
-        "activated_at": "2026-09-15",
-        "born_at": "2026-09-16T14:30:00",
-        "events": [
-          {
-            "time": 1789569000,
-            "type": "ZONE_TOUCH",
-            "price": 101.29
-          },
-          {
-            "time": 1789570800,
-            "type": "SWEEP_BOTTOM",
-            "price": 99.78
-          }
-        ]
-      },
-      {
         "level_id": "BB_LONG_99.06155968923609_99.8611007769098",
         "coin": "BZ",
         "strategy": "BUYBACK",
@@ -3572,6 +3554,44 @@
             "time": 1789650000,
             "type": "ENTRY",
             "price": 98.61
+          }
+        ]
+      },
+      {
+        "level_id": "BB_LONG_95.55825943898687_96.56",
+        "coin": "BZ",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "direction": "LONG",
+        "state": "TRIGGERED",
+        "level_min": 95.55825943898687,
+        "level_max": 96.56,
+        "level_date": "2026-09-13",
+        "level_type": "1W_low_PWL + 4h_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 0,
+        "activated_at": "2026-09-13",
+        "born_at": "2026-09-21T10:30:00",
+        "events": [
+          {
+            "time": 1789986600,
+            "type": "ZONE_TOUCH",
+            "price": 96.2
+          },
+          {
+            "time": 1790000100,
+            "type": "SWEEP_BOTTOM",
+            "price": 95.77
+          },
+          {
+            "time": 1790353800,
+            "type": "SCAN",
+            "price": 96.86
+          },
+          {
+            "time": 1790690400,
+            "type": "ENTRY",
+            "price": 96.75
           }
         ]
       }
@@ -3822,6 +3842,36 @@
         ]
       }
     ],
+    "FIL": [
+      {
+        "level_id": "BB_LONG_0.90434614057107_0.9286",
+        "coin": "FIL",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "direction": "LONG",
+        "state": "TRIGGERED",
+        "level_min": 0.90434614057107,
+        "level_max": 0.9286,
+        "level_date": "2026-09-20",
+        "level_type": "4h_extreme_peak",
+        "level_score": 3.5,
+        "level_reaction_count": 0,
+        "activated_at": "2026-09-21",
+        "born_at": "2026-09-23T14:00:00",
+        "events": [
+          {
+            "time": 1790172000,
+            "type": "SWEEP_BOTTOM",
+            "price": 0.9108
+          },
+          {
+            "time": 1790179200,
+            "type": "ENTRY",
+            "price": 0.9325
+          }
+        ]
+      }
+    ],
     "HYPE": [
       {
         "level_id": "BB_LONG_83.20538020850877_84.36",
@@ -3970,36 +4020,6 @@
             "time": 1790351100,
             "type": "ENTRY",
             "price": 90.84
-          }
-        ]
-      }
-    ],
-    "FIL": [
-      {
-        "level_id": "BB_LONG_0.90434614057107_0.9286",
-        "coin": "FIL",
-        "strategy": "BUYBACK",
-        "mode": null,
-        "direction": "LONG",
-        "state": "TRIGGERED",
-        "level_min": 0.90434614057107,
-        "level_max": 0.9286,
-        "level_date": "2026-09-20",
-        "level_type": "4h_extreme_peak",
-        "level_score": 3.5,
-        "level_reaction_count": 0,
-        "activated_at": "2026-09-21",
-        "born_at": "2026-09-23T14:00:00",
-        "events": [
-          {
-            "time": 1790172000,
-            "type": "SWEEP_BOTTOM",
-            "price": 0.9108
-          },
-          {
-            "time": 1790179200,
-            "type": "ENTRY",
-            "price": 0.9325
           }
         ]
       }
@@ -4155,64 +4175,6 @@
         ]
       }
     ],
-    "LDO": [
-      {
-        "level_id": "BB_LONG_0.3713339930278161_0.3772",
-        "coin": "LDO",
-        "strategy": "BUYBACK",
-        "mode": null,
-        "direction": "LONG",
-        "state": "DEAD",
-        "level_min": 0.3713339930278161,
-        "level_max": 0.3772,
-        "level_date": "2026-09-04",
-        "level_type": "4h_extreme_peak",
-        "level_score": 4.0,
-        "level_reaction_count": 0,
-        "activated_at": "2026-09-05",
-        "born_at": "2026-09-09T15:00:00",
-        "events": [
-          {
-            "time": 1788966000,
-            "type": "SWEEP_BOTTOM",
-            "price": 0.3741
-          }
-        ]
-      },
-      {
-        "level_id": "BB_LONG_0.3919193532480526_0.3998",
-        "coin": "LDO",
-        "strategy": "BUYBACK",
-        "mode": null,
-        "direction": "LONG",
-        "state": "TRIGGERED",
-        "level_min": 0.3919193532480526,
-        "level_max": 0.3998,
-        "level_date": "2026-09-20",
-        "level_type": "4h_extreme_peak",
-        "level_score": 3.5,
-        "level_reaction_count": 0,
-        "activated_at": "2026-09-21",
-        "born_at": "2026-09-22T14:30:00",
-        "events": [
-          {
-            "time": 1790087400,
-            "type": "ZONE_TOUCH",
-            "price": 0.3983
-          },
-          {
-            "time": 1790172000,
-            "type": "SWEEP_BOTTOM",
-            "price": 0.3958
-          },
-          {
-            "time": 1790173800,
-            "type": "ENTRY",
-            "price": 0.399
-          }
-        ]
-      }
-    ],
     "JUP": [
       {
         "level_id": "BB_LONG_0.22776655536406723_0.23033361158983198",
@@ -4272,6 +4234,64 @@
             "time": 1789497000,
             "type": "SWEEP_BOTTOM",
             "price": 0.2203
+          }
+        ]
+      }
+    ],
+    "LDO": [
+      {
+        "level_id": "BB_LONG_0.3713339930278161_0.3772",
+        "coin": "LDO",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "direction": "LONG",
+        "state": "DEAD",
+        "level_min": 0.3713339930278161,
+        "level_max": 0.3772,
+        "level_date": "2026-09-04",
+        "level_type": "4h_extreme_peak",
+        "level_score": 4.0,
+        "level_reaction_count": 0,
+        "activated_at": "2026-09-05",
+        "born_at": "2026-09-09T15:00:00",
+        "events": [
+          {
+            "time": 1788966000,
+            "type": "SWEEP_BOTTOM",
+            "price": 0.3741
+          }
+        ]
+      },
+      {
+        "level_id": "BB_LONG_0.3919193532480526_0.3998",
+        "coin": "LDO",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "direction": "LONG",
+        "state": "TRIGGERED",
+        "level_min": 0.3919193532480526,
+        "level_max": 0.3998,
+        "level_date": "2026-09-20",
+        "level_type": "4h_extreme_peak",
+        "level_score": 3.5,
+        "level_reaction_count": 0,
+        "activated_at": "2026-09-21",
+        "born_at": "2026-09-22T14:30:00",
+        "events": [
+          {
+            "time": 1790087400,
+            "type": "ZONE_TOUCH",
+            "price": 0.3983
+          },
+          {
+            "time": 1790172000,
+            "type": "SWEEP_BOTTOM",
+            "price": 0.3958
+          },
+          {
+            "time": 1790173800,
+            "type": "ENTRY",
+            "price": 0.399
           }
         ]
       }
@@ -4393,6 +4413,69 @@
             "time": 1790480700,
             "type": "ENTRY",
             "price": 943.06
+          }
+        ]
+      }
+    ],
+    "NBIS": [
+      {
+        "level_id": "BB_LONG_220.328435164097_221.6",
+        "coin": "NBIS",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "direction": "LONG",
+        "state": "TRIGGERED",
+        "level_min": 220.328435164097,
+        "level_max": 221.6,
+        "level_date": "2026-09-06",
+        "level_type": "4h_extreme_peak",
+        "level_score": 4.0,
+        "level_reaction_count": 1,
+        "activated_at": "2026-09-07",
+        "born_at": "2026-09-08T08:00:00",
+        "events": [
+          {
+            "time": 1788854400,
+            "type": "SWEEP_BOTTOM",
+            "price": 220.68
+          },
+          {
+            "time": 1789291800,
+            "type": "ENTRY",
+            "price": 215.38
+          }
+        ]
+      },
+      {
+        "level_id": "BB_LONG_210.8691398971034_214.9671502572415",
+        "coin": "NBIS",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "direction": "LONG",
+        "state": "TRIGGERED",
+        "level_min": 210.8691398971034,
+        "level_max": 214.9671502572415,
+        "level_date": "2026-09-13",
+        "level_type": "1W_low_PWL",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "activated_at": "2026-09-13",
+        "born_at": "2026-09-14T00:15:00",
+        "events": [
+          {
+            "time": 1789344900,
+            "type": "ZONE_TOUCH",
+            "price": 213.31
+          },
+          {
+            "time": 1789347600,
+            "type": "SWEEP_BOTTOM",
+            "price": 212.38
+          },
+          {
+            "time": 1789378200,
+            "type": "ENTRY",
+            "price": 208.67
           }
         ]
       }
@@ -4552,69 +4635,6 @@
             "time": 1789153200,
             "type": "SCAN",
             "price": 0.02332
-          }
-        ]
-      }
-    ],
-    "NBIS": [
-      {
-        "level_id": "BB_LONG_220.328435164097_221.6",
-        "coin": "NBIS",
-        "strategy": "BUYBACK",
-        "mode": null,
-        "direction": "LONG",
-        "state": "TRIGGERED",
-        "level_min": 220.328435164097,
-        "level_max": 221.6,
-        "level_date": "2026-09-06",
-        "level_type": "4h_extreme_peak",
-        "level_score": 4.0,
-        "level_reaction_count": 1,
-        "activated_at": "2026-09-07",
-        "born_at": "2026-09-08T08:00:00",
-        "events": [
-          {
-            "time": 1788854400,
-            "type": "SWEEP_BOTTOM",
-            "price": 220.68
-          },
-          {
-            "time": 1789291800,
-            "type": "ENTRY",
-            "price": 215.38
-          }
-        ]
-      },
-      {
-        "level_id": "BB_LONG_210.8691398971034_214.9671502572415",
-        "coin": "NBIS",
-        "strategy": "BUYBACK",
-        "mode": null,
-        "direction": "LONG",
-        "state": "TRIGGERED",
-        "level_min": 210.8691398971034,
-        "level_max": 214.9671502572415,
-        "level_date": "2026-09-13",
-        "level_type": "1W_low_PWL",
-        "level_score": 5.0,
-        "level_reaction_count": 0,
-        "activated_at": "2026-09-13",
-        "born_at": "2026-09-14T00:15:00",
-        "events": [
-          {
-            "time": 1789344900,
-            "type": "ZONE_TOUCH",
-            "price": 213.31
-          },
-          {
-            "time": 1789347600,
-            "type": "SWEEP_BOTTOM",
-            "price": 212.38
-          },
-          {
-            "time": 1789378200,
-            "type": "ENTRY",
-            "price": 208.67
           }
         ]
       }
@@ -4942,6 +4962,51 @@
         ]
       }
     ],
+    "SHIB1000": [
+      {
+        "level_id": "BB_LONG_0.005334210661293277_0.005402",
+        "coin": "SHIB1000",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "direction": "LONG",
+        "state": "TRIGGERED",
+        "level_min": 0.005334210661293277,
+        "level_max": 0.005402,
+        "level_date": "2026-09-06",
+        "level_type": "4h_extreme_peak+4h_poc",
+        "level_score": 5.0,
+        "level_reaction_count": 1,
+        "activated_at": "2026-09-07",
+        "born_at": "2026-09-08T04:45:00",
+        "events": [
+          {
+            "time": 1788842700,
+            "type": "ZONE_TOUCH",
+            "price": 0.005402
+          },
+          {
+            "time": 1788848100,
+            "type": "SWEEP_BOTTOM",
+            "price": 0.005345
+          },
+          {
+            "time": 1788875100,
+            "type": "SCAN",
+            "price": 0.005394
+          },
+          {
+            "time": 1789497900,
+            "type": "SCAN",
+            "price": 0.005024
+          },
+          {
+            "time": 1789580700,
+            "type": "ENTRY",
+            "price": 0.004775
+          }
+        ]
+      }
+    ],
     "SOL": [
       {
         "level_id": "BB_LONG_100.04841682428598_101.7",
@@ -4996,51 +5061,6 @@
             "time": 1788991200,
             "type": "SWEEP_BOTTOM",
             "price": 100.07
-          }
-        ]
-      }
-    ],
-    "SHIB1000": [
-      {
-        "level_id": "BB_LONG_0.005334210661293277_0.005402",
-        "coin": "SHIB1000",
-        "strategy": "BUYBACK",
-        "mode": null,
-        "direction": "LONG",
-        "state": "TRIGGERED",
-        "level_min": 0.005334210661293277,
-        "level_max": 0.005402,
-        "level_date": "2026-09-06",
-        "level_type": "4h_extreme_peak+4h_poc",
-        "level_score": 5.0,
-        "level_reaction_count": 1,
-        "activated_at": "2026-09-07",
-        "born_at": "2026-09-08T04:45:00",
-        "events": [
-          {
-            "time": 1788842700,
-            "type": "ZONE_TOUCH",
-            "price": 0.005402
-          },
-          {
-            "time": 1788848100,
-            "type": "SWEEP_BOTTOM",
-            "price": 0.005345
-          },
-          {
-            "time": 1788875100,
-            "type": "SCAN",
-            "price": 0.005394
-          },
-          {
-            "time": 1789497900,
-            "type": "SCAN",
-            "price": 0.005024
-          },
-          {
-            "time": 1789580700,
-            "type": "ENTRY",
-            "price": 0.004775
           }
         ]
       }

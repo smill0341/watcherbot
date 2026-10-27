@@ -688,7 +688,8 @@ class BounceWatcher:
             if is_focus and is_pierce_budget_ok and self._adx_ok():
                 self.last_event_type = "GOOD_GREEN" if self.trade_type == 'LONG' else "GOOD_RED"
                 self._dbg(f"🟢 ВЫКУП | {prev_name} (x{pm:.2f} от фона) + {cur_name}, объём x{ratio:.2f} от {prev_gen} (>= x{BUYBACK['GREEN_VOL_RATIO']:g}) | V:{v_str}")
-                return self._enter(c_close, vol_mult, c_vol, logic_vol, baseline_vol, method="buyback")
+                return self._enter(c_close, vol_mult, c_vol, logic_vol, baseline_vol, method="buyback",
+                                   buyback_info={"red_vol": pv, "red_mult": pm, "ratio": ratio})
             reasons = []
             if not is_focus: reasons.append("не в фокусе (пробит более свежий уровень)")
             if not is_pierce_budget_ok: reasons.append(f"Бюджет пробоя #{self.pierce_count} исчерпан, жду новый")
@@ -978,7 +979,7 @@ class BounceWatcher:
                     return None
 
             return None
-    def _enter(self, actual_entry, vol_mult, c_vol, logic_vol, baseline_vol, pattern_route=None, method=None):
+    def _enter(self, actual_entry, vol_mult, c_vol, logic_vol, baseline_vol, pattern_route=None, method=None, buyback_info=None):
         tp_pct = self.CONFIG['FIXED_TP_PCT'] / 100.0
         sl_pct = self.CONFIG['SL_PCT'] / 100.0
 
@@ -1034,4 +1035,9 @@ class BounceWatcher:
             "volume_mult": vol_mult,
             "method": method or ("pattern" if pattern_route else "volume"),
             "pattern_route": pattern_route,
+            # Для метода «выкуп» в колонку «Метод»: объём красной свечи, её кратность к фону и
+            # объём зелёной в долях от красной (1.05 = 105%). Для остальных методов ключей нет.
+            **({"method_value": buyback_info["red_vol"],
+                "method_mult": buyback_info["red_mult"],
+                "method_ratio": buyback_info["ratio"]} if buyback_info else {}),
         }
