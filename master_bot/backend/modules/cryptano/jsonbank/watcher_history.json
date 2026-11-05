@@ -1508,22 +1508,82 @@
         "level_min": 0.020561115973741797,
         "level_max": 0.021589171772428885,
         "level_date": "2026-09-30",
-        "level_type": "1M_low_PML + 1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
-        "level_score": 5.0,
-        "level_reaction_count": 0,
+        "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 6.0,
+        "level_reaction_count": 2,
         "events": [
             {
-                "time": 1792253700,
+                "time": 1792962900,
                 "type": "ZONE_TOUCH",
-                "price": 0.02143
+                "price": 0.02146
             },
             {
-                "time": 1792332000,
+                "time": 1792978200,
                 "type": "SWEEP_BOTTOM",
-                "price": 0.021
+                "price": 0.02106
+            },
+            {
+                "time": 1792979100,
+                "type": "SCAN",
+                "price": 0.02131
+            },
+            {
+                "time": 1793028600,
+                "type": "SCAN",
+                "price": 0.02214
+            },
+            {
+                "time": 1793029500,
+                "type": "SCAN",
+                "price": 0.02218
+            },
+            {
+                "time": 1793043000,
+                "type": "SCAN",
+                "price": 0.02179
+            },
+            {
+                "time": 1793097900,
+                "type": "SCAN",
+                "price": 0.02169
+            },
+            {
+                "time": 1793109600,
+                "type": "SCAN",
+                "price": 0.02158
+            },
+            {
+                "time": 1793116800,
+                "type": "SCAN",
+                "price": 0.0216
+            },
+            {
+                "time": 1793124000,
+                "type": "SCAN",
+                "price": 0.02152
+            },
+            {
+                "time": 1793125800,
+                "type": "SCAN",
+                "price": 0.02153
+            },
+            {
+                "time": 1793136600,
+                "type": "SCAN",
+                "price": 0.02163
+            },
+            {
+                "time": 1793176200,
+                "type": "SCAN",
+                "price": 0.02179
+            },
+            {
+                "time": 1793210400,
+                "type": "SCAN",
+                "price": 0.02115
             }
         ],
-        "died_at": "2026-10-18T23:16:06.492060"
+        "died_at": "2026-10-29T22:46:11.197741"
     },
     "RENDER_BOUNCE_BC_LONG_1.7447542800593765_1.826": {
         "coin": "RENDER",
@@ -1572,22 +1632,27 @@
         "level_min": 0.020561115973741797,
         "level_max": 0.021589171772428885,
         "level_date": "2026-09-30",
-        "level_type": "1M_low_PML + 1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
-        "level_score": 5.0,
-        "level_reaction_count": 0,
+        "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 6.0,
+        "level_reaction_count": 2,
         "events": [
             {
-                "time": 1792253700,
+                "time": 1792962900,
                 "type": "ZONE_TOUCH",
-                "price": 0.02143
+                "price": 0.02146
             },
             {
-                "time": 1792332000,
+                "time": 1792978200,
                 "type": "SWEEP_BOTTOM",
-                "price": 0.021
+                "price": 0.02106
+            },
+            {
+                "time": 1792979100,
+                "type": "SCAN",
+                "price": 0.02131
             }
         ],
-        "died_at": "2026-10-18T23:16:06.492060"
+        "died_at": "2026-10-29T22:46:11.197741"
     },
     "RENDER_BUYBACK_BB_LONG_1.7447542800593765_1.826": {
         "coin": "RENDER",
@@ -1991,14 +2056,14 @@
         "level_min": 1.2378928568087144,
         "level_max": 1.2826,
         "level_date": "2026-09-30",
-        "level_type": "1M_low_PML + 1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
-        "level_score": 5.5,
-        "level_reaction_count": 1,
+        "level_type": "1M_low_PML + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 6.5,
+        "level_reaction_count": 3,
         "events": [
             {
-                "time": 1792271700,
+                "time": 1792071900,
                 "type": "ZONE_TOUCH",
-                "price": 1.2801
+                "price": 1.2825
             },
             {
                 "time": 1792351800,
@@ -2017,11 +2082,146 @@
             },
             {
                 "time": 1792361700,
-                "type": "ENTRY",
+                "type": "SCAN",
                 "price": 1.2963
+            },
+            {
+                "time": 1792405800,
+                "type": "SCAN",
+                "price": 1.3039
+            },
+            {
+                "time": 1792421100,
+                "type": "SCAN",
+                "price": 1.3047
+            },
+            {
+                "time": 1792503000,
+                "type": "SCAN",
+                "price": 1.2989
+            },
+            {
+                "time": 1792503900,
+                "type": "SCAN",
+                "price": 1.3099
+            },
+            {
+                "time": 1792504800,
+                "type": "SCAN",
+                "price": 1.3354
+            },
+            {
+                "time": 1792506600,
+                "type": "SCAN",
+                "price": 1.3351
+            },
+            {
+                "time": 1792507500,
+                "type": "SCAN",
+                "price": 1.3435
+            },
+            {
+                "time": 1792567800,
+                "type": "SCAN",
+                "price": 1.3428
+            },
+            {
+                "time": 1792568700,
+                "type": "SCAN",
+                "price": 1.3458
+            },
+            {
+                "time": 1792572300,
+                "type": "SCAN",
+                "price": 1.3477
+            },
+            {
+                "time": 1792574100,
+                "type": "SCAN",
+                "price": 1.3634
+            },
+            {
+                "time": 1792593900,
+                "type": "SCAN",
+                "price": 1.3831
+            },
+            {
+                "time": 1792782900,
+                "type": "SCAN",
+                "price": 1.3039
+            },
+            {
+                "time": 1792855800,
+                "type": "SCAN",
+                "price": 1.2602
+            },
+            {
+                "time": 1792940400,
+                "type": "SCAN",
+                "price": 1.2985
+            },
+            {
+                "time": 1792946700,
+                "type": "SCAN",
+                "price": 1.3068
+            },
+            {
+                "time": 1792965600,
+                "type": "SCAN",
+                "price": 1.2971
+            },
+            {
+                "time": 1792971000,
+                "type": "SCAN",
+                "price": 1.294
+            },
+            {
+                "time": 1793058300,
+                "type": "SCAN",
+                "price": 1.3084
+            },
+            {
+                "time": 1793097900,
+                "type": "SCAN",
+                "price": 1.3026
+            },
+            {
+                "time": 1793103300,
+                "type": "SCAN",
+                "price": 1.3103
+            },
+            {
+                "time": 1793104200,
+                "type": "SCAN",
+                "price": 1.3165
+            },
+            {
+                "time": 1793114100,
+                "type": "SCAN",
+                "price": 1.3227
+            },
+            {
+                "time": 1793210400,
+                "type": "SCAN",
+                "price": 1.3196
+            },
+            {
+                "time": 1793284200,
+                "type": "SCAN",
+                "price": 1.3042
+            },
+            {
+                "time": 1793289600,
+                "type": "SCAN",
+                "price": 1.3108
+            },
+            {
+                "time": 1793307600,
+                "type": "ENTRY",
+                "price": 1.2491
             }
         ],
-        "died_at": "2026-10-19T10:05:21.565864"
+        "died_at": "2026-10-29T23:16:07.448978"
     },
     "ZRO_BOUNCE_BC_LONG_1.696805357142857_1.7809946428571428": {
         "coin": "ZRO",
@@ -2065,27 +2265,27 @@
         "level_min": 0.019599078243709916,
         "level_max": 0.02027,
         "level_date": "2026-08-31",
-        "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
-        "level_score": 5.0,
-        "level_reaction_count": 0,
+        "level_type": "1M_low_PML + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 1,
         "events": [
             {
-                "time": 1792351800,
+                "time": 1793239200,
                 "type": "ZONE_TOUCH",
-                "price": 0.02021
+                "price": 0.02023
             },
             {
-                "time": 1792353600,
+                "time": 1793305800,
                 "type": "SWEEP_BOTTOM",
-                "price": 0.01991
+                "price": 0.01939
             },
             {
-                "time": 1792357200,
+                "time": 1793307600,
                 "type": "ENTRY",
-                "price": 0.02013
+                "price": 0.01946
             }
         ],
-        "died_at": "2026-10-19T10:05:21.565864"
+        "died_at": "2026-10-29T23:16:07.448978"
     },
     "MON_BUYBACK_BB_LONG_0.019599078243709916_0.02027": {
         "coin": "MON",
@@ -2130,26 +2330,31 @@
         "level_max": 1.649,
         "level_date": "2026-10-04",
         "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-        "level_score": 6.0,
-        "level_reaction_count": 2,
+        "level_score": 7.0,
+        "level_reaction_count": 4,
         "events": [
             {
-                "time": 1792350900,
+                "time": 1792951200,
                 "type": "ZONE_TOUCH",
-                "price": 1.649
+                "price": 1.647
             },
             {
-                "time": 1792355400,
+                "time": 1792978200,
                 "type": "SWEEP_BOTTOM",
-                "price": 1.621
+                "price": 1.61
             },
             {
-                "time": 1792394100,
+                "time": 1793026800,
+                "type": "SCAN",
+                "price": 1.658
+            },
+            {
+                "time": 1793096100,
                 "type": "ENTRY",
-                "price": 1.733
+                "price": 1.614
             }
         ],
-        "died_at": "2026-10-19T10:31:07.229896"
+        "died_at": "2026-10-27T21:10:43.291598"
     },
     "PHA_BOUNCE_BC_LONG_0.04804628009252481_0.04879": {
         "coin": "PHA",
@@ -3241,21 +3446,26 @@
         "strategy": "BOUNCE",
         "mode": null,
         "final_state": "DEAD",
-        "history_log": "Цена прокололась через нижнюю зону 701.0713-711.7000 — этот уровень позади рынка, убит навсегда.",
+        "history_log": "Цена прокололась через нижнюю зону 699.9396-708.9009 — этот уровень позади рынка, убит навсегда.",
         "level_min": 714.6745138490573,
         "level_max": 734.754861509427,
         "level_date": "2026-10-11",
-        "level_type": "1W_low_PWL + 1d_extreme_peak",
-        "level_score": 5.5,
-        "level_reaction_count": 1,
+        "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 6.0,
+        "level_reaction_count": 2,
         "events": [
             {
-                "time": 1792508400,
+                "time": 1792978200,
                 "type": "ZONE_TOUCH",
-                "price": 730.41
+                "price": 734.72
+            },
+            {
+                "time": 1793304900,
+                "type": "SWEEP_BOTTOM",
+                "price": 723.83
             }
         ],
-        "died_at": "2026-10-21T19:49:21.273417"
+        "died_at": "2026-10-29T22:46:11.197741"
     },
     "ETC_BOUNCE_BC_LONG_7.674251346024259_8.042": {
         "coin": "ETC",
@@ -3544,22 +3754,17 @@
         "level_reaction_count": 1,
         "events": [
             {
-                "time": 1792632600,
-                "type": "ZONE_TOUCH",
-                "price": 0.022883
-            },
-            {
-                "time": 1792634400,
+                "time": 1793115000,
                 "type": "SWEEP_BOTTOM",
-                "price": 0.022561
+                "price": 0.022
             },
             {
-                "time": 1792641600,
+                "time": 1793116800,
                 "type": "ENTRY",
-                "price": 0.023028
+                "price": 0.025525
             }
         ],
-        "died_at": "2026-10-22T12:08:39.365841"
+        "died_at": "2026-10-27T21:10:43.291598"
     },
     "MORPHO_BUYBACK_BB_LONG_2.2612778402699663_2.352": {
         "coin": "MORPHO",
@@ -3910,67 +4115,37 @@
         "level_min": 0.004713979777816351,
         "level_max": 0.004938,
         "level_date": "2026-09-30",
-        "level_type": "1M_low_PML + 1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
-        "level_score": 5.5,
-        "level_reaction_count": 1,
+        "level_type": "1M_low_PML + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 6.5,
+        "level_reaction_count": 3,
         "events": [
             {
-                "time": 1792272600,
+                "time": 1793152800,
                 "type": "ZONE_TOUCH",
-                "price": 0.004876
+                "price": 0.004931
             },
             {
-                "time": 1792351800,
+                "time": 1793241000,
                 "type": "SWEEP_BOTTOM",
-                "price": 0.004793
+                "price": 0.004791
             },
             {
-                "time": 1792360800,
+                "time": 1793288700,
                 "type": "SCAN",
-                "price": 0.004913
+                "price": 0.005033
             },
             {
-                "time": 1792369800,
+                "time": 1793289600,
                 "type": "SCAN",
-                "price": 0.004988
+                "price": 0.005047
             },
             {
-                "time": 1792418400,
-                "type": "SCAN",
-                "price": 0.005
-            },
-            {
-                "time": 1792504800,
-                "type": "SCAN",
-                "price": 0.005118
-            },
-            {
-                "time": 1792506600,
-                "type": "SCAN",
-                "price": 0.005135
-            },
-            {
-                "time": 1792509300,
-                "type": "SCAN",
-                "price": 0.005064
-            },
-            {
-                "time": 1792551600,
-                "type": "SCAN",
-                "price": 0.005133
-            },
-            {
-                "time": 1792566900,
-                "type": "SCAN",
-                "price": 0.005173
-            },
-            {
-                "time": 1792719000,
+                "time": 1793307600,
                 "type": "ENTRY",
-                "price": 0.005003
+                "price": 0.004707
             }
         ],
-        "died_at": "2026-10-23T22:19:49.718135"
+        "died_at": "2026-10-29T23:16:07.448978"
     },
     "SOL_BOUNCE_BC_LONG_100.0158923260372_103.01636909581832": {
         "coin": "SOL",
@@ -5821,32 +5996,27 @@
         "direction": "LONG",
         "strategy": "BUYBACK",
         "mode": null,
-        "final_state": "TRIGGERED",
-        "history_log": "",
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 699.9396-708.9009 — этот уровень позади рынка, убит навсегда.",
         "level_min": 714.6745138490573,
         "level_max": 734.754861509427,
         "level_date": "2026-10-11",
-        "level_type": "1W_low_PWL + 1d_extreme_peak",
-        "level_score": 5.5,
-        "level_reaction_count": 1,
+        "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 6.0,
+        "level_reaction_count": 2,
         "events": [
             {
-                "time": 1792508400,
+                "time": 1792978200,
                 "type": "ZONE_TOUCH",
-                "price": 730.41
+                "price": 734.72
             },
             {
-                "time": 1792687500,
+                "time": 1793304900,
                 "type": "SWEEP_BOTTOM",
-                "price": 724.32
-            },
-            {
-                "time": 1792851300,
-                "type": "ENTRY",
-                "price": 728.65
+                "price": 723.83
             }
         ],
-        "died_at": "2026-10-24T17:31:23.188696"
+        "died_at": "2026-10-29T22:46:11.197741"
     },
     "WIF_BUYBACK_BB_LONG_0.19591884031096213_0.2003": {
         "coin": "WIF",
@@ -6308,86 +6478,26 @@
         "level_max": 0.09076997845065754,
         "level_date": "2026-09-30",
         "level_type": "1M_low_PML + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-        "level_score": 5.5,
-        "level_reaction_count": 1,
+        "level_score": 6.5,
+        "level_reaction_count": 3,
         "events": [
             {
-                "time": 1792330200,
+                "time": 1793032200,
                 "type": "ZONE_TOUCH",
-                "price": 0.09058
+                "price": 0.09041
             },
             {
-                "time": 1792350900,
+                "time": 1793095200,
                 "type": "SWEEP_BOTTOM",
-                "price": 0.08884
+                "price": 0.0889
             },
             {
-                "time": 1792388700,
-                "type": "SCAN",
-                "price": 0.0931
-            },
-            {
-                "time": 1792389600,
-                "type": "SCAN",
-                "price": 0.09315
-            },
-            {
-                "time": 1792405800,
-                "type": "SCAN",
-                "price": 0.09184
-            },
-            {
-                "time": 1792458900,
-                "type": "SCAN",
-                "price": 0.09159
-            },
-            {
-                "time": 1792462500,
-                "type": "SCAN",
-                "price": 0.09265
-            },
-            {
-                "time": 1792504800,
-                "type": "SCAN",
-                "price": 0.09508
-            },
-            {
-                "time": 1792505700,
-                "type": "SCAN",
-                "price": 0.09514
-            },
-            {
-                "time": 1792506600,
-                "type": "SCAN",
-                "price": 0.09522
-            },
-            {
-                "time": 1792509300,
-                "type": "SCAN",
-                "price": 0.09339
-            },
-            {
-                "time": 1792518300,
-                "type": "SCAN",
-                "price": 0.09485
-            },
-            {
-                "time": 1792566900,
-                "type": "SCAN",
-                "price": 0.09615
-            },
-            {
-                "time": 1792587600,
-                "type": "SCAN",
-                "price": 0.09602
-            },
-            {
-                "time": 1792863000,
+                "time": 1793112300,
                 "type": "ENTRY",
-                "price": 0.08847
+                "price": 0.09092
             }
         ],
-        "died_at": "2026-10-24T20:46:26.889449"
+        "died_at": "2026-10-27T21:10:43.291598"
     },
     "ETH_BOUNCE_BC_LONG_2323.8447800412705_2336.79": {
         "coin": "ETH",
@@ -6953,5 +7063,2571 @@
             }
         ],
         "died_at": "2026-10-26T23:47:39.594397"
+    },
+    "LTC_BOUNCE_BC_LONG_54.69918595886992_57.0": {
+        "coin": "LTC",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 54.69918595886992,
+        "level_max": 57.0,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL + 4h_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792943100,
+                "type": "ZONE_TOUCH",
+                "price": 56.99
+            },
+            {
+                "time": 1793095200,
+                "type": "SWEEP_BOTTOM",
+                "price": 55.69
+            },
+            {
+                "time": 1793103300,
+                "type": "ENTRY",
+                "price": 56.4
+            }
+        ],
+        "died_at": "2026-10-27T21:12:03.615247"
+    },
+    "ZRO_BOUNCE_BC_LONG_1.6139213588645829_1.694617426807812": {
+        "coin": "ZRO",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 1.6139213588645829,
+        "level_max": 1.694617426807812,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL + 4h_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792936800,
+                "type": "ZONE_TOUCH",
+                "price": 1.6823
+            },
+            {
+                "time": 1793031300,
+                "type": "SWEEP_BOTTOM",
+                "price": 1.6505
+            },
+            {
+                "time": 1793034900,
+                "type": "SCAN",
+                "price": 1.6741
+            },
+            {
+                "time": 1793088000,
+                "type": "ENTRY",
+                "price": 1.6467
+            }
+        ],
+        "died_at": "2026-10-27T21:10:43.291598"
+    },
+    "XAG_BOUNCE_BC_LONG_52.999905410345455_53.84": {
+        "coin": "XAG",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 52.999905410345455,
+        "level_max": 53.84,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL + 4h_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792936800,
+                "type": "ZONE_TOUCH",
+                "price": 53.82
+            },
+            {
+                "time": 1793022300,
+                "type": "SWEEP_BOTTOM",
+                "price": 53.14
+            },
+            {
+                "time": 1793079000,
+                "type": "SCAN",
+                "price": 53.37
+            },
+            {
+                "time": 1793079900,
+                "type": "ENTRY",
+                "price": 53.48
+            }
+        ],
+        "died_at": "2026-10-27T21:10:43.291598"
+    },
+    "MNT_BOUNCE_BC_LONG_0.5036574622587426_0.5233": {
+        "coin": "MNT",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.5036574622587426,
+        "level_max": 0.5233,
+        "level_date": "2026-10-18",
+        "level_type": "1W_low_PWL + 1d_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1792947600,
+                "type": "ZONE_TOUCH",
+                "price": 0.5231
+            },
+            {
+                "time": 1792978200,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.5131
+            },
+            {
+                "time": 1793070900,
+                "type": "ENTRY",
+                "price": 0.5136
+            }
+        ],
+        "died_at": "2026-10-27T21:10:43.291598"
+    },
+    "JUP_BOUNCE_BC_LONG_0.2723604517453799_0.2859784743326489": {
+        "coin": "JUP",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.2723604517453799,
+        "level_max": 0.2859784743326489,
+        "level_date": "2026-10-18",
+        "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1792950300,
+                "type": "ZONE_TOUCH",
+                "price": 0.2857
+            },
+            {
+                "time": 1792971000,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.2787
+            },
+            {
+                "time": 1792979100,
+                "type": "SCAN",
+                "price": 0.2797
+            },
+            {
+                "time": 1792987200,
+                "type": "SCAN",
+                "price": 0.2769
+            },
+            {
+                "time": 1792990800,
+                "type": "SCAN",
+                "price": 0.2796
+            },
+            {
+                "time": 1793009700,
+                "type": "SCAN",
+                "price": 0.2791
+            },
+            {
+                "time": 1793026800,
+                "type": "SCAN",
+                "price": 0.2836
+            },
+            {
+                "time": 1793042100,
+                "type": "SCAN",
+                "price": 0.2783
+            },
+            {
+                "time": 1793102400,
+                "type": "SCAN",
+                "price": 0.2739
+            },
+            {
+                "time": 1793112300,
+                "type": "ENTRY",
+                "price": 0.278
+            }
+        ],
+        "died_at": "2026-10-27T21:10:43.291598"
+    },
+    "AVAX_BOUNCE_BC_LONG_8.608178707152325_8.987": {
+        "coin": "AVAX",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 8.608178707152325,
+        "level_max": 8.987,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL + 4h_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1793027700,
+                "type": "ZONE_TOUCH",
+                "price": 8.984
+            },
+            {
+                "time": 1793070000,
+                "type": "SWEEP_BOTTOM",
+                "price": 8.779
+            },
+            {
+                "time": 1793079000,
+                "type": "SCAN",
+                "price": 8.753
+            },
+            {
+                "time": 1793136600,
+                "type": "ENTRY",
+                "price": 8.928
+            }
+        ],
+        "died_at": "2026-10-27T23:46:08.022110"
+    },
+    "AKE_BUYBACK_BB_LONG_0.022077305868286386_0.023181171161700705": {
+        "coin": "AKE",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.0206-0.0216 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.022077305868286386,
+        "level_max": 0.023181171161700705,
+        "level_date": "2026-10-18",
+        "level_type": "1W_low_PWL + 1d_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1793115000,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.022
+            }
+        ],
+        "died_at": "2026-10-28T08:46:06.487270"
+    },
+    "ETH_BOUNCE_BC_LONG_2306.509924257894_2375.705221985631": {
+        "coin": "ETH",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 2277.6470-2304.6700 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 2306.509924257894,
+        "level_max": 2375.705221985631,
+        "level_date": "2026-10-18",
+        "level_type": "1W_low_PWL + 1d_extreme_peak",
+        "level_score": 6.0,
+        "level_reaction_count": 2,
+        "events": [
+            {
+                "time": 1793177100,
+                "type": "ZONE_TOUCH",
+                "price": 2370.32
+            }
+        ],
+        "died_at": "2026-10-28T14:22:04.643123"
+    },
+    "ICP_BOUNCE_BC_LONG_2.547199042792793_2.626": {
+        "coin": "ICP",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 2.547199042792793,
+        "level_max": 2.626,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL",
+        "level_score": 5.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1793059200,
+                "type": "ZONE_TOUCH",
+                "price": 2.626
+            },
+            {
+                "time": 1793067300,
+                "type": "SWEEP_BOTTOM",
+                "price": 2.581
+            },
+            {
+                "time": 1793096100,
+                "type": "SCAN",
+                "price": 2.568
+            },
+            {
+                "time": 1793097000,
+                "type": "SCAN",
+                "price": 2.58
+            },
+            {
+                "time": 1793109600,
+                "type": "SCAN",
+                "price": 2.573
+            },
+            {
+                "time": 1793176200,
+                "type": "SCAN",
+                "price": 2.611
+            },
+            {
+                "time": 1793189700,
+                "type": "ENTRY",
+                "price": 2.585
+            }
+        ],
+        "died_at": "2026-10-28T14:31:03.569963"
+    },
+    "RAYDIUM_BOUNCE_BC_LONG_1.6806537925587925_1.764686482186732": {
+        "coin": "RAYDIUM",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 1.6806537925587925,
+        "level_max": 1.764686482186732,
+        "level_date": "2026-10-18",
+        "level_type": "1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1793106900,
+                "type": "ZONE_TOUCH",
+                "price": 1.7619
+            },
+            {
+                "time": 1793191500,
+                "type": "SWEEP_BOTTOM",
+                "price": 1.7078
+            },
+            {
+                "time": 1793196900,
+                "type": "SCAN",
+                "price": 1.7131
+            },
+            {
+                "time": 1793198700,
+                "type": "ENTRY",
+                "price": 1.7249
+            }
+        ],
+        "died_at": "2026-10-28T17:01:08.504304"
+    },
+    "AKE_BOUNCE_BC_LONG_0.020564299169622366_0.021592514128103483": {
+        "coin": "AKE",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.020564299169622366,
+        "level_max": 0.021592514128103483,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL + 4h_extreme_peak",
+        "level_score": 6.0,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1793160000,
+                "type": "ZONE_TOUCH",
+                "price": 0.021347
+            },
+            {
+                "time": 1793169000,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.02066
+            },
+            {
+                "time": 1793178000,
+                "type": "SCAN",
+                "price": 0.020252
+            },
+            {
+                "time": 1793203200,
+                "type": "ENTRY",
+                "price": 0.020688
+            }
+        ],
+        "died_at": "2026-10-28T18:16:08.069463"
+    },
+    "LDO_BOUNCE_BC_LONG_0.35844076122029916_0.3763627992813141": {
+        "coin": "LDO",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.35844076122029916,
+        "level_max": 0.3763627992813141,
+        "level_date": "2026-10-18",
+        "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1793027700,
+                "type": "ZONE_TOUCH",
+                "price": 0.3747
+            },
+            {
+                "time": 1793040300,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.3674
+            },
+            {
+                "time": 1793088000,
+                "type": "SCAN",
+                "price": 0.3652
+            },
+            {
+                "time": 1793098800,
+                "type": "SCAN",
+                "price": 0.3652
+            },
+            {
+                "time": 1793105100,
+                "type": "SCAN",
+                "price": 0.3692
+            },
+            {
+                "time": 1793107800,
+                "type": "SCAN",
+                "price": 0.3707
+            },
+            {
+                "time": 1793114100,
+                "type": "SCAN",
+                "price": 0.3756
+            },
+            {
+                "time": 1793189700,
+                "type": "SCAN",
+                "price": 0.374
+            },
+            {
+                "time": 1793194200,
+                "type": "SCAN",
+                "price": 0.3722
+            },
+            {
+                "time": 1793210400,
+                "type": "ENTRY",
+                "price": 0.372
+            }
+        ],
+        "died_at": "2026-10-28T20:16:06.597026"
+    },
+    "LIT_BUYBACK_BB_LONG_2.972587360312043_3.084981599219893": {
+        "coin": "LIT",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 2.7987-2.9387 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 2.972587360312043,
+        "level_max": 3.084981599219893,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL + 4h_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792985400,
+                "type": "ZONE_TOUCH",
+                "price": 3.0669
+            },
+            {
+                "time": 1792986300,
+                "type": "SWEEP_BOTTOM",
+                "price": 3.0028
+            },
+            {
+                "time": 1793115900,
+                "type": "SCAN",
+                "price": 3.0357
+            },
+            {
+                "time": 1793121300,
+                "type": "SCAN",
+                "price": 3.0805
+            }
+        ],
+        "died_at": "2026-10-29T04:01:07.376442"
+    },
+    "CRV_BUYBACK_BB_LONG_0.3375254250781916_0.3475864373045209": {
+        "coin": "CRV",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.3185-0.3345 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.3375254250781916,
+        "level_max": 0.3475864373045209,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL+4h_poc",
+        "level_score": 6.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1793012400,
+                "type": "ZONE_TOUCH",
+                "price": 0.3467
+            },
+            {
+                "time": 1793038500,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.3421
+            }
+        ],
+        "died_at": "2026-10-29T04:01:07.376442"
+    },
+    "LIT_BOUNCE_BC_LONG_2.798745677877169_2.9386829617710273": {
+        "coin": "LIT",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 2.798745677877169,
+        "level_max": 2.9386829617710273,
+        "level_date": "2026-10-18",
+        "level_type": "1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1793196900,
+                "type": "ZONE_TOUCH",
+                "price": 2.9315
+            },
+            {
+                "time": 1793238300,
+                "type": "SWEEP_BOTTOM",
+                "price": 2.7897
+            },
+            {
+                "time": 1793239200,
+                "type": "SCAN",
+                "price": 2.7998
+            },
+            {
+                "time": 1793269800,
+                "type": "ENTRY",
+                "price": 2.9975
+            }
+        ],
+        "died_at": "2026-10-29T12:46:08.665026"
+    },
+    "LTC_BOUNCE_BC_LONG_56.358472237746945_58.79": {
+        "coin": "LTC",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 56.358472237746945,
+        "level_max": 58.79,
+        "level_date": "2026-10-18",
+        "level_type": "1W_low_PWL",
+        "level_score": 6.0,
+        "level_reaction_count": 2,
+        "events": [
+            {
+                "time": 1793205900,
+                "type": "ZONE_TOUCH",
+                "price": 58.56
+            },
+            {
+                "time": 1793243700,
+                "type": "SWEEP_BOTTOM",
+                "price": 57.22
+            },
+            {
+                "time": 1793277000,
+                "type": "ENTRY",
+                "price": 58.23
+            }
+        ],
+        "died_at": "2026-10-29T14:46:12.539154"
+    },
+    "DOGE_BOUNCE_BC_LONG_0.0756168083621497_0.07932": {
+        "coin": "DOGE",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.0756168083621497,
+        "level_max": 0.07932,
+        "level_date": "2026-10-18",
+        "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 6.0,
+        "level_reaction_count": 2,
+        "events": [
+            {
+                "time": 1793156400,
+                "type": "ZONE_TOUCH",
+                "price": 0.07928
+            },
+            {
+                "time": 1793241000,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.07736
+            },
+            {
+                "time": 1793277000,
+                "type": "SCAN",
+                "price": 0.079
+            },
+            {
+                "time": 1793284200,
+                "type": "ENTRY",
+                "price": 0.08003
+            }
+        ],
+        "died_at": "2026-10-29T16:46:12.183692"
+    },
+    "SOL_BOUNCE_BC_LONG_99.82916727905626_102.82404229742795": {
+        "coin": "SOL",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 99.82916727905626,
+        "level_max": 102.82404229742795,
+        "level_date": "2026-10-18",
+        "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1793177100,
+                "type": "ZONE_TOUCH",
+                "price": 102.55
+            },
+            {
+                "time": 1793193300,
+                "type": "SWEEP_BOTTOM",
+                "price": 101.14
+            },
+            {
+                "time": 1793277000,
+                "type": "SCAN",
+                "price": 100.56
+            },
+            {
+                "time": 1793284200,
+                "type": "ENTRY",
+                "price": 101.85
+            }
+        ],
+        "died_at": "2026-10-29T16:46:12.183692"
+    },
+    "WLD_BOUNCE_BC_LONG_0.4266137847846627_0.44794447402389587": {
+        "coin": "WLD",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.4266137847846627,
+        "level_max": 0.44794447402389587,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792935000,
+                "type": "ZONE_TOUCH",
+                "price": 0.4477
+            },
+            {
+                "time": 1792986300,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.4343
+            },
+            {
+                "time": 1793002500,
+                "type": "SCAN",
+                "price": 0.4405
+            },
+            {
+                "time": 1793094300,
+                "type": "SCAN",
+                "price": 0.4312
+            },
+            {
+                "time": 1793107800,
+                "type": "SCAN",
+                "price": 0.432
+            },
+            {
+                "time": 1793129400,
+                "type": "SCAN",
+                "price": 0.4383
+            },
+            {
+                "time": 1793284200,
+                "type": "SCAN",
+                "price": 0.4291
+            },
+            {
+                "time": 1793288700,
+                "type": "ENTRY",
+                "price": 0.4369
+            }
+        ],
+        "died_at": "2026-10-29T21:46:11.429833"
+    },
+    "AXS_BOUNCE_BC_LONG_0.9110216783477483_0.9389": {
+        "coin": "AXS",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.8745-0.9088 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.9110216783477483,
+        "level_max": 0.9389,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792934100,
+                "type": "ZONE_TOUCH",
+                "price": 0.9359
+            },
+            {
+                "time": 1792978200,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.9229
+            },
+            {
+                "time": 1793111400,
+                "type": "SCAN",
+                "price": 0.9546
+            },
+            {
+                "time": 1793114100,
+                "type": "SCAN",
+                "price": 0.9578
+            },
+            {
+                "time": 1793119500,
+                "type": "SCAN",
+                "price": 0.956
+            },
+            {
+                "time": 1793136600,
+                "type": "SCAN",
+                "price": 0.9627
+            },
+            {
+                "time": 1793178000,
+                "type": "SCAN",
+                "price": 0.9618
+            },
+            {
+                "time": 1793210400,
+                "type": "SCAN",
+                "price": 0.9499
+            }
+        ],
+        "died_at": "2026-10-29T22:46:11.197741"
+    },
+    "VIRTUAL_BOUNCE_BC_LONG_0.6034682292993631_0.6127": {
+        "coin": "VIRTUAL",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.5700-0.5860 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.6034682292993631,
+        "level_max": 0.6127,
+        "level_date": "2026-10-24",
+        "level_type": "4h_extreme_peak",
+        "level_score": 4.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1792971000,
+                "type": "ZONE_TOUCH",
+                "price": 0.6125
+            },
+            {
+                "time": 1793095200,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.6069
+            },
+            {
+                "time": 1793098800,
+                "type": "SCAN",
+                "price": 0.6153
+            },
+            {
+                "time": 1793117700,
+                "type": "SCAN",
+                "price": 0.6264
+            },
+            {
+                "time": 1793136600,
+                "type": "SCAN",
+                "price": 0.6286
+            },
+            {
+                "time": 1793189700,
+                "type": "SCAN",
+                "price": 0.6232
+            },
+            {
+                "time": 1793197800,
+                "type": "SCAN",
+                "price": 0.6173
+            },
+            {
+                "time": 1793205900,
+                "type": "SCAN",
+                "price": 0.6184
+            },
+            {
+                "time": 1793210400,
+                "type": "SCAN",
+                "price": 0.6199
+            }
+        ],
+        "died_at": "2026-10-29T22:46:11.197741"
+    },
+    "JTO_BOUNCE_BC_LONG_0.40952827832292593_0.43000469223907223": {
+        "coin": "JTO",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.3745-0.3932 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.40952827832292593,
+        "level_max": 0.43000469223907223,
+        "level_date": "2026-10-18",
+        "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1793019600,
+                "type": "ZONE_TOUCH",
+                "price": 0.4291
+            },
+            {
+                "time": 1793190600,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.4192
+            },
+            {
+                "time": 1793194200,
+                "type": "SCAN",
+                "price": 0.4196
+            },
+            {
+                "time": 1793213100,
+                "type": "SCAN",
+                "price": 0.4282
+            }
+        ],
+        "died_at": "2026-10-29T22:46:11.197741"
+    },
+    "DASH_BOUNCE_BC_LONG_49.87170869432834_50.460728264179146": {
+        "coin": "DASH",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 47.9296-49.0861 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 49.87170869432834,
+        "level_max": 50.460728264179146,
+        "level_date": "2026-10-26",
+        "level_type": "4h_extreme_peak+4h_poc",
+        "level_score": 4.5,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1793259000,
+                "type": "ZONE_TOUCH",
+                "price": 50.43
+            },
+            {
+                "time": 1793275200,
+                "type": "SWEEP_BOTTOM",
+                "price": 50.0
+            },
+            {
+                "time": 1793287800,
+                "type": "SCAN",
+                "price": 51.44
+            },
+            {
+                "time": 1793293200,
+                "type": "SCAN",
+                "price": 52.11
+            }
+        ],
+        "died_at": "2026-10-29T22:46:11.197741"
+    },
+    "AXS_BUYBACK_BB_LONG_0.9110216783477483_0.9389": {
+        "coin": "AXS",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.8745-0.9088 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.9110216783477483,
+        "level_max": 0.9389,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792934100,
+                "type": "ZONE_TOUCH",
+                "price": 0.9359
+            },
+            {
+                "time": 1792978200,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.9229
+            }
+        ],
+        "died_at": "2026-10-29T22:46:11.197741"
+    },
+    "WLD_BUYBACK_BB_LONG_0.4266137847846627_0.44794447402389587": {
+        "coin": "WLD",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.3959-0.4078 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.4266137847846627,
+        "level_max": 0.44794447402389587,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792935000,
+                "type": "ZONE_TOUCH",
+                "price": 0.4477
+            },
+            {
+                "time": 1792986300,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.4343
+            }
+        ],
+        "died_at": "2026-10-29T22:46:11.197741"
+    },
+    "VIRTUAL_BUYBACK_BB_LONG_0.6034682292993631_0.6127": {
+        "coin": "VIRTUAL",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.5700-0.5860 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.6034682292993631,
+        "level_max": 0.6127,
+        "level_date": "2026-10-24",
+        "level_type": "4h_extreme_peak",
+        "level_score": 4.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1792971000,
+                "type": "ZONE_TOUCH",
+                "price": 0.6125
+            },
+            {
+                "time": 1793095200,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.6069
+            }
+        ],
+        "died_at": "2026-10-29T22:46:11.197741"
+    },
+    "JTO_BUYBACK_BB_LONG_0.40952827832292593_0.43000469223907223": {
+        "coin": "JTO",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.3745-0.3932 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.40952827832292593,
+        "level_max": 0.43000469223907223,
+        "level_date": "2026-10-18",
+        "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1793019600,
+                "type": "ZONE_TOUCH",
+                "price": 0.4291
+            },
+            {
+                "time": 1793190600,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.4192
+            }
+        ],
+        "died_at": "2026-10-29T22:46:11.197741"
+    },
+    "DASH_BUYBACK_BB_LONG_49.87170869432834_50.460728264179146": {
+        "coin": "DASH",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 47.9296-49.0861 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 49.87170869432834,
+        "level_max": 50.460728264179146,
+        "level_date": "2026-10-26",
+        "level_type": "4h_extreme_peak+4h_poc",
+        "level_score": 4.5,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1793259000,
+                "type": "ZONE_TOUCH",
+                "price": 50.43
+            },
+            {
+                "time": 1793275200,
+                "type": "SWEEP_BOTTOM",
+                "price": 50.0
+            }
+        ],
+        "died_at": "2026-10-29T22:46:11.197741"
+    },
+    "XLM_BOUNCE_BC_LONG_0.16573045599865388_0.1684": {
+        "coin": "XLM",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.1568-0.1653 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.16573045599865388,
+        "level_max": 0.1684,
+        "level_date": "2026-10-24",
+        "level_type": "4h_extreme_peak",
+        "level_score": 4.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1792934100,
+                "type": "ZONE_TOUCH",
+                "price": 0.1684
+            },
+            {
+                "time": 1792971000,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.1665
+            },
+            {
+                "time": 1792973700,
+                "type": "SCAN",
+                "price": 0.1683
+            },
+            {
+                "time": 1793003400,
+                "type": "SCAN",
+                "price": 0.1693
+            },
+            {
+                "time": 1793021400,
+                "type": "SCAN",
+                "price": 0.1688
+            },
+            {
+                "time": 1793025900,
+                "type": "SCAN",
+                "price": 0.1702
+            },
+            {
+                "time": 1793096100,
+                "type": "SCAN",
+                "price": 0.167
+            },
+            {
+                "time": 1793097000,
+                "type": "SCAN",
+                "price": 0.1679
+            },
+            {
+                "time": 1793187000,
+                "type": "SCAN",
+                "price": 0.1715
+            },
+            {
+                "time": 1793210400,
+                "type": "SCAN",
+                "price": 0.1701
+            },
+            {
+                "time": 1793216700,
+                "type": "SCAN",
+                "price": 0.1732
+            },
+            {
+                "time": 1793269800,
+                "type": "SCAN",
+                "price": 0.1692
+            },
+            {
+                "time": 1793270700,
+                "type": "SCAN",
+                "price": 0.1699
+            },
+            {
+                "time": 1793284200,
+                "type": "SCAN",
+                "price": 0.1714
+            }
+        ],
+        "died_at": "2026-10-29T23:01:08.541758"
+    },
+    "CRV_BOUNCE_BC_LONG_0.31854718352893563_0.3344745427053824": {
+        "coin": "CRV",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.2980-0.3129 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.31854718352893563,
+        "level_max": 0.3344745427053824,
+        "level_date": "2026-10-04",
+        "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 6.5,
+        "level_reaction_count": 3,
+        "events": [
+            {
+                "time": 1793066400,
+                "type": "ZONE_TOUCH",
+                "price": 0.3342
+            },
+            {
+                "time": 1793238300,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.3254
+            },
+            {
+                "time": 1793287800,
+                "type": "SCAN",
+                "price": 0.3352
+            }
+        ],
+        "died_at": "2026-10-29T23:01:08.541758"
+    },
+    "1000BONK_BUYBACK_BB_LONG_0.0029885974401050214_0.003023": {
+        "coin": "1000BONK",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.0028-0.0029 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.0029885974401050214,
+        "level_max": 0.003023,
+        "level_date": "2026-10-22",
+        "level_type": "4h_extreme_peak",
+        "level_score": 4.0,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1792929600,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.003002
+            },
+            {
+                "time": 1792971000,
+                "type": "SCAN",
+                "price": 0.003
+            },
+            {
+                "time": 1792979100,
+                "type": "SCAN",
+                "price": 0.002976
+            }
+        ],
+        "died_at": "2026-10-29T23:01:08.541758"
+    },
+    "XLM_BUYBACK_BB_LONG_0.16573045599865388_0.1684": {
+        "coin": "XLM",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.1568-0.1653 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.16573045599865388,
+        "level_max": 0.1684,
+        "level_date": "2026-10-24",
+        "level_type": "4h_extreme_peak",
+        "level_score": 4.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1792934100,
+                "type": "ZONE_TOUCH",
+                "price": 0.1684
+            },
+            {
+                "time": 1792971000,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.1665
+            },
+            {
+                "time": 1793096100,
+                "type": "SCAN",
+                "price": 0.167
+            }
+        ],
+        "died_at": "2026-10-29T23:01:08.541758"
+    },
+    "LDO_BUYBACK_BB_LONG_0.3552131168485494_0.36636720787862653": {
+        "coin": "LDO",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.3239-0.3355 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.3552131168485494,
+        "level_max": 0.36636720787862653,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792943100,
+                "type": "ZONE_TOUCH",
+                "price": 0.3662
+            },
+            {
+                "time": 1792971000,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.36
+            }
+        ],
+        "died_at": "2026-10-29T23:01:08.541758"
+    },
+    "ICP_BUYBACK_BB_LONG_2.547199042792793_2.623502393018018": {
+        "coin": "ICP",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 2.3556-2.4424 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 2.547199042792793,
+        "level_max": 2.623502393018018,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792962900,
+                "type": "ZONE_TOUCH",
+                "price": 2.621
+            },
+            {
+                "time": 1792978200,
+                "type": "SWEEP_BOTTOM",
+                "price": 2.584
+            },
+            {
+                "time": 1793096100,
+                "type": "SCAN",
+                "price": 2.568
+            },
+            {
+                "time": 1793109600,
+                "type": "SCAN",
+                "price": 2.573
+            },
+            {
+                "time": 1793194200,
+                "type": "SCAN",
+                "price": 2.579
+            }
+        ],
+        "died_at": "2026-10-29T23:01:08.541758"
+    },
+    "CRV_BUYBACK_BB_LONG_0.31854718352893563_0.3344745427053824": {
+        "coin": "CRV",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.2980-0.3129 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.31854718352893563,
+        "level_max": 0.3344745427053824,
+        "level_date": "2026-10-04",
+        "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 6.5,
+        "level_reaction_count": 3,
+        "events": [
+            {
+                "time": 1793066400,
+                "type": "ZONE_TOUCH",
+                "price": 0.3342
+            },
+            {
+                "time": 1793238300,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.3254
+            }
+        ],
+        "died_at": "2026-10-29T23:01:08.541758"
+    },
+    "LIT_BUYBACK_BB_LONG_2.798745677877169_2.9386829617710273": {
+        "coin": "LIT",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 2.798745677877169,
+        "level_max": 2.9386829617710273,
+        "level_date": "2026-10-18",
+        "level_type": "1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1793196900,
+                "type": "ZONE_TOUCH",
+                "price": 2.9315
+            },
+            {
+                "time": 1793238300,
+                "type": "SWEEP_BOTTOM",
+                "price": 2.7897
+            },
+            {
+                "time": 1793239200,
+                "type": "SCAN",
+                "price": 2.7998
+            },
+            {
+                "time": 1793275200,
+                "type": "SCAN",
+                "price": 2.9666
+            },
+            {
+                "time": 1793306700,
+                "type": "ENTRY",
+                "price": 3.0033
+            }
+        ],
+        "died_at": "2026-10-29T23:01:08.541758"
+    },
+    "PENGU_BOUNCE_BC_LONG_0.006993134962506695_0.007342791710632029": {
+        "coin": "PENGU",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.006993134962506695,
+        "level_max": 0.007342791710632029,
+        "level_date": "2026-10-18",
+        "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792925100,
+                "type": "ZONE_TOUCH",
+                "price": 0.007327
+            },
+            {
+                "time": 1793306700,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.006984
+            },
+            {
+                "time": 1793307600,
+                "type": "ENTRY",
+                "price": 0.007218
+            }
+        ],
+        "died_at": "2026-10-29T23:16:07.448978"
+    },
+    "WIF_BOUNCE_BC_LONG_0.17113175348943635_0.1779": {
+        "coin": "WIF",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.17113175348943635,
+        "level_max": 0.1779,
+        "level_date": "2026-09-30",
+        "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792929600,
+                "type": "ZONE_TOUCH",
+                "price": 0.1773
+            },
+            {
+                "time": 1793305800,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.1682
+            },
+            {
+                "time": 1793307600,
+                "type": "ENTRY",
+                "price": 0.1699
+            }
+        ],
+        "died_at": "2026-10-29T23:16:07.448978"
+    },
+    "ARB_BOUNCE_BC_LONG_0.16023279801362744_0.16824443791430882": {
+        "coin": "ARB",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.16023279801362744,
+        "level_max": 0.16824443791430882,
+        "level_date": "2026-10-11",
+        "level_type": "1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1792964700,
+                "type": "ZONE_TOUCH",
+                "price": 0.16822
+            },
+            {
+                "time": 1793192400,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.16421
+            },
+            {
+                "time": 1793194200,
+                "type": "SCAN",
+                "price": 0.16564
+            },
+            {
+                "time": 1793210400,
+                "type": "SCAN",
+                "price": 0.16761
+            },
+            {
+                "time": 1793217600,
+                "type": "SCAN",
+                "price": 0.17555
+            },
+            {
+                "time": 1793270700,
+                "type": "SCAN",
+                "price": 0.16855
+            },
+            {
+                "time": 1793284200,
+                "type": "SCAN",
+                "price": 0.17298
+            },
+            {
+                "time": 1793307600,
+                "type": "ENTRY",
+                "price": 0.15644
+            }
+        ],
+        "died_at": "2026-10-29T23:16:07.448978"
+    },
+    "LINK_BOUNCE_BC_LONG_11.204752203155989_11.381": {
+        "coin": "LINK",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 11.204752203155989,
+        "level_max": 11.381,
+        "level_date": "2026-10-24",
+        "level_type": "4h_extreme_peak",
+        "level_score": 4.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1792971000,
+                "type": "ZONE_TOUCH",
+                "price": 11.311
+            },
+            {
+                "time": 1792979100,
+                "type": "SWEEP_BOTTOM",
+                "price": 11.292
+            },
+            {
+                "time": 1792990800,
+                "type": "SCAN",
+                "price": 11.455
+            },
+            {
+                "time": 1793006100,
+                "type": "SCAN",
+                "price": 11.467
+            },
+            {
+                "time": 1793097900,
+                "type": "SCAN",
+                "price": 11.353
+            },
+            {
+                "time": 1793136600,
+                "type": "SCAN",
+                "price": 11.538
+            },
+            {
+                "time": 1793158200,
+                "type": "SCAN",
+                "price": 11.794
+            },
+            {
+                "time": 1793176200,
+                "type": "SCAN",
+                "price": 11.83
+            },
+            {
+                "time": 1793192400,
+                "type": "SCAN",
+                "price": 11.615
+            },
+            {
+                "time": 1793210400,
+                "type": "SCAN",
+                "price": 11.563
+            },
+            {
+                "time": 1793284200,
+                "type": "SCAN",
+                "price": 11.803
+            },
+            {
+                "time": 1793307600,
+                "type": "ENTRY",
+                "price": 11.152
+            }
+        ],
+        "died_at": "2026-10-29T23:16:07.448978"
+    },
+    "RUNE_BOUNCE_BC_LONG_0.6076506319765476_0.6335": {
+        "coin": "RUNE",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.6076506319765476,
+        "level_max": 0.6335,
+        "level_date": "2026-10-18",
+        "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 6.0,
+        "level_reaction_count": 2,
+        "events": [
+            {
+                "time": 1793017800,
+                "type": "ZONE_TOUCH",
+                "price": 0.6314
+            },
+            {
+                "time": 1793055600,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.6201
+            },
+            {
+                "time": 1793114100,
+                "type": "SCAN",
+                "price": 0.6283
+            },
+            {
+                "time": 1793117700,
+                "type": "SCAN",
+                "price": 0.6295
+            },
+            {
+                "time": 1793189700,
+                "type": "SCAN",
+                "price": 0.6248
+            },
+            {
+                "time": 1793216700,
+                "type": "SCAN",
+                "price": 0.6278
+            },
+            {
+                "time": 1793263500,
+                "type": "SCAN",
+                "price": 0.6055
+            },
+            {
+                "time": 1793284200,
+                "type": "SCAN",
+                "price": 0.6144
+            },
+            {
+                "time": 1793307600,
+                "type": "ENTRY",
+                "price": 0.5984
+            }
+        ],
+        "died_at": "2026-10-29T23:16:07.448978"
+    },
+    "GRAM_BOUNCE_BC_LONG_1.143645073329712_1.2008273269961978": {
+        "coin": "GRAM",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 1.143645073329712,
+        "level_max": 1.2008273269961978,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL + 4h_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1793063700,
+                "type": "ZONE_TOUCH",
+                "price": 1.2
+            },
+            {
+                "time": 1793305800,
+                "type": "SWEEP_BOTTOM",
+                "price": 1.172
+            },
+            {
+                "time": 1793307600,
+                "type": "ENTRY",
+                "price": 1.19
+            }
+        ],
+        "died_at": "2026-10-29T23:16:07.448978"
+    },
+    "HBAR_BOUNCE_BC_LONG_0.07236035714285714_0.07475964285714286": {
+        "coin": "HBAR",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.07236035714285714,
+        "level_max": 0.07475964285714286,
+        "level_date": "2026-08-31",
+        "level_type": "1M_close_PMC + 1M_low_PML + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 6.5,
+        "level_reaction_count": 3,
+        "events": [
+            {
+                "time": 1793205900,
+                "type": "ZONE_TOUCH",
+                "price": 0.07467
+            },
+            {
+                "time": 1793238300,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.07337
+            },
+            {
+                "time": 1793284200,
+                "type": "SCAN",
+                "price": 0.07487
+            },
+            {
+                "time": 1793289600,
+                "type": "SCAN",
+                "price": 0.07533
+            },
+            {
+                "time": 1793307600,
+                "type": "ENTRY",
+                "price": 0.06987
+            }
+        ],
+        "died_at": "2026-10-29T23:16:07.448978"
+    },
+    "STRK_BOUNCE_BC_LONG_0.043152455683890575_0.0453100784680851": {
+        "coin": "STRK",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.043152455683890575,
+        "level_max": 0.0453100784680851,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL + 4h_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1793239200,
+                "type": "ZONE_TOUCH",
+                "price": 0.04512
+            },
+            {
+                "time": 1793305800,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.04274
+            },
+            {
+                "time": 1793307600,
+                "type": "ENTRY",
+                "price": 0.04298
+            }
+        ],
+        "died_at": "2026-10-29T23:16:07.448978"
+    },
+    "ADA_BOUNCE_BC_LONG_0.18878109777517563_0.1952": {
+        "coin": "ADA",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.18878109777517563,
+        "level_max": 0.1952,
+        "level_date": "2026-09-30",
+        "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1793305800,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.1903
+            },
+            {
+                "time": 1793307600,
+                "type": "ENTRY",
+                "price": 0.1927
+            }
+        ],
+        "died_at": "2026-10-29T23:16:07.448978"
+    },
+    "BNB_BOUNCE_BC_LONG_699.9396418678275_708.9008953304314": {
+        "coin": "BNB",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 699.9396418678275,
+        "level_max": 708.9008953304314,
+        "level_date": "2026-09-10",
+        "level_type": "1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 6.0,
+        "level_reaction_count": 4,
+        "events": [
+            {
+                "time": 1793305800,
+                "type": "SWEEP_BOTTOM",
+                "price": 685.0
+            },
+            {
+                "time": 1793306700,
+                "type": "SCAN",
+                "price": 696.28
+            },
+            {
+                "time": 1793307600,
+                "type": "ENTRY",
+                "price": 710.31
+            }
+        ],
+        "died_at": "2026-10-29T23:16:07.448978"
+    },
+    "VIRTUAL_BOUNCE_BC_LONG_0.5700259508737627_0.5860351228155933": {
+        "coin": "VIRTUAL",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.5700259508737627,
+        "level_max": 0.5860351228155933,
+        "level_date": "2026-09-30",
+        "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1793305800,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.5693
+            },
+            {
+                "time": 1793307600,
+                "type": "ENTRY",
+                "price": 0.578
+            }
+        ],
+        "died_at": "2026-10-29T23:16:07.448978"
+    },
+    "ICP_BOUNCE_BC_LONG_2.355642857142857_2.442357142857143": {
+        "coin": "ICP",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 2.355642857142857,
+        "level_max": 2.442357142857143,
+        "level_date": "2026-08-31",
+        "level_type": "1M_close_PMC + 1M_low_PML + 1d_extreme_peak",
+        "level_score": 6.0,
+        "level_reaction_count": 2,
+        "events": [
+            {
+                "time": 1793305800,
+                "type": "ZONE_TOUCH",
+                "price": 2.408
+            },
+            {
+                "time": 1793306700,
+                "type": "SWEEP_BOTTOM",
+                "price": 2.352
+            },
+            {
+                "time": 1793307600,
+                "type": "ENTRY",
+                "price": 2.429
+            }
+        ],
+        "died_at": "2026-10-29T23:16:07.448978"
+    },
+    "DOT_BOUNCE_BC_LONG_0.9250527146419666_0.9528682133950838": {
+        "coin": "DOT",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.9250527146419666,
+        "level_max": 0.9528682133950838,
+        "level_date": "2026-09-15",
+        "level_type": "1d_extreme_peak",
+        "level_score": 4.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1793305800,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.9109
+            },
+            {
+                "time": 1793307600,
+                "type": "ENTRY",
+                "price": 0.9284
+            }
+        ],
+        "died_at": "2026-10-29T23:16:07.448978"
+    },
+    "LDO_BOUNCE_BC_LONG_0.323944925058548_0.3355": {
+        "coin": "LDO",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.323944925058548,
+        "level_max": 0.3355,
+        "level_date": "2026-09-30",
+        "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1793305800,
+                "type": "ZONE_TOUCH",
+                "price": 0.3355
+            },
+            {
+                "time": 1793306700,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.3281
+            },
+            {
+                "time": 1793307600,
+                "type": "ENTRY",
+                "price": 0.3385
+            }
+        ],
+        "died_at": "2026-10-29T23:16:07.448978"
+    },
+    "AXS_BOUNCE_BC_LONG_0.8744734475603622_0.9088": {
+        "coin": "AXS",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.8744734475603622,
+        "level_max": 0.9088,
+        "level_date": "2026-09-30",
+        "level_type": "1M_low_PML + 1d_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1793305800,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.8749
+            },
+            {
+                "time": 1793307600,
+                "type": "ENTRY",
+                "price": 0.8813
+            }
+        ],
+        "died_at": "2026-10-29T23:16:07.448978"
+    },
+    "ENA_BUYBACK_BB_LONG_0.18158456375220083_0.1893735906194979": {
+        "coin": "ENA",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 0.18158456375220083,
+        "level_max": 0.1893735906194979,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL + 4h_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1793305800,
+                "type": "ZONE_TOUCH",
+                "price": 0.1877
+            },
+            {
+                "time": 1793306700,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.18372
+            },
+            {
+                "time": 1793308500,
+                "type": "ENTRY",
+                "price": 0.18829
+            }
+        ],
+        "died_at": "2026-10-29T23:31:15.290403"
+    },
+    "DASH_BOUNCE_BC_LONG_47.92955508622698_49.08611228443253": {
+        "coin": "DASH",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 47.92955508622698,
+        "level_max": 49.08611228443253,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL + 4h_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1793305800,
+                "type": "SWEEP_BOTTOM",
+                "price": 48.1
+            },
+            {
+                "time": 1793310300,
+                "type": "ENTRY",
+                "price": 48.22
+            }
+        ],
+        "died_at": "2026-10-30T00:01:19.115025"
+    },
+    "UNI_BOUNCE_BC_LONG_6.458559333716255_6.781487300402068": {
+        "coin": "UNI",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "TRIGGERED",
+        "history_log": "",
+        "level_min": 6.458559333716255,
+        "level_max": 6.781487300402068,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL + 4h_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792941300,
+                "type": "ZONE_TOUCH",
+                "price": 6.78
+            },
+            {
+                "time": 1793305800,
+                "type": "SWEEP_BOTTOM",
+                "price": 6.606
+            },
+            {
+                "time": 1793307600,
+                "type": "SCAN",
+                "price": 6.7
+            },
+            {
+                "time": 1793308500,
+                "type": "SCAN",
+                "price": 6.727
+            },
+            {
+                "time": 1793311200,
+                "type": "SCAN",
+                "price": 6.429
+            },
+            {
+                "time": 1793312100,
+                "type": "SCAN",
+                "price": 6.447
+            },
+            {
+                "time": 1793313000,
+                "type": "ENTRY",
+                "price": 6.531
+            }
+        ],
+        "died_at": "2026-10-30T00:46:19.466263"
+    },
+    "PENDLE_BUYBACK_BB_LONG_1.8865003355882743_1.980825352367688": {
+        "coin": "PENDLE",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 1.7178-1.7922 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 1.8865003355882743,
+        "level_max": 1.980825352367688,
+        "level_date": "2026-10-18",
+        "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1792952100,
+                "type": "ZONE_TOUCH",
+                "price": 1.9782
+            },
+            {
+                "time": 1792978200,
+                "type": "SWEEP_BOTTOM",
+                "price": 1.9314
+            },
+            {
+                "time": 1792979100,
+                "type": "SCAN",
+                "price": 1.9405
+            },
+            {
+                "time": 1793096100,
+                "type": "SCAN",
+                "price": 1.9253
+            }
+        ],
+        "died_at": "2026-10-30T01:16:19.226207"
+    },
+    "LINK_BUYBACK_BB_LONG_11.204752203155989_11.381": {
+        "coin": "LINK",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 10.5356-10.8760 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 11.204752203155989,
+        "level_max": 11.381,
+        "level_date": "2026-10-24",
+        "level_type": "4h_extreme_peak",
+        "level_score": 4.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1792971000,
+                "type": "ZONE_TOUCH",
+                "price": 11.311
+            },
+            {
+                "time": 1792979100,
+                "type": "SWEEP_BOTTOM",
+                "price": 11.292
+            }
+        ],
+        "died_at": "2026-10-30T01:16:19.226207"
+    },
+    "AAVE_BOUNCE_BC_LONG_133.072790672333_137.77": {
+        "coin": "AAVE",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 112.4604-118.0834 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 133.072790672333,
+        "level_max": 137.77,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL + 4h_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792947600,
+                "type": "ZONE_TOUCH",
+                "price": 137.71
+            },
+            {
+                "time": 1792971000,
+                "type": "SWEEP_BOTTOM",
+                "price": 134.84
+            },
+            {
+                "time": 1793021400,
+                "type": "SCAN",
+                "price": 135.26
+            },
+            {
+                "time": 1793034000,
+                "type": "SCAN",
+                "price": 136.53
+            },
+            {
+                "time": 1793094300,
+                "type": "SCAN",
+                "price": 130.29
+            },
+            {
+                "time": 1793096100,
+                "type": "SCAN",
+                "price": 130.16
+            },
+            {
+                "time": 1793116800,
+                "type": "SCAN",
+                "price": 132.92
+            },
+            {
+                "time": 1793136600,
+                "type": "SCAN",
+                "price": 133.15
+            },
+            {
+                "time": 1793210400,
+                "type": "SCAN",
+                "price": 132.44
+            },
+            {
+                "time": 1793239200,
+                "type": "SCAN",
+                "price": 129.5
+            },
+            {
+                "time": 1793240100,
+                "type": "SCAN",
+                "price": 129.57
+            },
+            {
+                "time": 1793284200,
+                "type": "SCAN",
+                "price": 135.31
+            },
+            {
+                "time": 1793307600,
+                "type": "SCAN",
+                "price": 127.83
+            }
+        ],
+        "died_at": "2026-10-30T02:31:22.568665"
+    },
+    "INJ_BOUNCE_BC_LONG_7.340062664757499_7.707065797995375": {
+        "coin": "INJ",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 6.9392-7.2861 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 7.340062664757499,
+        "level_max": 7.707065797995375,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL + 4h_extreme_peak+4h_poc",
+        "level_score": 6.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792981800,
+                "type": "ZONE_TOUCH",
+                "price": 7.707
+            },
+            {
+                "time": 1793241000,
+                "type": "SWEEP_BOTTOM",
+                "price": 7.516
+            },
+            {
+                "time": 1793284200,
+                "type": "SCAN",
+                "price": 8.054
+            },
+            {
+                "time": 1793306700,
+                "type": "SCAN",
+                "price": 7.482
+            },
+            {
+                "time": 1793307600,
+                "type": "SCAN",
+                "price": 7.508
+            }
+        ],
+        "died_at": "2026-10-30T02:31:22.568665"
+    },
+    "JTO_BOUNCE_BC_LONG_0.3745003994182144_0.3932254193891251": {
+        "coin": "JTO",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.3499-0.3609 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.3745003994182144,
+        "level_max": 0.3932254193891251,
+        "level_date": "2026-09-30",
+        "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1793305800,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.3775
+            },
+            {
+                "time": 1793307600,
+                "type": "SCAN",
+                "price": 0.384
+            },
+            {
+                "time": 1793308500,
+                "type": "SCAN",
+                "price": 0.3841
+            }
+        ],
+        "died_at": "2026-10-30T02:31:22.568665"
+    },
+    "AAVE_BUYBACK_BB_LONG_133.072790672333_137.77": {
+        "coin": "AAVE",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 112.4604-118.0834 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 133.072790672333,
+        "level_max": 137.77,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL + 4h_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792947600,
+                "type": "ZONE_TOUCH",
+                "price": 137.71
+            },
+            {
+                "time": 1792971000,
+                "type": "SWEEP_BOTTOM",
+                "price": 134.84
+            },
+            {
+                "time": 1792986300,
+                "type": "SCAN",
+                "price": 134.25
+            },
+            {
+                "time": 1793094300,
+                "type": "SCAN",
+                "price": 130.29
+            },
+            {
+                "time": 1793136600,
+                "type": "SCAN",
+                "price": 133.15
+            }
+        ],
+        "died_at": "2026-10-30T02:31:22.568665"
+    },
+    "ATOM_BUYBACK_BB_LONG_1.595036702974445_1.649": {
+        "coin": "ATOM",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 1.4267-1.4592 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 1.595036702974445,
+        "level_max": 1.649,
+        "level_date": "2026-10-04",
+        "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 7.0,
+        "level_reaction_count": 4,
+        "events": [
+            {
+                "time": 1792951200,
+                "type": "ZONE_TOUCH",
+                "price": 1.647
+            },
+            {
+                "time": 1792978200,
+                "type": "SWEEP_BOTTOM",
+                "price": 1.61
+            },
+            {
+                "time": 1793096100,
+                "type": "SCAN",
+                "price": 1.614
+            },
+            {
+                "time": 1793102400,
+                "type": "SCAN",
+                "price": 1.611
+            },
+            {
+                "time": 1793295900,
+                "type": "SCAN",
+                "price": 1.609
+            }
+        ],
+        "died_at": "2026-10-30T02:31:22.568665"
+    },
+    "INJ_BUYBACK_BB_LONG_7.340062664757499_7.707065797995375": {
+        "coin": "INJ",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 6.9392-7.2861 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 7.340062664757499,
+        "level_max": 7.707065797995375,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL + 4h_extreme_peak+4h_poc",
+        "level_score": 6.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792981800,
+                "type": "ZONE_TOUCH",
+                "price": 7.707
+            },
+            {
+                "time": 1793241000,
+                "type": "SWEEP_BOTTOM",
+                "price": 7.516
+            },
+            {
+                "time": 1793306700,
+                "type": "SCAN",
+                "price": 7.482
+            }
+        ],
+        "died_at": "2026-10-30T02:31:22.568665"
+    },
+    "OP_BUYBACK_BB_LONG_0.1070337740669073_0.11238546277025266": {
+        "coin": "OP",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.0912-0.0956 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.1070337740669073,
+        "level_max": 0.11238546277025266,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL + 4h_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1793028600,
+                "type": "ZONE_TOUCH",
+                "price": 0.11214
+            },
+            {
+                "time": 1793040300,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.10942
+            }
+        ],
+        "died_at": "2026-10-30T02:31:22.568665"
+    },
+    "JTO_BUYBACK_BB_LONG_0.3745003994182144_0.3932254193891251": {
+        "coin": "JTO",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.3499-0.3609 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.3745003994182144,
+        "level_max": 0.3932254193891251,
+        "level_date": "2026-09-30",
+        "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1793305800,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.3775
+            }
+        ],
+        "died_at": "2026-10-30T02:31:22.568665"
+    },
+    "ZRO_BUYBACK_BB_LONG_1.6139213588645829_1.694617426807812": {
+        "coin": "ZRO",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 1.4093-1.4798 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 1.6139213588645829,
+        "level_max": 1.694617426807812,
+        "level_date": "2026-10-25",
+        "level_type": "1W_low_PWL + 4h_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1792936800,
+                "type": "ZONE_TOUCH",
+                "price": 1.6823
+            },
+            {
+                "time": 1793031300,
+                "type": "SWEEP_BOTTOM",
+                "price": 1.6505
+            },
+            {
+                "time": 1793276100,
+                "type": "SCAN",
+                "price": 1.6983
+            }
+        ],
+        "died_at": "2026-10-30T02:46:16.779313"
+    },
+    "AXS_BUYBACK_BB_LONG_0.8744734475603622_0.9088": {
+        "coin": "AXS",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.8287-0.8431 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.8744734475603622,
+        "level_max": 0.9088,
+        "level_date": "2026-09-30",
+        "level_type": "1M_low_PML + 1d_extreme_peak",
+        "level_score": 5.0,
+        "level_reaction_count": 0,
+        "events": [
+            {
+                "time": 1793305800,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.8749
+            }
+        ],
+        "died_at": "2026-10-30T04:01:24.186321"
+    },
+    "CRV_BOUNCE_BC_LONG_0.29795286585638325_0.3128505091492024": {
+        "coin": "CRV",
+        "direction": "LONG",
+        "strategy": "BOUNCE",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.2857-0.2958 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.29795286585638325,
+        "level_max": 0.3128505091492024,
+        "level_date": "2026-09-30",
+        "level_type": "1M_low_PML + 1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1793305800,
+                "type": "ZONE_TOUCH",
+                "price": 0.3075
+            },
+            {
+                "time": 1793306700,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.3005
+            }
+        ],
+        "died_at": "2026-10-30T04:16:21.885081"
+    },
+    "CRV_BUYBACK_BB_LONG_0.29795286585638325_0.3128505091492024": {
+        "coin": "CRV",
+        "direction": "LONG",
+        "strategy": "BUYBACK",
+        "mode": null,
+        "final_state": "DEAD",
+        "history_log": "Цена прокололась через нижнюю зону 0.2857-0.2958 — этот уровень позади рынка, убит навсегда.",
+        "level_min": 0.29795286585638325,
+        "level_max": 0.3128505091492024,
+        "level_date": "2026-09-30",
+        "level_type": "1M_low_PML + 1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
+        "level_score": 5.5,
+        "level_reaction_count": 1,
+        "events": [
+            {
+                "time": 1793305800,
+                "type": "ZONE_TOUCH",
+                "price": 0.3075
+            },
+            {
+                "time": 1793306700,
+                "type": "SWEEP_BOTTOM",
+                "price": 0.3005
+            }
+        ],
+        "died_at": "2026-10-30T04:16:21.885081"
     }
 }

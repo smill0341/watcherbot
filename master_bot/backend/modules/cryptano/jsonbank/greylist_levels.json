@@ -2,23 +2,23 @@
     "SOXL": {
         "supports": [
             {
-                "min": 76.97726419549988,
-                "max": 80.82612740527487,
-                "score": 5.5,
-                "type": "1W_low_PWL + 4h_extreme_peak",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
+                "min": 81.38630348267323,
+                "max": 82.49,
+                "score": 3.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
                 "reaction_count": 0,
-                "level_id": "S|1W_low_PWL|2026-10-25"
+                "level_id": "S|4h_extreme_peak|2026-10-26"
             },
             {
                 "min": 84.36732209881272,
                 "max": 92.41,
-                "score": 6.5,
+                "score": 7.0,
                 "type": "1M_MACRO_Support + 1W_MACRO_Support",
                 "date": "2026-07-01",
                 "activated_at": "2026-09-01",
-                "reaction_count": 3,
+                "reaction_count": 4,
                 "class": "MACRO",
                 "level_id": "S|1M_MACRO_Support|2026-07-01"
             }
@@ -27,11 +27,11 @@
             {
                 "min": 103.48540479142257,
                 "max": 108.27983808343096,
-                "score": 6.5,
+                "score": 7.0,
                 "type": "1W_high_PWH + 4h_extreme_peak+4h_poc",
                 "date": "2026-10-25",
                 "activated_at": "2026-10-25",
-                "reaction_count": 0,
+                "reaction_count": 1,
                 "level_id": "R|1W_high_PWH|2026-10-25"
             },
             {
@@ -45,37 +45,37 @@
                 "level_id": "R|4h_extreme_peak|2026-10-14"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "PUMPFUN": {
         "supports": [
             {
+                "min": 0.003347140955090429,
+                "max": 0.0035144980028449504,
+                "score": 5.0,
+                "type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
+                "date": "2026-09-30",
+                "activated_at": "2026-09-30",
+                "reaction_count": 0,
+                "level_id": "S|1M_low_PML|2026-09-30"
+            },
+            {
                 "min": 0.0037753928719518213,
                 "max": 0.003964162515549412,
-                "score": 5.0,
+                "score": 5.5,
                 "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
                 "date": "2026-10-18",
                 "activated_at": "2026-10-18",
-                "reaction_count": 0,
-                "level_id": "S|1W_low_PWL|2026-10-18"
-            },
-            {
-                "min": 0.003998402964959569,
-                "max": 0.004198323113207547,
-                "score": 5.5,
-                "type": "1W_low_PWL + 4h_extreme_peak",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
                 "reaction_count": 1,
-                "level_id": "S|1W_low_PWL|2026-10-25"
+                "level_id": "S|1W_low_PWL|2026-10-18"
             }
         ],
         "resistances": [
             {
                 "min": 0.005060699751086701,
                 "max": 0.0052851200995653195,
-                "score": 5.0,
-                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
+                "score": 6.0,
+                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak+4h_poc",
                 "date": "2026-10-25",
                 "activated_at": "2026-10-25",
                 "reaction_count": 0,
@@ -84,40 +84,50 @@
             {
                 "min": 0.005812515254113554,
                 "max": 0.006118437109593215,
-                "score": 6.0,
-                "type": "1W_high_PWH + 4h_extreme_peak+4h_poc",
+                "score": 5.0,
+                "type": "1W_high_PWH + 4h_extreme_peak",
                 "date": "2026-10-18",
                 "activated_at": "2026-10-18",
                 "reaction_count": 0,
                 "level_id": "R|1W_high_PWH|2026-10-18"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "BTW": {
         "supports": [
             {
+                "min": 0.8298981616336302,
+                "max": 0.8713930697153117,
+                "score": 5.0,
+                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-04",
+                "activated_at": "2026-10-04",
+                "reaction_count": 0,
+                "level_id": "S|1W_low_PWL|2026-10-04"
+            },
+            {
                 "min": 0.8869880372124842,
                 "max": 0.9313374390731084,
-                "score": 5.0,
+                "score": 5.5,
                 "type": "1W_low_PWL",
                 "date": "2026-10-11",
                 "activated_at": "2026-10-11",
-                "reaction_count": 0,
+                "reaction_count": 1,
                 "level_id": "S|1W_low_PWL|2026-10-11"
-            },
-            {
-                "min": 1.2779676665425854,
-                "max": 1.3418660498697146,
-                "score": 5.0,
-                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
-                "reaction_count": 0,
-                "level_id": "S|1W_low_PWL|2026-10-25"
             }
         ],
         "resistances": [
+            {
+                "min": 1.8006740219882071,
+                "max": 1.895446338934955,
+                "score": 5.0,
+                "type": "4h_extreme_peak+4h_poc",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 1,
+                "level_id": "R|4h_extreme_peak|2026-10-28"
+            },
             {
                 "min": 1.9192692041502162,
                 "max": 2.0186283183399136,
@@ -127,45 +137,45 @@
                 "activated_at": "2026-10-23",
                 "reaction_count": 2,
                 "level_id": "R|4h_extreme_peak|2026-10-22"
-            },
-            {
-                "min": 2.0900969612419074,
-                "max": 2.1866312155032372,
-                "score": 3.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-21",
-                "activated_at": "2026-10-22",
-                "reaction_count": 0,
-                "level_id": "R|4h_extreme_peak|2026-10-21"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "FARTCOIN": {
         "supports": [
             {
-                "min": 0.12337864501276126,
-                "max": 0.12614838746809684,
-                "score": 5.5,
-                "type": "1M_low_PML",
-                "date": "2026-08-31",
-                "activated_at": "2026-08-31",
+                "min": 0.10803629400400436,
+                "max": 0.11343810870420458,
+                "score": 4.5,
+                "type": "1d_extreme_peak",
+                "date": "2026-06-25",
+                "activated_at": "2026-06-30",
                 "reaction_count": 1,
-                "level_id": "S|1M_low_PML|2026-08-31"
+                "level_id": "S|1d_extreme_peak|2026-06-25"
             },
             {
-                "min": 0.1289481943372837,
-                "max": 0.1382,
+                "min": 0.11700489435880881,
+                "max": 0.12117,
                 "score": 5.0,
                 "type": "1W_MACRO_Support",
-                "date": "2026-09-14",
-                "activated_at": "2026-09-28",
+                "date": "2026-07-27",
+                "activated_at": "2026-08-10",
                 "reaction_count": 2,
                 "class": "MACRO",
-                "level_id": "S|1W_MACRO_Support|2026-09-14"
+                "level_id": "S|1W_MACRO_Support|2026-07-27"
             }
         ],
         "resistances": [
+            {
+                "min": 0.13501,
+                "max": 0.13723813835483087,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 1,
+                "level_id": "R|4h_extreme_peak|2026-10-28"
+            },
             {
                 "min": 0.14762192186834772,
                 "max": 0.1491172312526609,
@@ -175,138 +185,138 @@
                 "activated_at": "2026-10-24",
                 "reaction_count": 0,
                 "level_id": "R|4h_extreme_peak|2026-10-23"
-            },
-            {
-                "min": 0.15416,
-                "max": 0.16051347816057346,
-                "score": 5.0,
-                "type": "1W_high_PWH + 4h_extreme_peak",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
-                "reaction_count": 0,
-                "level_id": "R|1W_high_PWH|2026-10-25"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "USELESS": {
         "supports": [
             {
-                "min": 0.13005448588362667,
-                "max": 0.136557210177808,
-                "score": 5.0,
-                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 0,
-                "level_id": "S|1W_low_PWL|2026-10-18"
+                "min": 0.057847701429398865,
+                "max": 0.060515746426502835,
+                "score": 4.5,
+                "type": "1d_extreme_peak",
+                "date": "2026-08-28",
+                "activated_at": "2026-09-02",
+                "reaction_count": 1,
+                "level_id": "S|1d_extreme_peak|2026-08-28"
             },
             {
-                "min": 0.14676433279498205,
-                "max": 0.15142,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-22",
-                "activated_at": "2026-10-23",
+                "min": 0.08727464285714286,
+                "max": 0.091638375,
+                "score": 6.0,
+                "type": "1M_close_PMC + 1M_low_PML",
+                "date": "2026-08-31",
+                "activated_at": "2026-08-31",
                 "reaction_count": 1,
-                "level_id": "S|4h_extreme_peak|2026-10-22"
+                "level_id": "S|1M_close_PMC|2026-08-31"
             }
         ],
         "resistances": [
+            {
+                "min": 0.17438,
+                "max": 0.1785778112742287,
+                "score": 4.5,
+                "type": "4h_extreme_peak+4h_poc",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 0,
+                "level_id": "R|4h_extreme_peak|2026-10-28"
+            },
             {
                 "min": 0.18046798169673878,
                 "max": 0.18996629652288294,
                 "score": 5.0,
-                "type": "1W_high_PWH + 4h_extreme_peak",
+                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
                 "date": "2026-10-25",
                 "activated_at": "2026-10-25",
                 "reaction_count": 0,
                 "level_id": "R|1W_high_PWH|2026-10-25"
-            },
-            {
-                "min": 0.20179297757678272,
-                "max": 0.21199480896928688,
-                "score": 5.0,
-                "type": "1W_high_PWH + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 0,
-                "level_id": "R|1W_high_PWH|2026-10-18"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "VVV": {
         "supports": [
             {
-                "min": 22.288110994468866,
-                "max": 23.166222513827837,
-                "score": 6.0,
-                "type": "1W_low_PWL+4h_poc",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
+                "min": 15.58073236529072,
+                "max": 16.245,
+                "score": 5.0,
+                "type": "1M_low_PML + 1d_extreme_peak",
+                "date": "2026-09-30",
+                "activated_at": "2026-09-30",
                 "reaction_count": 0,
-                "level_id": "S|1W_low_PWL|2026-10-25"
+                "level_id": "S|1M_low_PML|2026-09-30"
             },
             {
-                "min": 23.266918453804074,
-                "max": 23.841,
-                "score": 3.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-24",
-                "activated_at": "2026-10-25",
-                "reaction_count": 0,
-                "level_id": "S|4h_extreme_peak|2026-10-24"
+                "min": 21.003986802859604,
+                "max": 22.054186143002585,
+                "score": 8.0,
+                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak+4h_poc",
+                "date": "2026-10-11",
+                "activated_at": "2026-10-11",
+                "reaction_count": 4,
+                "level_id": "S|1W_low_PWL|2026-10-11"
             }
         ],
         "resistances": [
+            {
+                "min": 26.09584590261283,
+                "max": 26.41946163895487,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-27",
+                "activated_at": "2026-10-28",
+                "reaction_count": 1,
+                "level_id": "R|4h_extreme_peak|2026-10-27"
+            },
             {
                 "min": 27.15613661231529,
                 "max": 28.585406960331884,
                 "score": 5.0,
-                "type": "1W_high_PWH + 4h_extreme_peak",
+                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
                 "date": "2026-10-25",
                 "activated_at": "2026-10-25",
                 "reaction_count": 0,
                 "level_id": "R|1W_high_PWH|2026-10-25"
-            },
-            {
-                "min": 29.99488701282521,
-                "max": 31.19624519486992,
-                "score": 5.5,
-                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-04",
-                "activated_at": "2026-10-04",
-                "reaction_count": 1,
-                "level_id": "R|1W_high_PWH|2026-10-04"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "MSTR": {
         "supports": [
             {
-                "min": 132.77432440958128,
-                "max": 135.86,
-                "score": 5.5,
-                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 1,
-                "level_id": "S|1W_low_PWL|2026-10-18"
+                "min": 91.55250000000001,
+                "max": 94.0675,
+                "score": 6.0,
+                "type": "1M_close_PMC + 1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
+                "date": "2026-07-31",
+                "activated_at": "2026-07-31",
+                "reaction_count": 2,
+                "level_id": "S|1M_close_PMC|2026-07-31"
             },
             {
-                "min": 140.15408138689003,
-                "max": 141.87,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-24",
-                "activated_at": "2026-10-25",
-                "reaction_count": 1,
-                "level_id": "S|4h_extreme_peak|2026-10-24"
+                "min": 120.22435808,
+                "max": 123.6041048,
+                "score": 5.0,
+                "type": "1M_low_PML + 1d_extreme_peak",
+                "date": "2026-09-30",
+                "activated_at": "2026-09-30",
+                "reaction_count": 0,
+                "level_id": "S|1M_low_PML|2026-09-30"
             }
         ],
         "resistances": [
+            {
+                "min": 145.23,
+                "max": 146.33939899576646,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-26",
+                "reaction_count": 1,
+                "level_id": "R|4h_extreme_peak|2026-10-25"
+            },
             {
                 "min": 151.84,
                 "max": 156.7868282590645,
@@ -316,23 +326,13 @@
                 "activated_at": "2026-10-25",
                 "reaction_count": 0,
                 "level_id": "R|1W_high_PWH|2026-10-25"
-            },
-            {
-                "min": 157.39415413056875,
-                "max": 160.0343383477725,
-                "score": 6.0,
-                "type": "1W_high_PWH + 4h_extreme_peak+4h_poc",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 0,
-                "level_id": "R|1W_high_PWH|2026-10-18"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "_meta": {
-        "last_build": "2026-10-26T15:05:12.812086",
-        "coins_count": 66
+        "last_build": "2026-10-30T03:05:12.714703",
+        "coins_count": 72
     },
     "SNDK": {
         "supports": [
@@ -361,11 +361,11 @@
             {
                 "min": 1402.4141365409275,
                 "max": 1437.072345383629,
-                "score": 5.0,
+                "score": 5.5,
                 "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
                 "date": "2026-10-25",
                 "activated_at": "2026-10-25",
-                "reaction_count": 0,
+                "reaction_count": 1,
                 "level_id": "R|1W_high_PWH|2026-10-25"
             },
             {
@@ -379,10 +379,21 @@
                 "level_id": "R|4h_extreme_peak|2026-10-14"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "TRUMP": {
         "supports": [
+            {
+                "min": 1.278761794682002,
+                "max": 1.3363820531799806,
+                "score": 5.0,
+                "type": "1M_MACRO_Support + 1W_MACRO_Support",
+                "date": "2025-10-01",
+                "activated_at": "2025-12-01",
+                "reaction_count": 0,
+                "class": "MACRO",
+                "level_id": "S|1M_MACRO_Support|2025-10-01"
+            },
             {
                 "min": 1.3576650776728603,
                 "max": 1.395,
@@ -392,19 +403,19 @@
                 "activated_at": "2026-08-31",
                 "reaction_count": 0,
                 "level_id": "S|1M_low_PML|2026-08-31"
-            },
-            {
-                "min": 1.609026859157294,
-                "max": 1.683,
-                "score": 5.5,
-                "type": "1W_low_PWL + 4h_extreme_peak",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
-                "reaction_count": 1,
-                "level_id": "S|1W_low_PWL|2026-10-25"
             }
         ],
         "resistances": [
+            {
+                "min": 1.744,
+                "max": 1.758083613204456,
+                "score": 3.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 0,
+                "level_id": "R|4h_extreme_peak|2026-10-28"
+            },
             {
                 "min": 1.7910935374149661,
                 "max": 1.8063625850340137,
@@ -414,19 +425,9 @@
                 "activated_at": "2026-10-24",
                 "reaction_count": 0,
                 "level_id": "R|4h_extreme_peak|2026-10-23"
-            },
-            {
-                "min": 1.8826362811791382,
-                "max": 1.9013454875283446,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-16",
-                "activated_at": "2026-10-17",
-                "reaction_count": 1,
-                "level_id": "R|4h_extreme_peak|2026-10-16"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "KORU": {
         "supports": [
@@ -454,14 +455,14 @@
         ],
         "resistances": [
             {
-                "min": 12.178333518789978,
-                "max": 12.819298440831556,
-                "score": 5.5,
-                "type": "1W_high_PWH + 4h_extreme_peak",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
+                "min": 13.79,
+                "max": 14.12444053662074,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
                 "reaction_count": 0,
-                "level_id": "R|1W_high_PWH|2026-10-25"
+                "level_id": "R|4h_extreme_peak|2026-10-28"
             },
             {
                 "min": 17.948637098682653,
@@ -474,33 +475,44 @@
                 "level_id": "R|1W_high_PWH|2026-10-18"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "NVDA": {
         "supports": [
             {
                 "min": 203.56389985768405,
                 "max": 208.36100142315942,
-                "score": 4.5,
+                "score": 5.0,
                 "type": "1W_MACRO_Support + 1d_extreme_peak",
                 "date": "2026-08-24",
                 "activated_at": "2026-09-07",
-                "reaction_count": 1,
+                "reaction_count": 2,
                 "class": "MACRO",
                 "level_id": "S|1W_MACRO_Support|2026-08-24"
             },
             {
                 "min": 208.7839687964141,
                 "max": 212.27,
-                "score": 6.0,
-                "type": "1M_low_PML + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-09-30",
-                "activated_at": "2026-09-30",
-                "reaction_count": 2,
-                "level_id": "S|1M_low_PML|2026-09-30"
+                "score": 5.5,
+                "type": "1W_MACRO_Support",
+                "date": "2026-09-14",
+                "activated_at": "2026-09-28",
+                "reaction_count": 3,
+                "class": "MACRO",
+                "level_id": "S|1W_MACRO_Support|2026-09-14"
             }
         ],
         "resistances": [
+            {
+                "min": 219.91,
+                "max": 220.78075263257048,
+                "score": 3.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 0,
+                "level_id": "R|4h_extreme_peak|2026-10-28"
+            },
             {
                 "min": 221.27,
                 "max": 223.4554889824326,
@@ -510,19 +522,9 @@
                 "activated_at": "2026-10-25",
                 "reaction_count": 0,
                 "level_id": "R|1W_high_PWH|2026-10-25"
-            },
-            {
-                "min": 230.18303571428572,
-                "max": 231.81678571428571,
-                "score": 6.5,
-                "type": "1W_high_PWH + 4h_extreme_peak+4h_poc",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 0,
-                "level_id": "R|1W_high_PWH|2026-10-18"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "SKHY": {
         "supports": [
@@ -549,14 +551,14 @@
         ],
         "resistances": [
             {
-                "min": 143.77,
-                "max": 149.3324428303143,
-                "score": 5.0,
-                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
+                "min": 162.01413108526992,
+                "max": 166.816586891473,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-29",
+                "activated_at": "2026-10-30",
                 "reaction_count": 0,
-                "level_id": "R|1W_high_PWH|2026-10-25"
+                "level_id": "R|4h_extreme_peak|2026-10-29"
             },
             {
                 "min": 169.73686085987046,
@@ -569,20 +571,10 @@
                 "level_id": "R|1W_high_PWH|2026-10-18"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "MU": {
         "supports": [
-            {
-                "min": 793.8298214285713,
-                "max": 833.5213124999999,
-                "score": 7.0,
-                "type": "1M_close_PMC + 1M_low_PML + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-07-31",
-                "activated_at": "2026-07-31",
-                "reaction_count": 3,
-                "level_id": "S|1M_close_PMC|2026-07-31"
-            },
             {
                 "min": 835.9038115085536,
                 "max": 851.9554712286159,
@@ -592,18 +584,28 @@
                 "activated_at": "2026-10-25",
                 "reaction_count": 0,
                 "level_id": "S|1W_low_PWL|2026-10-25"
+            },
+            {
+                "min": 870.6362539455961,
+                "max": 879.19,
+                "score": 3.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
+                "reaction_count": 0,
+                "level_id": "S|4h_extreme_peak|2026-10-26"
             }
         ],
         "resistances": [
             {
-                "min": 916.47,
-                "max": 937.2297763452626,
-                "score": 5.0,
-                "type": "1W_high_PWH + 4h_extreme_peak",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
+                "min": 985.48,
+                "max": 992.8019996549905,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
                 "reaction_count": 0,
-                "level_id": "R|1W_high_PWH|2026-10-25"
+                "level_id": "R|4h_extreme_peak|2026-10-28"
             },
             {
                 "min": 1031.584696886975,
@@ -616,80 +618,90 @@
                 "level_id": "R|1W_high_PWH|2026-10-18"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "CRCL": {
         "supports": [
             {
+                "min": 74.60127422596766,
+                "max": 77.47,
+                "score": 5.5,
+                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 1,
+                "level_id": "S|1W_low_PWL|2026-10-18"
+            },
+            {
                 "min": 77.87819500117897,
                 "max": 81.57,
                 "score": 5.5,
-                "type": "1W_MACRO_Support + 4h_extreme_peak",
+                "type": "1W_MACRO_Support",
                 "date": "2026-09-14",
                 "activated_at": "2026-09-28",
                 "reaction_count": 3,
                 "class": "MACRO",
                 "level_id": "S|1W_MACRO_Support|2026-09-14"
-            },
-            {
-                "min": 84.538174941452,
-                "max": 85.4,
-                "score": 5.5,
-                "type": "4h_extreme_peak+4h_poc",
-                "date": "2026-10-22",
-                "activated_at": "2026-10-23",
-                "reaction_count": 1,
-                "level_id": "S|4h_extreme_peak|2026-10-22"
             }
         ],
         "resistances": [
+            {
+                "min": 81.66,
+                "max": 82.9055298408023,
+                "score": 3.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 0,
+                "level_id": "R|4h_extreme_peak|2026-10-28"
+            },
             {
                 "min": 87.42894150149378,
                 "max": 89.57242339940248,
                 "score": 6.5,
-                "type": "1W_high_PWH + 4h_extreme_peak",
+                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
                 "date": "2026-10-04",
                 "activated_at": "2026-10-04",
                 "reaction_count": 3,
                 "level_id": "R|1W_high_PWH|2026-10-04"
-            },
-            {
-                "min": 90.94,
-                "max": 92.41204059191304,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-21",
-                "activated_at": "2026-10-22",
-                "reaction_count": 0,
-                "level_id": "R|4h_extreme_peak|2026-10-21"
             }
         ],
-        "updated_at": "2026-10-24T15:12:19.867756"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "SPCX": {
         "supports": [
             {
-                "min": 142.05256852704093,
-                "max": 143.7935786823977,
-                "score": 5.5,
-                "type": "1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-09-15",
-                "activated_at": "2026-09-20",
-                "reaction_count": 3,
-                "level_id": "S|1d_extreme_peak|2026-09-15"
+                "min": 129.74455627876463,
+                "max": 133.42,
+                "score": 5.0,
+                "type": "1d_extreme_peak",
+                "date": "2026-08-20",
+                "activated_at": "2026-08-25",
+                "reaction_count": 2,
+                "level_id": "S|1d_extreme_peak|2026-08-20"
             },
             {
-                "min": 144.86765202444616,
-                "max": 146.38086993888464,
-                "score": 6.0,
-                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-04",
-                "activated_at": "2026-10-04",
-                "reaction_count": 2,
-                "level_id": "S|1W_low_PWL|2026-10-04"
+                "min": 137.92531831653824,
+                "max": 140.51,
+                "score": 5.5,
+                "type": "1M_low_PML",
+                "date": "2026-09-30",
+                "activated_at": "2026-09-30",
+                "reaction_count": 1,
+                "level_id": "S|1M_low_PML|2026-09-30"
             }
         ],
         "resistances": [
+            {
+                "min": 149.69,
+                "max": 150.7187114883636,
+                "score": 4.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
+                "reaction_count": 1,
+                "level_id": "R|4h_extreme_peak|2026-10-26"
+            },
             {
                 "min": 164.47,
                 "max": 167.825949113603,
@@ -699,19 +711,9 @@
                 "activated_at": "2026-10-18",
                 "reaction_count": 1,
                 "level_id": "R|1W_high_PWH|2026-10-18"
-            },
-            {
-                "min": 168.72857142857143,
-                "max": 175.91142857142856,
-                "score": 6.0,
-                "type": "1M_close_PMC + 1M_high_PMH + 1W_high_PWH + 1W_MACRO_Resistance + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-06-30",
-                "activated_at": "2026-06-30",
-                "reaction_count": 2,
-                "level_id": "R|1M_close_PMC|2026-06-30"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "SOXS": {
         "supports": [
@@ -726,14 +728,14 @@
                 "level_id": "S|4h_extreme_peak|2026-10-14"
             },
             {
-                "min": 42.304955628944185,
-                "max": 43.82761092763954,
-                "score": 5.5,
-                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
+                "min": 39.09203366297611,
+                "max": 39.87,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
                 "reaction_count": 0,
-                "level_id": "S|1W_low_PWL|2026-10-25"
+                "level_id": "S|4h_extreme_peak|2026-10-28"
             }
         ],
         "resistances": [
@@ -758,7 +760,7 @@
                 "level_id": "R|1M_high_PMH|2026-08-31"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "AERO": {
         "supports": [
@@ -785,6 +787,16 @@
         ],
         "resistances": [
             {
+                "min": 0.7106412176155282,
+                "max": 0.7167435129537887,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 1,
+                "level_id": "R|4h_extreme_peak|2026-10-28"
+            },
+            {
                 "min": 0.8716568180594685,
                 "max": 0.9029372727762126,
                 "score": 5.0,
@@ -793,19 +805,9 @@
                 "activated_at": "2026-10-25",
                 "reaction_count": 0,
                 "level_id": "R|1W_high_PWH|2026-10-25"
-            },
-            {
-                "min": 0.9489794578861763,
-                "max": 0.9989257451433435,
-                "score": 5.5,
-                "type": "1W_high_PWH + 1W_MACRO_Resistance + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-11",
-                "activated_at": "2026-10-11",
-                "reaction_count": 1,
-                "level_id": "R|1W_high_PWH|2026-10-11"
             }
         ],
-        "updated_at": "2026-10-26T11:31:19.756449"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "SNXX": {
         "supports": [
@@ -823,7 +825,7 @@
                 "min": 7.652090673575129,
                 "max": 8.034695207253886,
                 "score": 5.5,
-                "type": "1M_low_PML + 4h_extreme_peak",
+                "type": "1M_low_PML + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
                 "date": "2026-08-31",
                 "activated_at": "2026-08-31",
                 "reaction_count": 1,
@@ -832,14 +834,14 @@
         ],
         "resistances": [
             {
-                "min": 10.41,
-                "max": 10.815131398380679,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-16",
-                "activated_at": "2026-10-17",
+                "min": 10.515223285174184,
+                "max": 11.068656089657035,
+                "score": 6.0,
+                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-25",
                 "reaction_count": 1,
-                "level_id": "R|4h_extreme_peak|2026-10-16"
+                "level_id": "R|1W_high_PWH|2026-10-25"
             },
             {
                 "min": 12.03,
@@ -852,7 +854,7 @@
                 "level_id": "R|4h_extreme_peak|2026-10-14"
             }
         ],
-        "updated_at": "2026-10-24T15:12:19.867756"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "QQQ": {
         "supports": [
@@ -869,11 +871,11 @@
             {
                 "min": 699.0080994062765,
                 "max": 706.839005937235,
-                "score": 6.5,
+                "score": 7.0,
                 "type": "1M_low_PML + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
                 "date": "2026-09-30",
                 "activated_at": "2026-09-30",
-                "reaction_count": 2,
+                "reaction_count": 3,
                 "level_id": "S|1M_low_PML|2026-09-30"
             }
         ],
@@ -881,132 +883,75 @@
             {
                 "min": 724.05,
                 "max": 729.8117136938057,
-                "score": 5.0,
-                "type": "1W_high_PWH + 4h_extreme_peak",
+                "score": 6.5,
+                "type": "1W_high_PWH + 4h_extreme_peak+4h_poc",
                 "date": "2026-10-25",
                 "activated_at": "2026-10-25",
-                "reaction_count": 0,
+                "reaction_count": 1,
                 "level_id": "R|1W_high_PWH|2026-10-25"
             },
             {
                 "min": 730.6962683021792,
                 "max": 732.7314926791283,
-                "score": 3.5,
+                "score": 4.0,
                 "type": "4h_extreme_peak",
                 "date": "2026-10-16",
                 "activated_at": "2026-10-17",
-                "reaction_count": 0,
+                "reaction_count": 1,
                 "level_id": "R|4h_extreme_peak|2026-10-16"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
-    },
-    "SAND": {
-        "supports": [
-            {
-                "min": 0.041482516516516514,
-                "max": 0.04221,
-                "score": 3.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-09-29",
-                "activated_at": "2026-09-30",
-                "reaction_count": 0,
-                "level_id": "S|4h_extreme_peak|2026-09-29"
-            },
-            {
-                "min": 0.04309875,
-                "max": 0.04460125,
-                "score": 5.5,
-                "type": "1M_close_PMC + 1W_low_PWL",
-                "date": "2026-09-30",
-                "activated_at": "2026-09-30",
-                "reaction_count": 1,
-                "level_id": "S|1M_close_PMC|2026-09-30"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 0.05868,
-                "max": 0.059376065950920244,
-                "score": 3.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-21",
-                "activated_at": "2026-10-22",
-                "reaction_count": 0,
-                "level_id": "R|4h_extreme_peak|2026-10-21"
-            },
-            {
-                "min": 0.06519708012728662,
-                "max": 0.06862850539714381,
-                "score": 5.5,
-                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 0,
-                "level_id": "R|1W_high_PWH|2026-10-18"
-            }
-        ],
-        "updated_at": "2026-10-24T15:12:19.867756"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "Q": {
         "supports": [
             {
-                "min": 0.04781695328820117,
-                "max": 0.05020780095261122,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-15",
-                "activated_at": "2026-10-16",
+                "min": 0.027532083595254993,
+                "max": 0.028259791011862517,
+                "score": 4.5,
+                "type": "4h_extreme_peak+4h_poc",
+                "date": "2026-10-11",
+                "activated_at": "2026-10-12",
                 "reaction_count": 0,
-                "level_id": "S|4h_extreme_peak|2026-10-15"
+                "level_id": "S|4h_extreme_peak|2026-10-11"
             },
             {
-                "min": 0.05302949845320959,
-                "max": 0.055680973375870066,
-                "score": 5.5,
-                "type": "1W_low_PWL",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
-                "reaction_count": 1,
-                "level_id": "S|1W_low_PWL|2026-10-25"
+                "min": 0.02905733938593595,
+                "max": 0.03050165153516012,
+                "score": 6.0,
+                "type": "1W_low_PWL+4h_poc",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 0,
+                "level_id": "S|1W_low_PWL|2026-10-18"
             }
         ],
         "resistances": [
             {
-                "min": 0.12771976416068276,
-                "max": 0.1325920943357269,
-                "score": 3.5,
+                "min": 0.07641723274915348,
+                "max": 0.08043919236752997,
+                "score": 4.0,
                 "type": "4h_extreme_peak",
-                "date": "2026-10-22",
-                "activated_at": "2026-10-23",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
                 "reaction_count": 0,
-                "level_id": "R|4h_extreme_peak|2026-10-22"
+                "level_id": "R|4h_extreme_peak|2026-10-28"
             },
             {
-                "min": 0.14497854814844893,
-                "max": 0.15260899805099887,
-                "score": 6.5,
-                "type": "1W_high_PWH + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 2,
-                "level_id": "R|1W_high_PWH|2026-10-18"
+                "min": 0.21153545126350112,
+                "max": 0.22266889606684329,
+                "score": 6.0,
+                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-25",
+                "reaction_count": 1,
+                "level_id": "R|1W_high_PWH|2026-10-25"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "DRAM": {
         "supports": [
-            {
-                "min": 44.431457082633365,
-                "max": 45.40635729341659,
-                "score": 5.5,
-                "type": "1W_low_PWL + 4h_extreme_peak",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
-                "reaction_count": 0,
-                "level_id": "S|1W_low_PWL|2026-10-25"
-            },
             {
                 "min": 46.32478380831367,
                 "max": 46.79,
@@ -1016,18 +961,28 @@
                 "activated_at": "2026-10-25",
                 "reaction_count": 0,
                 "level_id": "S|4h_extreme_peak|2026-10-24"
+            },
+            {
+                "min": 46.87584617827652,
+                "max": 47.23,
+                "score": 4.5,
+                "type": "4h_extreme_peak+4h_poc",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
+                "reaction_count": 0,
+                "level_id": "S|4h_extreme_peak|2026-10-26"
             }
         ],
         "resistances": [
             {
-                "min": 48.99,
-                "max": 50.421266512116176,
-                "score": 5.0,
-                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
-                "reaction_count": 0,
-                "level_id": "R|1W_high_PWH|2026-10-25"
+                "min": 54.14,
+                "max": 54.57204680985804,
+                "score": 4.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 1,
+                "level_id": "R|4h_extreme_peak|2026-10-28"
             },
             {
                 "min": 57.52159180846854,
@@ -1040,41 +995,41 @@
                 "level_id": "R|1W_high_PWH|2026-10-18"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "SAMSUNG": {
         "supports": [
             {
-                "min": 145.25036908186095,
-                "max": 152.512887535954,
+                "min": 152.79064118213944,
+                "max": 156.32339704465147,
                 "score": 5.0,
-                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
+                "type": "1W_low_PWL + 4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-25",
                 "reaction_count": 0,
-                "level_id": "S|1W_low_PWL|2026-10-18"
+                "level_id": "S|1W_low_PWL|2026-10-25"
             },
             {
-                "min": 153.3732757560461,
-                "max": 155.65,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-23",
-                "activated_at": "2026-10-24",
-                "reaction_count": 0,
-                "level_id": "S|4h_extreme_peak|2026-10-23"
+                "min": 159.01667449036347,
+                "max": 160.33,
+                "score": 5.0,
+                "type": "4h_extreme_peak+4h_poc",
+                "date": "2026-10-24",
+                "activated_at": "2026-10-25",
+                "reaction_count": 1,
+                "level_id": "S|4h_extreme_peak|2026-10-24"
             }
         ],
         "resistances": [
             {
-                "min": 167.97,
-                "max": 172.43571940324398,
-                "score": 4.5,
+                "min": 182.05354483831536,
+                "max": 186.26264551616845,
+                "score": 4.0,
                 "type": "4h_extreme_peak",
-                "date": "2026-10-21",
-                "activated_at": "2026-10-22",
-                "reaction_count": 1,
-                "level_id": "R|4h_extreme_peak|2026-10-21"
+                "date": "2026-10-29",
+                "activated_at": "2026-10-30",
+                "reaction_count": 0,
+                "level_id": "R|4h_extreme_peak|2026-10-29"
             },
             {
                 "min": 193.24,
@@ -1087,25 +1042,26 @@
                 "level_id": "R|1W_high_PWH|2026-10-18"
             }
         ],
-        "updated_at": "2026-10-24T03:05:15.417623"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "INTC": {
         "supports": [
             {
                 "min": 78.39713964705307,
                 "max": 81.32,
-                "score": 5.5,
-                "type": "1M_low_PML + 1M_MACRO_Support + 1W_MACRO_Support + 1d_extreme_peak",
-                "date": "2026-07-31",
-                "activated_at": "2026-07-31",
-                "reaction_count": 0,
-                "level_id": "S|1M_low_PML|2026-07-31"
+                "score": 6.5,
+                "type": "1M_MACRO_Support + 1W_MACRO_Support+4h_poc",
+                "date": "2026-07-01",
+                "activated_at": "2026-09-01",
+                "reaction_count": 1,
+                "class": "MACRO",
+                "level_id": "S|1M_MACRO_Support|2026-07-01"
             },
             {
                 "min": 84.84849342448844,
                 "max": 87.19,
-                "score": 7.0,
-                "type": "1W_MACRO_Support + 1W_low_PWL + 4h_extreme_peak+4h_poc",
+                "score": 6.0,
+                "type": "1W_MACRO_Support",
                 "date": "2026-08-24",
                 "activated_at": "2026-09-07",
                 "reaction_count": 4,
@@ -1117,11 +1073,11 @@
             {
                 "min": 94.55668926349406,
                 "max": 96.52132429460237,
-                "score": 5.0,
+                "score": 5.5,
                 "type": "1W_high_PWH + 4h_extreme_peak",
                 "date": "2026-10-25",
                 "activated_at": "2026-10-25",
-                "reaction_count": 0,
+                "reaction_count": 1,
                 "level_id": "R|1W_high_PWH|2026-10-25"
             },
             {
@@ -1135,25 +1091,15 @@
                 "level_id": "R|1W_high_PWH|2026-10-18"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "AAPL": {
         "supports": [
             {
-                "min": 331.032013566182,
-                "max": 333.4298643381802,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-09",
-                "activated_at": "2026-10-10",
-                "reaction_count": 0,
-                "level_id": "S|4h_extreme_peak|2026-10-09"
-            },
-            {
                 "min": 336.41159891152836,
                 "max": 338.1560027211793,
                 "score": 5.5,
-                "type": "1W_low_PWL + 4h_extreme_peak",
+                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
                 "date": "2026-10-18",
                 "activated_at": "2026-10-18",
                 "reaction_count": 1,
@@ -1164,8 +1110,8 @@
             {
                 "min": 341.48,
                 "max": 345.91913712997206,
-                "score": 6.0,
-                "type": "1W_MACRO_Resistance + 1W_high_PWH + 1d_extreme_peak",
+                "score": 7.0,
+                "type": "1W_MACRO_Resistance + 1W_high_PWH + 1d_extreme_peak+4h_poc",
                 "date": "2026-07-27",
                 "activated_at": "2026-08-10",
                 "reaction_count": 5,
@@ -1173,17 +1119,17 @@
                 "level_id": "R|1W_MACRO_Resistance|2026-07-27"
             },
             {
-                "min": 348.0632854233343,
-                "max": 350.8096714576666,
-                "score": 4.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-16",
-                "activated_at": "2026-10-17",
-                "reaction_count": 1,
-                "level_id": "R|4h_extreme_peak|2026-10-16"
+                "min": 348.74,
+                "max": 352.3406277783695,
+                "score": 5.0,
+                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-25",
+                "reaction_count": 0,
+                "level_id": "R|1W_high_PWH|2026-10-25"
             }
         ],
-        "updated_at": "2026-10-24T15:12:19.867756"
+        "updated_at": "2026-10-29T15:05:11.514641"
     },
     "ERA": {
         "supports": [
@@ -1230,56 +1176,7 @@
                 "level_id": "R|1W_high_PWH|2026-10-25"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
-    },
-    "ALT": {
-        "supports": [
-            {
-                "min": 0.00590026417722405,
-                "max": 0.006057,
-                "score": 5.0,
-                "type": "1M_low_PML + 1d_extreme_peak",
-                "date": "2026-09-30",
-                "activated_at": "2026-09-30",
-                "reaction_count": 0,
-                "level_id": "S|1M_low_PML|2026-09-30"
-            },
-            {
-                "min": 0.007014050166437441,
-                "max": 0.007167874583906397,
-                "score": 6.0,
-                "type": "1W_low_PWL + 1d_extreme_peak",
-                "date": "2026-09-27",
-                "activated_at": "2026-09-27",
-                "reaction_count": 2,
-                "level_id": "S|1W_low_PWL|2026-09-27"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 0.01013805164549032,
-                "max": 0.011009194835450969,
-                "score": 5.5,
-                "type": "1M_MACRO_Resistance + 1W_MACRO_Resistance",
-                "date": "2026-05-01",
-                "activated_at": "2026-07-01",
-                "reaction_count": 1,
-                "class": "MACRO",
-                "level_id": "R|1M_MACRO_Resistance|2026-05-01"
-            },
-            {
-                "min": 0.01383,
-                "max": 0.01446230325265506,
-                "score": 5.5,
-                "type": "1W_MACRO_Resistance + 1d_extreme_peak",
-                "date": "2025-12-29",
-                "activated_at": "2026-01-12",
-                "reaction_count": 3,
-                "class": "MACRO",
-                "level_id": "R|1W_MACRO_Resistance|2025-12-29"
-            }
-        ],
-        "updated_at": "2026-10-24T15:12:19.867756"
+        "updated_at": "2026-10-28T03:05:18.441172"
     },
     "ARIA": {
         "supports": [
@@ -1322,16 +1219,6 @@
     "TSLA": {
         "supports": [
             {
-                "min": 345.5937034185141,
-                "max": 354.54,
-                "score": 6.0,
-                "type": "1M_low_PML + 1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-09-30",
-                "activated_at": "2026-09-30",
-                "reaction_count": 2,
-                "level_id": "S|1M_low_PML|2026-09-30"
-            },
-            {
                 "min": 365.07754694421044,
                 "max": 367.99,
                 "score": 5.0,
@@ -1340,44 +1227,45 @@
                 "activated_at": "2026-10-23",
                 "reaction_count": 1,
                 "level_id": "S|4h_extreme_peak|2026-10-22"
+            },
+            {
+                "min": 370.3384379187858,
+                "max": 371.61,
+                "score": 3.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
+                "reaction_count": 0,
+                "level_id": "S|4h_extreme_peak|2026-10-26"
             }
         ],
         "resistances": [
             {
-                "min": 380.48,
-                "max": 387.87663184641445,
-                "score": 7.5,
-                "type": "1M_high_PMH + 1W_high_PWH + 1W_MACRO_Resistance + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-09-30",
-                "activated_at": "2026-09-30",
-                "reaction_count": 5,
-                "level_id": "R|1M_high_PMH|2026-09-30"
+                "min": 383.17,
+                "max": 389.70508889666775,
+                "score": 5.5,
+                "type": "1W_MACRO_Resistance",
+                "date": "2026-10-05",
+                "activated_at": "2026-10-19",
+                "reaction_count": 3,
+                "class": "MACRO",
+                "level_id": "R|1W_MACRO_Resistance|2026-10-05"
             },
             {
-                "min": 391.1141194299456,
-                "max": 397.51158805700544,
-                "score": 4.0,
+                "min": 411.56663832706124,
+                "max": 413.53134466917555,
+                "score": 3.5,
                 "type": "4h_extreme_peak",
-                "date": "2026-10-21",
-                "activated_at": "2026-10-22",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
                 "reaction_count": 0,
-                "level_id": "R|4h_extreme_peak|2026-10-21"
+                "level_id": "R|4h_extreme_peak|2026-10-28"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "UNITREE": {
         "supports": [
-            {
-                "min": 62.520197953999,
-                "max": 63.2895051150025,
-                "score": 5.5,
-                "type": "1W_low_PWL + 4h_extreme_peak",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
-                "reaction_count": 0,
-                "level_id": "S|1W_low_PWL|2026-10-25"
-            },
             {
                 "min": 74.10489357773967,
                 "max": 75.5910642226032,
@@ -1387,9 +1275,29 @@
                 "activated_at": "2026-10-24",
                 "reaction_count": 0,
                 "level_id": "S|4h_extreme_peak|2026-10-23"
+            },
+            {
+                "min": 90.63237971377833,
+                "max": 91.70620286221666,
+                "score": 4.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
+                "reaction_count": 1,
+                "level_id": "S|4h_extreme_peak|2026-10-26"
             }
         ],
         "resistances": [
+            {
+                "min": 104.14761624621448,
+                "max": 105.94323837537856,
+                "score": 4.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
+                "reaction_count": 1,
+                "level_id": "R|4h_extreme_peak|2026-10-26"
+            },
             {
                 "min": 134.48200745604856,
                 "max": 141.56000784847217,
@@ -1401,20 +1309,10 @@
                 "level_id": "R|1M_high_PMH|2026-08-31"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "DOOD": {
         "supports": [
-            {
-                "min": 0.0012631605568445476,
-                "max": 0.001273098607888631,
-                "score": 3.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-19",
-                "reaction_count": 0,
-                "level_id": "S|4h_extreme_peak|2026-10-18"
-            },
             {
                 "min": 0.00130075,
                 "max": 0.00135325,
@@ -1424,94 +1322,45 @@
                 "activated_at": "2026-08-31",
                 "reaction_count": 3,
                 "level_id": "S|1M_close_PMC|2026-08-31"
+            },
+            {
+                "min": 0.001363840293040293,
+                "max": 0.0014063992673992675,
+                "score": 3.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
+                "reaction_count": 0,
+                "level_id": "S|4h_extreme_peak|2026-10-26"
             }
         ],
         "resistances": [
             {
                 "min": 0.0022290756434166356,
                 "max": 0.0023928924356583364,
-                "score": 4.0,
+                "score": 4.5,
                 "type": "1W_MACRO_Resistance",
                 "date": "2026-09-07",
                 "activated_at": "2026-09-21",
-                "reaction_count": 0,
+                "reaction_count": 1,
                 "class": "MACRO",
                 "level_id": "R|1W_MACRO_Resistance|2026-09-07"
             },
             {
-                "min": 0.0034763265306122447,
-                "max": 0.0038037673469387755,
-                "score": 7.0,
-                "type": "1W_MACRO_Resistance + 1d_extreme_peak+4h_poc",
-                "date": "2026-03-09",
-                "activated_at": "2026-03-23",
-                "reaction_count": 4,
-                "class": "MACRO",
-                "level_id": "R|1W_MACRO_Resistance|2026-03-09"
-            }
-        ],
-        "updated_at": "2026-10-26T15:05:12.812086"
-    },
-    "IOST": {
-        "supports": [
-            {
-                "min": 0.0005717053571428571,
-                "max": 0.0005892946428571428,
-                "score": 5.5,
-                "type": "1M_close_PMC + 1M_low_PML",
-                "date": "2026-08-31",
-                "activated_at": "2026-08-31",
-                "reaction_count": 1,
-                "level_id": "S|1M_close_PMC|2026-08-31"
-            },
-            {
-                "min": 0.0006997450866322433,
-                "max": 0.0007347323409638554,
-                "score": 5.5,
-                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 1,
-                "level_id": "S|1W_low_PWL|2026-10-18"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 0.0012466,
-                "max": 0.001276151539095043,
-                "score": 6.0,
-                "type": "1M_MACRO_Resistance",
-                "date": "2026-05-01",
-                "activated_at": "2026-07-01",
-                "reaction_count": 2,
-                "class": "MACRO",
-                "level_id": "R|1M_MACRO_Resistance|2026-05-01"
-            },
-            {
-                "min": 0.0017187971992195451,
-                "max": 0.0018092602097047844,
-                "score": 5.5,
-                "type": "1W_high_PWH + 4h_extreme_peak",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
+                "min": 0.0028438139597229345,
+                "max": 0.002993488378655721,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-27",
+                "activated_at": "2026-10-28",
                 "reaction_count": 0,
-                "level_id": "R|1W_high_PWH|2026-10-25"
+                "level_id": "R|4h_extreme_peak|2026-10-27"
             }
         ],
-        "updated_at": "2026-10-25T15:05:14.301101"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "JCT": {
         "supports": [
-            {
-                "min": 0.0017877479630635524,
-                "max": 0.00187713536121673,
-                "score": 5.0,
-                "type": "1W_low_PWL",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
-                "reaction_count": 0,
-                "level_id": "S|1W_low_PWL|2026-10-25"
-            },
             {
                 "min": 0.001878624983116883,
                 "max": 0.001972556232272727,
@@ -1521,6 +1370,16 @@
                 "activated_at": "2026-10-24",
                 "reaction_count": 0,
                 "level_id": "S|4h_extreme_peak|2026-10-23"
+            },
+            {
+                "min": 0.003799711304956268,
+                "max": 0.003989696870204082,
+                "score": 3.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
+                "reaction_count": 0,
+                "level_id": "S|4h_extreme_peak|2026-10-26"
             }
         ],
         "resistances": [
@@ -1539,7 +1398,7 @@
                 "min": 0.0069109,
                 "max": 0.008433655374792525,
                 "score": 6.5,
-                "type": "1M_MACRO_Resistance + 1W_MACRO_Resistance + 1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
+                "type": "1M_MACRO_Resistance + 1W_MACRO_Resistance + 1W_high_PWH + 1d_extreme_peak",
                 "date": "2026-06-01",
                 "activated_at": "2026-08-01",
                 "reaction_count": 3,
@@ -1547,20 +1406,10 @@
                 "level_id": "R|1M_MACRO_Resistance|2026-06-01"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "BIRB": {
         "supports": [
-            {
-                "min": 0.044383659343003416,
-                "max": 0.04660284231015359,
-                "score": 5.5,
-                "type": "1M_low_PML + 1M_MACRO_Support + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-08-31",
-                "activated_at": "2026-08-31",
-                "reaction_count": 1,
-                "level_id": "S|1M_low_PML|2026-08-31"
-            },
             {
                 "min": 0.050193293516699405,
                 "max": 0.051756766208251474,
@@ -1570,14 +1419,24 @@
                 "activated_at": "2026-10-23",
                 "reaction_count": 1,
                 "level_id": "S|4h_extreme_peak|2026-10-22"
+            },
+            {
+                "min": 0.06268231918081918,
+                "max": 0.06581643513986014,
+                "score": 3.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
+                "reaction_count": 0,
+                "level_id": "S|4h_extreme_peak|2026-10-26"
             }
         ],
         "resistances": [
             {
                 "min": 0.07149551167582417,
                 "max": 0.07669244883241758,
-                "score": 7.0,
-                "type": "1W_MACRO_Resistance+4h_poc",
+                "score": 6.0,
+                "type": "1W_MACRO_Resistance",
                 "date": "2026-09-07",
                 "activated_at": "2026-09-21",
                 "reaction_count": 4,
@@ -1585,25 +1444,25 @@
                 "level_id": "R|1W_MACRO_Resistance|2026-09-07"
             },
             {
-                "min": 0.08748692204885625,
-                "max": 0.0920914968935329,
-                "score": 7.0,
-                "type": "1d_extreme_peak+4h_poc",
-                "date": "2026-06-10",
-                "activated_at": "2026-06-15",
-                "reaction_count": 3,
-                "level_id": "R|1d_extreme_peak|2026-06-10"
+                "min": 0.08280052722646311,
+                "max": 0.08715844971206643,
+                "score": 4.5,
+                "type": "4h_extreme_peak+4h_poc",
+                "date": "2026-10-27",
+                "activated_at": "2026-10-28",
+                "reaction_count": 0,
+                "level_id": "R|4h_extreme_peak|2026-10-27"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-28T15:05:17.731807"
     },
     "IRYS": {
         "supports": [
             {
                 "min": 0.011654746925813614,
                 "max": 0.011932530741863852,
-                "score": 4.5,
-                "type": "4h_extreme_peak+4h_poc",
+                "score": 3.5,
+                "type": "4h_extreme_peak",
                 "date": "2026-10-18",
                 "activated_at": "2026-10-19",
                 "reaction_count": 0,
@@ -1612,8 +1471,8 @@
             {
                 "min": 0.011975433229041316,
                 "max": 0.012465,
-                "score": 7.0,
-                "type": "1M_low_PML + 1M_MACRO_Support + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak+4h_poc",
+                "score": 6.0,
+                "type": "1M_low_PML + 1M_MACRO_Support + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak",
                 "date": "2026-07-31",
                 "activated_at": "2026-07-31",
                 "reaction_count": 2,
@@ -1624,8 +1483,8 @@
             {
                 "min": 0.01973418336556401,
                 "max": 0.0211309816634436,
-                "score": 5.0,
-                "type": "1W_MACRO_Resistance+4h_poc",
+                "score": 4.0,
+                "type": "1W_MACRO_Resistance",
                 "date": "2026-09-28",
                 "activated_at": "2026-10-12",
                 "reaction_count": 0,
@@ -1644,7 +1503,7 @@
                 "level_id": "R|1M_MACRO_Resistance|2026-01-01"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "BMT": {
         "supports": [
@@ -1694,17 +1553,28 @@
         "updated_at": "2026-10-26T15:05:12.812086"
     },
     "PONS": {
-        "supports": [],
+        "supports": [
+            {
+                "min": 0.21367508005692937,
+                "max": 0.22435883405977583,
+                "score": 5.5,
+                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-25",
+                "reaction_count": 1,
+                "level_id": "S|1W_low_PWL|2026-10-25"
+            }
+        ],
         "resistances": [
             {
-                "min": 0.2942,
-                "max": 0.298876729144411,
-                "score": 3.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-21",
-                "activated_at": "2026-10-22",
-                "reaction_count": 0,
-                "level_id": "R|4h_extreme_peak|2026-10-21"
+                "min": 0.28770814872798434,
+                "max": 0.30285068287156247,
+                "score": 5.5,
+                "type": "1W_high_PWH + 4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-25",
+                "reaction_count": 1,
+                "level_id": "R|1W_high_PWH|2026-10-25"
             },
             {
                 "min": 0.3479419092843094,
@@ -1717,216 +1587,15 @@
                 "level_id": "R|1W_high_PWH|2026-10-18"
             }
         ],
-        "updated_at": "2026-10-24T15:12:19.867756"
-    },
-    "MAGMA": {
-        "supports": [
-            {
-                "min": 0.20934768996277756,
-                "max": 0.21981507446091644,
-                "score": 5.0,
-                "type": "1W_low_PWL + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 0,
-                "level_id": "S|1W_low_PWL|2026-10-18"
-            },
-            {
-                "min": 0.23326113234591495,
-                "max": 0.2392,
-                "score": 3.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-17",
-                "activated_at": "2026-10-18",
-                "reaction_count": 0,
-                "level_id": "S|4h_extreme_peak|2026-10-17"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 0.3576,
-                "max": 0.38338253116011506,
-                "score": 4.5,
-                "type": "1W_MACRO_Resistance",
-                "date": "2026-09-28",
-                "activated_at": "2026-10-12",
-                "reaction_count": 1,
-                "class": "MACRO",
-                "level_id": "R|1W_MACRO_Resistance|2026-09-28"
-            },
-            {
-                "min": 0.5186028698296802,
-                "max": 0.5458977577154528,
-                "score": 6.0,
-                "type": "1d_extreme_peak",
-                "date": "2026-07-12",
-                "activated_at": "2026-07-17",
-                "reaction_count": 3,
-                "level_id": "R|1d_extreme_peak|2026-07-12"
-            }
-        ],
-        "updated_at": "2026-10-25T15:05:14.301101"
-    },
-    "PTB": {
-        "supports": [
-            {
-                "min": 0.00043619350180505414,
-                "max": 0.0004851,
-                "score": 6.0,
-                "type": "1M_MACRO_Support + 1W_MACRO_Support",
-                "date": "2026-06-01",
-                "activated_at": "2026-08-01",
-                "reaction_count": 2,
-                "class": "MACRO",
-                "level_id": "S|1M_MACRO_Support|2026-06-01"
-            },
-            {
-                "min": 0.0005441720975991045,
-                "max": 0.000609379024008955,
-                "score": 4.5,
-                "type": "1W_MACRO_Support",
-                "date": "2026-09-07",
-                "activated_at": "2026-09-21",
-                "reaction_count": 1,
-                "class": "MACRO",
-                "level_id": "S|1W_MACRO_Support|2026-09-07"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 0.0008628600936996427,
-                "max": 0.0009082737828417292,
-                "score": 5.5,
-                "type": "1W_high_PWH + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 1,
-                "level_id": "R|1W_high_PWH|2026-10-18"
-            },
-            {
-                "min": 0.0009209287277616234,
-                "max": 0.0009613771272238377,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-08",
-                "activated_at": "2026-10-09",
-                "reaction_count": 0,
-                "level_id": "R|4h_extreme_peak|2026-10-08"
-            }
-        ],
-        "updated_at": "2026-10-24T03:05:15.417623"
-    },
-    "BTR": {
-        "supports": [
-            {
-                "min": 0.03776826565255732,
-                "max": 0.03965667893518519,
-                "score": 5.0,
-                "type": "1M_low_PML + 1d_extreme_peak",
-                "date": "2026-09-30",
-                "activated_at": "2026-09-30",
-                "reaction_count": 0,
-                "level_id": "S|1M_low_PML|2026-09-30"
-            },
-            {
-                "min": 0.04140679601935342,
-                "max": 0.04347713582032109,
-                "score": 6.0,
-                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-11",
-                "activated_at": "2026-10-11",
-                "reaction_count": 2,
-                "level_id": "S|1W_low_PWL|2026-10-11"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 0.06874196937366617,
-                "max": 0.07235996776175387,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-23",
-                "activated_at": "2026-10-24",
-                "reaction_count": 0,
-                "level_id": "R|4h_extreme_peak|2026-10-23"
-            },
-            {
-                "min": 0.07300516444871825,
-                "max": 0.07684754152496659,
-                "score": 4.0,
-                "type": "1d_extreme_peak",
-                "date": "2026-09-10",
-                "activated_at": "2026-09-15",
-                "reaction_count": 0,
-                "level_id": "R|1d_extreme_peak|2026-09-10"
-            }
-        ],
-        "updated_at": "2026-10-24T15:12:19.867756"
-    },
-    "ARK": {
-        "supports": [
-            {
-                "min": 0.14485813245250773,
-                "max": 0.15210103907513312,
-                "score": 5.0,
-                "type": "1W_low_PWL",
-                "date": "2026-09-27",
-                "activated_at": "2026-09-27",
-                "reaction_count": 0,
-                "level_id": "S|1W_low_PWL|2026-09-27"
-            },
-            {
-                "min": 0.16477730741076582,
-                "max": 0.1698267314730855,
-                "score": 5.5,
-                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 1,
-                "level_id": "S|1W_low_PWL|2026-10-18"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 0.22594369580491497,
-                "max": 0.23783546926833155,
-                "score": 5.5,
-                "type": "1W_high_PWH + 4h_extreme_peak",
-                "date": "2026-10-11",
-                "activated_at": "2026-10-11",
-                "reaction_count": 1,
-                "level_id": "R|1W_high_PWH|2026-10-11"
-            },
-            {
-                "min": 0.23851590975961195,
-                "max": 0.2510693786943284,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-03",
-                "activated_at": "2026-10-04",
-                "reaction_count": 0,
-                "level_id": "R|4h_extreme_peak|2026-10-03"
-            }
-        ],
-        "updated_at": "2026-10-25T15:05:14.301101"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "INIT": {
         "supports": [
             {
-                "min": 0.11259981951494642,
-                "max": 0.11822981049069374,
-                "score": 5.5,
-                "type": "1W_low_PWL + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 1,
-                "level_id": "S|1W_low_PWL|2026-10-18"
-            },
-            {
                 "min": 0.1186853064768968,
                 "max": 0.12461957180074165,
-                "score": 5.5,
-                "type": "4h_extreme_peak+4h_poc",
+                "score": 4.5,
+                "type": "4h_extreme_peak",
                 "date": "2026-10-16",
                 "activated_at": "2026-10-17",
                 "reaction_count": 1,
@@ -1937,19 +1606,39 @@
             {
                 "min": 0.13896405716372934,
                 "max": 0.15521759428362705,
-                "score": 6.5,
-                "type": "1M_MACRO_Resistance + 1W_MACRO_Resistance + 1d_extreme_peak",
+                "score": 6.0,
+                "type": "1M_MACRO_Resistance + 1W_MACRO_Resistance",
                 "date": "2026-02-01",
                 "activated_at": "2026-04-01",
-                "reaction_count": 3,
+                "reaction_count": 2,
                 "class": "MACRO",
                 "level_id": "R|1M_MACRO_Resistance|2026-02-01"
+            },
+            {
+                "min": 0.24600137708176367,
+                "max": 0.2589488179808039,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 0,
+                "level_id": "R|4h_extreme_peak|2026-10-28"
             }
         ],
-        "updated_at": "2026-10-25T15:05:14.301101"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "DOS": {
         "supports": [
+            {
+                "min": 0.16583924179648657,
+                "max": 0.1724,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-15",
+                "activated_at": "2026-10-16",
+                "reaction_count": 1,
+                "level_id": "S|4h_extreme_peak|2026-10-15"
+            },
             {
                 "min": 0.17465530075187968,
                 "max": 0.18338806578947367,
@@ -1959,126 +1648,31 @@
                 "activated_at": "2026-10-25",
                 "reaction_count": 0,
                 "level_id": "S|1W_low_PWL|2026-10-25"
-            },
-            {
-                "min": 0.2181911492453185,
-                "max": 0.2281,
-                "score": 3.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-26",
-                "reaction_count": 0,
-                "level_id": "S|4h_extreme_peak|2026-10-25"
             }
         ],
         "resistances": [
             {
-                "min": 0.27804426402126103,
-                "max": 0.29267817265395896,
+                "min": 0.26678035714285714,
+                "max": 0.28082142857142856,
                 "score": 6.5,
-                "type": "1M_high_PMH + 1W_high_PWH",
-                "date": "2026-09-30",
-                "activated_at": "2026-09-30",
+                "type": "1M_close_PMC + 1M_high_PMH + 1W_high_PWH",
+                "date": "2026-08-31",
+                "activated_at": "2026-08-31",
                 "reaction_count": 3,
-                "level_id": "R|1M_high_PMH|2026-09-30"
+                "level_id": "R|1M_close_PMC|2026-08-31"
             },
             {
                 "min": 0.30213310944105215,
                 "max": 0.3180348520432128,
-                "score": 5.5,
-                "type": "1W_high_PWH + 4h_extreme_peak",
+                "score": 6.0,
+                "type": "1W_high_PWH",
                 "date": "2026-10-25",
                 "activated_at": "2026-10-25",
-                "reaction_count": 0,
+                "reaction_count": 1,
                 "level_id": "R|1W_high_PWH|2026-10-25"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
-    },
-    "SOPH": {
-        "supports": [
-            {
-                "min": 0.0015106681576291404,
-                "max": 0.001557,
-                "score": 3.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-22",
-                "activated_at": "2026-10-23",
-                "reaction_count": 0,
-                "level_id": "S|4h_extreme_peak|2026-10-22"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 0.0019520312908982748,
-                "max": 0.0020547697798929208,
-                "score": 5.5,
-                "type": "4h_extreme_peak+4h_poc",
-                "date": "2026-10-20",
-                "activated_at": "2026-10-21",
-                "reaction_count": 1,
-                "level_id": "R|4h_extreme_peak|2026-10-20"
-            },
-            {
-                "min": 0.0035469034521470673,
-                "max": 0.0036240386191411732,
-                "score": 5.0,
-                "type": "1W_high_PWH",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 0,
-                "level_id": "R|1W_high_PWH|2026-10-18"
-            }
-        ],
-        "updated_at": "2026-10-24T03:05:15.417623"
-    },
-    "TQQQ": {
-        "supports": [
-            {
-                "min": 62.81919688185521,
-                "max": 64.11700779536196,
-                "score": 5.0,
-                "type": "1M_low_PML",
-                "date": "2026-08-31",
-                "activated_at": "2026-08-31",
-                "reaction_count": 0,
-                "level_id": "S|1M_low_PML|2026-08-31"
-            },
-            {
-                "min": 66.49582242951472,
-                "max": 68.15,
-                "score": 6.0,
-                "type": "1W_MACRO_Support + 1W_low_PWL + 4h_extreme_peak+4h_poc",
-                "date": "2026-09-14",
-                "activated_at": "2026-09-28",
-                "reaction_count": 2,
-                "class": "MACRO",
-                "level_id": "S|1W_MACRO_Support|2026-09-14"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 73.02,
-                "max": 73.6789617619439,
-                "score": 3.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-21",
-                "activated_at": "2026-10-22",
-                "reaction_count": 0,
-                "level_id": "R|4h_extreme_peak|2026-10-21"
-            },
-            {
-                "min": 74.18974430836565,
-                "max": 74.82010227665374,
-                "score": 3.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-16",
-                "activated_at": "2026-10-17",
-                "reaction_count": 0,
-                "level_id": "R|4h_extreme_peak|2026-10-16"
-            }
-        ],
-        "updated_at": "2026-10-24T03:05:15.417623"
+        "updated_at": "2026-10-29T15:05:11.514641"
     },
     "ORDER": {
         "supports": [
@@ -2128,434 +1722,17 @@
         ],
         "updated_at": "2026-10-26T15:05:12.812086"
     },
-    "BABA": {
-        "supports": [
-            {
-                "min": 95.63303571428571,
-                "max": 97.18696428571428,
-                "score": 5.5,
-                "type": "1M_close_PMC + 1M_low_PML + 1d_extreme_peak",
-                "date": "2026-06-30",
-                "activated_at": "2026-06-30",
-                "reaction_count": 1,
-                "level_id": "S|1M_close_PMC|2026-06-30"
-            },
-            {
-                "min": 97.53021380071414,
-                "max": 99.28786199285854,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-23",
-                "activated_at": "2026-10-24",
-                "reaction_count": 0,
-                "level_id": "S|4h_extreme_peak|2026-10-23"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 109.19,
-                "max": 109.80301515706566,
-                "score": 3.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-21",
-                "activated_at": "2026-10-22",
-                "reaction_count": 0,
-                "level_id": "R|4h_extreme_peak|2026-10-21"
-            },
-            {
-                "min": 110.46409785376501,
-                "max": 111.1195902146235,
-                "score": 3.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-19",
-                "activated_at": "2026-10-20",
-                "reaction_count": 0,
-                "level_id": "R|4h_extreme_peak|2026-10-19"
-            }
-        ],
-        "updated_at": "2026-10-25T15:05:14.301101"
-    },
-    "IN": {
-        "supports": [
-            {
-                "min": 0.02559760430879713,
-                "max": 0.02673,
-                "score": 5.5,
-                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 1,
-                "level_id": "S|1W_low_PWL|2026-10-18"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 0.032718681887909426,
-                "max": 0.033350527244836226,
-                "score": 5.5,
-                "type": "1W_high_PWH",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 1,
-                "level_id": "R|1W_high_PWH|2026-10-18"
-            },
-            {
-                "min": 0.03671541945534272,
-                "max": 0.03767383221786291,
-                "score": 5.5,
-                "type": "1W_high_PWH",
-                "date": "2026-10-11",
-                "activated_at": "2026-10-11",
-                "reaction_count": 1,
-                "level_id": "R|1W_high_PWH|2026-10-11"
-            }
-        ],
-        "updated_at": "2026-10-25T15:05:14.301101"
-    },
-    "TREE": {
-        "supports": [
-            {
-                "min": 0.03469531593118923,
-                "max": 0.03643008172774869,
-                "score": 5.5,
-                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 1,
-                "level_id": "S|1W_low_PWL|2026-10-18"
-            },
-            {
-                "min": 0.0369374707407825,
-                "max": 0.03736,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-22",
-                "activated_at": "2026-10-23",
-                "reaction_count": 1,
-                "level_id": "S|4h_extreme_peak|2026-10-22"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 0.04704329353157572,
-                "max": 0.04808467064684242,
-                "score": 4.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-07",
-                "activated_at": "2026-10-08",
-                "reaction_count": 1,
-                "level_id": "R|4h_extreme_peak|2026-10-07"
-            },
-            {
-                "min": 0.04869582150210575,
-                "max": 0.05125875947590079,
-                "score": 5.5,
-                "type": "1M_high_PMH + 1W_high_PWH + 1W_MACRO_Resistance + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-09-30",
-                "activated_at": "2026-09-30",
-                "reaction_count": 1,
-                "level_id": "R|1M_high_PMH|2026-09-30"
-            }
-        ],
-        "updated_at": "2026-10-24T15:12:19.867756"
-    },
-    "LA": {
-        "supports": [
-            {
-                "min": 0.05003664814814815,
-                "max": 0.05253848055555556,
-                "score": 5.5,
-                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 1,
-                "level_id": "S|1W_low_PWL|2026-10-18"
-            },
-            {
-                "min": 0.053146458075962674,
-                "max": 0.05416,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-22",
-                "activated_at": "2026-10-23",
-                "reaction_count": 1,
-                "level_id": "S|4h_extreme_peak|2026-10-22"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 0.0681,
-                "max": 0.07039711152716593,
-                "score": 5.5,
-                "type": "1W_high_PWH + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 1,
-                "level_id": "R|1W_high_PWH|2026-10-18"
-            },
-            {
-                "min": 0.07067,
-                "max": 0.07166242434656048,
-                "score": 5.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-02",
-                "activated_at": "2026-10-03",
-                "reaction_count": 3,
-                "level_id": "R|4h_extreme_peak|2026-10-02"
-            }
-        ],
-        "updated_at": "2026-10-24T15:12:19.867756"
-    },
-    "SPY": {
-        "supports": [
-            {
-                "min": 750.3829217965853,
-                "max": 756.2907820341471,
-                "score": 5.0,
-                "type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
-                "date": "2026-09-30",
-                "activated_at": "2026-09-30",
-                "reaction_count": 0,
-                "level_id": "S|1M_low_PML|2026-09-30"
-            },
-            {
-                "min": 759.2040365964824,
-                "max": 765.319634035176,
-                "score": 6.5,
-                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-04",
-                "activated_at": "2026-10-04",
-                "reaction_count": 3,
-                "level_id": "S|1W_low_PWL|2026-10-04"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 774.14,
-                "max": 775.2769716265792,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-16",
-                "activated_at": "2026-10-17",
-                "reaction_count": 1,
-                "level_id": "R|4h_extreme_peak|2026-10-16"
-            },
-            {
-                "min": 780.23,
-                "max": 782.6516116652448,
-                "score": 7.0,
-                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak+4h_poc",
-                "date": "2026-10-11",
-                "activated_at": "2026-10-11",
-                "reaction_count": 2,
-                "level_id": "R|1W_high_PWH|2026-10-11"
-            }
-        ],
-        "updated_at": "2026-10-24T15:12:19.867756"
-    },
-    "WET": {
-        "supports": [
-            {
-                "min": 0.05074164435360953,
-                "max": 0.05119088911597616,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-22",
-                "activated_at": "2026-10-23",
-                "reaction_count": 1,
-                "level_id": "S|4h_extreme_peak|2026-10-22"
-            },
-            {
-                "min": 0.051293100231660234,
-                "max": 0.0555,
-                "score": 6.5,
-                "type": "1M_MACRO_Support",
-                "date": "2026-06-01",
-                "activated_at": "2026-08-01",
-                "reaction_count": 3,
-                "class": "MACRO",
-                "level_id": "S|1M_MACRO_Support|2026-06-01"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 0.059452570548938495,
-                "max": 0.0606109717804246,
-                "score": 6.5,
-                "type": "1W_high_PWH+4h_poc",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 1,
-                "level_id": "R|1W_high_PWH|2026-10-18"
-            },
-            {
-                "min": 0.06149841859090276,
-                "max": 0.06200463256363889,
-                "score": 5.0,
-                "type": "4h_extreme_peak+4h_poc",
-                "date": "2026-10-10",
-                "activated_at": "2026-10-11",
-                "reaction_count": 1,
-                "level_id": "R|4h_extreme_peak|2026-10-10"
-            }
-        ],
-        "updated_at": "2026-10-24T15:12:19.867756"
-    },
-    "KAT": {
-        "supports": [
-            {
-                "min": 0.0038684521287379622,
-                "max": 0.003942,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-22",
-                "activated_at": "2026-10-23",
-                "reaction_count": 1,
-                "level_id": "S|4h_extreme_peak|2026-10-22"
-            },
-            {
-                "min": 0.004153700322681705,
-                "max": 0.004255,
-                "score": 7.0,
-                "type": "1M_MACRO_Support",
-                "date": "2026-07-01",
-                "activated_at": "2026-09-01",
-                "reaction_count": 6,
-                "class": "MACRO",
-                "level_id": "S|1M_MACRO_Support|2026-07-01"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 0.004596120508797834,
-                "max": 0.0046869517964808665,
-                "score": 5.5,
-                "type": "1W_high_PWH",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 1,
-                "level_id": "R|1W_high_PWH|2026-10-18"
-            },
-            {
-                "min": 0.004823043579137757,
-                "max": 0.004927982568344896,
-                "score": 5.5,
-                "type": "1W_high_PWH + 4h_extreme_peak",
-                "date": "2026-10-11",
-                "activated_at": "2026-10-11",
-                "reaction_count": 1,
-                "level_id": "R|1W_high_PWH|2026-10-11"
-            }
-        ],
-        "updated_at": "2026-10-24T15:12:19.867756"
-    },
-    "BLEND": {
-        "supports": [
-            {
-                "min": 0.04637545299233796,
-                "max": 0.0481,
-                "score": 3.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-20",
-                "activated_at": "2026-10-21",
-                "reaction_count": 0,
-                "level_id": "S|4h_extreme_peak|2026-10-20"
-            },
-            {
-                "min": 0.04988487324444445,
-                "max": 0.0534,
-                "score": 6.0,
-                "type": "1M_MACRO_Support + 1W_MACRO_Support + 4h_extreme_peak",
-                "date": "2026-06-01",
-                "activated_at": "2026-08-01",
-                "reaction_count": 2,
-                "class": "MACRO",
-                "level_id": "S|1M_MACRO_Support|2026-06-01"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 0.06692024812283404,
-                "max": 0.06735390075086638,
-                "score": 4.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-10",
-                "activated_at": "2026-10-11",
-                "reaction_count": 2,
-                "level_id": "R|4h_extreme_peak|2026-10-10"
-            },
-            {
-                "min": 0.06777,
-                "max": 0.06923340167614486,
-                "score": 5.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-09-30",
-                "activated_at": "2026-10-01",
-                "reaction_count": 4,
-                "level_id": "R|4h_extreme_peak|2026-09-30"
-            }
-        ],
-        "updated_at": "2026-10-24T15:12:19.867756"
-    },
-    "AVA": {
-        "supports": [
-            {
-                "min": 0.21742673574810897,
-                "max": 0.2261,
-                "score": 5.5,
-                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-11",
-                "activated_at": "2026-10-11",
-                "reaction_count": 1,
-                "level_id": "S|1W_low_PWL|2026-10-11"
-            },
-            {
-                "min": 0.3097590919124139,
-                "max": 0.32285227021896523,
-                "score": 4.5,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-19",
-                "reaction_count": 2,
-                "level_id": "S|4h_extreme_peak|2026-10-18"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 0.3741,
-                "max": 0.383984454691259,
-                "score": 4.5,
-                "type": "1W_MACRO_Resistance",
-                "date": "2026-01-12",
-                "activated_at": "2026-01-26",
-                "reaction_count": 1,
-                "class": "MACRO",
-                "level_id": "R|1W_MACRO_Resistance|2026-01-12"
-            },
-            {
-                "min": 0.41855044235854044,
-                "max": 0.44057941300898995,
-                "score": 6.5,
-                "type": "1W_high_PWH + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 2,
-                "level_id": "R|1W_high_PWH|2026-10-18"
-            }
-        ],
-        "updated_at": "2026-10-24T15:12:19.867756"
-    },
     "SOON": {
         "supports": [
             {
-                "min": 0.16969262046561992,
-                "max": 0.17321844883595017,
-                "score": 5.0,
-                "type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
-                "date": "2026-09-30",
-                "activated_at": "2026-09-30",
+                "min": 0.25108011262369473,
+                "max": 0.2613,
+                "score": 3.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
                 "reaction_count": 0,
-                "level_id": "S|1M_low_PML|2026-09-30"
+                "level_id": "S|4h_extreme_peak|2026-10-26"
             },
             {
                 "min": 0.268633198257179,
@@ -2572,25 +1749,25 @@
             {
                 "min": 0.3164,
                 "max": 0.3231769146198302,
-                "score": 3.5,
+                "score": 4.5,
                 "type": "4h_extreme_peak",
                 "date": "2026-10-25",
                 "activated_at": "2026-10-26",
-                "reaction_count": 0,
+                "reaction_count": 2,
                 "level_id": "R|4h_extreme_peak|2026-10-25"
             },
             {
                 "min": 0.32752470178272314,
                 "max": 0.34476284398181384,
-                "score": 6.0,
-                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak+4h_poc",
+                "score": 7.0,
+                "type": "1W_high_PWH + 4h_extreme_peak+4h_poc",
                 "date": "2026-10-25",
                 "activated_at": "2026-10-25",
-                "reaction_count": 0,
+                "reaction_count": 2,
                 "level_id": "R|1W_high_PWH|2026-10-25"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-29T15:05:11.514641"
     },
     "APR": {
         "supports": [
@@ -2598,23 +1775,33 @@
                 "min": 0.022010645502645504,
                 "max": 0.02311117777777778,
                 "score": 6.0,
-                "type": "1W_low_PWL + 4h_extreme_peak",
+                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
                 "date": "2026-10-18",
                 "activated_at": "2026-10-18",
                 "reaction_count": 1,
                 "level_id": "S|1W_low_PWL|2026-10-18"
+            },
+            {
+                "min": 0.029776258928571428,
+                "max": 0.031265071875,
+                "score": 3.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-27",
+                "activated_at": "2026-10-28",
+                "reaction_count": 0,
+                "level_id": "S|4h_extreme_peak|2026-10-27"
             }
         ],
         "resistances": [
             {
-                "min": 0.05404234635149024,
-                "max": 0.05688668036998972,
-                "score": 5.5,
-                "type": "1W_high_PWH + 4h_extreme_peak",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
-                "reaction_count": 0,
-                "level_id": "R|1W_high_PWH|2026-10-25"
+                "min": 0.058634829055441484,
+                "max": 0.0617208726899384,
+                "score": 4.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 1,
+                "level_id": "R|4h_extreme_peak|2026-10-28"
             },
             {
                 "min": 0.07571281461434372,
@@ -2627,7 +1814,7 @@
                 "level_id": "R|1W_high_PWH|2026-10-18"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "T": {
         "supports": [
@@ -2676,140 +1863,44 @@
         ],
         "updated_at": "2026-10-26T15:05:12.812086"
     },
-    "LIGHT": {
-        "supports": [
-            {
-                "min": 0.19717235132779112,
-                "max": 0.20006912168052218,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-19",
-                "reaction_count": 1,
-                "level_id": "S|4h_extreme_peak|2026-10-18"
-            },
-            {
-                "min": 0.20616422180908206,
-                "max": 0.20855,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-22",
-                "activated_at": "2026-10-23",
-                "reaction_count": 1,
-                "level_id": "S|4h_extreme_peak|2026-10-22"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 0.21967368412321178,
-                "max": 0.25016163158767885,
-                "score": 7.0,
-                "type": "1W_MACRO_Resistance+4h_poc",
-                "date": "2026-08-24",
-                "activated_at": "2026-09-07",
-                "reaction_count": 4,
-                "class": "MACRO",
-                "level_id": "R|1W_MACRO_Resistance|2026-08-24"
-            },
-            {
-                "min": 0.26339093217562254,
-                "max": 0.29211090678243773,
-                "score": 5.5,
-                "type": "1W_MACRO_Resistance+4h_poc",
-                "date": "2026-04-13",
-                "activated_at": "2026-04-27",
-                "reaction_count": 1,
-                "class": "MACRO",
-                "level_id": "R|1W_MACRO_Resistance|2026-04-13"
-            }
-        ],
-        "updated_at": "2026-10-25T15:05:14.301101"
-    },
     "CAP": {
         "supports": [
             {
-                "min": 0.06651490679544599,
-                "max": 0.06803,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-22",
-                "activated_at": "2026-10-23",
-                "reaction_count": 1,
-                "level_id": "S|4h_extreme_peak|2026-10-22"
-            },
-            {
                 "min": 0.06822917339290861,
                 "max": 0.06921,
-                "score": 3.5,
+                "score": 4.0,
                 "type": "4h_extreme_peak",
                 "date": "2026-10-24",
                 "activated_at": "2026-10-25",
-                "reaction_count": 0,
+                "reaction_count": 1,
                 "level_id": "S|4h_extreme_peak|2026-10-24"
+            },
+            {
+                "min": 0.06976740058601925,
+                "max": 0.07325577061532022,
+                "score": 4.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
+                "reaction_count": 1,
+                "level_id": "S|4h_extreme_peak|2026-10-26"
             }
         ],
         "resistances": [
             {
-                "min": 0.09707102529645412,
-                "max": 0.10218002662784643,
-                "score": 6.5,
-                "type": "1W_high_PWH + 1d_extreme_peak",
-                "date": "2026-10-11",
-                "activated_at": "2026-10-11",
-                "reaction_count": 2,
-                "level_id": "R|1W_high_PWH|2026-10-11"
+                "min": 0.10869717675378267,
+                "max": 0.11375512929848693,
+                "score": 6.0,
+                "type": "1W_high_PWH",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-25",
+                "reaction_count": 1,
+                "level_id": "R|1W_high_PWH|2026-10-25"
             },
             {
                 "min": 0.11718051087288725,
                 "max": 0.12334790618198657,
-                "score": 5.0,
-                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 0,
-                "level_id": "R|1W_high_PWH|2026-10-18"
-            }
-        ],
-        "updated_at": "2026-10-26T15:05:12.812086"
-    },
-    "ANIME": {
-        "supports": [
-            {
-                "min": 0.0025184731885178314,
-                "max": 0.002644396847943723,
                 "score": 5.5,
-                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 1,
-                "level_id": "S|1W_low_PWL|2026-10-18"
-            },
-            {
-                "min": 0.0027202113684646873,
-                "max": 0.00275,
-                "score": 4.0,
-                "type": "4h_extreme_peak",
-                "date": "2026-10-22",
-                "activated_at": "2026-10-23",
-                "reaction_count": 1,
-                "level_id": "S|4h_extreme_peak|2026-10-22"
-            }
-        ],
-        "resistances": [
-            {
-                "min": 0.003557490835618986,
-                "max": 0.003744727195388406,
-                "score": 6.5,
-                "type": "1M_high_PMH + 1W_MACRO_Resistance + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-09-30",
-                "activated_at": "2026-09-30",
-                "reaction_count": 2,
-                "level_id": "R|1M_high_PMH|2026-09-30"
-            },
-            {
-                "min": 0.0037522166999167726,
-                "max": 0.003949701789386076,
-                "score": 6.0,
                 "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
                 "date": "2026-10-18",
                 "activated_at": "2026-10-18",
@@ -2817,32 +1908,42 @@
                 "level_id": "R|1W_high_PWH|2026-10-18"
             }
         ],
-        "updated_at": "2026-10-25T15:05:14.301101"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "DGAI": {
         "supports": [
             {
-                "min": 0.8044562282681941,
-                "max": 0.8200094293295148,
+                "min": 0.6793605876882003,
+                "max": 0.7133286170726103,
                 "score": 5.0,
-                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
+                "type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
+                "date": "2026-09-30",
+                "activated_at": "2026-09-30",
                 "reaction_count": 0,
-                "level_id": "S|1W_low_PWL|2026-10-18"
+                "level_id": "S|1M_low_PML|2026-09-30"
             },
             {
-                "min": 0.8274553433279354,
-                "max": 0.8423116416801616,
-                "score": 5.0,
-                "type": "1W_low_PWL",
-                "date": "2026-10-25",
-                "activated_at": "2026-10-25",
-                "reaction_count": 0,
-                "level_id": "S|1W_low_PWL|2026-10-25"
+                "min": 0.7559203944617642,
+                "max": 0.7638990138455896,
+                "score": 4.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 1,
+                "level_id": "S|4h_extreme_peak|2026-10-28"
             }
         ],
         "resistances": [
+            {
+                "min": 0.8582,
+                "max": 0.8743888624617391,
+                "score": 4.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
+                "reaction_count": 1,
+                "level_id": "R|4h_extreme_peak|2026-10-26"
+            },
             {
                 "min": 0.9147,
                 "max": 0.9343409648152247,
@@ -2852,19 +1953,9 @@
                 "activated_at": "2026-10-23",
                 "reaction_count": 0,
                 "level_id": "R|4h_extreme_peak|2026-10-22"
-            },
-            {
-                "min": 0.9492289176042257,
-                "max": 0.9655684329583096,
-                "score": 5.5,
-                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
-                "date": "2026-10-18",
-                "activated_at": "2026-10-18",
-                "reaction_count": 1,
-                "level_id": "R|1W_high_PWH|2026-10-18"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-30T03:05:12.714703"
     },
     "EWZ": {
         "supports": [],
@@ -3004,7 +2095,7 @@
                 "min": 0.09356,
                 "max": 0.09800951678067552,
                 "score": 5.5,
-                "type": "1W_high_PWH + 4h_extreme_peak",
+                "type": "1W_high_PWH",
                 "date": "2026-10-18",
                 "activated_at": "2026-10-18",
                 "reaction_count": 1,
@@ -3013,15 +2104,1222 @@
             {
                 "min": 0.09955524831251833,
                 "max": 0.10889947516874816,
-                "score": 5.0,
+                "score": 5.5,
                 "type": "1W_MACRO_Resistance + 4h_extreme_peak",
                 "date": "2026-05-04",
                 "activated_at": "2026-05-18",
-                "reaction_count": 2,
+                "reaction_count": 3,
                 "class": "MACRO",
                 "level_id": "R|1W_MACRO_Resistance|2026-05-04"
             }
         ],
-        "updated_at": "2026-10-26T15:05:12.812086"
+        "updated_at": "2026-10-29T03:05:11.023632"
+    },
+    "OKTA": {
+        "supports": [
+            {
+                "min": 197.8486554298755,
+                "max": 201.57,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-23",
+                "activated_at": "2026-10-24",
+                "reaction_count": 0,
+                "level_id": "S|4h_extreme_peak|2026-10-23"
+            },
+            {
+                "min": 210.41164368039196,
+                "max": 212.26356319608055,
+                "score": 3.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
+                "reaction_count": 0,
+                "level_id": "S|4h_extreme_peak|2026-10-26"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 230.53232350218389,
+                "max": 233.03507059912644,
+                "score": 5.5,
+                "type": "1W_high_PWH + 1W_MACRO_Resistance + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-11",
+                "activated_at": "2026-10-11",
+                "reaction_count": 1,
+                "level_id": "R|1W_high_PWH|2026-10-11"
+            },
+            {
+                "min": 233.06,
+                "max": 234.22908614092856,
+                "score": 4.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-12",
+                "activated_at": "2026-10-13",
+                "reaction_count": 1,
+                "level_id": "R|4h_extreme_peak|2026-10-12"
+            }
+        ],
+        "updated_at": "2026-10-28T03:05:18.441172"
+    },
+    "EVAA": {
+        "supports": [
+            {
+                "min": 0.3916467751657625,
+                "max": 0.474,
+                "score": 7.0,
+                "type": "1M_MACRO_Support + 1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
+                "date": "2026-02-01",
+                "activated_at": "2026-04-01",
+                "reaction_count": 8,
+                "class": "MACRO",
+                "level_id": "S|1M_MACRO_Support|2026-02-01"
+            },
+            {
+                "min": 0.4875070217940966,
+                "max": 0.5118823728838015,
+                "score": 5.5,
+                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-25",
+                "reaction_count": 1,
+                "level_id": "S|1W_low_PWL|2026-10-25"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 0.8761,
+                "max": 0.941980124904202,
+                "score": 5.5,
+                "type": "1W_MACRO_Resistance+4h_poc",
+                "date": "2026-09-21",
+                "activated_at": "2026-10-05",
+                "reaction_count": 1,
+                "class": "MACRO",
+                "level_id": "R|1W_MACRO_Resistance|2026-09-21"
+            },
+            {
+                "min": 1.3705,
+                "max": 1.549323990201699,
+                "score": 5.5,
+                "type": "1W_MACRO_Resistance",
+                "date": "2026-01-05",
+                "activated_at": "2026-01-19",
+                "reaction_count": 3,
+                "class": "MACRO",
+                "level_id": "R|1W_MACRO_Resistance|2026-01-05"
+            }
+        ],
+        "updated_at": "2026-10-30T03:05:12.714703"
+    },
+    "HAEDAL": {
+        "supports": [
+            {
+                "min": 0.01688275879120879,
+                "max": 0.01772689673076923,
+                "score": 6.0,
+                "type": "1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 2,
+                "level_id": "S|1W_low_PWL|2026-10-18"
+            },
+            {
+                "min": 0.019125086776859503,
+                "max": 0.01931728305785124,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-26",
+                "reaction_count": 1,
+                "level_id": "S|4h_extreme_peak|2026-10-25"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 0.028641287345395623,
+                "max": 0.03014872352146908,
+                "score": 6.0,
+                "type": "1d_extreme_peak+4h_poc",
+                "date": "2026-06-03",
+                "activated_at": "2026-06-08",
+                "reaction_count": 2,
+                "level_id": "R|1d_extreme_peak|2026-06-03"
+            },
+            {
+                "min": 0.03877832123148417,
+                "max": 0.04170616787685158,
+                "score": 5.5,
+                "type": "1M_MACRO_Resistance + 1W_MACRO_Resistance + 1d_extreme_peak",
+                "date": "2026-05-01",
+                "activated_at": "2026-07-01",
+                "reaction_count": 1,
+                "class": "MACRO",
+                "level_id": "R|1M_MACRO_Resistance|2026-05-01"
+            }
+        ],
+        "updated_at": "2026-10-29T03:05:11.023632"
+    },
+    "BEAT": {
+        "supports": [
+            {
+                "min": 0.06341378729306978,
+                "max": 0.06658447665772327,
+                "score": 6.0,
+                "type": "1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 2,
+                "level_id": "S|1W_low_PWL|2026-10-18"
+            },
+            {
+                "min": 0.07442541606943781,
+                "max": 0.0781466868729097,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 0,
+                "level_id": "S|4h_extreme_peak|2026-10-28"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 0.10764,
+                "max": 0.11081194656222398,
+                "score": 4.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 1,
+                "level_id": "R|4h_extreme_peak|2026-10-28"
+            },
+            {
+                "min": 0.11182595837495837,
+                "max": 0.11771153513153512,
+                "score": 4.5,
+                "type": "1d_extreme_peak",
+                "date": "2026-09-26",
+                "activated_at": "2026-10-01",
+                "reaction_count": 1,
+                "level_id": "R|1d_extreme_peak|2026-09-26"
+            }
+        ],
+        "updated_at": "2026-10-30T03:05:12.714703"
+    },
+    "HUMA": {
+        "supports": [
+            {
+                "min": 0.020126718728802062,
+                "max": 0.020908203177994845,
+                "score": 5.5,
+                "type": "1M_low_PML + 1d_extreme_peak",
+                "date": "2026-09-30",
+                "activated_at": "2026-09-30",
+                "reaction_count": 1,
+                "level_id": "S|1M_low_PML|2026-09-30"
+            },
+            {
+                "min": 0.021743119047619046,
+                "max": 0.022830274999999997,
+                "score": 5.0,
+                "type": "1d_extreme_peak",
+                "date": "2026-09-20",
+                "activated_at": "2026-09-25",
+                "reaction_count": 2,
+                "level_id": "S|1d_extreme_peak|2026-09-20"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 0.02773,
+                "max": 0.028937041162227603,
+                "score": 5.0,
+                "type": "4h_extreme_peak+4h_poc",
+                "date": "2026-10-27",
+                "activated_at": "2026-10-28",
+                "reaction_count": 0,
+                "level_id": "R|4h_extreme_peak|2026-10-27"
+            },
+            {
+                "min": 0.03038459205069124,
+                "max": 0.03198378110599078,
+                "score": 5.0,
+                "type": "1W_high_PWH + 4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-25",
+                "reaction_count": 0,
+                "level_id": "R|1W_high_PWH|2026-10-25"
+            }
+        ],
+        "updated_at": "2026-10-28T15:05:17.731807"
+    },
+    "BANK": {
+        "supports": [
+            {
+                "min": 0.021951474657375146,
+                "max": 0.0242,
+                "score": 6.5,
+                "type": "1M_MACRO_Support + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-06-01",
+                "activated_at": "2026-08-01",
+                "reaction_count": 3,
+                "class": "MACRO",
+                "level_id": "S|1M_MACRO_Support|2026-06-01"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 0.03090621428571429,
+                "max": 0.03253285714285715,
+                "score": 6.0,
+                "type": "1M_close_PMC + 1W_high_PWH + 4h_extreme_peak",
+                "date": "2026-09-30",
+                "activated_at": "2026-09-30",
+                "reaction_count": 2,
+                "level_id": "R|1M_close_PMC|2026-09-30"
+            },
+            {
+                "min": 0.039426626236217836,
+                "max": 0.04150171182759772,
+                "score": 5.5,
+                "type": "1M_high_PMH + 1W_MACRO_Resistance + 1d_extreme_peak",
+                "date": "2026-09-30",
+                "activated_at": "2026-09-30",
+                "reaction_count": 0,
+                "level_id": "R|1M_high_PMH|2026-09-30"
+            }
+        ],
+        "updated_at": "2026-10-28T15:05:17.731807"
+    },
+    "CHIP": {
+        "supports": [
+            {
+                "min": 0.03808851835788777,
+                "max": 0.03999294427578216,
+                "score": 5.0,
+                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 0,
+                "level_id": "S|1W_low_PWL|2026-10-18"
+            },
+            {
+                "min": 0.04073941623989218,
+                "max": 0.04149,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-24",
+                "activated_at": "2026-10-25",
+                "reaction_count": 1,
+                "level_id": "S|4h_extreme_peak|2026-10-24"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 0.05461812834297898,
+                "max": 0.05749276667681998,
+                "score": 4.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
+                "reaction_count": 1,
+                "level_id": "R|4h_extreme_peak|2026-10-26"
+            },
+            {
+                "min": 0.068723834699981,
+                "max": 0.07234087863155896,
+                "score": 6.0,
+                "type": "1W_high_PWH + 1W_MACRO_Resistance + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-11",
+                "activated_at": "2026-10-11",
+                "reaction_count": 1,
+                "level_id": "R|1W_high_PWH|2026-10-11"
+            }
+        ],
+        "updated_at": "2026-10-30T03:05:12.714703"
+    },
+    "GOOGL": {
+        "supports": [
+            {
+                "min": 314.14143155917344,
+                "max": 319.4,
+                "score": 6.0,
+                "type": "1M_MACRO_Support + 1W_MACRO_Support",
+                "date": "2026-07-01",
+                "activated_at": "2026-09-01",
+                "reaction_count": 2,
+                "class": "MACRO",
+                "level_id": "S|1M_MACRO_Support|2026-07-01"
+            },
+            {
+                "min": 326.41978637186844,
+                "max": 331.3,
+                "score": 4.5,
+                "type": "1W_MACRO_Support",
+                "date": "2026-09-07",
+                "activated_at": "2026-09-21",
+                "reaction_count": 1,
+                "class": "MACRO",
+                "level_id": "S|1W_MACRO_Support|2026-09-07"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 345.05,
+                "max": 347.8747974488756,
+                "score": 5.0,
+                "type": "1W_high_PWH + 4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-25",
+                "reaction_count": 0,
+                "level_id": "R|1W_high_PWH|2026-10-25"
+            }
+        ],
+        "updated_at": "2026-10-30T03:05:12.714703"
+    },
+    "1000TAG": {
+        "supports": [
+            {
+                "min": 0.433115397483079,
+                "max": 0.45477116735723294,
+                "score": 6.0,
+                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 2,
+                "level_id": "S|1W_low_PWL|2026-10-18"
+            },
+            {
+                "min": 0.47219049872160346,
+                "max": 0.4862237531959914,
+                "score": 3.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
+                "reaction_count": 0,
+                "level_id": "S|4h_extreme_peak|2026-10-26"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 0.7226184351521798,
+                "max": 0.7606509843707157,
+                "score": 7.0,
+                "type": "1W_high_PWH+4h_poc",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 1,
+                "level_id": "R|1W_high_PWH|2026-10-18"
+            },
+            {
+                "min": 0.8000111640309913,
+                "max": 0.8243555343876035,
+                "score": 6.5,
+                "type": "1W_high_PWH+4h_poc",
+                "date": "2026-10-11",
+                "activated_at": "2026-10-11",
+                "reaction_count": 1,
+                "level_id": "R|1W_high_PWH|2026-10-11"
+            }
+        ],
+        "updated_at": "2026-10-28T03:05:18.441172"
+    },
+    "HOOD": {
+        "supports": [
+            {
+                "min": 78.42814132701103,
+                "max": 82.34954839336159,
+                "score": 4.5,
+                "type": "1d_extreme_peak",
+                "date": "2026-06-09",
+                "activated_at": "2026-06-14",
+                "reaction_count": 1,
+                "level_id": "S|1d_extreme_peak|2026-06-09"
+            },
+            {
+                "min": 83.31821207296362,
+                "max": 86.29,
+                "score": 5.5,
+                "type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
+                "date": "2026-07-31",
+                "activated_at": "2026-07-31",
+                "reaction_count": 1,
+                "level_id": "S|1M_low_PML|2026-07-31"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 96.57041667897006,
+                "max": 97.03183332841198,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-27",
+                "activated_at": "2026-10-28",
+                "reaction_count": 0,
+                "level_id": "R|4h_extreme_peak|2026-10-27"
+            },
+            {
+                "min": 100.35,
+                "max": 103.76242230790179,
+                "score": 5.0,
+                "type": "1W_high_PWH + 4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-25",
+                "reaction_count": 0,
+                "level_id": "R|1W_high_PWH|2026-10-25"
+            }
+        ],
+        "updated_at": "2026-10-29T03:05:11.023632"
+    },
+    "BLESS": {
+        "supports": [
+            {
+                "min": 0.006872130730540391,
+                "max": 0.006987,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-19",
+                "reaction_count": 1,
+                "level_id": "S|4h_extreme_peak|2026-10-18"
+            },
+            {
+                "min": 0.007001911275587625,
+                "max": 0.007825,
+                "score": 6.0,
+                "type": "1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-09-07",
+                "activated_at": "2026-09-21",
+                "reaction_count": 4,
+                "class": "MACRO",
+                "level_id": "S|1W_MACRO_Support|2026-09-07"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 0.011263585574127906,
+                "max": 0.01357294144258721,
+                "score": 5.5,
+                "type": "1W_MACRO_Resistance + 1d_extreme_peak+4h_poc",
+                "date": "2026-08-31",
+                "activated_at": "2026-09-14",
+                "reaction_count": 1,
+                "class": "MACRO",
+                "level_id": "R|1W_MACRO_Resistance|2026-08-31"
+            },
+            {
+                "min": 0.013757577683974979,
+                "max": 0.014431242231602503,
+                "score": 4.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 1,
+                "level_id": "R|4h_extreme_peak|2026-10-28"
+            }
+        ],
+        "updated_at": "2026-10-30T03:05:12.714703"
+    },
+    "XAN": {
+        "supports": [
+            {
+                "min": 0.006653678896601102,
+                "max": 0.006924,
+                "score": 4.5,
+                "type": "1W_MACRO_Support + 1d_extreme_peak",
+                "date": "2026-04-06",
+                "activated_at": "2026-04-20",
+                "reaction_count": 1,
+                "class": "MACRO",
+                "level_id": "S|1W_MACRO_Support|2026-04-06"
+            },
+            {
+                "min": 0.007287622001296736,
+                "max": 0.007708944996758158,
+                "score": 5.0,
+                "type": "1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-06-08",
+                "activated_at": "2026-06-22",
+                "reaction_count": 2,
+                "class": "MACRO",
+                "level_id": "S|1W_MACRO_Support|2026-06-08"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 0.011321832486531673,
+                "max": 0.01162866700538733,
+                "score": 6.5,
+                "type": "1W_high_PWH+4h_poc",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 1,
+                "level_id": "R|1W_high_PWH|2026-10-18"
+            },
+            {
+                "min": 0.012418,
+                "max": 0.012609176816688758,
+                "score": 5.0,
+                "type": "4h_extreme_peak+4h_poc",
+                "date": "2026-10-05",
+                "activated_at": "2026-10-06",
+                "reaction_count": 1,
+                "level_id": "R|4h_extreme_peak|2026-10-05"
+            }
+        ],
+        "updated_at": "2026-10-29T15:05:11.514641"
+    },
+    "BLUR": {
+        "supports": [
+            {
+                "min": 0.007162778265612217,
+                "max": 0.007334,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
+                "reaction_count": 1,
+                "level_id": "S|4h_extreme_peak|2026-10-26"
+            },
+            {
+                "min": 0.012704310395845582,
+                "max": 0.013122,
+                "score": 5.5,
+                "type": "1M_MACRO_Support",
+                "date": "2026-08-01",
+                "activated_at": "2026-10-01",
+                "reaction_count": 1,
+                "class": "MACRO",
+                "level_id": "S|1M_MACRO_Support|2026-08-01"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 0.008593774949308757,
+                "max": 0.008944922505069125,
+                "score": 5.5,
+                "type": "4h_extreme_peak+4h_poc",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 1,
+                "level_id": "R|4h_extreme_peak|2026-10-28"
+            },
+            {
+                "min": 0.008997187829796789,
+                "max": 0.00926538121702032,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-23",
+                "activated_at": "2026-10-24",
+                "reaction_count": 0,
+                "level_id": "R|4h_extreme_peak|2026-10-23"
+            }
+        ],
+        "updated_at": "2026-10-30T03:05:12.714703"
+    },
+    "MSFT": {
+        "supports": [
+            {
+                "min": 512.6016071428571,
+                "max": 517.4383928571428,
+                "score": 6.0,
+                "type": "1M_close_PMC + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-09-30",
+                "activated_at": "2026-09-30",
+                "reaction_count": 2,
+                "level_id": "S|1M_close_PMC|2026-09-30"
+            },
+            {
+                "min": 521.6073632467086,
+                "max": 522.52,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-26",
+                "reaction_count": 1,
+                "level_id": "S|4h_extreme_peak|2026-10-25"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 542.7459148064034,
+                "max": 552.5954085193597,
+                "score": 6.5,
+                "type": "1W_high_PWH + 1d_extreme_peak+4h_poc",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 1,
+                "level_id": "R|1W_high_PWH|2026-10-18"
+            },
+            {
+                "min": 563.6661425911648,
+                "max": 568.5433857408835,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 0,
+                "level_id": "R|4h_extreme_peak|2026-10-28"
+            }
+        ],
+        "updated_at": "2026-10-30T03:05:12.714703"
+    },
+    "MRVL": {
+        "supports": [
+            {
+                "min": 199.35725528700905,
+                "max": 207.64,
+                "score": 5.0,
+                "type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
+                "date": "2026-09-30",
+                "activated_at": "2026-09-30",
+                "reaction_count": 0,
+                "level_id": "S|1M_low_PML|2026-09-30"
+            },
+            {
+                "min": 217.53833459192202,
+                "max": 225.81,
+                "score": 6.5,
+                "type": "1W_low_PWL + 1d_extreme_peak",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 3,
+                "level_id": "S|1W_low_PWL|2026-10-18"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 246.38264006705444,
+                "max": 252.0349439731782,
+                "score": 5.5,
+                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-25",
+                "reaction_count": 1,
+                "level_id": "R|1W_high_PWH|2026-10-25"
+            },
+            {
+                "min": 270.75506522348365,
+                "max": 272.7639739106065,
+                "score": 3.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-14",
+                "activated_at": "2026-10-15",
+                "reaction_count": 0,
+                "level_id": "R|4h_extreme_peak|2026-10-14"
+            }
+        ],
+        "updated_at": "2026-10-30T03:05:12.714703"
+    },
+    "EWY": {
+        "supports": [
+            {
+                "min": 145.93901711279796,
+                "max": 149.08,
+                "score": 5.5,
+                "type": "1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 1,
+                "level_id": "S|1W_low_PWL|2026-10-18"
+            },
+            {
+                "min": 149.6654954389212,
+                "max": 150.4,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-24",
+                "activated_at": "2026-10-25",
+                "reaction_count": 1,
+                "level_id": "S|4h_extreme_peak|2026-10-24"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 166.12,
+                "max": 167.54566126896222,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 0,
+                "level_id": "R|4h_extreme_peak|2026-10-28"
+            },
+            {
+                "min": 177.87054151407577,
+                "max": 179.47978339436972,
+                "score": 5.0,
+                "type": "1W_high_PWH + 4h_extreme_peak",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 0,
+                "level_id": "R|1W_high_PWH|2026-10-18"
+            }
+        ],
+        "updated_at": "2026-10-30T03:05:12.714703"
+    },
+    "ORCL": {
+        "supports": [
+            {
+                "min": 112.41201095461659,
+                "max": 115.02,
+                "score": 5.0,
+                "type": "1M_low_PML + 1M_MACRO_Support + 1W_MACRO_Support + 1d_extreme_peak",
+                "date": "2026-07-31",
+                "activated_at": "2026-07-31",
+                "reaction_count": 0,
+                "level_id": "S|1M_low_PML|2026-07-31"
+            },
+            {
+                "min": 122.47319023443166,
+                "max": 125.29,
+                "score": 5.5,
+                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-25",
+                "reaction_count": 1,
+                "level_id": "S|1W_low_PWL|2026-10-25"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 143.1274002882791,
+                "max": 144.92303988468836,
+                "score": 5.5,
+                "type": "1W_high_PWH + 1d_extreme_peak",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 1,
+                "level_id": "R|1W_high_PWH|2026-10-18"
+            },
+            {
+                "min": 145.2,
+                "max": 147.5077337771297,
+                "score": 5.5,
+                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-11",
+                "activated_at": "2026-10-11",
+                "reaction_count": 1,
+                "level_id": "R|1W_high_PWH|2026-10-11"
+            }
+        ],
+        "updated_at": "2026-10-29T15:05:11.514641"
+    },
+    "NAORIS": {
+        "supports": [
+            {
+                "min": 0.026672910452231205,
+                "max": 0.02763089547768793,
+                "score": 4.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-13",
+                "activated_at": "2026-10-14",
+                "reaction_count": 1,
+                "level_id": "S|4h_extreme_peak|2026-10-13"
+            },
+            {
+                "min": 0.027826664826426754,
+                "max": 0.029217998067748094,
+                "score": 6.5,
+                "type": "1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-11",
+                "activated_at": "2026-10-11",
+                "reaction_count": 3,
+                "level_id": "S|1W_low_PWL|2026-10-11"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 0.039832780880636215,
+                "max": 0.041929243032248646,
+                "score": 6.0,
+                "type": "1d_extreme_peak",
+                "date": "2026-07-21",
+                "activated_at": "2026-07-26",
+                "reaction_count": 6,
+                "level_id": "R|1d_extreme_peak|2026-07-21"
+            },
+            {
+                "min": 0.04210692599441217,
+                "max": 0.044323079994118074,
+                "score": 5.5,
+                "type": "1M_high_PMH + 1W_MACRO_Resistance + 1d_extreme_peak",
+                "date": "2026-09-30",
+                "activated_at": "2026-09-30",
+                "reaction_count": 0,
+                "level_id": "R|1M_high_PMH|2026-09-30"
+            }
+        ],
+        "updated_at": "2026-10-29T15:05:11.514641"
+    },
+    "XPIN": {
+        "supports": [
+            {
+                "min": 0.0003050128011459826,
+                "max": 0.0003620719885401745,
+                "score": 4.0,
+                "type": "1W_MACRO_Support",
+                "date": "2025-10-06",
+                "activated_at": "2025-10-20",
+                "reaction_count": 0,
+                "class": "MACRO",
+                "level_id": "S|1W_MACRO_Support|2025-10-06"
+            },
+            {
+                "min": 0.000661131394906131,
+                "max": 0.0006941879646514376,
+                "score": 5.5,
+                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 1,
+                "level_id": "S|1W_low_PWL|2026-10-18"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 0.00090148519669438,
+                "max": 0.0009489317859940842,
+                "score": 7.0,
+                "type": "1W_high_PWH + 1d_extreme_peak+4h_poc",
+                "date": "2026-10-04",
+                "activated_at": "2026-10-04",
+                "reaction_count": 2,
+                "level_id": "R|1W_high_PWH|2026-10-04"
+            },
+            {
+                "min": 0.001075634107142857,
+                "max": 0.0011322464285714285,
+                "score": 6.0,
+                "type": "1M_close_PMC + 1M_high_PMH",
+                "date": "2026-08-31",
+                "activated_at": "2026-08-31",
+                "reaction_count": 2,
+                "level_id": "R|1M_close_PMC|2026-08-31"
+            }
+        ],
+        "updated_at": "2026-10-29T15:05:11.514641"
+    },
+    "PARTI": {
+        "supports": [
+            {
+                "min": 0.03128803676273757,
+                "max": 0.03209990809315606,
+                "score": 4.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-22",
+                "activated_at": "2026-10-23",
+                "reaction_count": 2,
+                "level_id": "S|4h_extreme_peak|2026-10-22"
+            },
+            {
+                "min": 0.03220637998683344,
+                "max": 0.032604050032916394,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
+                "reaction_count": 1,
+                "level_id": "S|4h_extreme_peak|2026-10-26"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 0.0641,
+                "max": 0.06886344780969714,
+                "score": 5.5,
+                "type": "1W_MACRO_Resistance + 1d_extreme_peak",
+                "date": "2026-05-11",
+                "activated_at": "2026-05-25",
+                "reaction_count": 3,
+                "class": "MACRO",
+                "level_id": "R|1W_MACRO_Resistance|2026-05-11"
+            },
+            {
+                "min": 0.09257866280171441,
+                "max": 0.09745122400180464,
+                "score": 4.5,
+                "type": "1d_extreme_peak",
+                "date": "2026-04-09",
+                "activated_at": "2026-04-14",
+                "reaction_count": 0,
+                "level_id": "R|1d_extreme_peak|2026-04-09"
+            }
+        ],
+        "updated_at": "2026-10-30T03:05:12.714703"
+    },
+    "LSK": {
+        "supports": [
+            {
+                "min": 0.09579392920578533,
+                "max": 0.09914017698553666,
+                "score": 5.0,
+                "type": "1M_low_PML",
+                "date": "2026-09-30",
+                "activated_at": "2026-09-30",
+                "reaction_count": 0,
+                "level_id": "S|1M_low_PML|2026-09-30"
+            },
+            {
+                "min": 0.15645562720536343,
+                "max": 0.1632959319865914,
+                "score": 5.5,
+                "type": "1W_low_PWL + 4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-25",
+                "reaction_count": 1,
+                "level_id": "S|1W_low_PWL|2026-10-25"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 0.20761925098798728,
+                "max": 0.21854657998735502,
+                "score": 5.5,
+                "type": "1W_high_PWH + 4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-25",
+                "reaction_count": 1,
+                "level_id": "R|1W_high_PWH|2026-10-25"
+            },
+            {
+                "min": 0.2229835692475344,
+                "max": 0.23189657230098623,
+                "score": 5.0,
+                "type": "1W_high_PWH",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 0,
+                "level_id": "R|1W_high_PWH|2026-10-18"
+            }
+        ],
+        "updated_at": "2026-10-30T03:05:12.714703"
+    },
+    "AMZN": {
+        "supports": [
+            {
+                "min": 223.04699434028353,
+                "max": 229.02005659716463,
+                "score": 7.0,
+                "type": "1M_low_PML + 1M_MACRO_Support + 1W_MACRO_Support + 1d_extreme_peak+4h_poc",
+                "date": "2026-07-31",
+                "activated_at": "2026-07-31",
+                "reaction_count": 1,
+                "level_id": "S|1M_low_PML|2026-07-31"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 255.9712240098109,
+                "max": 258.1808775990189,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 0,
+                "level_id": "R|4h_extreme_peak|2026-10-28"
+            },
+            {
+                "min": 263.58,
+                "max": 265.49776909694,
+                "score": 5.5,
+                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 1,
+                "level_id": "R|1W_high_PWH|2026-10-18"
+            }
+        ],
+        "updated_at": "2026-10-30T03:05:12.714703"
+    },
+    "SAND": {
+        "supports": [
+            {
+                "min": 0.03224581873694359,
+                "max": 0.03342,
+                "score": 5.0,
+                "type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
+                "date": "2026-09-30",
+                "activated_at": "2026-09-30",
+                "reaction_count": 0,
+                "level_id": "S|1M_low_PML|2026-09-30"
+            },
+            {
+                "min": 0.04132868884268884,
+                "max": 0.04329,
+                "score": 5.5,
+                "type": "1W_low_PWL + 4h_extreme_peak",
+                "date": "2026-10-04",
+                "activated_at": "2026-10-04",
+                "reaction_count": 1,
+                "level_id": "S|1W_low_PWL|2026-10-04"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 0.05868,
+                "max": 0.059376065950920244,
+                "score": 3.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-21",
+                "activated_at": "2026-10-22",
+                "reaction_count": 0,
+                "level_id": "R|4h_extreme_peak|2026-10-21"
+            },
+            {
+                "min": 0.06081765042506872,
+                "max": 0.06401857939480918,
+                "score": 5.0,
+                "type": "1W_high_PWH",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-25",
+                "reaction_count": 0,
+                "level_id": "R|1W_high_PWH|2026-10-25"
+            }
+        ],
+        "updated_at": "2026-10-30T03:05:12.714703"
+    },
+    "PURR": {
+        "supports": [
+            {
+                "min": 8.583541917525112,
+                "max": 8.911,
+                "score": 7.0,
+                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak+4h_poc",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 2,
+                "level_id": "S|1W_low_PWL|2026-10-18"
+            },
+            {
+                "min": 9.40496380472894,
+                "max": 9.534,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-28",
+                "activated_at": "2026-10-29",
+                "reaction_count": 1,
+                "level_id": "S|4h_extreme_peak|2026-10-28"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 11.366526632097713,
+                "max": 11.606589347160915,
+                "score": 5.5,
+                "type": "1W_high_PWH",
+                "date": "2026-10-18",
+                "activated_at": "2026-10-18",
+                "reaction_count": 1,
+                "level_id": "R|1W_high_PWH|2026-10-18"
+            },
+            {
+                "min": 12.739452357809375,
+                "max": 13.097219056876249,
+                "score": 5.5,
+                "type": "1W_high_PWH + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-04",
+                "activated_at": "2026-10-04",
+                "reaction_count": 1,
+                "level_id": "R|1W_high_PWH|2026-10-04"
+            }
+        ],
+        "updated_at": "2026-10-30T03:05:12.714703"
+    },
+    "BLEND": {
+        "supports": [
+            {
+                "min": 0.046171229550631604,
+                "max": 0.04829,
+                "score": 5.5,
+                "type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+                "date": "2026-10-25",
+                "activated_at": "2026-10-25",
+                "reaction_count": 1,
+                "level_id": "S|1W_low_PWL|2026-10-25"
+            },
+            {
+                "min": 0.04988487324444445,
+                "max": 0.0534,
+                "score": 6.0,
+                "type": "1M_MACRO_Support + 1W_MACRO_Support",
+                "date": "2026-06-01",
+                "activated_at": "2026-08-01",
+                "reaction_count": 2,
+                "class": "MACRO",
+                "level_id": "S|1M_MACRO_Support|2026-06-01"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 0.06692024812283404,
+                "max": 0.06735390075086638,
+                "score": 4.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-10",
+                "activated_at": "2026-10-11",
+                "reaction_count": 2,
+                "level_id": "R|4h_extreme_peak|2026-10-10"
+            },
+            {
+                "min": 0.06777,
+                "max": 0.06923340167614486,
+                "score": 5.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-09-30",
+                "activated_at": "2026-10-01",
+                "reaction_count": 4,
+                "level_id": "R|4h_extreme_peak|2026-09-30"
+            }
+        ],
+        "updated_at": "2026-10-30T03:05:12.714703"
+    },
+    "PYTH": {
+        "supports": [
+            {
+                "min": 0.04511271331410354,
+                "max": 0.04705,
+                "score": 4.0,
+                "type": "1d_extreme_peak",
+                "date": "2026-08-31",
+                "activated_at": "2026-09-05",
+                "reaction_count": 0,
+                "level_id": "S|1d_extreme_peak|2026-08-31"
+            },
+            {
+                "min": 0.04830410714285714,
+                "max": 0.050715892857142855,
+                "score": 6.0,
+                "type": "1M_close_PMC + 1M_low_PML + 1d_extreme_peak",
+                "date": "2026-08-31",
+                "activated_at": "2026-08-31",
+                "reaction_count": 2,
+                "level_id": "S|1M_close_PMC|2026-08-31"
+            }
+        ],
+        "resistances": [
+            {
+                "min": 0.07592,
+                "max": 0.07711138935721813,
+                "score": 4.0,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-26",
+                "activated_at": "2026-10-27",
+                "reaction_count": 1,
+                "level_id": "R|4h_extreme_peak|2026-10-26"
+            },
+            {
+                "min": 0.0813,
+                "max": 0.08270725666434552,
+                "score": 3.5,
+                "type": "4h_extreme_peak",
+                "date": "2026-10-21",
+                "activated_at": "2026-10-22",
+                "reaction_count": 0,
+                "level_id": "R|4h_extreme_peak|2026-10-21"
+            }
+        ],
+        "updated_at": "2026-10-30T03:05:12.714703"
     }
 }

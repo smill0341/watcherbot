@@ -24,6 +24,7 @@ class BounceWatcher:
     _MAX_LOG_LINES = 5000     # потолок на файл — при частых рестартах не даём ему расти бесконечно
 
     _c_adx = None   # ADX текущей свечи (приходит в update)
+    _candle = None  # (open, high, low, close) текущей свечи (приходит в update) — для фильтров свечи входа
 
     CONFIG = {
         'ENTRY_MODE': 'volume',    # как искать свечу входа после пробоя: 'volume' — объём (VOL_SPIKE_MULT и т.д.),
@@ -58,6 +59,12 @@ class BounceWatcher:
                                           # значение, откалибровать по логам (см. историю обсуждения проекта)
         'MIN_ADX': 0.0,           # Вход только если ADX (14) на свече входа >= этого значения; иначе вход на этой
                                    # свече пропускается, условия входа проверяются заново на следующей. 0 = фильтр выключен.
+        'MAX_LOWER_WICK_PCT': 40.0,   # LONG: если нижняя тень свечи входа >= этого % от её размаха
+                                       # ((min(open, close) - low) / (high - low) * 100) — вход на этой свече
+                                       # пропускается, вотчер живёт и ищет дальше. 0 = выключено.
+        'REQUIRE_ENTRY_TOUCH': True,  # LONG: свеча входа должна касаться зоны — её лой не выше верха зоны
+                                       # (level_max). Если лой выше — вход на этой свече пропускается, вотчер
+                                       # живёт и ищет дальше. False = выключено.
         'DEBUG': True,
         'MANUAL_MIDPOINT_ENTRY_ENABLED': True,  # True = у вотчеров с ручной зоной (custom_levels.json,
                                           # self.simple_entry=True) вход происходит сразу по достижению
@@ -310,6 +317,7 @@ class BounceWatcher:
         вставлять _record_event() в каждый return по отдельности.
         """
         self._c_adx = None if (c_adx is None or c_adx != c_adx) else float(c_adx)
+        self._candle = (float(c_open), float(c_high), float(c_low), float(c_close))
         is_first_call = not self._started_logged
         result = self._update_impl(
             c_open, c_high, c_low, c_close, c_vol, baseline_vol, all_opposite_levels,
@@ -444,6 +452,9 @@ class BounceWatcher:
                 return None
             if not self._adx_ok():
                 self._dbg(f"🟡 ПРОПУСК | ЗОНА | {self._adx_fail()}")
+                return None
+            if not self._candle_ok():
+                self._dbg(f"🟡 ПРОПУСК | ЗОНА | {self._candle_fail()}")
                 return None
             self._simple_entry_fired = True
             vol_mult = (c_vol / baseline_vol) if baseline_vol > 0 else 0.0
@@ -662,8 +673,9 @@ class BounceWatcher:
                     is_body_ok = body_pct >= self.CONFIG['MIN_BODY_PCT']
                     is_shadow_ok = top_shadow_pct <= self.CONFIG['MAX_WICKS_PCT']
                     is_adx_ok = self._adx_ok()
+                    is_candle_ok = self._candle_ok()
                     
-                    if is_vol_ok and is_body_ok and is_shadow_ok and is_pierce_budget_ok and is_focus and is_adx_ok:
+                    if is_vol_ok and is_body_ok and is_shadow_ok and is_pierce_budget_ok and is_focus and is_adx_ok and is_candle_ok:
                         self.last_event_type = "GOOD_GREEN"
                         return self._enter(c_close, vol_mult, c_vol, logic_vol, baseline_vol)
                     else:
@@ -675,6 +687,7 @@ class BounceWatcher:
                         if not is_body_ok: fail_reasons.append(f"Тело:{body_pct:.0f}%(<{self.CONFIG['MIN_BODY_PCT']}%)")
                         if not is_shadow_ok: fail_reasons.append(f"В.Тень:{top_shadow_pct:.0f}%(>{self.CONFIG['MAX_WICKS_PCT']}%)")
                         if not is_adx_ok: fail_reasons.append(self._adx_fail())
+                        if not is_candle_ok: fail_reasons.append(self._candle_fail())
                         
                         self._dbg(f"🟡 ПРОПУСК | ЗЕЛЕНАЯ | {', '.join(fail_reasons)} | V:{v_str}")
 
@@ -723,6 +736,26 @@ class BounceWatcher:
         adx = self._c_adx
         return adx is not None and adx == adx and adx >= min_adx
 
+    def _candle_fail(self):
+        """Фильтры свечи входа (только LONG). Возвращает текст причины отказа или None, если свеча подходит.
+        Пороги берутся из CONFIG КЛАССА (как у ADX): смена значения действует и на уже живые вотчеры."""
+        if self.trade_type != 'LONG' or self._candle is None:
+            return None
+        o, h, l, c = self._candle
+        cfg = type(self).CONFIG
+        max_wick = cfg.get('MAX_LOWER_WICK_PCT') or 0
+        if max_wick > 0:
+            rng = h - l
+            wick = (min(o, c) - l) / rng * 100.0 if rng > 0 else 0.0
+            if wick >= max_wick:
+                return f"Нижняя тень {wick:.0f}% (>= {max_wick:g}%)"
+        if cfg.get('REQUIRE_ENTRY_TOUCH') and l > self.max:
+            return f"Свеча не касается зоны: лой {l:.4f} > верх зоны {self.max:.4f}"
+        return None
+
+    def _candle_ok(self):
+        return self._candle_fail() is None
+
     def _adx_fail(self):
         adx = self._c_adx
         shown = "нет данных" if (adx is None or adx != adx) else f"{adx:.1f}"
@@ -749,7 +782,7 @@ class BounceWatcher:
             self._pat_reset()
             route = check_c3(c1, routes, o, h, l, c, v, d)
             if route is not None:
-                if is_focus and is_pierce_budget_ok and self._adx_ok():
+                if is_focus and is_pierce_budget_ok and self._adx_ok() and self._candle_ok():
                     self.last_event_type = "GOOD_GREEN" if d == 'LONG' else "GOOD_RED"
                     self._dbg(f"🧩 [С3] Подтверждение: маршрут {route}")
                     return self._enter(c, vol_mult, v, base, base, pattern_route=route)
@@ -757,6 +790,7 @@ class BounceWatcher:
                 if not is_focus: reasons.append("не в фокусе (пробит более свежий уровень)")
                 if not is_pierce_budget_ok: reasons.append(f"Бюджет пробоя #{self.pierce_count} исчерпан, жду новый")
                 if not self._adx_ok(): reasons.append(self._adx_fail())
+                if not self._candle_ok(): reasons.append(self._candle_fail())
                 self._dbg(f"🟡 ПРОПУСК | ПАТТЕРН {route} | {', '.join(reasons)}")
             else:
                 self._dbg(f"❌ Отмена [С3]: подтверждения нет, маршруты {routes}")

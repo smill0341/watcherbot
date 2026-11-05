@@ -1,1396 +1,740 @@
 [
   {
-    "date": "2026-10-14 16:15",
-    "coin": "ENA",
+    "date": "2026-10-27 14:15",
+    "coin": "LTC",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 0.19971,
-    "target": 0.2096955,
+    "entry": 56.4,
+    "target": 62.040000000000006,
     "target_2": null,
     "target_3": null,
-    "stop": 0.15976800000000002,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1791983700,
-    "level_id": "BC_LONG_0.19080656344786653_0.20034689162025987",
-    "level_type": "1W_low_PWL + 1d_extreme_peak+4h_poc",
-    "method": "volume",
-    "method_value": 14605243.0,
-    "method_mult": 2.911006790973856,
-    "pattern_route": null,
-    "closed_at": "2026-10-21T11:15:00+00:00",
-    "level_min": 0.19080656344786653,
-    "level_max": 0.20034689162025987,
-    "level_date": "2026-10-11",
-    "level_score": 6.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-11",
-    "mode": null,
-    "events": [
-      {
-        "time": 1791852300,
-        "type": "ZONE_TOUCH",
-        "price": 0.19857
-      },
-      {
-        "time": 1791981000,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.1872
-      },
-      {
-        "time": 1791983700,
-        "type": "ENTRY",
-        "price": 0.19971
-      }
-    ]
-  },
-  {
-    "date": "2026-10-16 20:30",
-    "coin": "BTC",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 81490.4,
-    "target": 85564.92,
-    "target_2": null,
-    "target_3": null,
-    "stop": 65192.32,
+    "stop": 45.120000000000005,
     "status": "⏳",
-    "result_percent": -1.82,
-    "time": 1792171800,
-    "level_id": "BB_LONG_80604.58157738275_81358.54605654313",
-    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 3287.054,
-    "method_mult": 2.4712603235636323,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 80604.58157738275,
-    "level_max": 81358.54605654313,
-    "level_date": "2026-09-27",
-    "level_score": 7.0,
-    "level_reaction_count": 3,
-    "activated_at": "2026-09-27",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792165500,
-        "type": "ZONE_TOUCH",
-        "price": 81287.9
-      },
-      {
-        "time": 1792170900,
-        "type": "SWEEP_BOTTOM",
-        "price": 80755.9
-      },
-      {
-        "time": 1792171800,
-        "type": "ENTRY",
-        "price": 81490.4
-      }
-    ]
-  },
-  {
-    "date": "2026-10-17 16:15",
-    "coin": "ENA",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 0.19333,
-    "target": 0.20299650000000002,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.15466400000000002,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792242900,
-    "level_id": "BB_LONG_0.19080656344786653_0.20034689162025987",
-    "level_type": "1W_low_PWL + 1d_extreme_peak+4h_poc",
-    "method": "buyback",
-    "method_value": 6564569.0,
-    "method_mult": 2.1788963107519237,
-    "pattern_route": null,
-    "closed_at": "2026-10-20T14:30:00+00:00",
-    "level_min": 0.19080656344786653,
-    "level_max": 0.20034689162025987,
-    "level_date": "2026-10-11",
-    "level_score": 6.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-11",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792164600,
-        "type": "ZONE_TOUCH",
-        "price": 0.20001
-      },
-      {
-        "time": 1792170900,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.19466
-      },
-      {
-        "time": 1792242900,
-        "type": "ENTRY",
-        "price": 0.19333
-      }
-    ]
-  },
-  {
-    "date": "2026-10-17 16:15",
-    "coin": "LINK",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 12.055,
-    "target": 12.65775,
-    "target_2": null,
-    "target_3": null,
-    "stop": 9.644,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792242900,
-    "level_id": "BB_LONG_11.983510098824405_12.345",
-    "level_type": "1W_low_PWL + 1d_extreme_peak",
-    "method": "buyback",
-    "method_value": 47840.3,
-    "method_mult": 1.7664080332661578,
-    "pattern_route": null,
-    "closed_at": "2026-10-21T15:15:00+00:00",
-    "level_min": 11.983510098824405,
-    "level_max": 12.345,
-    "level_date": "2026-09-27",
-    "level_score": 6.0,
-    "level_reaction_count": 2,
-    "activated_at": "2026-09-27",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792165500,
-        "type": "ZONE_TOUCH",
-        "price": 12.315
-      },
-      {
-        "time": 1792170900,
-        "type": "SWEEP_BOTTOM",
-        "price": 12.155
-      },
-      {
-        "time": 1792242900,
-        "type": "ENTRY",
-        "price": 12.055
-      }
-    ]
-  },
-  {
-    "date": "2026-10-17 20:00",
-    "coin": "ZRO",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 1.8619,
-    "target": 1.9549950000000003,
-    "target_2": null,
-    "target_3": null,
-    "stop": 1.4895200000000002,
-    "status": "✅",
-    "result_percent": 7.2,
-    "time": 1792256400,
-    "level_id": "BC_LONG_1.8614512194678157_1.9544",
-    "level_type": "1W_low_PWL",
-    "method": "volume",
-    "method_value": 423619.8,
-    "method_mult": 2.587758227690821,
-    "pattern_route": null,
-    "closed_at": "2026-10-20T14:16:01.418834+00:00",
-    "level_min": 1.8614512194678157,
-    "level_max": 1.9544,
-    "level_date": "2026-10-11",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-11",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792196100,
-        "type": "ZONE_TOUCH",
-        "price": 1.9473
-      },
-      {
-        "time": 1792242900,
-        "type": "SWEEP_BOTTOM",
-        "price": 1.905
-      },
-      {
-        "time": 1792250100,
-        "type": "SCAN",
-        "price": 1.8992
-      },
-      {
-        "time": 1792256400,
-        "type": "ENTRY",
-        "price": 1.8619
-      }
-    ]
-  },
-  {
-    "date": "2026-10-17 20:00",
-    "coin": "ZRO",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 1.8619,
-    "target": 1.9549950000000003,
-    "target_2": null,
-    "target_3": null,
-    "stop": 1.4895200000000002,
-    "status": "✅",
-    "result_percent": 7.2,
-    "time": 1792256400,
-    "level_id": "BB_LONG_1.8614512194678157_1.9544",
-    "level_type": "1W_low_PWL",
-    "method": "buyback",
-    "method_value": 423619.8,
-    "method_mult": 2.587758227690821,
-    "pattern_route": null,
-    "closed_at": "2026-10-20T14:16:01.626387+00:00",
-    "level_min": 1.8614512194678157,
-    "level_max": 1.9544,
-    "level_date": "2026-10-11",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-11",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792196100,
-        "type": "ZONE_TOUCH",
-        "price": 1.9473
-      },
-      {
-        "time": 1792242900,
-        "type": "SWEEP_BOTTOM",
-        "price": 1.905
-      },
-      {
-        "time": 1792256400,
-        "type": "ENTRY",
-        "price": 1.8619
-      }
-    ]
-  },
-  {
-    "date": "2026-10-17 17:30",
-    "coin": "MON",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 0.02221,
-    "target": 0.0233205,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.017768000000000003,
-    "status": "⏳",
-    "result_percent": -2.93,
-    "time": 1792247400,
-    "level_id": "BB_LONG_0.02185844043478261_0.02274",
-    "level_type": "4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 3336928.0,
-    "method_mult": 1.4334848054420157,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 0.02185844043478261,
-    "level_max": 0.02274,
-    "level_date": "2026-10-15",
-    "level_score": 4.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-16",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792165500,
-        "type": "ZONE_TOUCH",
-        "price": 0.02254
-      },
-      {
-        "time": 1792175400,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.02224
-      },
-      {
-        "time": 1792247400,
-        "type": "ENTRY",
-        "price": 0.02221
-      }
-    ]
-  },
-  {
-    "date": "2026-10-17 16:15",
-    "coin": "SKHYNIX",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 918.94,
-    "target": 964.8870000000001,
-    "target_2": null,
-    "target_3": null,
-    "stop": 735.152,
-    "status": "✅",
-    "result_percent": 5.44,
-    "time": 1792242900,
-    "level_id": "BB_LONG_921.4563842794628_937.42",
-    "level_type": "4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 294.331,
-    "method_mult": 1.8345398177246623,
-    "pattern_route": null,
-    "closed_at": "2026-10-19T08:01:02.053119+00:00",
-    "level_min": 921.4563842794628,
-    "level_max": 937.42,
-    "level_date": "2026-10-15",
-    "level_score": 4.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-16",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792165500,
-        "type": "ZONE_TOUCH",
-        "price": 936.65
-      },
-      {
-        "time": 1792170900,
-        "type": "SWEEP_BOTTOM",
-        "price": 920.36
-      },
-      {
-        "time": 1792242900,
-        "type": "ENTRY",
-        "price": 918.94
-      }
-    ]
-  },
-  {
-    "date": "2026-10-17 21:30",
-    "coin": "MON",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.02198,
-    "target": 0.023079,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.017584,
-    "status": "⏳",
-    "result_percent": -1.91,
-    "time": 1792261800,
-    "level_id": "BC_LONG_0.02185844043478261_0.02274",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 12420703.0,
-    "method_mult": 2.589803926867159,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 0.02185844043478261,
-    "level_max": 0.02274,
-    "level_date": "2026-10-15",
-    "level_score": 4.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-16",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792165500,
-        "type": "ZONE_TOUCH",
-        "price": 0.02254
-      },
-      {
-        "time": 1792175400,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.02224
-      },
-      {
-        "time": 1792261800,
-        "type": "ENTRY",
-        "price": 0.02198
-      }
-    ]
-  },
-  {
-    "date": "2026-10-18 00:45",
-    "coin": "1000BONK",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.002932,
-    "target": 0.0030786000000000003,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.0023456,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792273500,
-    "level_id": "BC_LONG_0.002940265257903494_0.0030128368552412646",
+    "result_percent": -1.51,
+    "time": 1793103300,
+    "level_id": "BC_LONG_54.69918595886992_57.0",
     "level_type": "1W_low_PWL + 4h_extreme_peak",
     "method": "volume",
-    "method_value": 32691200.0,
-    "method_mult": 2.5679370772465866,
-    "pattern_route": null,
-    "closed_at": "2026-10-20T14:30:00+00:00",
-    "level_min": 0.002940265257903494,
-    "level_max": 0.0030128368552412646,
-    "level_date": "2026-09-27",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-09-27",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792170000,
-        "type": "ZONE_TOUCH",
-        "price": 0.003009
-      },
-      {
-        "time": 1792250100,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.002974
-      },
-      {
-        "time": 1792251000,
-        "type": "SCAN",
-        "price": 0.00298
-      },
-      {
-        "time": 1792273500,
-        "type": "ENTRY",
-        "price": 0.002932
-      }
-    ]
-  },
-  {
-    "date": "2026-10-18 00:30",
-    "coin": "CASHCAT",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.10132,
-    "target": 0.106386,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.081056,
-    "status": "✅",
-    "result_percent": 10.98,
-    "time": 1792272600,
-    "level_id": "BC_LONG_0.10357878078996895_0.1087577198294674",
-    "level_type": "1W_low_PWL",
-    "method": "volume",
-    "method_value": 2945470.0,
-    "method_mult": 3.100788495752229,
-    "pattern_route": null,
-    "closed_at": "2026-10-19T07:05:15.157229+00:00",
-    "level_min": 0.10357878078996895,
-    "level_max": 0.1087577198294674,
-    "level_date": "2026-10-11",
-    "level_score": 6.0,
-    "level_reaction_count": 2,
-    "activated_at": "2026-10-11",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792168200,
-        "type": "ZONE_TOUCH",
-        "price": 0.10846
-      },
-      {
-        "time": 1792251000,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.10447
-      },
-      {
-        "time": 1792272600,
-        "type": "ENTRY",
-        "price": 0.10132
-      }
-    ]
-  },
-  {
-    "date": "2026-10-18 00:30",
-    "coin": "LITE",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 791.7,
-    "target": 831.2850000000001,
-    "target_2": null,
-    "target_3": null,
-    "stop": 633.3600000000001,
-    "status": "✅",
-    "result_percent": 8.58,
-    "time": 1792272600,
-    "level_id": "BC_LONG_769.5896966143926_808.0691814451122",
-    "level_type": "1d_extreme_peak",
-    "method": "volume",
-    "method_value": 111.69,
-    "method_mult": 8.458159787959104,
-    "pattern_route": null,
-    "closed_at": "2026-10-19T07:05:15.382325+00:00",
-    "level_min": 769.5896966143926,
-    "level_max": 808.0691814451122,
-    "level_date": "2026-08-11",
-    "level_score": 5.5,
-    "level_reaction_count": 2,
-    "activated_at": "2026-08-16",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792271700,
-        "type": "SWEEP_BOTTOM",
-        "price": 778.76
-      },
-      {
-        "time": 1792272600,
-        "type": "ENTRY",
-        "price": 791.7
-      }
-    ]
-  },
-  {
-    "date": "2026-10-18 00:30",
-    "coin": "SKHYNIX",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 885.84,
-    "target": 930.1320000000001,
-    "target_2": null,
-    "target_3": null,
-    "stop": 708.672,
-    "status": "✅",
-    "result_percent": 8.51,
-    "time": 1792272600,
-    "level_id": "BC_LONG_877.5065805370244_921.3819095638756",
-    "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
-    "method": "volume",
-    "method_value": 7932.879,
-    "method_mult": 36.62112461297487,
-    "pattern_route": null,
-    "closed_at": "2026-10-19T07:05:15.607567+00:00",
-    "level_min": 877.5065805370244,
-    "level_max": 921.3819095638756,
-    "level_date": "2026-07-31",
-    "level_score": 5.5,
-    "level_reaction_count": 0,
-    "activated_at": "2026-07-31",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792170900,
-        "type": "ZONE_TOUCH",
-        "price": 920.36
-      },
-      {
-        "time": 1792271700,
-        "type": "SWEEP_BOTTOM",
-        "price": 856.0
-      },
-      {
-        "time": 1792272600,
-        "type": "ENTRY",
-        "price": 885.84
-      }
-    ]
-  },
-  {
-    "date": "2026-10-18 00:30",
-    "coin": "NBIS",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 163.41,
-    "target": 171.5805,
-    "target_2": null,
-    "target_3": null,
-    "stop": 130.728,
-    "status": "✅",
-    "result_percent": 5.26,
-    "time": 1792272600,
-    "level_id": "BC_LONG_163.0925411457634_169.4445885423659",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 10225.53,
-    "method_mult": 47.301655587782236,
-    "pattern_route": null,
-    "closed_at": "2026-10-19T07:05:15.828072+00:00",
-    "level_min": 163.0925411457634,
-    "level_max": 169.4445885423659,
-    "level_date": "2026-10-15",
-    "level_score": 4.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-16",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792200600,
-        "type": "ZONE_TOUCH",
-        "price": 167.76
-      },
-      {
-        "time": 1792250100,
-        "type": "SWEEP_BOTTOM",
-        "price": 166.26
-      },
-      {
-        "time": 1792253700,
-        "type": "SCAN",
-        "price": 167.55
-      },
-      {
-        "time": 1792261800,
-        "type": "SCAN",
-        "price": 167.92
-      },
-      {
-        "time": 1792272600,
-        "type": "ENTRY",
-        "price": 163.41
-      }
-    ]
-  },
-  {
-    "date": "2026-10-18 00:30",
-    "coin": "NBIS",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 163.41,
-    "target": 171.5805,
-    "target_2": null,
-    "target_3": null,
-    "stop": 130.728,
-    "status": "✅",
-    "result_percent": 5.26,
-    "time": 1792272600,
-    "level_id": "BB_LONG_163.0925411457634_169.4445885423659",
-    "level_type": "4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 10225.53,
-    "method_mult": 47.301655587782236,
-    "pattern_route": null,
-    "closed_at": "2026-10-19T07:05:16.051799+00:00",
-    "level_min": 163.0925411457634,
-    "level_max": 169.4445885423659,
-    "level_date": "2026-10-15",
-    "level_score": 4.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-16",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792200600,
-        "type": "ZONE_TOUCH",
-        "price": 167.76
-      },
-      {
-        "time": 1792250100,
-        "type": "SWEEP_BOTTOM",
-        "price": 166.26
-      },
-      {
-        "time": 1792272600,
-        "type": "ENTRY",
-        "price": 163.41
-      }
-    ]
-  },
-  {
-    "date": "2026-10-18 01:00",
-    "coin": "BTC",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 81307.4,
-    "target": 85372.77,
-    "target_2": null,
-    "target_3": null,
-    "stop": 65045.92,
-    "status": "⏳",
-    "result_percent": -1.61,
-    "time": 1792274400,
-    "level_id": "BC_LONG_80604.58157738275_81358.54605654313",
-    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 940.187,
-    "method_mult": 3.5356487978928715,
+    "method_value": 13559.6,
+    "method_mult": 3.1995205296825633,
+    "method_ratio": null,
     "pattern_route": null,
     "closed_at": null,
-    "level_min": 80604.58157738275,
-    "level_max": 81358.54605654313,
-    "level_date": "2026-09-27",
-    "level_score": 7.0,
-    "level_reaction_count": 3,
-    "activated_at": "2026-09-27",
+    "level_min": 54.69918595886992,
+    "level_max": 57.0,
+    "level_date": "2026-10-25",
+    "level_score": 5.0,
+    "level_reaction_count": 0,
+    "activated_at": "2026-10-25",
     "mode": null,
     "events": [
       {
-        "time": 1792165500,
+        "time": 1792943100,
         "type": "ZONE_TOUCH",
-        "price": 81287.9
+        "price": 56.99
       },
       {
-        "time": 1792170900,
+        "time": 1793095200,
         "type": "SWEEP_BOTTOM",
-        "price": 80755.9
+        "price": 55.69
       },
       {
-        "time": 1792171800,
-        "type": "SCAN",
-        "price": 81490.4
-      },
-      {
-        "time": 1792260000,
-        "type": "SCAN",
-        "price": 81479.2
-      },
-      {
-        "time": 1792272600,
-        "type": "SCAN",
-        "price": 81096.0
-      },
-      {
-        "time": 1792273500,
-        "type": "SCAN",
-        "price": 81101.2
-      },
-      {
-        "time": 1792274400,
+        "time": 1793103300,
         "type": "ENTRY",
-        "price": 81307.4
+        "price": 56.4
       }
     ]
   },
   {
-    "date": "2026-10-18 01:00",
-    "coin": "SOL",
+    "date": "2026-10-27 18:00",
+    "coin": "AKE",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 102.84,
-    "target": 107.98200000000001,
+    "entry": 0.025525,
+    "target": 0.028077500000000002,
     "target_2": null,
     "target_3": null,
-    "stop": 82.272,
+    "stop": 0.02042,
     "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792274400,
-    "level_id": "BC_LONG_101.39527026479057_103.2072973520944",
-    "level_type": "4h_extreme_peak",
+    "result_percent": 10.0,
+    "time": 1793116800,
+    "level_id": "BC_LONG_0.022077305868286386_0.023181171161700705",
+    "level_type": "1W_low_PWL + 1d_extreme_peak",
     "method": "volume",
-    "method_value": 113275.4,
-    "method_mult": 2.645329116079036,
+    "method_value": 176976600.0,
+    "method_mult": 35.582340783156255,
+    "method_ratio": null,
     "pattern_route": null,
-    "closed_at": "2026-10-20T14:15:00+00:00",
-    "level_min": 101.39527026479057,
-    "level_max": 103.2072973520944,
-    "level_date": "2026-10-13",
-    "level_score": 4.5,
+    "closed_at": "2026-10-27T16:15:00+00:00",
+    "level_min": 0.022077305868286386,
+    "level_max": 0.023181171161700705,
+    "level_date": "2026-10-18",
+    "level_score": 5.5,
     "level_reaction_count": 1,
-    "activated_at": "2026-10-14",
+    "activated_at": "2026-10-18",
     "mode": null,
     "events": [
       {
-        "time": 1792170900,
-        "type": "ZONE_TOUCH",
-        "price": 102.71
-      },
-      {
-        "time": 1792272600,
+        "time": 1793115000,
         "type": "SWEEP_BOTTOM",
-        "price": 101.17
+        "price": 0.022
       },
       {
-        "time": 1792273500,
-        "type": "SCAN",
-        "price": 102.23
-      },
-      {
-        "time": 1792274400,
+        "time": 1793116800,
         "type": "ENTRY",
-        "price": 102.84
+        "price": 0.025525
       }
     ]
   },
   {
-    "date": "2026-10-18 00:30",
-    "coin": "HYPE",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 78.246,
-    "target": 82.1583,
-    "target_2": null,
-    "target_3": null,
-    "stop": 62.5968,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792272600,
-    "level_id": "BB_LONG_77.30856687452186_79.176",
-    "level_type": "4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 113557.69,
-    "method_mult": 6.178979333298726,
-    "pattern_route": null,
-    "closed_at": "2026-10-21T01:45:00+00:00",
-    "level_min": 77.30856687452186,
-    "level_max": 79.176,
-    "level_date": "2026-10-15",
-    "level_score": 4.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-16",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792179000,
-        "type": "ZONE_TOUCH",
-        "price": 78.96
-      },
-      {
-        "time": 1792256400,
-        "type": "SWEEP_BOTTOM",
-        "price": 78.171
-      },
-      {
-        "time": 1792272600,
-        "type": "ENTRY",
-        "price": 78.246
-      }
-    ]
-  },
-  {
-    "date": "2026-10-18 04:30",
-    "coin": "XLM",
+    "date": "2026-10-27 10:00",
+    "coin": "ZRO",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 0.1783,
-    "target": 0.187215,
+    "entry": 1.6467,
+    "target": 1.729035,
     "target_2": null,
     "target_3": null,
-    "stop": 0.14264,
+    "stop": 1.31736,
+    "status": "✅",
+    "result_percent": 5.0,
+    "time": 1793088000,
+    "level_id": "BC_LONG_1.6139213588645829_1.694617426807812",
+    "level_type": "1W_low_PWL + 4h_extreme_peak",
+    "method": "volume",
+    "method_value": 291329.9,
+    "method_mult": 2.507891774184468,
+    "method_ratio": null,
+    "pattern_route": null,
+    "closed_at": "2026-10-28T02:15:00+00:00",
+    "level_min": 1.6139213588645829,
+    "level_max": 1.694617426807812,
+    "level_date": "2026-10-25",
+    "level_score": 5.0,
+    "level_reaction_count": 0,
+    "activated_at": "2026-10-25",
+    "mode": null,
+    "events": [
+      {
+        "time": 1792936800,
+        "type": "ZONE_TOUCH",
+        "price": 1.6823
+      },
+      {
+        "time": 1793031300,
+        "type": "SWEEP_BOTTOM",
+        "price": 1.6505
+      },
+      {
+        "time": 1793034900,
+        "type": "SCAN",
+        "price": 1.6741
+      },
+      {
+        "time": 1793088000,
+        "type": "ENTRY",
+        "price": 1.6467
+      }
+    ]
+  },
+  {
+    "date": "2026-10-27 05:15",
+    "coin": "MNT",
+    "type": "LONG",
+    "source": "BOUNCE_LONG",
+    "entry": 0.5136,
+    "target": 0.56496,
+    "target_2": null,
+    "target_3": null,
+    "stop": 0.41087999999999997,
     "status": "⏳",
-    "result_percent": -5.95,
-    "time": 1792287000,
-    "level_id": "BC_LONG_0.17548532346491227_0.179",
-    "level_type": "4h_extreme_peak",
+    "result_percent": -6.52,
+    "time": 1793070900,
+    "level_id": "BC_LONG_0.5036574622587426_0.5233",
+    "level_type": "1W_low_PWL + 1d_extreme_peak",
     "method": "volume",
-    "method_value": 5614286.0,
-    "method_mult": 3.9262125042728777,
+    "method_value": 847021.9,
+    "method_mult": 9.203164546371776,
+    "method_ratio": null,
     "pattern_route": null,
     "closed_at": null,
-    "level_min": 0.17548532346491227,
-    "level_max": 0.179,
-    "level_date": "2026-10-15",
-    "level_score": 4.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-16",
+    "level_min": 0.5036574622587426,
+    "level_max": 0.5233,
+    "level_date": "2026-10-18",
+    "level_score": 5.5,
+    "level_reaction_count": 1,
+    "activated_at": "2026-10-18",
     "mode": null,
     "events": [
       {
-        "time": 1792170900,
+        "time": 1792947600,
         "type": "ZONE_TOUCH",
-        "price": 0.1784
+        "price": 0.5231
       },
       {
-        "time": 1792242900,
+        "time": 1792978200,
         "type": "SWEEP_BOTTOM",
-        "price": 0.1772
+        "price": 0.5131
       },
       {
-        "time": 1792287000,
+        "time": 1793070900,
         "type": "ENTRY",
-        "price": 0.1783
+        "price": 0.5136
       }
     ]
   },
   {
-    "date": "2026-10-18 17:15",
+    "date": "2026-10-27 12:15",
     "coin": "ATOM",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 1.669,
-    "target": 1.75245,
+    "entry": 1.614,
+    "target": 1.7754000000000003,
     "target_2": null,
     "target_3": null,
-    "stop": 1.3352000000000002,
-    "status": "✅",
-    "result_percent": 5.21,
-    "time": 1792332900,
-    "level_id": "BC_LONG_1.6611445842217485_1.675",
-    "level_type": "4h_extreme_peak",
+    "stop": 1.2912000000000001,
+    "status": "⏳",
+    "result_percent": -6.57,
+    "time": 1793096100,
+    "level_id": "BC_LONG_1.595036702974445_1.649",
+    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
     "method": "volume",
-    "method_value": 212350.7,
-    "method_mult": 4.246602928836487,
+    "method_value": 71377.1,
+    "method_mult": 2.7359539966943367,
+    "method_ratio": null,
     "pattern_route": null,
-    "closed_at": "2026-10-19T12:46:03.860237+00:00",
-    "level_min": 1.6611445842217485,
-    "level_max": 1.675,
-    "level_date": "2026-10-07",
-    "level_score": 4.5,
-    "level_reaction_count": 2,
-    "activated_at": "2026-10-08",
+    "closed_at": null,
+    "level_min": 1.595036702974445,
+    "level_max": 1.649,
+    "level_date": "2026-10-04",
+    "level_score": 7.0,
+    "level_reaction_count": 4,
+    "activated_at": "2026-10-04",
     "mode": null,
     "events": [
       {
-        "time": 1792272600,
+        "time": 1792951200,
+        "type": "ZONE_TOUCH",
+        "price": 1.647
+      },
+      {
+        "time": 1792978200,
         "type": "SWEEP_BOTTOM",
-        "price": 1.661
+        "price": 1.61
       },
       {
-        "time": 1792314000,
+        "time": 1793026800,
         "type": "SCAN",
-        "price": 1.708
+        "price": 1.658
       },
       {
-        "time": 1792319400,
-        "type": "SCAN",
-        "price": 1.703
-      },
-      {
-        "time": 1792332900,
+        "time": 1793096100,
         "type": "ENTRY",
-        "price": 1.669
+        "price": 1.614
       }
     ]
   },
   {
-    "date": "2026-10-18 17:45",
-    "coin": "1000BONK",
+    "date": "2026-10-27 16:45",
+    "coin": "JUP",
     "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 0.00289,
-    "target": 0.0030345000000000003,
+    "source": "BOUNCE_LONG",
+    "entry": 0.278,
+    "target": 0.30580000000000007,
     "target_2": null,
     "target_3": null,
-    "stop": 0.0023120000000000003,
-    "status": "✅",
-    "result_percent": 6.06,
-    "time": 1792334700,
-    "level_id": "BB_LONG_0.002940265257903494_0.0030128368552412646",
-    "level_type": "1W_low_PWL + 4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 48999400.0,
-    "method_mult": 3.8903665405325545,
+    "stop": 0.22240000000000004,
+    "status": "⏳",
+    "result_percent": -8.42,
+    "time": 1793112300,
+    "level_id": "BC_LONG_0.2723604517453799_0.2859784743326489",
+    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+    "method": "volume",
+    "method_value": 789741.0,
+    "method_mult": 2.8813904386002354,
+    "method_ratio": null,
     "pattern_route": null,
-    "closed_at": "2026-10-20T14:16:03.292447+00:00",
-    "level_min": 0.002940265257903494,
-    "level_max": 0.0030128368552412646,
-    "level_date": "2026-09-27",
+    "closed_at": null,
+    "level_min": 0.2723604517453799,
+    "level_max": 0.2859784743326489,
+    "level_date": "2026-10-18",
     "level_score": 5.5,
     "level_reaction_count": 1,
-    "activated_at": "2026-09-27",
+    "activated_at": "2026-10-18",
     "mode": null,
     "events": [
       {
-        "time": 1792170000,
+        "time": 1792950300,
         "type": "ZONE_TOUCH",
-        "price": 0.003009
+        "price": 0.2857
       },
       {
-        "time": 1792250100,
+        "time": 1792971000,
         "type": "SWEEP_BOTTOM",
-        "price": 0.002974
+        "price": 0.2787
       },
       {
-        "time": 1792334700,
-        "type": "ENTRY",
-        "price": 0.00289
-      }
-    ]
-  },
-  {
-    "date": "2026-10-18 17:45",
-    "coin": "GRASS",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.5842,
-    "target": 0.6134100000000001,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.46736000000000005,
-    "status": "✅",
-    "result_percent": 9.88,
-    "time": 1792334700,
-    "level_id": "BC_LONG_0.5864863122067887_0.6158106278171281",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 330326.0,
-    "method_mult": 2.6910051901436955,
-    "pattern_route": null,
-    "closed_at": "2026-10-20T14:16:03.499992+00:00",
-    "level_min": 0.5864863122067887,
-    "level_max": 0.6158106278171281,
-    "level_date": "2026-10-15",
-    "level_score": 3.5,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-16",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792251900,
-        "type": "ZONE_TOUCH",
-        "price": 0.6117
-      },
-      {
-        "time": 1792301400,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.5999
-      },
-      {
-        "time": 1792302300,
+        "time": 1792979100,
         "type": "SCAN",
-        "price": 0.6042
+        "price": 0.2797
       },
       {
-        "time": 1792334700,
+        "time": 1792987200,
+        "type": "SCAN",
+        "price": 0.2769
+      },
+      {
+        "time": 1792990800,
+        "type": "SCAN",
+        "price": 0.2796
+      },
+      {
+        "time": 1793009700,
+        "type": "SCAN",
+        "price": 0.2791
+      },
+      {
+        "time": 1793026800,
+        "type": "SCAN",
+        "price": 0.2836
+      },
+      {
+        "time": 1793042100,
+        "type": "SCAN",
+        "price": 0.2783
+      },
+      {
+        "time": 1793102400,
+        "type": "SCAN",
+        "price": 0.2739
+      },
+      {
+        "time": 1793112300,
         "type": "ENTRY",
-        "price": 0.5842
+        "price": 0.278
       }
     ]
   },
   {
-    "date": "2026-10-18 22:45",
-    "coin": "SUI",
+    "date": "2026-10-27 16:45",
+    "coin": "POL",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 0.9412,
-    "target": 0.98826,
+    "entry": 0.09092,
+    "target": 0.100012,
     "target_2": null,
     "target_3": null,
-    "stop": 0.7529600000000001,
-    "status": "✅",
-    "result_percent": 7.41,
-    "time": 1792352700,
-    "level_id": "BC_LONG_0.9279188852326608_0.9551",
-    "level_type": "4h_extreme_peak",
+    "stop": 0.07273600000000001,
+    "status": "⏳",
+    "result_percent": -0.21,
+    "time": 1793112300,
+    "level_id": "BC_LONG_0.08706000861973699_0.09076997845065754",
+    "level_type": "1M_low_PML + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
     "method": "volume",
-    "method_value": 1801600.0,
-    "method_mult": 2.5623593731777183,
+    "method_value": 1985899.0,
+    "method_mult": 5.0957058668516195,
+    "method_ratio": null,
     "pattern_route": null,
-    "closed_at": "2026-10-19T07:05:17.827025+00:00",
-    "level_min": 0.9279188852326608,
-    "level_max": 0.9551,
-    "level_date": "2026-09-23",
-    "level_score": 4.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-09-24",
+    "closed_at": null,
+    "level_min": 0.08706000861973699,
+    "level_max": 0.09076997845065754,
+    "level_date": "2026-09-30",
+    "level_score": 6.5,
+    "level_reaction_count": 3,
+    "activated_at": "2026-09-30",
     "mode": null,
     "events": [
       {
-        "time": 1792272600,
+        "time": 1793032200,
         "type": "ZONE_TOUCH",
-        "price": 0.952
+        "price": 0.09041
       },
       {
-        "time": 1792351800,
+        "time": 1793095200,
         "type": "SWEEP_BOTTOM",
-        "price": 0.9368
+        "price": 0.0889
       },
       {
-        "time": 1792352700,
+        "time": 1793112300,
         "type": "ENTRY",
-        "price": 0.9412
+        "price": 0.09092
       }
     ]
   },
   {
-    "date": "2026-10-18 20:00",
+    "date": "2026-10-27 07:45",
+    "coin": "XAG",
+    "type": "LONG",
+    "source": "BOUNCE_LONG",
+    "entry": 53.48,
+    "target": 55.084399999999995,
+    "target_2": null,
+    "target_3": null,
+    "stop": 42.784,
+    "status": "⏳",
+    "result_percent": -5.22,
+    "time": 1793079900,
+    "level_id": "BC_LONG_52.999905410345455_53.84",
+    "level_type": "1W_low_PWL + 4h_extreme_peak",
+    "method": "volume",
+    "method_value": 17515.441,
+    "method_mult": 2.710282490977648,
+    "method_ratio": null,
+    "pattern_route": null,
+    "closed_at": null,
+    "level_min": 52.999905410345455,
+    "level_max": 53.84,
+    "level_date": "2026-10-25",
+    "level_score": 5.0,
+    "level_reaction_count": 0,
+    "activated_at": "2026-10-25",
+    "mode": null,
+    "events": [
+      {
+        "time": 1792936800,
+        "type": "ZONE_TOUCH",
+        "price": 53.82
+      },
+      {
+        "time": 1793022300,
+        "type": "SWEEP_BOTTOM",
+        "price": 53.14
+      },
+      {
+        "time": 1793079000,
+        "type": "SCAN",
+        "price": 53.37
+      },
+      {
+        "time": 1793079900,
+        "type": "ENTRY",
+        "price": 53.48
+      }
+    ]
+  },
+  {
+    "date": "2026-10-27 23:30",
+    "coin": "AVAX",
+    "type": "LONG",
+    "source": "BOUNCE_LONG",
+    "entry": 8.928,
+    "target": 9.820800000000002,
+    "target_2": null,
+    "target_3": null,
+    "stop": 7.142400000000001,
+    "status": "⏳",
+    "result_percent": -4.69,
+    "time": 1793136600,
+    "level_id": "BC_LONG_8.608178707152325_8.987",
+    "level_type": "1W_low_PWL + 4h_extreme_peak",
+    "method": "volume",
+    "method_value": 70941.6,
+    "method_mult": 3.077372883377833,
+    "method_ratio": null,
+    "pattern_route": null,
+    "closed_at": null,
+    "level_min": 8.608178707152325,
+    "level_max": 8.987,
+    "level_date": "2026-10-25",
+    "level_score": 5.5,
+    "level_reaction_count": 1,
+    "activated_at": "2026-10-25",
+    "mode": null,
+    "events": [
+      {
+        "time": 1793027700,
+        "type": "ZONE_TOUCH",
+        "price": 8.984
+      },
+      {
+        "time": 1793070000,
+        "type": "SWEEP_BOTTOM",
+        "price": 8.779
+      },
+      {
+        "time": 1793079000,
+        "type": "SCAN",
+        "price": 8.753
+      },
+      {
+        "time": 1793136600,
+        "type": "ENTRY",
+        "price": 8.928
+      }
+    ]
+  },
+  {
+    "date": "2026-10-28 14:15",
+    "coin": "ICP",
+    "type": "LONG",
+    "source": "BOUNCE_LONG",
+    "entry": 2.585,
+    "target": 2.8435,
+    "target_2": null,
+    "target_3": null,
+    "stop": 2.068,
+    "status": "⏳",
+    "result_percent": -4.6,
+    "time": 1793189700,
+    "level_id": "BC_LONG_2.547199042792793_2.626",
+    "level_type": "1W_low_PWL",
+    "method": "volume",
+    "method_value": 62341.7,
+    "method_mult": 2.8726299375724578,
+    "method_ratio": null,
+    "pattern_route": null,
+    "closed_at": null,
+    "level_min": 2.547199042792793,
+    "level_max": 2.626,
+    "level_date": "2026-10-25",
+    "level_score": 5.5,
+    "level_reaction_count": 1,
+    "activated_at": "2026-10-25",
+    "mode": null,
+    "events": [
+      {
+        "time": 1793059200,
+        "type": "ZONE_TOUCH",
+        "price": 2.626
+      },
+      {
+        "time": 1793067300,
+        "type": "SWEEP_BOTTOM",
+        "price": 2.581
+      },
+      {
+        "time": 1793096100,
+        "type": "SCAN",
+        "price": 2.568
+      },
+      {
+        "time": 1793097000,
+        "type": "SCAN",
+        "price": 2.58
+      },
+      {
+        "time": 1793109600,
+        "type": "SCAN",
+        "price": 2.573
+      },
+      {
+        "time": 1793176200,
+        "type": "SCAN",
+        "price": 2.611
+      },
+      {
+        "time": 1793189700,
+        "type": "ENTRY",
+        "price": 2.585
+      }
+    ]
+  },
+  {
+    "date": "2026-10-28 16:45",
+    "coin": "RAYDIUM",
+    "type": "LONG",
+    "source": "BOUNCE_LONG",
+    "entry": 1.7249,
+    "target": 1.8973900000000004,
+    "target_2": null,
+    "target_3": null,
+    "stop": 1.3799200000000003,
+    "status": "⏳",
+    "result_percent": -6.81,
+    "time": 1793198700,
+    "level_id": "BC_LONG_1.6806537925587925_1.764686482186732",
+    "level_type": "1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
+    "method": "volume",
+    "method_value": 159001.3,
+    "method_mult": 4.00152862176904,
+    "method_ratio": null,
+    "pattern_route": null,
+    "closed_at": null,
+    "level_min": 1.6806537925587925,
+    "level_max": 1.764686482186732,
+    "level_date": "2026-10-18",
+    "level_score": 5.5,
+    "level_reaction_count": 1,
+    "activated_at": "2026-10-18",
+    "mode": null,
+    "events": [
+      {
+        "time": 1793106900,
+        "type": "ZONE_TOUCH",
+        "price": 1.7619
+      },
+      {
+        "time": 1793191500,
+        "type": "SWEEP_BOTTOM",
+        "price": 1.7078
+      },
+      {
+        "time": 1793196900,
+        "type": "SCAN",
+        "price": 1.7131
+      },
+      {
+        "time": 1793198700,
+        "type": "ENTRY",
+        "price": 1.7249
+      }
+    ]
+  },
+  {
+    "date": "2026-10-28 18:00",
+    "coin": "AKE",
+    "type": "LONG",
+    "source": "BOUNCE_LONG",
+    "entry": 0.020688,
+    "target": 0.022756800000000004,
+    "target_2": null,
+    "target_3": null,
+    "stop": 0.016550400000000003,
+    "status": "✅",
+    "result_percent": 10.0,
+    "time": 1793203200,
+    "level_id": "BC_LONG_0.020564299169622366_0.021592514128103483",
+    "level_type": "1W_low_PWL + 4h_extreme_peak",
+    "method": "volume",
+    "method_value": 40286200.0,
+    "method_mult": 2.5034613042343494,
+    "method_ratio": null,
+    "pattern_route": null,
+    "closed_at": "2026-10-28T17:30:00+00:00",
+    "level_min": 0.020564299169622366,
+    "level_max": 0.021592514128103483,
+    "level_date": "2026-10-25",
+    "level_score": 6.0,
+    "level_reaction_count": 1,
+    "activated_at": "2026-10-25",
+    "mode": null,
+    "events": [
+      {
+        "time": 1793160000,
+        "type": "ZONE_TOUCH",
+        "price": 0.021347
+      },
+      {
+        "time": 1793169000,
+        "type": "SWEEP_BOTTOM",
+        "price": 0.02066
+      },
+      {
+        "time": 1793178000,
+        "type": "SCAN",
+        "price": 0.020252
+      },
+      {
+        "time": 1793203200,
+        "type": "ENTRY",
+        "price": 0.020688
+      }
+    ]
+  },
+  {
+    "date": "2026-10-28 20:00",
     "coin": "LDO",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 0.3745,
-    "target": 0.393225,
+    "entry": 0.372,
+    "target": 0.4092,
     "target_2": null,
     "target_3": null,
-    "stop": 0.29960000000000003,
-    "status": "✅",
-    "result_percent": 5.82,
-    "time": 1792342800,
-    "level_id": "BC_LONG_0.37792924319335486_0.3865768920166128",
-    "level_type": "1W_low_PWL + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 1116361.5,
-    "method_mult": 5.597050507351721,
-    "pattern_route": null,
-    "closed_at": "2026-10-19T07:05:18.060276+00:00",
-    "level_min": 0.37792924319335486,
-    "level_max": 0.3865768920166128,
-    "level_date": "2026-09-27",
-    "level_score": 6.5,
-    "level_reaction_count": 2,
-    "activated_at": "2026-09-27",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792253700,
-        "type": "ZONE_TOUCH",
-        "price": 0.3865
-      },
-      {
-        "time": 1792272600,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.3781
-      },
-      {
-        "time": 1792331100,
-        "type": "SCAN",
-        "price": 0.3789
-      },
-      {
-        "time": 1792342800,
-        "type": "ENTRY",
-        "price": 0.3745
-      }
-    ]
-  },
-  {
-    "date": "2026-10-18 22:00",
-    "coin": "RUNE",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.6389,
-    "target": 0.670845,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.51112,
-    "status": "✅",
-    "result_percent": 6.97,
-    "time": 1792350000,
-    "level_id": "BC_LONG_0.6277454703832752_0.6369",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 150847.5,
-    "method_mult": 7.33949306300586,
-    "pattern_route": null,
-    "closed_at": "2026-10-22T09:08:33.433802+00:00",
-    "level_min": 0.6277454703832752,
-    "level_max": 0.6369,
-    "level_date": "2026-10-16",
-    "level_score": 4.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-17",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792287900,
-        "type": "ZONE_TOUCH",
-        "price": 0.6353
-      },
-      {
-        "time": 1792329300,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.6318
-      },
-      {
-        "time": 1792348200,
-        "type": "SCAN",
-        "price": 0.6248
-      },
-      {
-        "time": 1792350000,
-        "type": "ENTRY",
-        "price": 0.6389
-      }
-    ]
-  },
-  {
-    "date": "2026-10-18 22:00",
-    "coin": "RUNE",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 0.6389,
-    "target": 0.670845,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.51112,
-    "status": "✅",
-    "result_percent": 6.97,
-    "time": 1792350000,
-    "level_id": "BB_LONG_0.6277454703832752_0.6369",
-    "level_type": "4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 150847.5,
-    "method_mult": 7.33949306300586,
-    "pattern_route": null,
-    "closed_at": "2026-10-22T09:08:33.642479+00:00",
-    "level_min": 0.6277454703832752,
-    "level_max": 0.6369,
-    "level_date": "2026-10-16",
-    "level_score": 4.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-17",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792287900,
-        "type": "ZONE_TOUCH",
-        "price": 0.6353
-      },
-      {
-        "time": 1792329300,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.6318
-      },
-      {
-        "time": 1792350000,
-        "type": "ENTRY",
-        "price": 0.6389
-      }
-    ]
-  },
-  {
-    "date": "2026-10-18 23:00",
-    "coin": "UNI",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 6.831,
-    "target": 7.172550000000001,
-    "target_2": null,
-    "target_3": null,
-    "stop": 5.4648,
-    "status": "✅",
-    "result_percent": 8.37,
-    "time": 1792353600,
-    "level_id": "BB_LONG_6.6782453133012005_6.965",
+    "stop": 0.29760000000000003,
+    "status": "⏳",
+    "result_percent": -11.18,
+    "time": 1793210400,
+    "level_id": "BC_LONG_0.35844076122029916_0.3763627992813141",
     "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 203782.0,
-    "method_mult": 2.086694987332294,
+    "method": "volume",
+    "method_value": 448536.2,
+    "method_mult": 3.2067582283708207,
+    "method_ratio": null,
     "pattern_route": null,
-    "closed_at": "2026-10-19T07:05:19.111453+00:00",
-    "level_min": 6.6782453133012005,
-    "level_max": 6.965,
+    "closed_at": null,
+    "level_min": 0.35844076122029916,
+    "level_max": 0.3763627992813141,
     "level_date": "2026-10-18",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
+    "level_score": 5.5,
+    "level_reaction_count": 1,
     "activated_at": "2026-10-18",
     "mode": null,
     "events": [
       {
-        "time": 1792337400,
+        "time": 1793027700,
         "type": "ZONE_TOUCH",
-        "price": 6.934
+        "price": 0.3747
       },
       {
-        "time": 1792351800,
+        "time": 1793040300,
         "type": "SWEEP_BOTTOM",
-        "price": 6.821
+        "price": 0.3674
       },
       {
-        "time": 1792353600,
-        "type": "ENTRY",
-        "price": 6.831
-      }
-    ]
-  },
-  {
-    "date": "2026-10-18 23:00",
-    "coin": "RENDER",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 1.724,
-    "target": 1.8102,
-    "target_2": null,
-    "target_3": null,
-    "stop": 1.3792,
-    "status": "✅",
-    "result_percent": 5.28,
-    "time": 1792353600,
-    "level_id": "BC_LONG_1.7447542800593765_1.826",
-    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 213077.9,
-    "method_mult": 5.303603688365655,
-    "pattern_route": null,
-    "closed_at": "2026-10-19T07:05:19.345020+00:00",
-    "level_min": 1.7447542800593765,
-    "level_max": 1.826,
-    "level_date": "2026-10-11",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-11",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792255500,
-        "type": "ZONE_TOUCH",
-        "price": 1.821
-      },
-      {
-        "time": 1792332000,
-        "type": "SWEEP_BOTTOM",
-        "price": 1.783
-      },
-      {
-        "time": 1792332900,
+        "time": 1793088000,
         "type": "SCAN",
-        "price": 1.794
+        "price": 0.3652
       },
       {
-        "time": 1792353600,
+        "time": 1793098800,
+        "type": "SCAN",
+        "price": 0.3652
+      },
+      {
+        "time": 1793105100,
+        "type": "SCAN",
+        "price": 0.3692
+      },
+      {
+        "time": 1793107800,
+        "type": "SCAN",
+        "price": 0.3707
+      },
+      {
+        "time": 1793114100,
+        "type": "SCAN",
+        "price": 0.3756
+      },
+      {
+        "time": 1793189700,
+        "type": "SCAN",
+        "price": 0.374
+      },
+      {
+        "time": 1793194200,
+        "type": "SCAN",
+        "price": 0.3722
+      },
+      {
+        "time": 1793210400,
         "type": "ENTRY",
-        "price": 1.724
+        "price": 0.372
       }
     ]
   },
   {
-    "date": "2026-10-18 23:00",
-    "coin": "RENDER",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 1.724,
-    "target": 1.8102,
-    "target_2": null,
-    "target_3": null,
-    "stop": 1.3792,
-    "status": "✅",
-    "result_percent": 5.28,
-    "time": 1792353600,
-    "level_id": "BB_LONG_1.7447542800593765_1.826",
-    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 213077.9,
-    "method_mult": 5.303603688365655,
-    "pattern_route": null,
-    "closed_at": "2026-10-19T07:05:19.562446+00:00",
-    "level_min": 1.7447542800593765,
-    "level_max": 1.826,
-    "level_date": "2026-10-11",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-11",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792255500,
-        "type": "ZONE_TOUCH",
-        "price": 1.821
-      },
-      {
-        "time": 1792332000,
-        "type": "SWEEP_BOTTOM",
-        "price": 1.783
-      },
-      {
-        "time": 1792353600,
-        "type": "ENTRY",
-        "price": 1.724
-      }
-    ]
-  },
-  {
-    "date": "2026-10-18 23:15",
+    "date": "2026-10-29 12:30",
     "coin": "LIT",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 2.891,
-    "target": 3.03555,
+    "entry": 2.9975,
+    "target": 3.2972500000000005,
     "target_2": null,
     "target_3": null,
-    "stop": 2.3128,
+    "stop": 2.398,
     "status": "✅",
-    "result_percent": 9.29,
-    "time": 1792354500,
-    "level_id": "BC_LONG_2.8822190706582838_3.026330024191198",
-    "level_type": "1W_low_PWL + 4h_extreme_peak",
+    "result_percent": 10.0,
+    "time": 1793269800,
+    "level_id": "BC_LONG_2.798745677877169_2.9386829617710273",
+    "level_type": "1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
     "method": "volume",
-    "method_value": 392185.7,
-    "method_mult": 2.8692695006601308,
+    "method_value": 377793.4,
+    "method_mult": 3.434436123553858,
+    "method_ratio": null,
     "pattern_route": null,
-    "closed_at": "2026-10-19T07:05:19.800445+00:00",
-    "level_min": 2.8822190706582838,
-    "level_max": 3.026330024191198,
+    "closed_at": "2026-10-29T16:00:00+00:00",
+    "level_min": 2.798745677877169,
+    "level_max": 2.9386829617710273,
     "level_date": "2026-10-18",
     "level_score": 5.0,
     "level_reaction_count": 0,
@@ -1398,314 +742,335 @@
     "mode": null,
     "events": [
       {
-        "time": 1792301400,
+        "time": 1793196900,
         "type": "ZONE_TOUCH",
-        "price": 3.0055
+        "price": 2.9315
       },
       {
-        "time": 1792332000,
+        "time": 1793238300,
         "type": "SWEEP_BOTTOM",
-        "price": 2.9522
+        "price": 2.7897
       },
       {
-        "time": 1792354500,
+        "time": 1793239200,
+        "type": "SCAN",
+        "price": 2.7998
+      },
+      {
+        "time": 1793269800,
         "type": "ENTRY",
-        "price": 2.891
+        "price": 2.9975
       }
     ]
   },
   {
-    "date": "2026-10-18 23:30",
-    "coin": "GRAM",
+    "date": "2026-10-29 14:30",
+    "coin": "LTC",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 1.325,
-    "target": 1.39125,
+    "entry": 58.23,
+    "target": 64.053,
     "target_2": null,
     "target_3": null,
-    "stop": 1.06,
+    "stop": 46.584,
     "status": "⏳",
-    "result_percent": -8.6,
-    "time": 1792355400,
-    "level_id": "BC_LONG_1.2844465145203041_1.3455348547969586",
-    "level_type": "1M_low_PML + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+    "result_percent": -4.6,
+    "time": 1793277000,
+    "level_id": "BC_LONG_56.358472237746945_58.79",
+    "level_type": "1W_low_PWL",
     "method": "volume",
-    "method_value": 322136.3,
-    "method_mult": 2.860531800050313,
+    "method_value": 25699.2,
+    "method_mult": 2.5318585701154537,
+    "method_ratio": null,
     "pattern_route": null,
     "closed_at": null,
-    "level_min": 1.2844465145203041,
-    "level_max": 1.3455348547969586,
-    "level_date": "2026-08-31",
-    "level_score": 7.5,
-    "level_reaction_count": 5,
-    "activated_at": "2026-08-31",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792170900,
-        "type": "ZONE_TOUCH",
-        "price": 1.345
-      },
-      {
-        "time": 1792352700,
-        "type": "SWEEP_BOTTOM",
-        "price": 1.314
-      },
-      {
-        "time": 1792355400,
-        "type": "ENTRY",
-        "price": 1.325
-      }
-    ]
-  },
-  {
-    "date": "2026-10-19 09:00",
-    "coin": "PENDLE",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 2.0846,
-    "target": 2.1888300000000003,
-    "target_2": null,
-    "target_3": null,
-    "stop": 1.66768,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792389600,
-    "level_id": "BC_LONG_1.8865003355882743_1.980825352367688",
-    "level_type": "1W_low_PWL + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 128131.0,
-    "method_mult": 5.663899497842845,
-    "pattern_route": null,
-    "closed_at": "2026-10-21T01:45:00+00:00",
-    "level_min": 1.8865003355882743,
-    "level_max": 1.980825352367688,
+    "level_min": 56.358472237746945,
+    "level_max": 58.79,
     "level_date": "2026-10-18",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
+    "level_score": 6.0,
+    "level_reaction_count": 2,
     "activated_at": "2026-10-18",
     "mode": null,
     "events": [
       {
-        "time": 1792330200,
+        "time": 1793205900,
         "type": "ZONE_TOUCH",
-        "price": 1.9727
+        "price": 58.56
       },
       {
-        "time": 1792351800,
+        "time": 1793243700,
         "type": "SWEEP_BOTTOM",
-        "price": 1.9277
+        "price": 57.22
       },
       {
-        "time": 1792389600,
+        "time": 1793277000,
         "type": "ENTRY",
-        "price": 2.0846
+        "price": 58.23
       }
     ]
   },
   {
-    "date": "2026-10-19 09:30",
-    "coin": "MORPHO",
+    "date": "2026-10-29 16:30",
+    "coin": "SOL",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 2.45,
-    "target": 2.5725000000000002,
+    "entry": 101.85,
+    "target": 112.035,
     "target_2": null,
     "target_3": null,
-    "stop": 1.9600000000000002,
+    "stop": 81.48,
     "status": "⏳",
-    "result_percent": -13.02,
-    "time": 1792391400,
-    "level_id": "BC_LONG_2.2612778402699663_2.352",
-    "level_type": "1W_low_PWL + 4h_extreme_peak",
+    "result_percent": -5.02,
+    "time": 1793284200,
+    "level_id": "BC_LONG_99.82916727905626_102.82404229742795",
+    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
     "method": "volume",
-    "method_value": 52705.0,
-    "method_mult": 3.4621043919229564,
+    "method_value": 383531.4,
+    "method_mult": 5.088144386929462,
+    "method_ratio": null,
     "pattern_route": null,
     "closed_at": null,
-    "level_min": 2.2612778402699663,
-    "level_max": 2.352,
-    "level_date": "2026-10-11",
+    "level_min": 99.82916727905626,
+    "level_max": 102.82404229742795,
+    "level_date": "2026-10-18",
     "level_score": 5.5,
     "level_reaction_count": 1,
-    "activated_at": "2026-10-11",
+    "activated_at": "2026-10-18",
     "mode": null,
     "events": [
       {
-        "time": 1792170000,
+        "time": 1793177100,
         "type": "ZONE_TOUCH",
-        "price": 2.3406
+        "price": 102.55
       },
       {
-        "time": 1792272600,
+        "time": 1793193300,
         "type": "SWEEP_BOTTOM",
-        "price": 2.3021
+        "price": 101.14
       },
       {
-        "time": 1792303200,
+        "time": 1793277000,
         "type": "SCAN",
-        "price": 2.3948
+        "price": 100.56
       },
       {
-        "time": 1792386900,
-        "type": "SCAN",
-        "price": 2.4193
-      },
-      {
-        "time": 1792387800,
-        "type": "SCAN",
-        "price": 2.4287
-      },
-      {
-        "time": 1792388700,
-        "type": "SCAN",
-        "price": 2.4408
-      },
-      {
-        "time": 1792389600,
-        "type": "SCAN",
-        "price": 2.4627
-      },
-      {
-        "time": 1792391400,
+        "time": 1793284200,
         "type": "ENTRY",
-        "price": 2.45
+        "price": 101.85
       }
     ]
   },
   {
-    "date": "2026-10-19 04:00",
-    "coin": "SKHYNIX",
+    "date": "2026-10-29 16:30",
+    "coin": "DOGE",
+    "type": "LONG",
+    "source": "BOUNCE_LONG",
+    "entry": 0.08003,
+    "target": 0.08803300000000001,
+    "target_2": null,
+    "target_3": null,
+    "stop": 0.06402400000000001,
+    "status": "⏳",
+    "result_percent": -5.62,
+    "time": 1793284200,
+    "level_id": "BC_LONG_0.0756168083621497_0.07932",
+    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+    "method": "volume",
+    "method_value": 48443348.0,
+    "method_mult": 2.8006202239760896,
+    "method_ratio": null,
+    "pattern_route": null,
+    "closed_at": null,
+    "level_min": 0.0756168083621497,
+    "level_max": 0.07932,
+    "level_date": "2026-10-18",
+    "level_score": 6.0,
+    "level_reaction_count": 2,
+    "activated_at": "2026-10-18",
+    "mode": null,
+    "events": [
+      {
+        "time": 1793156400,
+        "type": "ZONE_TOUCH",
+        "price": 0.07928
+      },
+      {
+        "time": 1793241000,
+        "type": "SWEEP_BOTTOM",
+        "price": 0.07736
+      },
+      {
+        "time": 1793277000,
+        "type": "SCAN",
+        "price": 0.079
+      },
+      {
+        "time": 1793284200,
+        "type": "ENTRY",
+        "price": 0.08003
+      }
+    ]
+  },
+  {
+    "date": "2026-10-29 17:45",
+    "coin": "WLD",
+    "type": "LONG",
+    "source": "BOUNCE_LONG",
+    "entry": 0.4369,
+    "target": 0.458745,
+    "target_2": null,
+    "target_3": null,
+    "stop": 0.34952000000000005,
+    "status": "⏳",
+    "result_percent": -7.85,
+    "time": 1793288700,
+    "level_id": "BC_LONG_0.4266137847846627_0.44794447402389587",
+    "level_type": "1W_low_PWL",
+    "method": "volume",
+    "method_value": 6316653.0,
+    "method_mult": 3.322099196704683,
+    "method_ratio": null,
+    "pattern_route": null,
+    "closed_at": null,
+    "level_min": 0.4266137847846627,
+    "level_max": 0.44794447402389587,
+    "level_date": "2026-10-25",
+    "level_score": 5.0,
+    "level_reaction_count": 0,
+    "activated_at": "2026-10-25",
+    "mode": null,
+    "events": [
+      {
+        "time": 1792935000,
+        "type": "ZONE_TOUCH",
+        "price": 0.4477
+      },
+      {
+        "time": 1792986300,
+        "type": "SWEEP_BOTTOM",
+        "price": 0.4343
+      },
+      {
+        "time": 1793002500,
+        "type": "SCAN",
+        "price": 0.4405
+      },
+      {
+        "time": 1793094300,
+        "type": "SCAN",
+        "price": 0.4312
+      },
+      {
+        "time": 1793107800,
+        "type": "SCAN",
+        "price": 0.432
+      },
+      {
+        "time": 1793129400,
+        "type": "SCAN",
+        "price": 0.4383
+      },
+      {
+        "time": 1793284200,
+        "type": "SCAN",
+        "price": 0.4291
+      },
+      {
+        "time": 1793288700,
+        "type": "ENTRY",
+        "price": 0.4369
+      }
+    ]
+  },
+  {
+    "date": "2026-10-29 22:45",
+    "coin": "LIT",
     "type": "LONG",
     "source": "BUYBACK_LONG",
-    "entry": 936.04,
-    "target": 982.842,
+    "entry": 3.0033,
+    "target": 3.30363,
     "target_2": null,
     "target_3": null,
-    "stop": 748.832,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792371600,
-    "level_id": "BB_LONG_877.5065805370244_921.3819095638756",
-    "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
+    "stop": 2.40264,
+    "status": "⏳",
+    "result_percent": -5.79,
+    "time": 1793306700,
+    "level_id": "BB_LONG_2.798745677877169_2.9386829617710273",
+    "level_type": "1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
     "method": "buyback",
-    "method_value": 4418.088,
-    "method_mult": 1.9792345783044283,
+    "method_value": 1561557.0,
+    "method_mult": 4.620510234484154,
+    "method_ratio": 1.465805602997521,
     "pattern_route": null,
-    "closed_at": "2026-10-19T15:30:00+00:00",
-    "level_min": 877.5065805370244,
-    "level_max": 921.3819095638756,
-    "level_date": "2026-07-31",
-    "level_score": 5.5,
+    "closed_at": null,
+    "level_min": 2.798745677877169,
+    "level_max": 2.9386829617710273,
+    "level_date": "2026-10-18",
+    "level_score": 5.0,
     "level_reaction_count": 0,
-    "activated_at": "2026-07-31",
+    "activated_at": "2026-10-18",
     "mode": null,
     "events": [
       {
-        "time": 1792170900,
+        "time": 1793196900,
         "type": "ZONE_TOUCH",
-        "price": 920.36
+        "price": 2.9315
       },
       {
-        "time": 1792271700,
+        "time": 1793238300,
         "type": "SWEEP_BOTTOM",
-        "price": 856.0
+        "price": 2.7897
       },
       {
-        "time": 1792371600,
+        "time": 1793239200,
+        "type": "SCAN",
+        "price": 2.7998
+      },
+      {
+        "time": 1793275200,
+        "type": "SCAN",
+        "price": 2.9666
+      },
+      {
+        "time": 1793306700,
         "type": "ENTRY",
-        "price": 936.04
+        "price": 3.0033
       }
     ]
   },
   {
-    "date": "2026-10-19 01:00",
-    "coin": "ETH",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 2388.54,
-    "target": 2507.967,
-    "target_2": null,
-    "target_3": null,
-    "stop": 1910.832,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792360800,
-    "level_id": "BC_LONG_2341.1885269493496_2390.64",
-    "level_type": "1M_low_PML + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 74734.48,
-    "method_mult": 4.121205249857009,
-    "pattern_route": null,
-    "closed_at": "2026-10-21T15:00:00+00:00",
-    "level_min": 2341.1885269493496,
-    "level_max": 2390.64,
-    "level_date": "2026-09-30",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-09-30",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792272600,
-        "type": "SWEEP_BOTTOM",
-        "price": 2355.28
-      },
-      {
-        "time": 1792273500,
-        "type": "SCAN",
-        "price": 2380.17
-      },
-      {
-        "time": 1792274400,
-        "type": "SCAN",
-        "price": 2390.26
-      },
-      {
-        "time": 1792352700,
-        "type": "SCAN",
-        "price": 2336.79
-      },
-      {
-        "time": 1792360800,
-        "type": "ENTRY",
-        "price": 2388.54
-      }
-    ]
-  },
-  {
-    "date": "2026-10-19 01:15",
+    "date": "2026-10-29 23:00",
     "coin": "XRP",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 1.2963,
-    "target": 1.361115,
+    "entry": 1.2491,
+    "target": 1.3740100000000002,
     "target_2": null,
     "target_3": null,
-    "stop": 1.03704,
-    "status": "✅",
-    "result_percent": 6.83,
-    "time": 1792361700,
+    "stop": 0.9992800000000002,
+    "status": "⏳",
+    "result_percent": 0.02,
+    "time": 1793307600,
     "level_id": "BC_LONG_1.2378928568087144_1.2826",
-    "level_type": "1M_low_PML + 1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
+    "level_type": "1M_low_PML + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
     "method": "volume",
-    "method_value": 13069651.9,
-    "method_mult": 2.665233659947623,
+    "method_value": 17484658.8,
+    "method_mult": 3.112522528623126,
+    "method_ratio": null,
     "pattern_route": null,
-    "closed_at": "2026-10-21T16:49:17.861552+00:00",
+    "closed_at": null,
     "level_min": 1.2378928568087144,
     "level_max": 1.2826,
     "level_date": "2026-09-30",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
+    "level_score": 6.5,
+    "level_reaction_count": 3,
     "activated_at": "2026-09-30",
     "mode": null,
     "events": [
       {
-        "time": 1792271700,
+        "time": 1792071900,
         "type": "ZONE_TOUCH",
-        "price": 1.2801
+        "price": 1.2825
       },
       {
         "time": 1792351800,
@@ -1724,1942 +1089,281 @@
       },
       {
         "time": 1792361700,
-        "type": "ENTRY",
+        "type": "SCAN",
         "price": 1.2963
-      }
-    ]
-  },
-  {
-    "date": "2026-10-19 01:00",
-    "coin": "DOGE",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.07869,
-    "target": 0.0826245,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.062952,
-    "status": "✅",
-    "result_percent": 6.06,
-    "time": 1792360800,
-    "level_id": "BC_LONG_0.07775174195391014_0.08003",
-    "level_type": "1M_low_PML + 1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 63651887.0,
-    "method_mult": 2.963179266653913,
-    "pattern_route": null,
-    "closed_at": "2026-10-21T16:49:18.083863+00:00",
-    "level_min": 0.07775174195391014,
-    "level_max": 0.08003,
-    "level_date": "2026-09-30",
-    "level_score": 6.0,
-    "level_reaction_count": 2,
-    "activated_at": "2026-09-30",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792170000,
-        "type": "ZONE_TOUCH",
-        "price": 0.07991
-      },
-      {
-        "time": 1792255500,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.07879
-      },
-      {
-        "time": 1792274400,
-        "type": "SCAN",
-        "price": 0.07884
-      },
-      {
-        "time": 1792352700,
-        "type": "SCAN",
-        "price": 0.07632
-      },
-      {
-        "time": 1792360800,
-        "type": "ENTRY",
-        "price": 0.07869
-      }
-    ]
-  },
-  {
-    "date": "2026-10-19 07:15",
-    "coin": "ZRO",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 1.91,
-    "target": 2.0055,
-    "target_2": null,
-    "target_3": null,
-    "stop": 1.528,
-    "status": "✅",
-    "result_percent": 8.86,
-    "time": 1792383300,
-    "level_id": "BC_LONG_1.696805357142857_1.7809946428571428",
-    "level_type": "1M_close_PMC + 1W_low_PWL + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 717545.7,
-    "method_mult": 2.627926838781554,
-    "pattern_route": null,
-    "closed_at": "2026-10-21T16:49:18.316476+00:00",
-    "level_min": 1.696805357142857,
-    "level_max": 1.7809946428571428,
-    "level_date": "2026-09-30",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-09-30",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792332000,
-        "type": "ZONE_TOUCH",
-        "price": 1.7727
-      },
-      {
-        "time": 1792333800,
-        "type": "SWEEP_BOTTOM",
-        "price": 1.7356
-      },
-      {
-        "time": 1792383300,
-        "type": "ENTRY",
-        "price": 1.91
-      }
-    ]
-  },
-  {
-    "date": "2026-10-19 06:00",
-    "coin": "WIF",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.2001,
-    "target": 0.21010500000000001,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.16008,
-    "status": "✅",
-    "result_percent": 7.0,
-    "time": 1792378800,
-    "level_id": "BC_LONG_0.18644510385756677_0.19254896142433234",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 1112045.0,
-    "method_mult": 3.153757016258205,
-    "pattern_route": null,
-    "closed_at": "2026-10-21T16:49:18.547644+00:00",
-    "level_min": 0.18644510385756677,
-    "level_max": 0.19254896142433234,
-    "level_date": "2026-10-15",
-    "level_score": 4.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-16",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792272600,
-        "type": "ZONE_TOUCH",
-        "price": 0.1923
-      },
-      {
-        "time": 1792351800,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.1871
-      },
-      {
-        "time": 1792352700,
-        "type": "SCAN",
-        "price": 0.1876
-      },
-      {
-        "time": 1792378800,
-        "type": "ENTRY",
-        "price": 0.2001
-      }
-    ]
-  },
-  {
-    "date": "2026-10-19 00:00",
-    "coin": "MON",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.02013,
-    "target": 0.0211365,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.016104,
-    "status": "✅",
-    "result_percent": 6.76,
-    "time": 1792357200,
-    "level_id": "BC_LONG_0.019599078243709916_0.02027",
-    "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
-    "method": "volume",
-    "method_value": 31534530.0,
-    "method_mult": 4.177257444895076,
-    "pattern_route": null,
-    "closed_at": "2026-10-19T07:16:06.563404+00:00",
-    "level_min": 0.019599078243709916,
-    "level_max": 0.02027,
-    "level_date": "2026-08-31",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-08-31",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792351800,
-        "type": "ZONE_TOUCH",
-        "price": 0.02021
-      },
-      {
-        "time": 1792353600,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.01991
-      },
-      {
-        "time": 1792357200,
-        "type": "ENTRY",
-        "price": 0.02013
-      }
-    ]
-  },
-  {
-    "date": "2026-10-19 00:00",
-    "coin": "MON",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 0.02013,
-    "target": 0.0211365,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.016104,
-    "status": "✅",
-    "result_percent": 6.76,
-    "time": 1792357200,
-    "level_id": "BB_LONG_0.019599078243709916_0.02027",
-    "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
-    "method": "buyback",
-    "method_value": 31534530.0,
-    "method_mult": 4.177257444895076,
-    "pattern_route": null,
-    "closed_at": "2026-10-19T07:16:06.763700+00:00",
-    "level_min": 0.019599078243709916,
-    "level_max": 0.02027,
-    "level_date": "2026-08-31",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-08-31",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792351800,
-        "type": "ZONE_TOUCH",
-        "price": 0.02021
-      },
-      {
-        "time": 1792353600,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.01991
-      },
-      {
-        "time": 1792357200,
-        "type": "ENTRY",
-        "price": 0.02013
-      }
-    ]
-  },
-  {
-    "date": "2026-10-19 10:15",
-    "coin": "ATOM",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 1.733,
-    "target": 1.8196500000000002,
-    "target_2": null,
-    "target_3": null,
-    "stop": 1.3864,
-    "status": "⏳",
-    "result_percent": -5.6,
-    "time": 1792394100,
-    "level_id": "BC_LONG_1.595036702974445_1.649",
-    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 171112.0,
-    "method_mult": 2.8763085781946383,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 1.595036702974445,
-    "level_max": 1.649,
-    "level_date": "2026-10-04",
-    "level_score": 6.0,
-    "level_reaction_count": 2,
-    "activated_at": "2026-10-04",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792350900,
-        "type": "ZONE_TOUCH",
-        "price": 1.649
-      },
-      {
-        "time": 1792355400,
-        "type": "SWEEP_BOTTOM",
-        "price": 1.621
-      },
-      {
-        "time": 1792394100,
-        "type": "ENTRY",
-        "price": 1.733
-      }
-    ]
-  },
-  {
-    "date": "2026-10-19 12:30",
-    "coin": "PHA",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.05149,
-    "target": 0.0540645,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.041192000000000006,
-    "status": "✅",
-    "result_percent": 6.6,
-    "time": 1792402200,
-    "level_id": "BC_LONG_0.04804628009252481_0.04879",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 676717.0,
-    "method_mult": 3.3647608454501294,
-    "pattern_route": null,
-    "closed_at": "2026-10-19T17:16:08.481566+00:00",
-    "level_min": 0.04804628009252481,
-    "level_max": 0.04879,
-    "level_date": "2026-10-15",
-    "level_score": 3.5,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-16",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792272600,
-        "type": "ZONE_TOUCH",
-        "price": 0.0486
-      },
-      {
-        "time": 1792346400,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.04837
-      },
-      {
-        "time": 1792390500,
-        "type": "SCAN",
-        "price": 0.04932
-      },
-      {
-        "time": 1792393200,
-        "type": "SCAN",
-        "price": 0.05112
-      },
-      {
-        "time": 1792402200,
-        "type": "ENTRY",
-        "price": 0.05149
-      }
-    ]
-  },
-  {
-    "date": "2026-10-19 14:45",
-    "coin": "SEI",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.05954,
-    "target": 0.062517,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.04763200000000001,
-    "status": "✅",
-    "result_percent": 6.06,
-    "time": 1792410300,
-    "level_id": "BC_LONG_0.057232528548479635_0.06009415497590362",
-    "level_type": "1W_low_PWL + 4h_extreme_peak+4h_poc",
-    "method": "volume",
-    "method_value": 7115605.0,
-    "method_mult": 2.9758678266615504,
-    "pattern_route": null,
-    "closed_at": "2026-10-21T16:49:19.376431+00:00",
-    "level_min": 0.057232528548479635,
-    "level_max": 0.06009415497590362,
-    "level_date": "2026-10-18",
-    "level_score": 6.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-18",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792333800,
-        "type": "ZONE_TOUCH",
-        "price": 0.0597
-      },
-      {
-        "time": 1792351800,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.05865
-      },
-      {
-        "time": 1792410300,
-        "type": "ENTRY",
-        "price": 0.05954
-      }
-    ]
-  },
-  {
-    "date": "2026-10-19 15:30",
-    "coin": "DOT",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 1.1261,
-    "target": 1.1824050000000002,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.9008800000000001,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792413000,
-    "level_id": "BC_LONG_1.069071378736178_1.1006",
-    "level_type": "1W_low_PWL + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 489177.7,
-    "method_mult": 2.9785491454090836,
-    "pattern_route": null,
-    "closed_at": "2026-10-20T14:15:00+00:00",
-    "level_min": 1.069071378736178,
-    "level_max": 1.1006,
-    "level_date": "2026-09-27",
-    "level_score": 6.0,
-    "level_reaction_count": 2,
-    "activated_at": "2026-09-27",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792272600,
-        "type": "ZONE_TOUCH",
-        "price": 1.0898
-      },
-      {
-        "time": 1792330200,
-        "type": "SWEEP_BOTTOM",
-        "price": 1.0787
-      },
-      {
-        "time": 1792360800,
-        "type": "SCAN",
-        "price": 1.0874
-      },
-      {
-        "time": 1792413000,
-        "type": "ENTRY",
-        "price": 1.1261
-      }
-    ]
-  },
-  {
-    "date": "2026-10-20 06:30",
-    "coin": "WLD",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.5443,
-    "target": 0.571515,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.43544000000000005,
-    "status": "✅",
-    "result_percent": 5.38,
-    "time": 1792467000,
-    "level_id": "BC_LONG_0.46059408470779883_0.4836",
-    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 9050614.0,
-    "method_mult": 2.8248852573559624,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": "2026-10-21T16:49:19.877136+00:00",
-    "level_min": 0.46059408470779883,
-    "level_max": 0.4836,
-    "level_date": "2026-10-04",
-    "level_score": 6.5,
-    "level_reaction_count": 3,
-    "activated_at": "2026-10-04",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792272600,
-        "type": "ZONE_TOUCH",
-        "price": 0.4777
-      },
-      {
-        "time": 1792345500,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.4716
-      },
-      {
-        "time": 1792411200,
-        "type": "SCAN",
-        "price": 0.5094
-      },
-      {
-        "time": 1792412100,
-        "type": "SCAN",
-        "price": 0.5108
-      },
-      {
-        "time": 1792467000,
-        "type": "ENTRY",
-        "price": 0.5443
-      }
-    ]
-  },
-  {
-    "date": "2026-10-20 09:15",
-    "coin": "AKE",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.032706,
-    "target": 0.0343413,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.026164800000000002,
-    "status": "✅",
-    "result_percent": 5.23,
-    "time": 1792476900,
-    "level_id": "BC_LONG_0.027886646444085887_0.028983383889785278",
-    "level_type": "4h_extreme_peak+4h_poc",
-    "method": "volume",
-    "method_value": 16772700.0,
-    "method_mult": 5.488395074655679,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": "2026-10-20T08:48:33.913718+00:00",
-    "level_min": 0.027886646444085887,
-    "level_max": 0.028983383889785278,
-    "level_date": "2026-10-16",
-    "level_score": 5.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-17",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792352700,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.027702
-      },
-      {
-        "time": 1792353600,
-        "type": "SCAN",
-        "price": 0.029124
-      },
-      {
-        "time": 1792401300,
-        "type": "SCAN",
-        "price": 0.030403
-      },
-      {
-        "time": 1792476000,
-        "type": "SCAN",
-        "price": 0.031345
-      },
-      {
-        "time": 1792476900,
-        "type": "ENTRY",
-        "price": 0.032706
-      }
-    ]
-  },
-  {
-    "date": "2026-10-20 16:30",
-    "coin": "ZRO",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 1.834,
-    "target": 1.9257000000000002,
-    "target_2": null,
-    "target_3": null,
-    "stop": 1.4672,
-    "status": "✅",
-    "result_percent": 13.35,
-    "time": 1792503000,
-    "level_id": "BB_LONG_1.696805357142857_1.7809946428571428",
-    "level_type": "1M_close_PMC + 1W_low_PWL + 4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 558844.0,
-    "method_mult": 3.226428227837225,
-    "method_ratio": 2.3528646634839063,
-    "pattern_route": null,
-    "closed_at": "2026-10-21T16:49:20.194963+00:00",
-    "level_min": 1.696805357142857,
-    "level_max": 1.7809946428571428,
-    "level_date": "2026-09-30",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-09-30",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792332000,
-        "type": "ZONE_TOUCH",
-        "price": 1.7727
-      },
-      {
-        "time": 1792333800,
-        "type": "SWEEP_BOTTOM",
-        "price": 1.7356
-      },
-      {
-        "time": 1792503000,
-        "type": "ENTRY",
-        "price": 1.834
-      }
-    ]
-  },
-  {
-    "date": "2026-10-20 17:00",
-    "coin": "JUP",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.3189,
-    "target": 0.33484500000000006,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.25512,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792504800,
-    "level_id": "BC_LONG_0.2719780693701794_0.2855769728386883",
-    "level_type": "1W_low_PWL + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 2526229.0,
-    "method_mult": 2.7204111303618927,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": "2026-10-21T18:00:00+00:00",
-    "level_min": 0.2719780693701794,
-    "level_max": 0.2855769728386883,
-    "level_date": "2026-09-27",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-09-27",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792272600,
-        "type": "ZONE_TOUCH",
-        "price": 0.2843
-      },
-      {
-        "time": 1792351800,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.2756
-      },
-      {
-        "time": 1792360800,
-        "type": "SCAN",
-        "price": 0.2859
-      },
-      {
-        "time": 1792470600,
-        "type": "SCAN",
-        "price": 0.2974
-      },
-      {
-        "time": 1792471500,
-        "type": "SCAN",
-        "price": 0.2979
-      },
-      {
-        "time": 1792481400,
-        "type": "SCAN",
-        "price": 0.2953
-      },
-      {
-        "time": 1792483200,
-        "type": "SCAN",
-        "price": 0.298
-      },
-      {
-        "time": 1792489500,
-        "type": "SCAN",
-        "price": 0.2971
-      },
-      {
-        "time": 1792494000,
-        "type": "SCAN",
-        "price": 0.3003
-      },
-      {
-        "time": 1792494900,
-        "type": "SCAN",
-        "price": 0.3012
-      },
-      {
-        "time": 1792497600,
-        "type": "SCAN",
-        "price": 0.3053
-      },
-      {
-        "time": 1792498500,
-        "type": "SCAN",
-        "price": 0.3078
-      },
-      {
-        "time": 1792504800,
-        "type": "ENTRY",
-        "price": 0.3189
-      }
-    ]
-  },
-  {
-    "date": "2026-10-20 17:00",
-    "coin": "JTO",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.4886,
-    "target": 0.51303,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.39088,
-    "status": "⏳",
-    "result_percent": -12.18,
-    "time": 1792504800,
-    "level_id": "BC_LONG_0.4205133263433814_0.44153899266055047",
-    "level_type": "1W_low_PWL + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 437016.1,
-    "method_mult": 3.5713853171130303,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 0.4205133263433814,
-    "level_max": 0.44153899266055047,
-    "level_date": "2026-10-18",
-    "level_score": 5.5,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-18",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792308600,
-        "type": "ZONE_TOUCH",
-        "price": 0.4411
-      },
-      {
-        "time": 1792332000,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.422
       },
       {
         "time": 1792405800,
         "type": "SCAN",
-        "price": 0.4411
+        "price": 1.3039
       },
       {
-        "time": 1792467900,
+        "time": 1792421100,
         "type": "SCAN",
-        "price": 0.4615
-      },
-      {
-        "time": 1792468800,
-        "type": "SCAN",
-        "price": 0.4629
-      },
-      {
-        "time": 1792504800,
-        "type": "ENTRY",
-        "price": 0.4886
-      }
-    ]
-  },
-  {
-    "date": "2026-10-20 16:45",
-    "coin": "LITE",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 815.42,
-    "target": 856.191,
-    "target_2": null,
-    "target_3": null,
-    "stop": 652.336,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792503900,
-    "level_id": "BC_LONG_769.5308811125956_808.0074251682254",
-    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 189.98,
-    "method_mult": 3.986737456193733,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": "2026-10-20T22:00:00+00:00",
-    "level_min": 769.5308811125956,
-    "level_max": 808.0074251682254,
-    "level_date": "2026-10-18",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-18",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792332000,
-        "type": "ZONE_TOUCH",
-        "price": 807.72
-      },
-      {
-        "time": 1792503000,
-        "type": "SWEEP_BOTTOM",
-        "price": 786.71
-      },
-      {
-        "time": 1792503900,
-        "type": "ENTRY",
-        "price": 815.42
-      }
-    ]
-  },
-  {
-    "date": "2026-10-21 16:00",
-    "coin": "ZEC",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 1313.45,
-    "target": 1379.1225000000002,
-    "target_2": null,
-    "target_3": null,
-    "stop": 1050.76,
-    "status": "⏳",
-    "result_percent": -6.87,
-    "time": 1792587600,
-    "level_id": "BC_LONG_1102.7324089697468_1157.869029418234",
-    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 11157.11,
-    "method_mult": 2.529217650441854,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 1102.7324089697468,
-    "level_max": 1157.869029418234,
-    "level_date": "2026-10-11",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-11",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792169100,
-        "type": "ZONE_TOUCH",
-        "price": 1139.98
-      },
-      {
-        "time": 1792179000,
-        "type": "SWEEP_BOTTOM",
-        "price": 1130.27
-      },
-      {
-        "time": 1792315800,
-        "type": "SCAN",
-        "price": 1137.13
-      },
-      {
-        "time": 1792498500,
-        "type": "SCAN",
-        "price": 1152.54
-      },
-      {
-        "time": 1792503900,
-        "type": "SCAN",
-        "price": 1182.74
-      },
-      {
-        "time": 1792504800,
-        "type": "SCAN",
-        "price": 1230.12
-      },
-      {
-        "time": 1792506600,
-        "type": "SCAN",
-        "price": 1216.28
-      },
-      {
-        "time": 1792507500,
-        "type": "SCAN",
-        "price": 1222.29
-      },
-      {
-        "time": 1792587600,
-        "type": "ENTRY",
-        "price": 1313.45
-      }
-    ]
-  },
-  {
-    "date": "2026-10-20 17:30",
-    "coin": "HYPE",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 81.656,
-    "target": 85.73880000000001,
-    "target_2": null,
-    "target_3": null,
-    "stop": 65.32480000000001,
-    "status": "⏳",
-    "result_percent": -4.95,
-    "time": 1792506600,
-    "level_id": "BC_LONG_77.30856687452186_79.176",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 65186.51,
-    "method_mult": 2.873277280195853,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 77.30856687452186,
-    "level_max": 79.176,
-    "level_date": "2026-10-15",
-    "level_score": 4.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-16",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792179000,
-        "type": "ZONE_TOUCH",
-        "price": 78.96
-      },
-      {
-        "time": 1792256400,
-        "type": "SWEEP_BOTTOM",
-        "price": 78.171
-      },
-      {
-        "time": 1792272600,
-        "type": "SCAN",
-        "price": 78.246
-      },
-      {
-        "time": 1792336500,
-        "type": "SCAN",
-        "price": 77.412
-      },
-      {
-        "time": 1792354500,
-        "type": "SCAN",
-        "price": 76.548
-      },
-      {
-        "time": 1792385100,
-        "type": "SCAN",
-        "price": 79.967
+        "price": 1.3047
       },
       {
         "time": 1792503000,
         "type": "SCAN",
-        "price": 78.709
+        "price": 1.2989
       },
       {
         "time": 1792503900,
         "type": "SCAN",
-        "price": 79.818
+        "price": 1.3099
       },
       {
         "time": 1792504800,
         "type": "SCAN",
-        "price": 81.594
+        "price": 1.3354
       },
       {
         "time": 1792506600,
-        "type": "ENTRY",
-        "price": 81.656
-      }
-    ]
-  },
-  {
-    "date": "2026-10-20 18:00",
-    "coin": "CL",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 97.24,
-    "target": 100.1572,
-    "target_2": null,
-    "target_3": null,
-    "stop": 87.51599999999999,
-    "status": "✅",
-    "result_percent": 3.0,
-    "time": 1792508400,
-    "level_id": "BC_LONG_96.700522275405_97.0",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 220016.15,
-    "method_mult": 4.272570659198968,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": "2026-10-21T10:00:00+00:00",
-    "level_min": 96.700522275405,
-    "level_max": 97.0,
-    "level_date": "2026-10-19",
-    "level_score": 3.5,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-20",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792505700,
-        "type": "SWEEP_BOTTOM",
-        "price": 95.81
+        "type": "SCAN",
+        "price": 1.3351
       },
       {
         "time": 1792507500,
         "type": "SCAN",
-        "price": 96.03
-      },
-      {
-        "time": 1792508400,
-        "type": "ENTRY",
-        "price": 97.24
-      }
-    ]
-  },
-  {
-    "date": "2026-10-21 13:15",
-    "coin": "ENA",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.20435,
-    "target": 0.21456750000000002,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.16348000000000001,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792577700,
-    "level_id": "BC_LONG_0.1813637391707424_0.18589",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 17390777.0,
-    "method_mult": 2.7357925189627257,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": "2026-10-21T15:00:00+00:00",
-    "level_min": 0.1813637391707424,
-    "level_max": 0.18589,
-    "level_date": "2026-10-15",
-    "level_score": 4.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-16",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792272600,
-        "type": "ZONE_TOUCH",
-        "price": 0.18386
-      },
-      {
-        "time": 1792330200,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.18305
-      },
-      {
-        "time": 1792360800,
-        "type": "SCAN",
-        "price": 0.18432
-      },
-      {
-        "time": 1792370700,
-        "type": "SCAN",
-        "price": 0.19042
-      },
-      {
-        "time": 1792448100,
-        "type": "SCAN",
-        "price": 0.19046
-      },
-      {
-        "time": 1792467900,
-        "type": "SCAN",
-        "price": 0.19095
-      },
-      {
-        "time": 1792503900,
-        "type": "SCAN",
-        "price": 0.1932
-      },
-      {
-        "time": 1792504800,
-        "type": "SCAN",
-        "price": 0.20236
-      },
-      {
-        "time": 1792506600,
-        "type": "SCAN",
-        "price": 0.20192
-      },
-      {
-        "time": 1792566900,
-        "type": "SCAN",
-        "price": 0.2037
+        "price": 1.3435
       },
       {
         "time": 1792567800,
         "type": "SCAN",
-        "price": 0.20581
-      },
-      {
-        "time": 1792577700,
-        "type": "ENTRY",
-        "price": 0.20435
-      }
-    ]
-  },
-  {
-    "date": "2026-10-20 17:45",
-    "coin": "AVAX",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 9.9,
-    "target": 10.395000000000001,
-    "target_2": null,
-    "target_3": null,
-    "stop": 7.920000000000001,
-    "status": "⏳",
-    "result_percent": -10.25,
-    "time": 1792507500,
-    "level_id": "BC_LONG_9.292691884024885_9.545",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 75360.7,
-    "method_mult": 2.71695118798813,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 9.292691884024885,
-    "level_max": 9.545,
-    "level_date": "2026-10-15",
-    "level_score": 4.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-16",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792333800,
-        "type": "ZONE_TOUCH",
-        "price": 9.486
-      },
-      {
-        "time": 1792351800,
-        "type": "SWEEP_BOTTOM",
-        "price": 9.311
-      },
-      {
-        "time": 1792422900,
-        "type": "SCAN",
-        "price": 9.673
-      },
-      {
-        "time": 1792504800,
-        "type": "SCAN",
-        "price": 9.797
-      },
-      {
-        "time": 1792505700,
-        "type": "SCAN",
-        "price": 9.832
-      },
-      {
-        "time": 1792506600,
-        "type": "SCAN",
-        "price": 9.87
-      },
-      {
-        "time": 1792507500,
-        "type": "ENTRY",
-        "price": 9.9
-      }
-    ]
-  },
-  {
-    "date": "2026-10-20 17:30",
-    "coin": "PENGU",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.007856,
-    "target": 0.0082488,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.0062848,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792506600,
-    "level_id": "BC_LONG_0.007281207389647925_0.007498926103520757",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 45724250.0,
-    "method_mult": 3.9844761044717574,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": "2026-10-21T16:30:00+00:00",
-    "level_min": 0.007281207389647925,
-    "level_max": 0.007498926103520757,
-    "level_date": "2026-10-13",
-    "level_score": 4.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-14",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792238400,
-        "type": "ZONE_TOUCH",
-        "price": 0.007496
-      },
-      {
-        "time": 1792255500,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.007369
-      },
-      {
-        "time": 1792504800,
-        "type": "SCAN",
-        "price": 0.007828
-      },
-      {
-        "time": 1792505700,
-        "type": "SCAN",
-        "price": 0.00783
-      },
-      {
-        "time": 1792506600,
-        "type": "ENTRY",
-        "price": 0.007856
-      }
-    ]
-  },
-  {
-    "date": "2026-10-20 17:30",
-    "coin": "LINK",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 12.438,
-    "target": 13.0599,
-    "target_2": null,
-    "target_3": null,
-    "stop": 9.950400000000002,
-    "status": "⏳",
-    "result_percent": -8.99,
-    "time": 1792506600,
-    "level_id": "BC_LONG_11.878029266254387_11.979426834364032",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 79522.4,
-    "method_mult": 2.848213294364991,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 11.878029266254387,
-    "level_max": 11.979426834364032,
-    "level_date": "2026-09-20",
-    "level_score": 4.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-09-21",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792250100,
-        "type": "SWEEP_BOTTOM",
-        "price": 11.926
-      },
-      {
-        "time": 1792360800,
-        "type": "SCAN",
-        "price": 11.895
-      },
-      {
-        "time": 1792412100,
-        "type": "SCAN",
-        "price": 12.1
-      },
-      {
-        "time": 1792413000,
-        "type": "SCAN",
-        "price": 12.107
-      },
-      {
-        "time": 1792504800,
-        "type": "SCAN",
-        "price": 12.379
-      },
-      {
-        "time": 1792506600,
-        "type": "ENTRY",
-        "price": 12.438
-      }
-    ]
-  },
-  {
-    "date": "2026-10-20 17:15",
-    "coin": "DASH",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 50.83,
-    "target": 53.3715,
-    "target_2": null,
-    "target_3": null,
-    "stop": 40.664,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792505700,
-    "level_id": "BC_LONG_45.456123438819176_47.72892961076013",
-    "level_type": "1W_low_PWL + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 5683.99,
-    "method_mult": 3.2634874593211656,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": "2026-10-21T15:00:00+00:00",
-    "level_min": 45.456123438819176,
-    "level_max": 47.72892961076013,
-    "level_date": "2026-10-18",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-18",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792333800,
-        "type": "ZONE_TOUCH",
-        "price": 47.66
-      },
-      {
-        "time": 1792351800,
-        "type": "SWEEP_BOTTOM",
-        "price": 46.35
-      },
-      {
-        "time": 1792360800,
-        "type": "SCAN",
-        "price": 48.23
-      },
-      {
-        "time": 1792421100,
-        "type": "SCAN",
-        "price": 49.19
-      },
-      {
-        "time": 1792438200,
-        "type": "SCAN",
-        "price": 49.54
-      },
-      {
-        "time": 1792446300,
-        "type": "SCAN",
-        "price": 50.58
-      },
-      {
-        "time": 1792504800,
-        "type": "SCAN",
-        "price": 50.68
-      },
-      {
-        "time": 1792505700,
-        "type": "ENTRY",
-        "price": 50.83
-      }
-    ]
-  },
-  {
-    "date": "2026-10-20 17:30",
-    "coin": "ICP",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 2.937,
-    "target": 3.08385,
-    "target_2": null,
-    "target_3": null,
-    "stop": 2.3496,
-    "status": "⏳",
-    "result_percent": -11.34,
-    "time": 1792506600,
-    "level_id": "BC_LONG_2.8078559007239865_2.92",
-    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak+4h_poc",
-    "method": "volume",
-    "method_value": 96620.4,
-    "method_mult": 3.8718410684345663,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 2.8078559007239865,
-    "level_max": 2.92,
-    "level_date": "2026-09-27",
-    "level_score": 8.0,
-    "level_reaction_count": 3,
-    "activated_at": "2026-09-27",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792253700,
-        "type": "ZONE_TOUCH",
-        "price": 2.918
-      },
-      {
-        "time": 1792272600,
-        "type": "SWEEP_BOTTOM",
-        "price": 2.863
-      },
-      {
-        "time": 1792332900,
-        "type": "SCAN",
-        "price": 2.859
-      },
-      {
-        "time": 1792418400,
-        "type": "SCAN",
-        "price": 2.861
-      },
-      {
-        "time": 1792422900,
-        "type": "SCAN",
-        "price": 2.887
-      },
-      {
-        "time": 1792503900,
-        "type": "SCAN",
-        "price": 2.862
-      },
-      {
-        "time": 1792504800,
-        "type": "SCAN",
-        "price": 2.918
-      },
-      {
-        "time": 1792505700,
-        "type": "SCAN",
-        "price": 2.924
-      },
-      {
-        "time": 1792506600,
-        "type": "ENTRY",
-        "price": 2.937
-      }
-    ]
-  },
-  {
-    "date": "2026-10-21 00:15",
-    "coin": "CASHCAT",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.12076,
-    "target": 0.12679800000000002,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.09660800000000001,
-    "status": "❌",
-    "result_percent": -20.0,
-    "time": 1792530900,
-    "level_id": "BC_LONG_0.09900259257046111_0.10112851857384723",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 5924520.0,
-    "method_mult": 2.556258421774096,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": "2026-10-23T22:45:00+00:00",
-    "level_min": 0.09900259257046111,
-    "level_max": 0.10112851857384723,
-    "level_date": "2026-10-13",
-    "level_score": 4.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-14",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792271700,
-        "type": "ZONE_TOUCH",
-        "price": 0.10054
-      },
-      {
-        "time": 1792272600,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.09934
-      },
-      {
-        "time": 1792319400,
-        "type": "SCAN",
-        "price": 0.10856
-      },
-      {
-        "time": 1792338300,
-        "type": "SCAN",
-        "price": 0.10533
-      },
-      {
-        "time": 1792341000,
-        "type": "SCAN",
-        "price": 0.10523
-      },
-      {
-        "time": 1792360800,
-        "type": "SCAN",
-        "price": 0.10432
-      },
-      {
-        "time": 1792451700,
-        "type": "SCAN",
-        "price": 0.10625
-      },
-      {
-        "time": 1792503900,
-        "type": "SCAN",
-        "price": 0.10872
-      },
-      {
-        "time": 1792504800,
-        "type": "SCAN",
-        "price": 0.11417
-      },
-      {
-        "time": 1792507500,
-        "type": "SCAN",
-        "price": 0.11386
-      },
-      {
-        "time": 1792510200,
-        "type": "SCAN",
-        "price": 0.10922
-      },
-      {
-        "time": 1792530900,
-        "type": "ENTRY",
-        "price": 0.12076
-      }
-    ]
-  },
-  {
-    "date": "2026-10-20 18:00",
-    "coin": "BZ",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 104.49,
-    "target": 107.6247,
-    "target_2": null,
-    "target_3": null,
-    "stop": 94.041,
-    "status": "✅",
-    "result_percent": 3.67,
-    "time": 1792508400,
-    "level_id": "BC_LONG_104.0267267536927_104.42",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 14095.9,
-    "method_mult": 4.3934606290647436,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": "2026-10-22T09:08:38.697088+00:00",
-    "level_min": 104.0267267536927,
-    "level_max": 104.42,
-    "level_date": "2026-10-19",
-    "level_score": 4.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-20",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792505700,
-        "type": "SWEEP_BOTTOM",
-        "price": 103.07
-      },
-      {
-        "time": 1792506600,
-        "type": "SCAN",
-        "price": 103.15
-      },
-      {
-        "time": 1792508400,
-        "type": "ENTRY",
-        "price": 104.49
-      }
-    ]
-  },
-  {
-    "date": "2026-10-20 17:30",
-    "coin": "BZ",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 103.15,
-    "target": 106.2445,
-    "target_2": null,
-    "target_3": null,
-    "stop": 92.83500000000001,
-    "status": "✅",
-    "result_percent": 5.02,
-    "time": 1792506600,
-    "level_id": "BB_LONG_104.0267267536927_104.42",
-    "level_type": "4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 7949.34,
-    "method_mult": 6.404433170273937,
-    "method_ratio": 1.159944095987843,
-    "pattern_route": null,
-    "closed_at": "2026-10-22T09:08:38.951409+00:00",
-    "level_min": 104.0267267536927,
-    "level_max": 104.42,
-    "level_date": "2026-10-19",
-    "level_score": 4.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-20",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792505700,
-        "type": "SWEEP_BOTTOM",
-        "price": 103.07
-      },
-      {
-        "time": 1792506600,
-        "type": "ENTRY",
-        "price": 103.15
-      }
-    ]
-  },
-  {
-    "date": "2026-10-20 17:30",
-    "coin": "AXS",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 1.0496,
-    "target": 1.1020800000000002,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.8396800000000001,
-    "status": "⏳",
-    "result_percent": -10.0,
-    "time": 1792506600,
-    "level_id": "BC_LONG_0.9730805269876529_0.9904",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 60756.1,
-    "method_mult": 3.3853218268092795,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 0.9730805269876529,
-    "level_max": 0.9904,
-    "level_date": "2026-09-20",
-    "level_score": 4.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-09-21",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792332000,
-        "type": "ZONE_TOUCH",
-        "price": 0.9875
-      },
-      {
-        "time": 1792351800,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.9718
-      },
-      {
-        "time": 1792405800,
-        "type": "SCAN",
-        "price": 0.9953
-      },
-      {
-        "time": 1792421100,
-        "type": "SCAN",
-        "price": 0.9974
-      },
-      {
-        "time": 1792503900,
-        "type": "SCAN",
-        "price": 1.0119
-      },
-      {
-        "time": 1792504800,
-        "type": "SCAN",
-        "price": 1.0448
-      },
-      {
-        "time": 1792505700,
-        "type": "SCAN",
-        "price": 1.0459
-      },
-      {
-        "time": 1792506600,
-        "type": "ENTRY",
-        "price": 1.0496
-      }
-    ]
-  },
-  {
-    "date": "2026-10-22 07:00",
-    "coin": "AKE",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.023028,
-    "target": 0.0241794,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.018422400000000002,
-    "status": "✅",
-    "result_percent": 24.46,
-    "time": 1792641600,
-    "level_id": "BC_LONG_0.022077305868286386_0.023181171161700705",
-    "level_type": "1W_low_PWL + 1d_extreme_peak",
-    "method": "volume",
-    "method_value": 68407300.0,
-    "method_mult": 5.522525300800195,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": "2026-10-22T09:16:10.746282+00:00",
-    "level_min": 0.022077305868286386,
-    "level_max": 0.023181171161700705,
-    "level_date": "2026-10-18",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-18",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792632600,
-        "type": "ZONE_TOUCH",
-        "price": 0.022883
-      },
-      {
-        "time": 1792634400,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.022561
-      },
-      {
-        "time": 1792641600,
-        "type": "ENTRY",
-        "price": 0.023028
-      }
-    ]
-  },
-  {
-    "date": "2026-10-21 22:15",
-    "coin": "GRASS",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.7249,
-    "target": 0.7611450000000001,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.57992,
-    "status": "⏳",
-    "result_percent": -7.17,
-    "time": 1792610100,
-    "level_id": "BC_LONG_0.5595330462184873_0.5712",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 1318860.0,
-    "method_mult": 3.6643580705148455,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 0.5595330462184873,
-    "level_max": 0.5712,
-    "level_date": "2026-10-08",
-    "level_score": 3.5,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-09",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792340100,
-        "type": "ZONE_TOUCH",
-        "price": 0.5711
-      },
-      {
-        "time": 1792351800,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.5614
-      },
-      {
-        "time": 1792356300,
-        "type": "SCAN",
-        "price": 0.5608
-      },
-      {
-        "time": 1792442700,
-        "type": "SCAN",
-        "price": 0.6136
-      },
-      {
-        "time": 1792503000,
-        "type": "SCAN",
-        "price": 0.6144
-      },
-      {
-        "time": 1792503900,
-        "type": "SCAN",
-        "price": 0.6305
-      },
-      {
-        "time": 1792504800,
-        "type": "SCAN",
-        "price": 0.6439
-      },
-      {
-        "time": 1792505700,
-        "type": "SCAN",
-        "price": 0.6493
+        "price": 1.3428
       },
       {
         "time": 1792568700,
         "type": "SCAN",
-        "price": 0.6552
+        "price": 1.3458
+      },
+      {
+        "time": 1792572300,
+        "type": "SCAN",
+        "price": 1.3477
+      },
+      {
+        "time": 1792574100,
+        "type": "SCAN",
+        "price": 1.3634
       },
       {
         "time": 1792593900,
         "type": "SCAN",
-        "price": 0.6607
+        "price": 1.3831
       },
       {
-        "time": 1792594800,
+        "time": 1792782900,
         "type": "SCAN",
-        "price": 0.6653
+        "price": 1.3039
       },
       {
-        "time": 1792596600,
+        "time": 1792855800,
         "type": "SCAN",
-        "price": 0.6846
+        "price": 1.2602
       },
       {
-        "time": 1792603800,
+        "time": 1792940400,
         "type": "SCAN",
-        "price": 0.6994
+        "price": 1.2985
       },
       {
-        "time": 1792610100,
+        "time": 1792946700,
+        "type": "SCAN",
+        "price": 1.3068
+      },
+      {
+        "time": 1792965600,
+        "type": "SCAN",
+        "price": 1.2971
+      },
+      {
+        "time": 1792971000,
+        "type": "SCAN",
+        "price": 1.294
+      },
+      {
+        "time": 1793058300,
+        "type": "SCAN",
+        "price": 1.3084
+      },
+      {
+        "time": 1793097900,
+        "type": "SCAN",
+        "price": 1.3026
+      },
+      {
+        "time": 1793103300,
+        "type": "SCAN",
+        "price": 1.3103
+      },
+      {
+        "time": 1793104200,
+        "type": "SCAN",
+        "price": 1.3165
+      },
+      {
+        "time": 1793114100,
+        "type": "SCAN",
+        "price": 1.3227
+      },
+      {
+        "time": 1793210400,
+        "type": "SCAN",
+        "price": 1.3196
+      },
+      {
+        "time": 1793284200,
+        "type": "SCAN",
+        "price": 1.3042
+      },
+      {
+        "time": 1793289600,
+        "type": "SCAN",
+        "price": 1.3108
+      },
+      {
+        "time": 1793307600,
         "type": "ENTRY",
-        "price": 0.7249
+        "price": 1.2491
       }
     ]
   },
   {
-    "date": "2026-10-22 10:15",
-    "coin": "MORPHO",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 2.2858,
-    "target": 2.40009,
-    "target_2": null,
-    "target_3": null,
-    "stop": 1.82864,
-    "status": "⏳",
-    "result_percent": -6.77,
-    "time": 1792653300,
-    "level_id": "BB_LONG_2.2612778402699663_2.352",
-    "level_type": "1W_low_PWL + 4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 32511.0,
-    "method_mult": 3.1152501705621267,
-    "method_ratio": 1.0589954169358062,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 2.2612778402699663,
-    "level_max": 2.352,
-    "level_date": "2026-10-11",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-11",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792170000,
-        "type": "ZONE_TOUCH",
-        "price": 2.3406
-      },
-      {
-        "time": 1792272600,
-        "type": "SWEEP_BOTTOM",
-        "price": 2.3021
-      },
-      {
-        "time": 1792653300,
-        "type": "ENTRY",
-        "price": 2.2858
-      }
-    ]
-  },
-  {
-    "date": "2026-10-22 08:45",
-    "coin": "XAU",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 4098.08,
-    "target": 4180.0416,
-    "target_2": null,
-    "target_3": null,
-    "stop": 3688.272,
-    "status": "⏳",
-    "result_percent": -1.74,
-    "time": 1792647900,
-    "level_id": "BB_LONG_4067.725670361869_4113.6",
-    "level_type": "1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 1637.456,
-    "method_mult": 3.947345456368788,
-    "method_ratio": 1.0203865019884504,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 4067.725670361869,
-    "level_max": 4113.6,
-    "level_date": "2026-10-11",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-11",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792638900,
-        "type": "ZONE_TOUCH",
-        "price": 4104.0
-      },
-      {
-        "time": 1792647000,
-        "type": "SWEEP_BOTTOM",
-        "price": 4083.18
-      },
-      {
-        "time": 1792647900,
-        "type": "ENTRY",
-        "price": 4098.08
-      }
-    ]
-  },
-  {
-    "date": "2026-10-22 16:30",
-    "coin": "SOL",
+    "date": "2026-10-29 23:00",
+    "coin": "ARB",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 104.9,
-    "target": 110.14500000000001,
+    "entry": 0.15644,
+    "target": 0.17208400000000001,
     "target_2": null,
     "target_3": null,
-    "stop": 83.92000000000002,
+    "stop": 0.125152,
     "status": "⏳",
-    "result_percent": -4.33,
-    "time": 1792675800,
-    "level_id": "BC_LONG_100.0158923260372_103.01636909581832",
-    "level_type": "1W_low_PWL + 4h_extreme_peak",
+    "result_percent": 3.75,
+    "time": 1793307600,
+    "level_id": "BC_LONG_0.16023279801362744_0.16824443791430882",
+    "level_type": "1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
     "method": "volume",
-    "method_value": 337796.5,
-    "method_mult": 3.694958844754444,
+    "method_value": 16318327.1,
+    "method_mult": 6.749523758219649,
     "method_ratio": null,
     "pattern_route": null,
     "closed_at": null,
-    "level_min": 100.0158923260372,
-    "level_max": 103.01636909581832,
+    "level_min": 0.16023279801362744,
+    "level_max": 0.16824443791430882,
+    "level_date": "2026-10-11",
+    "level_score": 5.5,
+    "level_reaction_count": 1,
+    "activated_at": "2026-10-11",
+    "mode": null,
+    "events": [
+      {
+        "time": 1792964700,
+        "type": "ZONE_TOUCH",
+        "price": 0.16822
+      },
+      {
+        "time": 1793192400,
+        "type": "SWEEP_BOTTOM",
+        "price": 0.16421
+      },
+      {
+        "time": 1793194200,
+        "type": "SCAN",
+        "price": 0.16564
+      },
+      {
+        "time": 1793210400,
+        "type": "SCAN",
+        "price": 0.16761
+      },
+      {
+        "time": 1793217600,
+        "type": "SCAN",
+        "price": 0.17555
+      },
+      {
+        "time": 1793270700,
+        "type": "SCAN",
+        "price": 0.16855
+      },
+      {
+        "time": 1793284200,
+        "type": "SCAN",
+        "price": 0.17298
+      },
+      {
+        "time": 1793307600,
+        "type": "ENTRY",
+        "price": 0.15644
+      }
+    ]
+  },
+  {
+    "date": "2026-10-29 23:00",
+    "coin": "ADA",
+    "type": "LONG",
+    "source": "BOUNCE_LONG",
+    "entry": 0.1927,
+    "target": 0.21197000000000002,
+    "target_2": null,
+    "target_3": null,
+    "stop": 0.15416000000000002,
+    "status": "⏳",
+    "result_percent": 0.16,
+    "time": 1793307600,
+    "level_id": "BC_LONG_0.18878109777517563_0.1952",
+    "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
+    "method": "volume",
+    "method_value": 22159626.0,
+    "method_mult": 4.255066100764046,
+    "method_ratio": null,
+    "pattern_route": null,
+    "closed_at": null,
+    "level_min": 0.18878109777517563,
+    "level_max": 0.1952,
+    "level_date": "2026-09-30",
+    "level_score": 5.0,
+    "level_reaction_count": 0,
+    "activated_at": "2026-09-30",
+    "mode": null,
+    "events": [
+      {
+        "time": 1793305800,
+        "type": "SWEEP_BOTTOM",
+        "price": 0.1903
+      },
+      {
+        "time": 1793307600,
+        "type": "ENTRY",
+        "price": 0.1927
+      }
+    ]
+  },
+  {
+    "date": "2026-10-29 23:00",
+    "coin": "PENGU",
+    "type": "LONG",
+    "source": "BOUNCE_LONG",
+    "entry": 0.007218,
+    "target": 0.0075788999999999995,
+    "target_2": null,
+    "target_3": null,
+    "stop": 0.0057744,
+    "status": "⏳",
+    "result_percent": -0.93,
+    "time": 1793307600,
+    "level_id": "BC_LONG_0.006993134962506695_0.007342791710632029",
+    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+    "method": "volume",
+    "method_value": 83646770.0,
+    "method_mult": 2.597079329477461,
+    "method_ratio": null,
+    "pattern_route": null,
+    "closed_at": null,
+    "level_min": 0.006993134962506695,
+    "level_max": 0.007342791710632029,
     "level_date": "2026-10-18",
     "level_score": 5.0,
     "level_reaction_count": 0,
@@ -3667,1758 +1371,769 @@
     "mode": null,
     "events": [
       {
-        "time": 1792312200,
+        "time": 1792925100,
         "type": "ZONE_TOUCH",
-        "price": 103.01
+        "price": 0.007327
       },
       {
-        "time": 1792351800,
+        "time": 1793306700,
         "type": "SWEEP_BOTTOM",
-        "price": 100.65
+        "price": 0.006984
       },
       {
-        "time": 1792352700,
-        "type": "SCAN",
-        "price": 100.77
-      },
-      {
-        "time": 1792360800,
-        "type": "SCAN",
-        "price": 103.09
-      },
-      {
-        "time": 1792421100,
-        "type": "SCAN",
-        "price": 104.67
-      },
-      {
-        "time": 1792503900,
-        "type": "SCAN",
-        "price": 105.22
-      },
-      {
-        "time": 1792504800,
-        "type": "SCAN",
-        "price": 107.76
-      },
-      {
-        "time": 1792507500,
-        "type": "SCAN",
-        "price": 107.71
-      },
-      {
-        "time": 1792587600,
-        "type": "SCAN",
-        "price": 107.39
-      },
-      {
-        "time": 1792593900,
-        "type": "SCAN",
-        "price": 107.66
-      },
-      {
-        "time": 1792594800,
-        "type": "SCAN",
-        "price": 108.04
-      },
-      {
-        "time": 1792595700,
-        "type": "SCAN",
-        "price": 108.35
-      },
-      {
-        "time": 1792596600,
-        "type": "SCAN",
-        "price": 108.53
-      },
-      {
-        "time": 1792675800,
+        "time": 1793307600,
         "type": "ENTRY",
-        "price": 104.9
+        "price": 0.007218
       }
     ]
   },
   {
-    "date": "2026-10-23 05:15",
-    "coin": "BCH",
+    "date": "2026-10-29 23:00",
+    "coin": "LINK",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 282.25,
-    "target": 296.3625,
+    "entry": 11.152,
+    "target": 12.2672,
     "target_2": null,
     "target_3": null,
-    "stop": 225.8,
+    "stop": 8.9216,
     "status": "⏳",
-    "result_percent": -1.24,
-    "time": 1792721700,
-    "level_id": "BC_LONG_271.3302765740505_273.78",
+    "result_percent": -1.12,
+    "time": 1793307600,
+    "level_id": "BC_LONG_11.204752203155989_11.381",
     "level_type": "4h_extreme_peak",
     "method": "volume",
-    "method_value": 1949.91,
-    "method_mult": 2.60139227604314,
+    "method_value": 341958.7,
+    "method_mult": 6.657441816276024,
     "method_ratio": null,
     "pattern_route": null,
     "closed_at": null,
-    "level_min": 271.3302765740505,
-    "level_max": 273.78,
-    "level_date": "2026-10-20",
-    "level_score": 3.5,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-21",
+    "level_min": 11.204752203155989,
+    "level_max": 11.381,
+    "level_date": "2026-10-24",
+    "level_score": 4.5,
+    "level_reaction_count": 1,
+    "activated_at": "2026-10-25",
     "mode": null,
     "events": [
       {
-        "time": 1792657800,
+        "time": 1792971000,
         "type": "ZONE_TOUCH",
-        "price": 273.38
+        "price": 11.311
       },
       {
-        "time": 1792681200,
+        "time": 1792979100,
         "type": "SWEEP_BOTTOM",
-        "price": 272.55
+        "price": 11.292
       },
       {
-        "time": 1792716300,
+        "time": 1792990800,
         "type": "SCAN",
-        "price": 276.29
+        "price": 11.455
       },
       {
-        "time": 1792721700,
+        "time": 1793006100,
+        "type": "SCAN",
+        "price": 11.467
+      },
+      {
+        "time": 1793097900,
+        "type": "SCAN",
+        "price": 11.353
+      },
+      {
+        "time": 1793136600,
+        "type": "SCAN",
+        "price": 11.538
+      },
+      {
+        "time": 1793158200,
+        "type": "SCAN",
+        "price": 11.794
+      },
+      {
+        "time": 1793176200,
+        "type": "SCAN",
+        "price": 11.83
+      },
+      {
+        "time": 1793192400,
+        "type": "SCAN",
+        "price": 11.615
+      },
+      {
+        "time": 1793210400,
+        "type": "SCAN",
+        "price": 11.563
+      },
+      {
+        "time": 1793284200,
+        "type": "SCAN",
+        "price": 11.803
+      },
+      {
+        "time": 1793307600,
         "type": "ENTRY",
-        "price": 282.25
+        "price": 11.152
       }
     ]
   },
   {
-    "date": "2026-10-22 18:15",
-    "coin": "AAVE",
+    "date": "2026-10-29 23:00",
+    "coin": "BNB",
     "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 146.56,
-    "target": 153.888,
+    "source": "BOUNCE_LONG",
+    "entry": 710.31,
+    "target": 781.341,
     "target_2": null,
     "target_3": null,
-    "stop": 117.248,
+    "stop": 568.2479999999999,
     "status": "⏳",
-    "result_percent": -7.95,
-    "time": 1792682100,
-    "level_id": "BB_LONG_142.95762048688482_149.36",
-    "level_type": "1W_low_PWL + 4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 7103.23,
-    "method_mult": 2.8775533154514625,
-    "method_ratio": 1.0413727276182807,
+    "result_percent": -1.36,
+    "time": 1793307600,
+    "level_id": "BC_LONG_699.9396418678275_708.9008953304314",
+    "level_type": "1d_extreme_peak + 4h_extreme_peak",
+    "method": "volume",
+    "method_value": 77404.28,
+    "method_mult": 26.972867283755942,
+    "method_ratio": null,
     "pattern_route": null,
     "closed_at": null,
-    "level_min": 142.95762048688482,
-    "level_max": 149.36,
-    "level_date": "2026-10-04",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-04",
+    "level_min": 699.9396418678275,
+    "level_max": 708.9008953304314,
+    "level_date": "2026-09-10",
+    "level_score": 6.0,
+    "level_reaction_count": 4,
+    "activated_at": "2026-09-15",
     "mode": null,
     "events": [
       {
-        "time": 1792272600,
-        "type": "ZONE_TOUCH",
-        "price": 148.92
-      },
-      {
-        "time": 1792351800,
+        "time": 1793305800,
         "type": "SWEEP_BOTTOM",
-        "price": 146.06
+        "price": 685.0
       },
       {
-        "time": 1792421100,
+        "time": 1793306700,
         "type": "SCAN",
-        "price": 148.35
+        "price": 696.28
       },
       {
-        "time": 1792682100,
+        "time": 1793307600,
         "type": "ENTRY",
-        "price": 146.56
+        "price": 710.31
       }
     ]
   },
   {
-    "date": "2026-10-22 18:45",
+    "date": "2026-10-29 23:00",
+    "coin": "HBAR",
+    "type": "LONG",
+    "source": "BOUNCE_LONG",
+    "entry": 0.06987,
+    "target": 0.07685700000000001,
+    "target_2": null,
+    "target_3": null,
+    "stop": 0.055896,
+    "status": "⏳",
+    "result_percent": 2.42,
+    "time": 1793307600,
+    "level_id": "BC_LONG_0.07236035714285714_0.07475964285714286",
+    "level_type": "1M_close_PMC + 1M_low_PML + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+    "method": "volume",
+    "method_value": 14980064.0,
+    "method_mult": 2.5455786198682784,
+    "method_ratio": null,
+    "pattern_route": null,
+    "closed_at": null,
+    "level_min": 0.07236035714285714,
+    "level_max": 0.07475964285714286,
+    "level_date": "2026-08-31",
+    "level_score": 6.5,
+    "level_reaction_count": 3,
+    "activated_at": "2026-08-31",
+    "mode": null,
+    "events": [
+      {
+        "time": 1793205900,
+        "type": "ZONE_TOUCH",
+        "price": 0.07467
+      },
+      {
+        "time": 1793238300,
+        "type": "SWEEP_BOTTOM",
+        "price": 0.07337
+      },
+      {
+        "time": 1793284200,
+        "type": "SCAN",
+        "price": 0.07487
+      },
+      {
+        "time": 1793289600,
+        "type": "SCAN",
+        "price": 0.07533
+      },
+      {
+        "time": 1793307600,
+        "type": "ENTRY",
+        "price": 0.06987
+      }
+    ]
+  },
+  {
+    "date": "2026-10-29 23:00",
     "coin": "VIRTUAL",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 0.6538,
-    "target": 0.68649,
+    "entry": 0.578,
+    "target": 0.6358,
     "target_2": null,
     "target_3": null,
-    "stop": 0.5230400000000001,
+    "stop": 0.4624,
     "status": "⏳",
-    "result_percent": -6.5,
-    "time": 1792683900,
-    "level_id": "BC_LONG_0.6337416323345818_0.6408",
-    "level_type": "4h_extreme_peak",
+    "result_percent": 0.83,
+    "time": 1793307600,
+    "level_id": "BC_LONG_0.5700259508737627_0.5860351228155933",
+    "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
     "method": "volume",
-    "method_value": 402201.0,
-    "method_mult": 2.7286493219438626,
+    "method_value": 1051455.0,
+    "method_mult": 5.999315312745167,
     "method_ratio": null,
     "pattern_route": null,
     "closed_at": null,
-    "level_min": 0.6337416323345818,
-    "level_max": 0.6408,
-    "level_date": "2026-09-20",
-    "level_score": 4.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-09-21",
+    "level_min": 0.5700259508737627,
+    "level_max": 0.5860351228155933,
+    "level_date": "2026-09-30",
+    "level_score": 5.0,
+    "level_reaction_count": 0,
+    "activated_at": "2026-09-30",
     "mode": null,
     "events": [
       {
-        "time": 1792272600,
+        "time": 1793305800,
         "type": "SWEEP_BOTTOM",
-        "price": 0.637
+        "price": 0.5693
       },
       {
-        "time": 1792410300,
-        "type": "SCAN",
-        "price": 0.6576
-      },
-      {
-        "time": 1792504800,
-        "type": "SCAN",
-        "price": 0.6807
-      },
-      {
-        "time": 1792505700,
-        "type": "SCAN",
-        "price": 0.6811
-      },
-      {
-        "time": 1792506600,
-        "type": "SCAN",
-        "price": 0.6836
-      },
-      {
-        "time": 1792507500,
-        "type": "SCAN",
-        "price": 0.685
-      },
-      {
-        "time": 1792567800,
-        "type": "SCAN",
-        "price": 0.6892
-      },
-      {
-        "time": 1792571400,
-        "type": "SCAN",
-        "price": 0.6903
-      },
-      {
-        "time": 1792573200,
-        "type": "SCAN",
-        "price": 0.6905
-      },
-      {
-        "time": 1792593900,
-        "type": "SCAN",
-        "price": 0.6969
-      },
-      {
-        "time": 1792659600,
-        "type": "SCAN",
-        "price": 0.6582
-      },
-      {
-        "time": 1792682100,
-        "type": "SCAN",
-        "price": 0.6524
-      },
-      {
-        "time": 1792683900,
+        "time": 1793307600,
         "type": "ENTRY",
-        "price": 0.6538
+        "price": 0.578
       }
     ]
   },
   {
-    "date": "2026-10-22 16:15",
-    "coin": "FIL",
+    "date": "2026-10-29 23:00",
+    "coin": "WIF",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 0.9774,
-    "target": 1.02627,
+    "entry": 0.1699,
+    "target": 0.178395,
     "target_2": null,
     "target_3": null,
-    "stop": 0.7819200000000001,
+    "stop": 0.13592,
     "status": "⏳",
-    "result_percent": -7.71,
-    "time": 1792674900,
-    "level_id": "BC_LONG_0.9681860070028011_1.0165953073529412",
-    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+    "result_percent": 1.71,
+    "time": 1793307600,
+    "level_id": "BC_LONG_0.17113175348943635_0.1779",
+    "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
     "method": "volume",
-    "method_value": 748948.4,
-    "method_mult": 3.2217362853410965,
+    "method_value": 3418113.0,
+    "method_mult": 3.148460575263129,
     "method_ratio": null,
     "pattern_route": null,
     "closed_at": null,
-    "level_min": 0.9681860070028011,
-    "level_max": 1.0165953073529412,
-    "level_date": "2026-10-04",
-    "level_score": 6.0,
-    "level_reaction_count": 2,
-    "activated_at": "2026-10-04",
+    "level_min": 0.17113175348943635,
+    "level_max": 0.1779,
+    "level_date": "2026-09-30",
+    "level_score": 5.0,
+    "level_reaction_count": 0,
+    "activated_at": "2026-09-30",
     "mode": null,
     "events": [
       {
-        "time": 1792333800,
+        "time": 1792929600,
         "type": "ZONE_TOUCH",
-        "price": 1.0163
+        "price": 0.1773
       },
       {
-        "time": 1792656000,
+        "time": 1793305800,
         "type": "SWEEP_BOTTOM",
-        "price": 0.9906
+        "price": 0.1682
       },
       {
-        "time": 1792674900,
+        "time": 1793307600,
         "type": "ENTRY",
-        "price": 0.9774
+        "price": 0.1699
       }
     ]
   },
   {
-    "date": "2026-10-23 16:30",
-    "coin": "WLFI",
+    "date": "2026-10-29 23:00",
+    "coin": "ICP",
     "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 0.05328,
-    "target": 0.055944,
+    "source": "BOUNCE_LONG",
+    "entry": 2.429,
+    "target": 2.6719,
     "target_2": null,
     "target_3": null,
-    "stop": 0.042624,
+    "stop": 1.9432,
     "status": "⏳",
-    "result_percent": -0.84,
-    "time": 1792762200,
-    "level_id": "BB_LONG_0.055137156015037596_0.057",
-    "level_type": "1W_low_PWL + 4h_extreme_peak+4h_poc",
-    "method": "buyback",
-    "method_value": 2792586.0,
-    "method_mult": 2.5334948550998972,
-    "method_ratio": 1.1745722423588745,
+    "result_percent": 1.52,
+    "time": 1793307600,
+    "level_id": "BC_LONG_2.355642857142857_2.442357142857143",
+    "level_type": "1M_close_PMC + 1M_low_PML + 1d_extreme_peak",
+    "method": "volume",
+    "method_value": 210487.7,
+    "method_mult": 4.4585481187004765,
+    "method_ratio": null,
     "pattern_route": null,
     "closed_at": null,
-    "level_min": 0.055137156015037596,
-    "level_max": 0.057,
-    "level_date": "2026-10-18",
+    "level_min": 2.355642857142857,
+    "level_max": 2.442357142857143,
+    "level_date": "2026-08-31",
     "level_score": 6.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-18",
+    "level_reaction_count": 2,
+    "activated_at": "2026-08-31",
     "mode": null,
     "events": [
       {
-        "time": 1792365300,
+        "time": 1793305800,
         "type": "ZONE_TOUCH",
-        "price": 0.05693
+        "price": 2.408
       },
       {
-        "time": 1792415700,
+        "time": 1793306700,
         "type": "SWEEP_BOTTOM",
-        "price": 0.05605
+        "price": 2.352
       },
       {
-        "time": 1792762200,
+        "time": 1793307600,
         "type": "ENTRY",
-        "price": 0.05328
+        "price": 2.429
       }
     ]
   },
   {
-    "date": "2026-10-23 04:30",
+    "date": "2026-10-29 23:00",
+    "coin": "DOT",
+    "type": "LONG",
+    "source": "BOUNCE_LONG",
+    "entry": 0.9284,
+    "target": 1.0212400000000001,
+    "target_2": null,
+    "target_3": null,
+    "stop": 0.74272,
+    "status": "⏳",
+    "result_percent": 0.6,
+    "time": 1793307600,
+    "level_id": "BC_LONG_0.9250527146419666_0.9528682133950838",
+    "level_type": "1d_extreme_peak",
+    "method": "volume",
+    "method_value": 967684.7,
+    "method_mult": 3.3146016729121133,
+    "method_ratio": null,
+    "pattern_route": null,
+    "closed_at": null,
+    "level_min": 0.9250527146419666,
+    "level_max": 0.9528682133950838,
+    "level_date": "2026-09-15",
+    "level_score": 4.5,
+    "level_reaction_count": 1,
+    "activated_at": "2026-09-20",
+    "mode": null,
+    "events": [
+      {
+        "time": 1793305800,
+        "type": "SWEEP_BOTTOM",
+        "price": 0.9109
+      },
+      {
+        "time": 1793307600,
+        "type": "ENTRY",
+        "price": 0.9284
+      }
+    ]
+  },
+  {
+    "date": "2026-10-29 23:00",
+    "coin": "MON",
+    "type": "LONG",
+    "source": "BOUNCE_LONG",
+    "entry": 0.01946,
+    "target": 0.021406000000000005,
+    "target_2": null,
+    "target_3": null,
+    "stop": 0.015568000000000002,
+    "status": "⏳",
+    "result_percent": 2.16,
+    "time": 1793307600,
+    "level_id": "BC_LONG_0.019599078243709916_0.02027",
+    "level_type": "1M_low_PML + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+    "method": "volume",
+    "method_value": 23267152.0,
+    "method_mult": 4.024839081871476,
+    "method_ratio": null,
+    "pattern_route": null,
+    "closed_at": null,
+    "level_min": 0.019599078243709916,
+    "level_max": 0.02027,
+    "level_date": "2026-08-31",
+    "level_score": 5.5,
+    "level_reaction_count": 1,
+    "activated_at": "2026-08-31",
+    "mode": null,
+    "events": [
+      {
+        "time": 1793239200,
+        "type": "ZONE_TOUCH",
+        "price": 0.02023
+      },
+      {
+        "time": 1793305800,
+        "type": "SWEEP_BOTTOM",
+        "price": 0.01939
+      },
+      {
+        "time": 1793307600,
+        "type": "ENTRY",
+        "price": 0.01946
+      }
+    ]
+  },
+  {
+    "date": "2026-10-29 23:00",
     "coin": "SHIB1000",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 0.005003,
-    "target": 0.00525315,
+    "entry": 0.004707,
+    "target": 0.0051777,
     "target_2": null,
     "target_3": null,
-    "stop": 0.0040024,
+    "stop": 0.0037656000000000005,
     "status": "⏳",
-    "result_percent": -3.22,
-    "time": 1792719000,
+    "result_percent": 0.02,
+    "time": 1793307600,
     "level_id": "BC_LONG_0.004713979777816351_0.004938",
-    "level_type": "1M_low_PML + 1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
+    "level_type": "1M_low_PML + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
     "method": "volume",
-    "method_value": 91267200.0,
-    "method_mult": 8.215903315286658,
+    "method_value": 59067320.0,
+    "method_mult": 2.660258696787907,
     "method_ratio": null,
     "pattern_route": null,
     "closed_at": null,
     "level_min": 0.004713979777816351,
     "level_max": 0.004938,
     "level_date": "2026-09-30",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
+    "level_score": 6.5,
+    "level_reaction_count": 3,
     "activated_at": "2026-09-30",
     "mode": null,
     "events": [
       {
-        "time": 1792272600,
+        "time": 1793152800,
         "type": "ZONE_TOUCH",
-        "price": 0.004876
+        "price": 0.004931
       },
       {
-        "time": 1792351800,
+        "time": 1793241000,
         "type": "SWEEP_BOTTOM",
-        "price": 0.004793
+        "price": 0.004791
       },
       {
-        "time": 1792360800,
+        "time": 1793288700,
         "type": "SCAN",
-        "price": 0.004913
+        "price": 0.005033
       },
       {
-        "time": 1792369800,
+        "time": 1793289600,
         "type": "SCAN",
-        "price": 0.004988
+        "price": 0.005047
       },
       {
-        "time": 1792418400,
-        "type": "SCAN",
-        "price": 0.005
-      },
-      {
-        "time": 1792504800,
-        "type": "SCAN",
-        "price": 0.005118
-      },
-      {
-        "time": 1792506600,
-        "type": "SCAN",
-        "price": 0.005135
-      },
-      {
-        "time": 1792509300,
-        "type": "SCAN",
-        "price": 0.005064
-      },
-      {
-        "time": 1792551600,
-        "type": "SCAN",
-        "price": 0.005133
-      },
-      {
-        "time": 1792566900,
-        "type": "SCAN",
-        "price": 0.005173
-      },
-      {
-        "time": 1792719000,
+        "time": 1793307600,
         "type": "ENTRY",
-        "price": 0.005003
+        "price": 0.004707
       }
     ]
   },
   {
-    "date": "2026-10-23 05:45",
-    "coin": "ATOM",
+    "date": "2026-10-29 23:00",
+    "coin": "STRK",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 1.8,
-    "target": 1.8900000000000001,
+    "entry": 0.04298,
+    "target": 0.047278,
     "target_2": null,
     "target_3": null,
-    "stop": 1.4400000000000002,
+    "stop": 0.034384,
     "status": "⏳",
-    "result_percent": -9.11,
-    "time": 1792723500,
-    "level_id": "BC_LONG_1.7046357515960535_1.723",
-    "level_type": "4h_extreme_peak+4h_poc",
-    "method": "volume",
-    "method_value": 246664.2,
-    "method_mult": 3.3685311946405947,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 1.7046357515960535,
-    "level_max": 1.723,
-    "level_date": "2026-10-20",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-21",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792562400,
-        "type": "ZONE_TOUCH",
-        "price": 1.723
-      },
-      {
-        "time": 1792635300,
-        "type": "SWEEP_BOTTOM",
-        "price": 1.712
-      },
-      {
-        "time": 1792658700,
-        "type": "SCAN",
-        "price": 1.713
-      },
-      {
-        "time": 1792719900,
-        "type": "SCAN",
-        "price": 1.762
-      },
-      {
-        "time": 1792722600,
-        "type": "SCAN",
-        "price": 1.783
-      },
-      {
-        "time": 1792723500,
-        "type": "ENTRY",
-        "price": 1.8
-      }
-    ]
-  },
-  {
-    "date": "2026-10-23 16:30",
-    "coin": "QNT",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 183.2,
-    "target": 192.35999999999999,
-    "target_2": null,
-    "target_3": null,
-    "stop": 146.56,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792762200,
-    "level_id": "BB_LONG_179.35479256450162_188.3225321927267",
+    "result_percent": 2.58,
+    "time": 1793307600,
+    "level_id": "BC_LONG_0.043152455683890575_0.0453100784680851",
     "level_type": "1W_low_PWL + 4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 2061.32,
-    "method_mult": 2.2936757786716155,
-    "method_ratio": 1.0614945762909203,
-    "pattern_route": null,
-    "closed_at": "2026-10-25T17:30:00+00:00",
-    "level_min": 179.35479256450162,
-    "level_max": 188.3225321927267,
-    "level_date": "2026-10-18",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-18",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792687500,
-        "type": "ZONE_TOUCH",
-        "price": 187.26
-      },
-      {
-        "time": 1792747800,
-        "type": "SWEEP_BOTTOM",
-        "price": 183.76
-      },
-      {
-        "time": 1792762200,
-        "type": "ENTRY",
-        "price": 183.2
-      }
-    ]
-  },
-  {
-    "date": "2026-10-23 05:00",
-    "coin": "XAU",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 4022.37,
-    "target": 4102.8174,
-    "target_2": null,
-    "target_3": null,
-    "stop": 3620.133,
-    "status": "⏳",
-    "result_percent": 0.12,
-    "time": 1792720800,
-    "level_id": "BC_LONG_4036.032142857143_4065.967857142857",
-    "level_type": "1M_close_PMC + 1M_low_PML",
     "method": "volume",
-    "method_value": 2315.744,
-    "method_mult": 2.954149993519542,
+    "method_value": 28766672.7,
+    "method_mult": 3.448264397112374,
     "method_ratio": null,
     "pattern_route": null,
     "closed_at": null,
-    "level_min": 4036.032142857143,
-    "level_max": 4065.967857142857,
-    "level_date": "2026-07-31",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-07-31",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792676700,
-        "type": "ZONE_TOUCH",
-        "price": 4063.26
-      },
-      {
-        "time": 1792686600,
-        "type": "SWEEP_BOTTOM",
-        "price": 4050.93
-      },
-      {
-        "time": 1792720800,
-        "type": "ENTRY",
-        "price": 4022.37
-      }
-    ]
-  },
-  {
-    "date": "2026-10-23 05:00",
-    "coin": "XAU",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 4022.37,
-    "target": 4102.8174,
-    "target_2": null,
-    "target_3": null,
-    "stop": 3620.133,
-    "status": "⏳",
-    "result_percent": 0.12,
-    "time": 1792720800,
-    "level_id": "BB_LONG_4036.032142857143_4065.967857142857",
-    "level_type": "1M_close_PMC + 1M_low_PML",
-    "method": "buyback",
-    "method_value": 1659.189,
-    "method_mult": 3.9263810969054407,
-    "method_ratio": 1.3957083852412233,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 4036.032142857143,
-    "level_max": 4065.967857142857,
-    "level_date": "2026-07-31",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-07-31",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792676700,
-        "type": "ZONE_TOUCH",
-        "price": 4063.26
-      },
-      {
-        "time": 1792686600,
-        "type": "SWEEP_BOTTOM",
-        "price": 4050.93
-      },
-      {
-        "time": 1792720800,
-        "type": "ENTRY",
-        "price": 4022.37
-      }
-    ]
-  },
-  {
-    "date": "2026-10-22 16:45",
-    "coin": "XAG",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 55.36,
-    "target": 57.0208,
-    "target_2": null,
-    "target_3": null,
-    "stop": 44.288000000000004,
-    "status": "⏳",
-    "result_percent": -2.35,
-    "time": 1792676700,
-    "level_id": "BC_LONG_56.41811761320991_56.87882386790093",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 41612.07,
-    "method_mult": 2.862054218971499,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 56.41811761320991,
-    "level_max": 56.87882386790093,
-    "level_date": "2026-10-17",
-    "level_score": 4.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-18",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792455300,
-        "type": "ZONE_TOUCH",
-        "price": 56.82
-      },
-      {
-        "time": 1792458000,
-        "type": "SWEEP_BOTTOM",
-        "price": 56.63
-      },
-      {
-        "time": 1792458900,
-        "type": "SCAN",
-        "price": 56.76
-      },
-      {
-        "time": 1792499400,
-        "type": "SCAN",
-        "price": 57.24
-      },
-      {
-        "time": 1792505700,
-        "type": "SCAN",
-        "price": 58.57
-      },
-      {
-        "time": 1792564200,
-        "type": "SCAN",
-        "price": 57.35
-      },
-      {
-        "time": 1792567800,
-        "type": "SCAN",
-        "price": 57.49
-      },
-      {
-        "time": 1792582200,
-        "type": "SCAN",
-        "price": 57.8
-      },
-      {
-        "time": 1792676700,
-        "type": "ENTRY",
-        "price": 55.36
-      }
-    ]
-  },
-  {
-    "date": "2026-10-23 16:30",
-    "coin": "NBIS",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 161.9,
-    "target": 169.995,
-    "target_2": null,
-    "target_3": null,
-    "stop": 129.52,
-    "status": "⏳",
-    "result_percent": -3.91,
-    "time": 1792762200,
-    "level_id": "BC_LONG_153.5844019306184_161.26362202714932",
-    "level_type": "1W_low_PWL",
-    "method": "volume",
-    "method_value": 5738.66,
-    "method_mult": 6.967758698983247,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 153.5844019306184,
-    "level_max": 161.26362202714932,
-    "level_date": "2026-10-18",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-18",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792351800,
-        "type": "ZONE_TOUCH",
-        "price": 160.61
-      },
-      {
-        "time": 1792691100,
-        "type": "SWEEP_BOTTOM",
-        "price": 156.76
-      },
-      {
-        "time": 1792742400,
-        "type": "SCAN",
-        "price": 165.35
-      },
-      {
-        "time": 1792762200,
-        "type": "ENTRY",
-        "price": 161.9
-      }
-    ]
-  },
-  {
-    "date": "2026-10-23 23:15",
-    "coin": "APT",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.7461,
-    "target": 0.783405,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.59688,
-    "status": "⏳",
-    "result_percent": -7.17,
-    "time": 1792786500,
-    "level_id": "BC_LONG_0.7571897047751139_0.7931",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 665609.81,
-    "method_mult": 2.6317523132449536,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 0.7571897047751139,
-    "level_max": 0.7931,
-    "level_date": "2026-10-13",
-    "level_score": 4.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-14",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792255500,
-        "type": "ZONE_TOUCH",
-        "price": 0.7885
-      },
-      {
-        "time": 1792272600,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.7739
-      },
-      {
-        "time": 1792310400,
-        "type": "SCAN",
-        "price": 0.7923
-      },
-      {
-        "time": 1792314000,
-        "type": "SCAN",
-        "price": 0.799
-      },
-      {
-        "time": 1792384200,
-        "type": "SCAN",
-        "price": 0.7748
-      },
-      {
-        "time": 1792393200,
-        "type": "SCAN",
-        "price": 0.7779
-      },
-      {
-        "time": 1792448100,
-        "type": "SCAN",
-        "price": 0.7708
-      },
-      {
-        "time": 1792465200,
-        "type": "SCAN",
-        "price": 0.7701
-      },
-      {
-        "time": 1792504800,
-        "type": "SCAN",
-        "price": 0.8059
-      },
-      {
-        "time": 1792505700,
-        "type": "SCAN",
-        "price": 0.8139
-      },
-      {
-        "time": 1792506600,
-        "type": "SCAN",
-        "price": 0.8194
-      },
-      {
-        "time": 1792507500,
-        "type": "SCAN",
-        "price": 0.8225
-      },
-      {
-        "time": 1792590300,
-        "type": "SCAN",
-        "price": 0.8183
-      },
-      {
-        "time": 1792594800,
-        "type": "SCAN",
-        "price": 0.8348
-      },
-      {
-        "time": 1792662300,
-        "type": "SCAN",
-        "price": 0.7788
-      },
-      {
-        "time": 1792786500,
-        "type": "ENTRY",
-        "price": 0.7461
-      }
-    ]
-  },
-  {
-    "date": "2026-10-24 02:15",
-    "coin": "PENDLE",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 2.0176,
-    "target": 2.11848,
-    "target_2": null,
-    "target_3": null,
-    "stop": 1.61408,
-    "status": "⏳",
-    "result_percent": -3.47,
-    "time": 1792797300,
-    "level_id": "BB_LONG_1.987205322878817_2.077",
-    "level_type": "1W_low_PWL",
-    "method": "buyback",
-    "method_value": 54899.0,
-    "method_mult": 2.327897797912741,
-    "method_ratio": 1.689793985318494,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 1.987205322878817,
-    "level_max": 2.077,
-    "level_date": "2026-10-11",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-11",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792417500,
-        "type": "ZONE_TOUCH",
-        "price": 2.0741
-      },
-      {
-        "time": 1792687500,
-        "type": "SWEEP_BOTTOM",
-        "price": 2.0036
-      },
-      {
-        "time": 1792797300,
-        "type": "ENTRY",
-        "price": 2.0176
-      }
-    ]
-  },
-  {
-    "date": "2026-10-24 17:15",
-    "coin": "BNB",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 728.65,
-    "target": 765.0825,
-    "target_2": null,
-    "target_3": null,
-    "stop": 582.92,
-    "status": "⏳",
-    "result_percent": 1.86,
-    "time": 1792851300,
-    "level_id": "BB_LONG_714.6745138490573_734.754861509427",
-    "level_type": "1W_low_PWL + 1d_extreme_peak",
-    "method": "buyback",
-    "method_value": 794.79,
-    "method_mult": 4.04173803024324,
-    "method_ratio": 2.539651983542823,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 714.6745138490573,
-    "level_max": 734.754861509427,
-    "level_date": "2026-10-11",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-11",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792508400,
-        "type": "ZONE_TOUCH",
-        "price": 730.41
-      },
-      {
-        "time": 1792687500,
-        "type": "SWEEP_BOTTOM",
-        "price": 724.32
-      },
-      {
-        "time": 1792851300,
-        "type": "ENTRY",
-        "price": 728.65
-      }
-    ]
-  },
-  {
-    "date": "2026-10-24 17:15",
-    "coin": "WIF",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 0.1816,
-    "target": 0.19068000000000002,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.14528000000000002,
-    "status": "⏳",
-    "result_percent": -1.32,
-    "time": 1792851300,
-    "level_id": "BB_LONG_0.19591884031096213_0.2003",
-    "level_type": "4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 289214.0,
-    "method_mult": 2.046281650383525,
-    "method_ratio": 10.04729024182785,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 0.19591884031096213,
-    "level_max": 0.2003,
-    "level_date": "2026-10-20",
-    "level_score": 4.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-21",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792656000,
-        "type": "ZONE_TOUCH",
-        "price": 0.2001
-      },
-      {
-        "time": 1792674000,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.198
-      },
-      {
-        "time": 1792851300,
-        "type": "ENTRY",
-        "price": 0.1816
-      }
-    ]
-  },
-  {
-    "date": "2026-10-24 17:30",
-    "coin": "OP",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.11094,
-    "target": 0.11648700000000001,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.088752,
-    "status": "⏳",
-    "result_percent": -0.56,
-    "time": 1792852200,
-    "level_id": "BC_LONG_0.10970368407911088_0.11518886828306643",
-    "level_type": "1W_low_PWL + 1W_MACRO_Support + 1d_extreme_peak + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 4229893.1,
-    "method_mult": 4.06315315877125,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 0.10970368407911088,
-    "level_max": 0.11518886828306643,
-    "level_date": "2026-10-11",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-11",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792794600,
-        "type": "ZONE_TOUCH",
-        "price": 0.11464
-      },
-      {
-        "time": 1792831500,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.11242
-      },
-      {
-        "time": 1792852200,
-        "type": "ENTRY",
-        "price": 0.11094
-      }
-    ]
-  },
-  {
-    "date": "2026-10-24 17:30",
-    "coin": "ICP",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 2.624,
-    "target": 2.7552000000000003,
-    "target_2": null,
-    "target_3": null,
-    "stop": 2.0992,
-    "status": "⏳",
-    "result_percent": -0.76,
-    "time": 1792852200,
-    "level_id": "BC_LONG_2.7292100664103462_2.776",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 77422.4,
-    "method_mult": 3.127549740516752,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 2.7292100664103462,
-    "level_max": 2.776,
-    "level_date": "2026-09-20",
-    "level_score": 3.5,
-    "level_reaction_count": 0,
-    "activated_at": "2026-09-21",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792351800,
-        "type": "ZONE_TOUCH",
-        "price": 2.768
-      },
-      {
-        "time": 1792674000,
-        "type": "SWEEP_BOTTOM",
-        "price": 2.75
-      },
-      {
-        "time": 1792676700,
-        "type": "SCAN",
-        "price": 2.776
-      },
-      {
-        "time": 1792684800,
-        "type": "SCAN",
-        "price": 2.754
-      },
-      {
-        "time": 1792698300,
-        "type": "SCAN",
-        "price": 2.715
-      },
-      {
-        "time": 1792742400,
-        "type": "SCAN",
-        "price": 2.774
-      },
-      {
-        "time": 1792761300,
-        "type": "SCAN",
-        "price": 2.753
-      },
-      {
-        "time": 1792782900,
-        "type": "SCAN",
-        "price": 2.744
-      },
-      {
-        "time": 1792796400,
-        "type": "SCAN",
-        "price": 2.679
-      },
-      {
-        "time": 1792852200,
-        "type": "ENTRY",
-        "price": 2.624
-      }
-    ]
-  },
-  {
-    "date": "2026-10-24 17:45",
-    "coin": "FIL",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 0.9264,
-    "target": 0.97272,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.74112,
-    "status": "⏳",
-    "result_percent": -2.63,
-    "time": 1792853100,
-    "level_id": "BB_LONG_0.902479694650217_0.9354",
-    "level_type": "1W_low_PWL + 4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 162412.8,
-    "method_mult": 2.052623604837804,
-    "method_ratio": 1.0566907288095522,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 0.902479694650217,
-    "level_max": 0.9354,
-    "level_date": "2026-09-27",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-09-27",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792795500,
-        "type": "ZONE_TOUCH",
-        "price": 0.934
-      },
-      {
-        "time": 1792851300,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.9092
-      },
-      {
-        "time": 1792853100,
-        "type": "ENTRY",
-        "price": 0.9264
-      }
-    ]
-  },
-  {
-    "date": "2026-10-24 18:15",
-    "coin": "CASHCAT",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 0.09001,
-    "target": 0.09451050000000001,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.072008,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792854900,
-    "level_id": "BB_LONG_0.10238123494868558_0.10440691262828604",
-    "level_type": "4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 1588420.0,
-    "method_mult": 2.110705676934811,
-    "method_ratio": 2.3960287581370165,
-    "pattern_route": null,
-    "closed_at": "2026-10-24T18:15:00+00:00",
-    "level_min": 0.10238123494868558,
-    "level_max": 0.10440691262828604,
-    "level_date": "2026-10-20",
-    "level_score": 4.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-21",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792655100,
-        "type": "ZONE_TOUCH",
-        "price": 0.10393
-      },
-      {
-        "time": 1792657800,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.10322
-      },
-      {
-        "time": 1792854900,
-        "type": "ENTRY",
-        "price": 0.09001
-      }
-    ]
-  },
-  {
-    "date": "2026-10-24 18:30",
-    "coin": "UNI",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 6.555,
-    "target": 6.88275,
-    "target_2": null,
-    "target_3": null,
-    "stop": 5.244,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792855800,
-    "level_id": "BC_LONG_6.6782453133012005_6.965",
-    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 153087.1,
-    "method_mult": 3.218907068987559,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": "2026-10-24T23:30:00+00:00",
-    "level_min": 6.6782453133012005,
-    "level_max": 6.965,
-    "level_date": "2026-10-18",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-18",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792337400,
-        "type": "ZONE_TOUCH",
-        "price": 6.934
-      },
-      {
-        "time": 1792351800,
-        "type": "SWEEP_BOTTOM",
-        "price": 6.821
-      },
-      {
-        "time": 1792353600,
-        "type": "SCAN",
-        "price": 6.831
-      },
-      {
-        "time": 1792418400,
-        "type": "SCAN",
-        "price": 7.281
-      },
-      {
-        "time": 1792503900,
-        "type": "SCAN",
-        "price": 7.278
-      },
-      {
-        "time": 1792504800,
-        "type": "SCAN",
-        "price": 7.504
-      },
-      {
-        "time": 1792505700,
-        "type": "SCAN",
-        "price": 7.531
-      },
-      {
-        "time": 1792542600,
-        "type": "SCAN",
-        "price": 7.634
-      },
-      {
-        "time": 1792595700,
-        "type": "SCAN",
-        "price": 7.594
-      },
-      {
-        "time": 1792659600,
-        "type": "SCAN",
-        "price": 7.056
-      },
-      {
-        "time": 1792740600,
-        "type": "SCAN",
-        "price": 7.281
-      },
-      {
-        "time": 1792762200,
-        "type": "SCAN",
-        "price": 7.168
-      },
-      {
-        "time": 1792855800,
-        "type": "ENTRY",
-        "price": 6.555
-      }
-    ]
-  },
-  {
-    "date": "2026-10-24 19:45",
-    "coin": "DOT",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 1.0305,
-    "target": 1.082025,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.8244,
-    "status": "⏳",
-    "result_percent": -2.56,
-    "time": 1792860300,
-    "level_id": "BB_LONG_1.0003250075484251_1.0503412579258464",
-    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-    "method": "buyback",
-    "method_value": 294333.4,
-    "method_mult": 2.054962264268711,
-    "method_ratio": 1.0618030437592199,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 1.0003250075484251,
-    "level_max": 1.0503412579258464,
-    "level_date": "2026-10-11",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-11",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792351800,
-        "type": "ZONE_TOUCH",
-        "price": 1.0486
-      },
-      {
-        "time": 1792859400,
-        "type": "SWEEP_BOTTOM",
-        "price": 1.0227
-      },
-      {
-        "time": 1792860300,
-        "type": "ENTRY",
-        "price": 1.0305
-      }
-    ]
-  },
-  {
-    "date": "2026-10-24 20:15",
-    "coin": "NBIS",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 156.94,
-    "target": 164.787,
-    "target_2": null,
-    "target_3": null,
-    "stop": 125.552,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792862100,
-    "level_id": "BB_LONG_153.5844019306184_161.26362202714932",
-    "level_type": "1W_low_PWL",
-    "method": "buyback",
-    "method_value": 299.84,
-    "method_mult": 2.270180560518967,
-    "method_ratio": 1.4855256136606192,
-    "pattern_route": null,
-    "closed_at": "2026-10-26T15:15:00+00:00",
-    "level_min": 153.5844019306184,
-    "level_max": 161.26362202714932,
-    "level_date": "2026-10-18",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-18",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792351800,
-        "type": "ZONE_TOUCH",
-        "price": 160.61
-      },
-      {
-        "time": 1792691100,
-        "type": "SWEEP_BOTTOM",
-        "price": 156.76
-      },
-      {
-        "time": 1792862100,
-        "type": "ENTRY",
-        "price": 156.94
-      }
-    ]
-  },
-  {
-    "date": "2026-10-24 20:30",
-    "coin": "POL",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.08847,
-    "target": 0.09289349999999999,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.07077599999999999,
-    "status": "⏳",
-    "result_percent": 2.29,
-    "time": 1792863000,
-    "level_id": "BC_LONG_0.08706000861973699_0.09076997845065754",
-    "level_type": "1M_low_PML + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 1245785.0,
-    "method_mult": 2.6362968999543117,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 0.08706000861973699,
-    "level_max": 0.09076997845065754,
-    "level_date": "2026-09-30",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-09-30",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792330200,
-        "type": "ZONE_TOUCH",
-        "price": 0.09058
-      },
-      {
-        "time": 1792350900,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.08884
-      },
-      {
-        "time": 1792388700,
-        "type": "SCAN",
-        "price": 0.0931
-      },
-      {
-        "time": 1792389600,
-        "type": "SCAN",
-        "price": 0.09315
-      },
-      {
-        "time": 1792405800,
-        "type": "SCAN",
-        "price": 0.09184
-      },
-      {
-        "time": 1792458900,
-        "type": "SCAN",
-        "price": 0.09159
-      },
-      {
-        "time": 1792462500,
-        "type": "SCAN",
-        "price": 0.09265
-      },
-      {
-        "time": 1792504800,
-        "type": "SCAN",
-        "price": 0.09508
-      },
-      {
-        "time": 1792505700,
-        "type": "SCAN",
-        "price": 0.09514
-      },
-      {
-        "time": 1792506600,
-        "type": "SCAN",
-        "price": 0.09522
-      },
-      {
-        "time": 1792509300,
-        "type": "SCAN",
-        "price": 0.09339
-      },
-      {
-        "time": 1792518300,
-        "type": "SCAN",
-        "price": 0.09485
-      },
-      {
-        "time": 1792566900,
-        "type": "SCAN",
-        "price": 0.09615
-      },
-      {
-        "time": 1792587600,
-        "type": "SCAN",
-        "price": 0.09602
-      },
-      {
-        "time": 1792863000,
-        "type": "ENTRY",
-        "price": 0.08847
-      }
-    ]
-  },
-  {
-    "date": "2026-10-25 18:45",
-    "coin": "ETH",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 2355.89,
-    "target": 2473.6845,
-    "target_2": null,
-    "target_3": null,
-    "stop": 1884.712,
-    "status": "⏳",
-    "result_percent": -2.05,
-    "time": 1792946700,
-    "level_id": "BC_LONG_2323.8447800412705_2336.79",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 31436.22,
-    "method_mult": 2.9698433956118118,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 2323.8447800412705,
-    "level_max": 2336.79,
-    "level_date": "2026-10-18",
-    "level_score": 3.5,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-19",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792928700,
-        "type": "ZONE_TOUCH",
-        "price": 2335.0
-      },
-      {
-        "time": 1792930500,
-        "type": "SWEEP_BOTTOM",
-        "price": 2326.32
-      },
-      {
-        "time": 1792946700,
-        "type": "ENTRY",
-        "price": 2355.89
-      }
-    ]
-  },
-  {
-    "date": "2026-10-26 10:30",
-    "coin": "SEI",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.05259,
-    "target": 0.057849000000000005,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.042072,
-    "status": "⏳",
-    "result_percent": -1.25,
-    "time": 1793003400,
-    "level_id": "BC_LONG_0.051377123559960984_0.05306719110009754",
-    "level_type": "1W_low_PWL",
-    "method": "volume",
-    "method_value": 6318422.0,
-    "method_mult": 4.971352507823968,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 0.051377123559960984,
-    "level_max": 0.05306719110009754,
+    "level_min": 0.043152455683890575,
+    "level_max": 0.0453100784680851,
     "level_date": "2026-10-25",
-    "level_score": 5.0,
+    "level_score": 5.5,
+    "level_reaction_count": 1,
+    "activated_at": "2026-10-25",
+    "mode": null,
+    "events": [
+      {
+        "time": 1793239200,
+        "type": "ZONE_TOUCH",
+        "price": 0.04512
+      },
+      {
+        "time": 1793305800,
+        "type": "SWEEP_BOTTOM",
+        "price": 0.04274
+      },
+      {
+        "time": 1793307600,
+        "type": "ENTRY",
+        "price": 0.04298
+      }
+    ]
+  },
+  {
+    "date": "2026-10-29 23:00",
+    "coin": "GRAM",
+    "type": "LONG",
+    "source": "BOUNCE_LONG",
+    "entry": 1.19,
+    "target": 1.2495,
+    "target_2": null,
+    "target_3": null,
+    "stop": 0.952,
+    "status": "⏳",
+    "result_percent": -2.02,
+    "time": 1793307600,
+    "level_id": "BC_LONG_1.143645073329712_1.2008273269961978",
+    "level_type": "1W_low_PWL + 4h_extreme_peak",
+    "method": "volume",
+    "method_value": 298107.2,
+    "method_mult": 3.073959684151826,
+    "method_ratio": null,
+    "pattern_route": null,
+    "closed_at": null,
+    "level_min": 1.143645073329712,
+    "level_max": 1.2008273269961978,
+    "level_date": "2026-10-25",
+    "level_score": 5.5,
     "level_reaction_count": 0,
     "activated_at": "2026-10-25",
     "mode": null,
     "events": [
       {
-        "time": 1792943100,
+        "time": 1793063700,
         "type": "ZONE_TOUCH",
-        "price": 0.05304
+        "price": 1.2
       },
       {
-        "time": 1792964700,
+        "time": 1793305800,
         "type": "SWEEP_BOTTOM",
-        "price": 0.05214
+        "price": 1.172
       },
       {
-        "time": 1792965600,
-        "type": "SCAN",
-        "price": 0.05251
-      },
-      {
-        "time": 1792971000,
-        "type": "SCAN",
-        "price": 0.05248
-      },
-      {
-        "time": 1793003400,
+        "time": 1793307600,
         "type": "ENTRY",
-        "price": 0.05259
+        "price": 1.19
       }
     ]
   },
   {
-    "date": "2026-10-26 03:45",
-    "coin": "PENDLE",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 1.9405,
-    "target": 2.13455,
-    "target_2": null,
-    "target_3": null,
-    "stop": 1.5524,
-    "status": "⏳",
-    "result_percent": 0.36,
-    "time": 1792979100,
-    "level_id": "BC_LONG_1.8865003355882743_1.980825352367688",
-    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 136351.0,
-    "method_mult": 10.558958593078453,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 1.8865003355882743,
-    "level_max": 1.980825352367688,
-    "level_date": "2026-10-18",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-18",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792952100,
-        "type": "ZONE_TOUCH",
-        "price": 1.9782
-      },
-      {
-        "time": 1792978200,
-        "type": "SWEEP_BOTTOM",
-        "price": 1.9314
-      },
-      {
-        "time": 1792979100,
-        "type": "ENTRY",
-        "price": 1.9405
-      }
-    ]
-  },
-  {
-    "date": "2026-10-26 03:45",
-    "coin": "MORPHO",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 2.03,
-    "target": 2.1315,
-    "target_2": null,
-    "target_3": null,
-    "stop": 1.6239999999999999,
-    "status": "✅",
-    "result_percent": 5.0,
-    "time": 1792979100,
-    "level_id": "BC_LONG_2.0287829010566765_2.0820427473583094",
-    "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
-    "method": "volume",
-    "method_value": 45521.0,
-    "method_mult": 2.6887296740164084,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": "2026-10-26T21:30:00+00:00",
-    "level_min": 2.0287829010566765,
-    "level_max": 2.0820427473583094,
-    "level_date": "2026-09-30",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-09-30",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792922400,
-        "type": "ZONE_TOUCH",
-        "price": 2.0804
-      },
-      {
-        "time": 1792964700,
-        "type": "SWEEP_BOTTOM",
-        "price": 2.0531
-      },
-      {
-        "time": 1792979100,
-        "type": "ENTRY",
-        "price": 2.03
-      }
-    ]
-  },
-  {
-    "date": "2026-10-26 10:30",
+    "date": "2026-10-29 23:00",
     "coin": "LDO",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 0.3682,
-    "target": 0.40502000000000005,
+    "entry": 0.3385,
+    "target": 0.37235000000000007,
     "target_2": null,
     "target_3": null,
-    "stop": 0.29456000000000004,
+    "stop": 0.27080000000000004,
     "status": "⏳",
-    "result_percent": -0.19,
-    "time": 1793003400,
-    "level_id": "BC_LONG_0.3552131168485494_0.36636720787862653",
-    "level_type": "1W_low_PWL",
+    "result_percent": -2.36,
+    "time": 1793307600,
+    "level_id": "BC_LONG_0.323944925058548_0.3355",
+    "level_type": "1M_low_PML + 1W_MACRO_Support + 1d_extreme_peak",
     "method": "volume",
-    "method_value": 335633.6,
-    "method_mult": 2.8492941359739556,
+    "method_value": 964035.0,
+    "method_mult": 2.7335113718451054,
     "method_ratio": null,
     "pattern_route": null,
     "closed_at": null,
-    "level_min": 0.3552131168485494,
-    "level_max": 0.36636720787862653,
+    "level_min": 0.323944925058548,
+    "level_max": 0.3355,
+    "level_date": "2026-09-30",
+    "level_score": 5.0,
+    "level_reaction_count": 0,
+    "activated_at": "2026-09-30",
+    "mode": null,
+    "events": [
+      {
+        "time": 1793305800,
+        "type": "ZONE_TOUCH",
+        "price": 0.3355
+      },
+      {
+        "time": 1793306700,
+        "type": "SWEEP_BOTTOM",
+        "price": 0.3281
+      },
+      {
+        "time": 1793307600,
+        "type": "ENTRY",
+        "price": 0.3385
+      }
+    ]
+  },
+  {
+    "date": "2026-10-29 23:00",
+    "coin": "AXS",
+    "type": "LONG",
+    "source": "BOUNCE_LONG",
+    "entry": 0.8813,
+    "target": 0.96943,
+    "target_2": null,
+    "target_3": null,
+    "stop": 0.70504,
+    "status": "⏳",
+    "result_percent": -1.38,
+    "time": 1793307600,
+    "level_id": "BC_LONG_0.8744734475603622_0.9088",
+    "level_type": "1M_low_PML + 1d_extreme_peak",
+    "method": "volume",
+    "method_value": 66011.6,
+    "method_mult": 2.666039853522815,
+    "method_ratio": null,
+    "pattern_route": null,
+    "closed_at": null,
+    "level_min": 0.8744734475603622,
+    "level_max": 0.9088,
+    "level_date": "2026-09-30",
+    "level_score": 5.0,
+    "level_reaction_count": 0,
+    "activated_at": "2026-09-30",
+    "mode": null,
+    "events": [
+      {
+        "time": 1793305800,
+        "type": "SWEEP_BOTTOM",
+        "price": 0.8749
+      },
+      {
+        "time": 1793307600,
+        "type": "ENTRY",
+        "price": 0.8813
+      }
+    ]
+  },
+  {
+    "date": "2026-10-29 23:00",
+    "coin": "RUNE",
+    "type": "LONG",
+    "source": "BOUNCE_LONG",
+    "entry": 0.5984,
+    "target": 0.65824,
+    "target_2": null,
+    "target_3": null,
+    "stop": 0.47872000000000003,
+    "status": "✅",
+    "result_percent": 10.0,
+    "time": 1793307600,
+    "level_id": "BC_LONG_0.6076506319765476_0.6335",
+    "level_type": "1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+    "method": "volume",
+    "method_value": 160580.4,
+    "method_mult": 6.108094517373107,
+    "method_ratio": null,
+    "pattern_route": null,
+    "closed_at": "2026-10-30T02:15:00+00:00",
+    "level_min": 0.6076506319765476,
+    "level_max": 0.6335,
+    "level_date": "2026-10-18",
+    "level_score": 6.0,
+    "level_reaction_count": 2,
+    "activated_at": "2026-10-18",
+    "mode": null,
+    "events": [
+      {
+        "time": 1793017800,
+        "type": "ZONE_TOUCH",
+        "price": 0.6314
+      },
+      {
+        "time": 1793055600,
+        "type": "SWEEP_BOTTOM",
+        "price": 0.6201
+      },
+      {
+        "time": 1793114100,
+        "type": "SCAN",
+        "price": 0.6283
+      },
+      {
+        "time": 1793117700,
+        "type": "SCAN",
+        "price": 0.6295
+      },
+      {
+        "time": 1793189700,
+        "type": "SCAN",
+        "price": 0.6248
+      },
+      {
+        "time": 1793216700,
+        "type": "SCAN",
+        "price": 0.6278
+      },
+      {
+        "time": 1793263500,
+        "type": "SCAN",
+        "price": 0.6055
+      },
+      {
+        "time": 1793284200,
+        "type": "SCAN",
+        "price": 0.6144
+      },
+      {
+        "time": 1793307600,
+        "type": "ENTRY",
+        "price": 0.5984
+      }
+    ]
+  },
+  {
+    "date": "2026-10-29 23:15",
+    "coin": "ENA",
+    "type": "LONG",
+    "source": "BUYBACK_LONG",
+    "entry": 0.18829,
+    "target": 0.20711900000000003,
+    "target_2": null,
+    "target_3": null,
+    "stop": 0.15063200000000002,
+    "status": "⏳",
+    "result_percent": 0.82,
+    "time": 1793308500,
+    "level_id": "BB_LONG_0.18158456375220083_0.1893735906194979",
+    "level_type": "1W_low_PWL + 4h_extreme_peak",
+    "method": "buyback",
+    "method_value": 43157524.0,
+    "method_mult": 3.44489612830768,
+    "method_ratio": 1.0884844088831416,
+    "pattern_route": null,
+    "closed_at": null,
+    "level_min": 0.18158456375220083,
+    "level_max": 0.1893735906194979,
     "level_date": "2026-10-25",
     "level_score": 5.0,
     "level_reaction_count": 0,
@@ -5426,564 +2141,126 @@
     "mode": null,
     "events": [
       {
-        "time": 1792943100,
+        "time": 1793305800,
         "type": "ZONE_TOUCH",
-        "price": 0.3662
+        "price": 0.1877
       },
       {
-        "time": 1792971000,
+        "time": 1793306700,
         "type": "SWEEP_BOTTOM",
-        "price": 0.36
+        "price": 0.18372
       },
       {
-        "time": 1792979100,
-        "type": "SCAN",
-        "price": 0.3622
-      },
-      {
-        "time": 1792997100,
-        "type": "SCAN",
-        "price": 0.3632
-      },
-      {
-        "time": 1793002500,
-        "type": "SCAN",
-        "price": 0.3647
-      },
-      {
-        "time": 1793003400,
+        "time": 1793308500,
         "type": "ENTRY",
-        "price": 0.3682
+        "price": 0.18829
       }
     ]
   },
   {
-    "date": "2026-10-26 03:15",
-    "coin": "NBIS",
+    "date": "2026-10-29 23:45",
+    "coin": "DASH",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 156.63,
-    "target": 172.293,
+    "entry": 48.22,
+    "target": 53.042,
     "target_2": null,
     "target_3": null,
-    "stop": 125.304,
+    "stop": 38.576,
     "status": "⏳",
-    "result_percent": -0.68,
-    "time": 1792977300,
-    "level_id": "BC_LONG_153.5844019306184_161.26362202714932",
-    "level_type": "1W_low_PWL + 1d_extreme_peak",
+    "result_percent": 1.7,
+    "time": 1793310300,
+    "level_id": "BC_LONG_47.92955508622698_49.08611228443253",
+    "level_type": "1W_low_PWL + 4h_extreme_peak",
     "method": "volume",
-    "method_value": 1217.43,
-    "method_mult": 3.432474343069809,
+    "method_value": 16650.92,
+    "method_mult": 2.5842123437821307,
     "method_ratio": null,
     "pattern_route": null,
     "closed_at": null,
-    "level_min": 153.5844019306184,
-    "level_max": 161.26362202714932,
-    "level_date": "2026-10-18",
-    "level_score": 6.0,
-    "level_reaction_count": 2,
-    "activated_at": "2026-10-18",
+    "level_min": 47.92955508622698,
+    "level_max": 49.08611228443253,
+    "level_date": "2026-10-25",
+    "level_score": 5.0,
+    "level_reaction_count": 0,
+    "activated_at": "2026-10-25",
     "mode": null,
     "events": [
       {
-        "time": 1792968300,
-        "type": "ZONE_TOUCH",
-        "price": 160.81
-      },
-      {
-        "time": 1792975500,
+        "time": 1793305800,
         "type": "SWEEP_BOTTOM",
-        "price": 156.47
+        "price": 48.1
       },
       {
-        "time": 1792977300,
+        "time": 1793310300,
         "type": "ENTRY",
-        "price": 156.63
+        "price": 48.22
       }
     ]
   },
   {
-    "date": "2026-10-26 03:15",
-    "coin": "NBIS",
-    "type": "LONG",
-    "source": "BUYBACK_LONG",
-    "entry": 156.63,
-    "target": 172.293,
-    "target_2": null,
-    "target_3": null,
-    "stop": 125.304,
-    "status": "⏳",
-    "result_percent": -0.68,
-    "time": 1792977300,
-    "level_id": "BB_LONG_153.5844019306184_161.26362202714932",
-    "level_type": "1W_low_PWL + 1d_extreme_peak",
-    "method": "buyback",
-    "method_value": 546.0,
-    "method_mult": 3.557462135180955,
-    "method_ratio": 2.2297252747252747,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 153.5844019306184,
-    "level_max": 161.26362202714932,
-    "level_date": "2026-10-18",
-    "level_score": 6.0,
-    "level_reaction_count": 2,
-    "activated_at": "2026-10-18",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792968300,
-        "type": "ZONE_TOUCH",
-        "price": 160.81
-      },
-      {
-        "time": 1792975500,
-        "type": "SWEEP_BOTTOM",
-        "price": 156.47
-      },
-      {
-        "time": 1792977300,
-        "type": "ENTRY",
-        "price": 156.63
-      }
-    ]
-  },
-  {
-    "date": "2026-10-26 19:30",
-    "coin": "HYPE",
+    "date": "2026-10-30 00:30",
+    "coin": "UNI",
     "type": "LONG",
     "source": "BOUNCE_LONG",
-    "entry": 79.588,
-    "target": 87.5468,
+    "entry": 6.531,
+    "target": 7.1841,
     "target_2": null,
     "target_3": null,
-    "stop": 63.6704,
+    "stop": 5.2248,
     "status": "⏳",
-    "result_percent": -2.45,
-    "time": 1793035800,
-    "level_id": "BC_LONG_74.67272202358717_76.93",
-    "level_type": "1M_low_PML + 1W_MACRO_Support + 1W_low_PWL + 1d_extreme_peak + 4h_extreme_peak",
+    "result_percent": 4.03,
+    "time": 1793313000,
+    "level_id": "BC_LONG_6.458559333716255_6.781487300402068",
+    "level_type": "1W_low_PWL + 4h_extreme_peak",
     "method": "volume",
-    "method_value": 229320.7,
-    "method_mult": 4.700529699623704,
+    "method_value": 1929118.7,
+    "method_mult": 6.771342227711033,
     "method_ratio": null,
     "pattern_route": null,
     "closed_at": null,
-    "level_min": 74.67272202358717,
-    "level_max": 76.93,
-    "level_date": "2026-09-30",
-    "level_score": 6.0,
-    "level_reaction_count": 2,
-    "activated_at": "2026-09-30",
+    "level_min": 6.458559333716255,
+    "level_max": 6.781487300402068,
+    "level_date": "2026-10-25",
+    "level_score": 5.0,
+    "level_reaction_count": 0,
+    "activated_at": "2026-10-25",
     "mode": null,
     "events": [
       {
         "time": 1792941300,
         "type": "ZONE_TOUCH",
-        "price": 76.781
+        "price": 6.78
       },
       {
-        "time": 1792981800,
+        "time": 1793305800,
         "type": "SWEEP_BOTTOM",
-        "price": 75.596
+        "price": 6.606
       },
       {
-        "time": 1792993500,
+        "time": 1793307600,
         "type": "SCAN",
-        "price": 76.976
+        "price": 6.7
       },
       {
-        "time": 1793026800,
+        "time": 1793308500,
         "type": "SCAN",
-        "price": 78.455
+        "price": 6.727
       },
       {
-        "time": 1793035800,
+        "time": 1793311200,
+        "type": "SCAN",
+        "price": 6.429
+      },
+      {
+        "time": 1793312100,
+        "type": "SCAN",
+        "price": 6.447
+      },
+      {
+        "time": 1793313000,
         "type": "ENTRY",
-        "price": 79.588
-      }
-    ]
-  },
-  {
-    "date": "2026-10-26 16:45",
-    "coin": "ONDO",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.4225,
-    "target": 0.46475,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.338,
-    "status": "⏳",
-    "result_percent": -2.63,
-    "time": 1793025900,
-    "level_id": "BC_LONG_0.39283983990442056_0.4096",
-    "level_type": "1W_low_PWL + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 3780613.0,
-    "method_mult": 2.6108361967306575,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 0.39283983990442056,
-    "level_max": 0.4096,
-    "level_date": "2026-10-25",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-25",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792947600,
-        "type": "ZONE_TOUCH",
-        "price": 0.4093
-      },
-      {
-        "time": 1792978200,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.4012
-      },
-      {
-        "time": 1793003400,
-        "type": "SCAN",
-        "price": 0.4061
-      },
-      {
-        "time": 1793015100,
-        "type": "SCAN",
-        "price": 0.4128
-      },
-      {
-        "time": 1793021400,
-        "type": "SCAN",
-        "price": 0.4128
-      },
-      {
-        "time": 1793024100,
-        "type": "SCAN",
-        "price": 0.4156
-      },
-      {
-        "time": 1793025900,
-        "type": "ENTRY",
-        "price": 0.4225
-      }
-    ]
-  },
-  {
-    "date": "2026-10-26 19:00",
-    "coin": "1000BONK",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.003068,
-    "target": 0.0032214,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.0024544000000000002,
-    "status": "⏳",
-    "result_percent": -1.83,
-    "time": 1793034000,
-    "level_id": "BC_LONG_0.0029885974401050214_0.003023",
-    "level_type": "4h_extreme_peak",
-    "method": "volume",
-    "method_value": 107964100.0,
-    "method_mult": 2.856512023299955,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 0.0029885974401050214,
-    "level_max": 0.003023,
-    "level_date": "2026-10-22",
-    "level_score": 4.0,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-23",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792929600,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.003002
-      },
-      {
-        "time": 1792971000,
-        "type": "SCAN",
-        "price": 0.003
-      },
-      {
-        "time": 1792979100,
-        "type": "SCAN",
-        "price": 0.002976
-      },
-      {
-        "time": 1793028600,
-        "type": "SCAN",
-        "price": 0.003081
-      },
-      {
-        "time": 1793033100,
-        "type": "SCAN",
-        "price": 0.003053
-      },
-      {
-        "time": 1793034000,
-        "type": "ENTRY",
-        "price": 0.003068
-      }
-    ]
-  },
-  {
-    "date": "2026-10-26 16:45",
-    "coin": "LIT",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 3.1517,
-    "target": 3.46687,
-    "target_2": null,
-    "target_3": null,
-    "stop": 2.52136,
-    "status": "⏳",
-    "result_percent": -4.95,
-    "time": 1793025900,
-    "level_id": "BC_LONG_2.972587360312043_3.084981599219893",
-    "level_type": "1W_low_PWL + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 268117.1,
-    "method_mult": 2.510970631009474,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 2.972587360312043,
-    "level_max": 3.084981599219893,
-    "level_date": "2026-10-25",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-25",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792985400,
-        "type": "ZONE_TOUCH",
-        "price": 3.0669
-      },
-      {
-        "time": 1792986300,
-        "type": "SWEEP_BOTTOM",
-        "price": 3.0028
-      },
-      {
-        "time": 1793023200,
-        "type": "SCAN",
-        "price": 3.0537
-      },
-      {
-        "time": 1793025900,
-        "type": "ENTRY",
-        "price": 3.1517
-      }
-    ]
-  },
-  {
-    "date": "2026-10-26 17:30",
-    "coin": "ICP",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 2.652,
-    "target": 2.9172000000000002,
-    "target_2": null,
-    "target_3": null,
-    "stop": 2.1216000000000004,
-    "status": "⏳",
-    "result_percent": -1.77,
-    "time": 1793028600,
-    "level_id": "BC_LONG_2.547199042792793_2.623502393018018",
-    "level_type": "1W_low_PWL",
-    "method": "volume",
-    "method_value": 133485.2,
-    "method_mult": 3.2503354791172603,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 2.547199042792793,
-    "level_max": 2.623502393018018,
-    "level_date": "2026-10-25",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-25",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792962900,
-        "type": "ZONE_TOUCH",
-        "price": 2.621
-      },
-      {
-        "time": 1792978200,
-        "type": "SWEEP_BOTTOM",
-        "price": 2.584
-      },
-      {
-        "time": 1793021400,
-        "type": "SCAN",
-        "price": 2.602
-      },
-      {
-        "time": 1793025900,
-        "type": "SCAN",
-        "price": 2.651
-      },
-      {
-        "time": 1793028600,
-        "type": "ENTRY",
-        "price": 2.652
-      }
-    ]
-  },
-  {
-    "date": "2026-10-26 21:15",
-    "coin": "CRV",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.3431,
-    "target": 0.37741,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.27448,
-    "status": "⏳",
-    "result_percent": -1.11,
-    "time": 1793042100,
-    "level_id": "BC_LONG_0.3375254250781916_0.3475864373045209",
-    "level_type": "1W_low_PWL+4h_poc",
-    "method": "volume",
-    "method_value": 1287136.8,
-    "method_mult": 2.6299457647171596,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 0.3375254250781916,
-    "level_max": 0.3475864373045209,
-    "level_date": "2026-10-25",
-    "level_score": 6.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-25",
-    "mode": null,
-    "events": [
-      {
-        "time": 1793012400,
-        "type": "ZONE_TOUCH",
-        "price": 0.3467
-      },
-      {
-        "time": 1793038500,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.3421
-      },
-      {
-        "time": 1793042100,
-        "type": "ENTRY",
-        "price": 0.3431
-      }
-    ]
-  },
-  {
-    "date": "2026-10-26 17:15",
-    "coin": "STRK",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.04684,
-    "target": 0.051524,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.037472,
-    "status": "⏳",
-    "result_percent": -0.3,
-    "time": 1793027700,
-    "level_id": "BC_LONG_0.04355057689969605_0.04572810574468085",
-    "level_type": "1W_low_PWL",
-    "method": "volume",
-    "method_value": 24685194.5,
-    "method_mult": 2.851521078825853,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 0.04355057689969605,
-    "level_max": 0.04572810574468085,
-    "level_date": "2026-10-25",
-    "level_score": 5.0,
-    "level_reaction_count": 0,
-    "activated_at": "2026-10-25",
-    "mode": null,
-    "events": [
-      {
-        "time": 1792944000,
-        "type": "ZONE_TOUCH",
-        "price": 0.04531
-      },
-      {
-        "time": 1792986300,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.04462
-      },
-      {
-        "time": 1792989000,
-        "type": "SCAN",
-        "price": 0.04479
-      },
-      {
-        "time": 1793003400,
-        "type": "SCAN",
-        "price": 0.04556
-      },
-      {
-        "time": 1793027700,
-        "type": "ENTRY",
-        "price": 0.04684
-      }
-    ]
-  },
-  {
-    "date": "2026-10-26 23:30",
-    "coin": "OP",
-    "type": "LONG",
-    "source": "BOUNCE_LONG",
-    "entry": 0.11064,
-    "target": 0.121704,
-    "target_2": null,
-    "target_3": null,
-    "stop": 0.08851200000000001,
-    "status": "⏳",
-    "result_percent": -0.21,
-    "time": 1793050200,
-    "level_id": "BC_LONG_0.1070337740669073_0.11238546277025266",
-    "level_type": "1W_low_PWL + 4h_extreme_peak",
-    "method": "volume",
-    "method_value": 3640710.8,
-    "method_mult": 2.8223654780584693,
-    "method_ratio": null,
-    "pattern_route": null,
-    "closed_at": null,
-    "level_min": 0.1070337740669073,
-    "level_max": 0.11238546277025266,
-    "level_date": "2026-10-25",
-    "level_score": 5.5,
-    "level_reaction_count": 1,
-    "activated_at": "2026-10-25",
-    "mode": null,
-    "events": [
-      {
-        "time": 1793028600,
-        "type": "ZONE_TOUCH",
-        "price": 0.11214
-      },
-      {
-        "time": 1793040300,
-        "type": "SWEEP_BOTTOM",
-        "price": 0.10942
-      },
-      {
-        "time": 1793050200,
-        "type": "ENTRY",
-        "price": 0.11064
+        "price": 6.531
       }
     ]
   }

@@ -30,12 +30,21 @@ def _utc_naive(ts):
 # процессе. LONG эту раздвоенность не затрагивает вообще (mode=None).
 SHORT_MODES = ('CLIMAX', 'MIRROR')
 
+# Тип уровня «одиночный 4H» — без слияния с уровнями 1W / 1M / 1d / POC (см. CONFIG['SKIP_SINGLE_4H']).
+SINGLE_4H_TYPE = "4h_extreme_peak"
+
 
 class BounceManager:
     CONFIG = {
         # "Кладбище": на сколько % цена должна уйти от мёртвой (DEAD/TRIGGERED)
         # зоны, чтобы эта же зона снова могла взять вотчер (правило входа).
         'GRAVEYARD_ESCAPE_PCT': 5.0,
+        # True = не торговать одиночные 4H-уровни: уровень с типом ровно 4h_extreme_peak (без слияния
+        # с 1W / 1M / 1d / POC) убирается из списка уровней монеты, как будто его нет (новые вотчеры
+        # на нём не рождаются; уже живые доживают). Слитые уровни остаются. False = как раньше.
+        'SKIP_SINGLE_4H': True,
+        # False = SHORT вообще не обрабатывается, только LONG. True = как раньше.
+        'ALLOW_SHORT': False,
     }
 
     def __init__(self, log_dir_override=None, entry_mode=None):
@@ -460,6 +469,11 @@ class BounceManager:
 
     def process_candle(self, c_low, c_high, c_close, current_supports, current_resistances,
                         df_slice, allow_long=True, allow_short=True, c_atr=0.0, coin="UNKNOWN", c_adx=None):
+        if not self.CONFIG.get('ALLOW_SHORT', True):
+            allow_short = False
+        if self.CONFIG.get('SKIP_SINGLE_4H'):
+            current_supports = [z for z in (current_supports or []) if z.get('type') != SINGLE_4H_TYPE]
+            current_resistances = [z for z in (current_resistances or []) if z.get('type') != SINGLE_4H_TYPE]
         self._update_graveyard(c_close, coin=coin)
         self.kill_short_watchers_behind_pierced_neighbor(c_high, coin=coin)
 
