@@ -17,6 +17,32 @@ from backend.modules.cryptano.utils.paths import MACRO_LEVELS_FILE, CUSTOM_LEVEL
 from backend.modules.cryptano.levels.history import save_signal
 
 
+def _calc_rr(tt, entry, tp, sl):
+    """R/R сделки; 0, если стопа нет (sl is None) или он по другую сторону от входа."""
+    if sl is None:
+        return 0
+    if tt == 'LONG' and entry > sl:
+        return (tp - entry) / (entry - sl)
+    if tt == 'SHORT' and sl > entry:
+        return (entry - tp) / (sl - entry)
+    return 0
+
+
+def _send_to_trader(signal):
+    """Живой сигнал -> биржа. Что торговать, сколько и можно ли вообще — решает trader.py
+    по config.json crypto.trade (enabled/mode/лимиты); при выключенной торговле он ничего не делает.
+    Никогда не роняет скан."""
+    try:
+        from backend.modules.cryptano.utils import trader
+        trader.execute_signal(signal)
+    except Exception as e:
+        print(f"[TRADER] ❌ не удалось передать сигнал: {e}")
+
+
+def _fmt_sl(sl):
+    return "нет" if sl is None else f"{sl:.8f}"
+
+
 def get_merged_levels_for_coin(coin):
     """Supports/resistances монеты — macro (swing_hunter) + ручные
     (custom_levels.json), слитые в один словарь. ОДНА точка правды для
@@ -589,8 +615,7 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr, strategy="BOUNCE"):
                 d = order['decision']
                 tt = order['trade_type']
                 entry, sl, tp = d.get('entry_price', 0.0), d.get('sl', 0.0), d.get('tp', 0.0)
-                rr = ((tp - entry) / (entry - sl)) if tt == 'LONG' and entry > sl else \
-                     ((entry - tp) / (sl - entry)) if tt == 'SHORT' and sl > entry else 0
+                rr = _calc_rr(tt, entry, tp, sl)
                 emoji = "🟢" if tt == "LONG" else "🔴"
 
                 # level_id для SHORT всегда вида "BC_SHORT_min_max__CLIMAX"/"...__MIRROR"
@@ -598,7 +623,7 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr, strategy="BOUNCE"):
                 level_id_val = d.get('level_id', '') or ''
                 mode = level_id_val.split('__')[-1] if '__' in level_id_val else None
                 source_label = f"{strategy}_{tt}" + (f"_{mode}" if tt == "SHORT" and mode else "")
-                save_signal({
+                _sig = {
                     "type": "SHORT_PUMP" if tt == "SHORT" else "WATCHER_LONG",
                     "coin": coin,
                     "source": source_label,
@@ -624,11 +649,13 @@ def check_bounce(coin, allow_long, allow_short, bounce_mgr, strategy="BOUNCE"):
                     # Уровень + путь вотчера на момент сделки — в сам сигнал
                     # (см. _signal_level_snapshot / history.py::save_signal).
                     **_signal_level_snapshot(bounce_mgr._watchers.get(level_id_val)),
-                })
+                }
+                save_signal(_sig)
+                _send_to_trader(_sig)  # только живой скан; рескан (rescan_single_bounce_watcher) на биржу не ходит
 
                 reports.append(
                     f"{emoji} *{strategy} {tt}*{' 🪦' if d.get('reborn') else ''} _{coin}_\n\n"
-                    f"Entry: `{entry:.8f}`\nSL: `{sl:.8f}`\nTP: `{tp:.8f}`\nR/R: `{rr:.2f}`\n\n"
+                    f"Entry: `{entry:.8f}`\nSL: `{_fmt_sl(sl)}`\nTP: `{tp:.8f}`\nR/R: `{rr:.2f}`\n\n"
                     f"{d.get('reason', '')}\nLevel: `{d.get('level_id', 'unknown')}`"
                 )
 

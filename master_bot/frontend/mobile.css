@@ -1,0 +1,128 @@
+/* Мобильная раскладка (телефон). Подключается отдельным файлом; на широких экранах не действует.
+   Те же элементы, что на компьютере, но друг под другом: шапка -> график -> индикаторы -> полоса вкладок -> содержимое вкладки. */
+.m-tabbar { display: none; }
+
+@media (max-width: 1000px) {
+  body { height: auto; min-height: 100%; }
+
+  /* прокрутка вбок без видимой полосы */
+  .m-tabbar { scrollbar-width: none; }
+  .m-tabbar::-webkit-scrollbar { display: none; }
+
+  /* --- верхняя панель режимов: строка 1 — режимы, строка 2 — статус счёта и «Торговля» --- */
+  .topbar {
+    height: auto; min-height: 36px; padding: 5px 8px; gap: 6px; row-gap: 3px; font-size: 11px;
+    justify-content: flex-start; flex-wrap: wrap; white-space: nowrap;
+  }
+  .mode-switch { gap: 3px; }
+  .mode-btn { padding: 3px 7px; font-size: 11px; }
+  .topbar::after { content: ""; flex-basis: 100%; height: 0; order: 2; }
+  #trade-info, #trade-error { order: 3; min-width: 0; font-size: 10px; white-space: normal; }
+  #trade-info:empty, #trade-error:empty { display: none; }
+  #trade-settings-btn { order: 4; margin-left: auto; padding: 3px 7px; font-size: 11px; }
+
+  /* --- общая колонка: sidebar и content "растворяются", их блоки встают в одну колонку --- */
+  .layout, .layout.with-topbar { display: flex; flex-direction: column; height: auto; min-height: 0; }
+  .sidebar, .content { display: contents; }
+
+  /* порядок: график (1) -> вкладки (2) -> содержимое вкладки (3) */
+  .main { order: 1; flex: none; display: flex; flex-direction: column; min-height: 0; }
+  .m-tabbar { order: 2; }
+  .layout .sidebar .panel, .layout .signals-panel { order: 3; }
+
+  /* --- шапка графика: три строки
+         1) монета · Стратегии · Конфиг   2) Уровни · таймфреймы   3) Симуляция · Спорт · направление --- */
+  .chart-header { flex-wrap: wrap; padding: 6px 8px; gap: 6px; row-gap: 6px; font-size: 13px; }
+  .chart-header::before, .chart-header::after { content: ""; flex-basis: 100%; height: 0; }
+  .tf-switch { display: contents; }
+  #current-coin, #current-symbol, #strategies-toggle, #tpsl-btn { order: 1; }
+  #current-symbol { margin-left: 0; font-size: 11px; }
+  #strategies-toggle { margin-left: auto; }
+  #tpsl-btn { margin: 0 !important; }
+  .chart-header::before { order: 2; }
+  #toggle-levels-btn, .tf-switch .tf-btn:not(#strategies-toggle) { order: 3; }
+  #toggle-levels-btn { margin-left: 0 !important; }
+  .chart-header::after { order: 4; }
+  .chart-header > a.sim-btn, #direction-select { order: 5; }
+  #direction-select { margin-left: auto; font-size: 12px !important; padding: 3px 6px !important; }
+  .chart-header .tf-btn, .chart-header .sim-btn { padding: 4px 8px; }
+
+  /* --- график: тёмный (цвета самого графика задаёт mobile.js), фиксированная высота --- */
+  .chart-box { flex: none; height: 42vh; min-height: 260px; }
+  .chart-legend { color: #c4c8d0; }
+  .adx-panel { background: #0e0f13; border-top-color: #262832; }
+  .adx-panel-label { color: #9aa0ac; background: rgba(14,15,19,.8); }
+
+  /* --- индикаторы под графиком: три строки EMA / Индикаторы / Уровни --- */
+  .indicator-bar {
+    flex-wrap: wrap; gap: 3px; row-gap: 5px; padding: 6px;
+    background: #0e0f13; border-top: 1px solid #262832; border-bottom: 1px solid #262832;
+  }
+  .indicator-bar::before, .indicator-bar::after { content: ""; flex-basis: 100%; height: 0; }
+  .indicator-bar > span:nth-of-type(1), .indicator-bar .ind-btn[data-ema="1"] { order: 1; }
+  .indicator-bar::before { order: 2; }
+  .indicator-bar > span:nth-of-type(2), .indicator-bar .ind-btn[data-ema="0"] { order: 3; }
+  .indicator-bar::after { order: 4; }
+  .indicator-bar > span:nth-of-type(3), .indicator-bar .ind-btn[data-method], #lm-topn { order: 5; }
+  .indicator-bar-title { margin: 0 2px 0 0 !important; font-size: 10px; }
+  .ind-btn { gap: 3px; font-size: 10px; padding: 3px 5px; color: #9aa0ac; background: #1b1d24; border-color: #262832; }
+  .ind-btn:hover { background: #22252e; }
+  .ind-btn.active { color: #e6e6e6; background: #1b1d24; }
+  #lm-topn { font-size: 10px !important; padding: 2px 3px !important; }
+
+  /* --- полоса вкладок: все пять по ширине экрана --- */
+  .m-tabbar {
+    display: flex; overflow-x: auto; white-space: nowrap; background: #0e0f13;
+    border-bottom: 1px solid #262832;
+  }
+  .m-tab {
+    flex: 1 0 auto; background: none; border: none; border-bottom: 2px solid transparent;
+    color: #9aa0ac; font-size: 11px; padding: 10px 3px; text-transform: uppercase;
+    cursor: pointer;
+  }
+  .m-tab.active { color: #9fb4e8; border-bottom-color: #4c7dff; }
+  .m-tab .badge { margin-left: 2px; font-size: 10px; padding: 0 4px; }
+
+  /* --- содержимое вкладок: одинаковая высота у всех, внутри своя прокрутка --- */
+  .layout .sidebar .panel, .layout .signals-panel {
+    flex: none; height: 60vh; min-height: 320px; border-top: none; padding: 8px;
+  }
+  .layout[data-mtab="active"] .sidebar .panel:nth-child(n+2),
+  .layout[data-mtab="watch"] .sidebar .panel:nth-child(1),
+  .layout[data-mtab="watch"] .sidebar .panel:nth-child(3),
+  .layout[data-mtab="scan"] .sidebar .panel:nth-child(-n+2),
+  .layout[data-mtab="signals"] .sidebar .panel,
+  .layout[data-mtab="exchange"] .sidebar .panel { display: none; }
+  .layout[data-mtab="active"] .signals-panel,
+  .layout[data-mtab="watch"] .signals-panel,
+  .layout[data-mtab="scan"] .signals-panel { display: none; }
+
+  /* «В работе»: заголовок не дублируем (он во вкладке), кнопки ❌🧹📡 — в строке с поиском */
+  .layout[data-mtab="active"] .sidebar .panel:nth-child(1) {
+    display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto 1fr;
+    column-gap: 6px;
+  }
+  .sidebar .panel:nth-child(1) > h2 {
+    grid-column: 2; grid-row: 1; margin: 0; font-size: 0; gap: 4px;
+  }
+  .sidebar .panel:nth-child(1) > h2 #active-count { display: none; }
+  .sidebar .panel:nth-child(1) > h2 .sim-btn { float: none !important; margin: 0 !important; padding: 5px 9px; font-size: 13px !important; }
+  .sidebar .panel:nth-child(1) > input { grid-column: 1; grid-row: 1; }
+  .sidebar .panel:nth-child(1) > #active-strategy-tabs { grid-column: 1 / -1; grid-row: 2; }
+  .sidebar .panel:nth-child(1) > #active-list { grid-column: 1 / -1; grid-row: 3; min-height: 0; }
+
+  .panel h2 { font-size: 12px; margin-bottom: 6px; }
+  .panel input[type="text"] { height: 32px; font-size: 13px; margin-bottom: 0; }
+  .strategy-tabs { margin: 6px 0; }
+
+  /* компактные строки списков */
+  .list-item { padding: 3px 6px; font-size: 13px; }
+
+  /* сигналы / на бирже: вкладки внутри панели прячем (есть общая полоса), таблицы листаются вбок */
+  .layout .signals-panel { padding: 0; }
+  .signals-panel h2 { padding: 8px 10px 6px; font-size: 12px; }
+  .signals-panel h2 .sig-tab { display: none; }
+  .signals-table-wrapper { padding: 0 8px 8px; }
+  .exchange-summary { padding: 0 10px 8px; font-size: 12px; }
+  #signals-table, #exchange-table { min-width: 900px; font-size: 11px; }
+}

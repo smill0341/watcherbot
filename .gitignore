@@ -28,6 +28,10 @@ venv/
 env/
 ENV/
 
+# Базы макро-уровней по месяцам
+*levels_timeline*.json
+levels_timeline_*.json
+
 # Конфиденциальные данные (файлы, где лежат токены и ключи)
 .env
 config.json
@@ -44,3 +48,8 @@ healthyplayers.csv
 *.db-wal
 *.pid
 master_bot/imports.txt
+
+**/trade_keys.json
+
+setup.sh
+bot.tgz

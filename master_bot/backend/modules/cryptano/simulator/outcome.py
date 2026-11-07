@@ -16,15 +16,14 @@ BOUNCE и V-семьи в симуляторе почти наверняка р�
 import pandas as pd
 
 
-def compute_trade_outcome(entry_ts, entry_price, target_price, trade_type, df_full, max_hold_days):
+def compute_trade_outcome(entry_ts, entry_price, target_price, trade_type, df_full, max_hold_days, stop_price=None):
     """Честный проход ВПЕРЁД по свечам от входа — определяет исход сделки.
 
-    Закрывает сделку только TP либо дедлайн (max_hold_days) — тот же самый
-    принцип, что уже описан в BounceWatcher.CONFIG['SL_PCT']: "держим для
-    отображения/справки — НЕ закрывает сделку, на тестах реального
-    стоп-лосса не было". Это не отдельное решение для одной стратегии,
-    это единый способ, каким симулятор вообще считает исход — для BOUNCE
-    и для V_BOTTOM/V_GREEN_BOTTOM/V_RED_TOP одинаково.
+    Закрывает сделку TP, стопом (stop_price; None — стопа нет) либо дедлайном
+    (max_hold_days). Правила те же, что в боевом боте
+    (watcher_plan._resolve_historical_signal_status): проверка идёт со свечи
+    ПОСЛЕ входа; если одна свеча задела и TP, и стоп, берётся стоп (порядок
+    внутри свечи неизвестен — консервативный исход). Статус стопа — "❌".
 
     Заодно считает MAE (худшую просадку от входа до момента разрешения) —
     entry_ts должен быть tz-aware (тот же индекс, что у df_full)."""
@@ -39,6 +38,18 @@ def compute_trade_outcome(entry_ts, entry_price, target_price, trade_type, df_fu
             adverse_pct = (entry_price - float(row["high"])) / entry_price * 100.0
         if adverse_pct < worst_adverse_pct:
             worst_adverse_pct = adverse_pct
+
+        if stop_price is not None:
+            hit_sl = (float(row["low"]) <= stop_price) if trade_type == "LONG" else (float(row["high"]) >= stop_price)
+            if hit_sl:
+                result_pct = (stop_price - entry_price) / entry_price * 100.0 if trade_type == "LONG" \
+                    else (entry_price - stop_price) / entry_price * 100.0
+                return {
+                    "status": "❌",
+                    "result_percent": round(result_pct, 2),
+                    "closed_at": row.name.isoformat(),
+                    "mae_pct": round(worst_adverse_pct, 2),
+                }
 
         hit = (float(row["high"]) >= target_price) if trade_type == "LONG" else (float(row["low"]) <= target_price)
         if hit:

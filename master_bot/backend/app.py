@@ -53,9 +53,13 @@ from backend.modules.cryptano.levels.levels_history import get_levels_snapshot
 import backend.modules.cryptano.levels.candle_store as candle_store
 import backend.modules.cryptano.levels.candle_archive as candle_archive
 
-# Стратегии Watcher'а, которые можно вкл/выкл через дашборд — тот же
-# набор тегов, что "BC"/"VB"/"VGB"/"VRT" в background_tasks.py::_STRATEGY_BY_TAG.
-STRATEGY_TAGS = ("VB", "VGB", "VRT", "BOUNCE")
+def _strategy_tags():
+    """Стратегии, которые можно вкл/выкл через дашборд — ключи реестра STRATEGIES
+    в background_tasks.py (он же решает, что сканирует диспетчер), чтобы список
+    в панели не мог разойтись с реально работающими стратегиями.
+    Импорт внутри функции — как у остальных обращений app.py к background_tasks."""
+    from backend.background_tasks import STRATEGIES
+    return tuple(st.key for st in STRATEGIES)
 
 
 def _read_json(path: str, default: Any) -> Any:
@@ -817,7 +821,7 @@ def get_strategies():
     диспетчер никогда не расходились в интерпретации пустого конфига."""
     config = _read_json(CONFIG_FILE, default={})
     saved = config.get("crypto", {}).get("strategies", {})
-    return {tag: saved.get(tag, True) for tag in STRATEGY_TAGS}
+    return {tag: saved.get(tag, True) for tag in _strategy_tags()}
 
 
 @app.post("/api/strategies/{tag}/toggle")
@@ -826,7 +830,7 @@ def toggle_strategy(tag: str):
     config.json, что и основной процесс — диспетчер (background_tasks.py)
     перечитывает конфиг каждую секунду, поэтому применяется без рестарта."""
     tag = tag.upper().strip()
-    if tag not in STRATEGY_TAGS:
+    if tag not in _strategy_tags():
         raise HTTPException(status_code=400, detail=f"Неизвестная стратегия: {tag}")
     try:
         config = _read_json(CONFIG_FILE, default={})
@@ -880,7 +884,7 @@ def toggle_bounce_direction(direction: str):
         raise HTTPException(status_code=500, detail=str(e))
 class TpSlRequest(BaseModel):
     bounce_tp_pct: float
-    bounce_sl_pct: float
+    bounce_sl_pct: Optional[float] = None   # None = без стопа
 
 @app.get("/api/config/bounce_tpsl")
 def get_bounce_tpsl():
@@ -897,6 +901,8 @@ def set_bounce_tpsl(payload: TpSlRequest):
         config = _read_json(CONFIG_FILE, default={})
         if "crypto" not in config:
             config["crypto"] = {}
+        if payload.bounce_tp_pct <= 0 or (payload.bounce_sl_pct is not None and payload.bounce_sl_pct <= 0):
+            raise HTTPException(status_code=400, detail="TP и SL: числа больше 0 (SL можно оставить пустым — без стопа)")
         config["crypto"]["bounce_tp_pct"] = payload.bounce_tp_pct
         config["crypto"]["bounce_sl_pct"] = payload.bounce_sl_pct
         _write_json_atomic(CONFIG_FILE, config)
@@ -1104,8 +1110,10 @@ def set_sim_config(payload: dict = Body(...)):
     for k in _SIM_NUM_KEYS:
         if k in payload:
             v = _sim_num(payload[k])
-            if k in ("tp", "sl", "max_hold_days") and (v is None or v <= 0):
+            if k in ("tp", "max_hold_days") and (v is None or v <= 0):
                 raise HTTPException(status_code=400, detail=f"{k}: нужно число больше 0")
+            if k == "sl" and v is not None and v <= 0:
+                raise HTTPException(status_code=400, detail="sl: число больше 0 или пусто (без стопа)")
             cfg[k] = v
     if "entry_mode" in payload:
         if str(payload["entry_mode"]).strip().lower() not in _ENTRY_MODES:
@@ -2385,6 +2393,162 @@ def get_signals(limit: int = Query(default=50, ge=1, le=500), offset: int = Quer
     # date хранится как "YYYY-MM-DD HH:MM" — сортируется лексикографически верно
     signals_sorted = sorted(signals, key=lambda s: s.get("date") or "", reverse=True)
     return {"items": signals_sorted[offset:offset + limit], "total": len(signals_sorted)}
+
+
+# ---------------------------------------------------------------------------
+# Торговля: режим бота (панель сверху), настройки, позиции и журнал с биржи
+# ---------------------------------------------------------------------------
+LIVE_TRADING_ALLOWED = False   # реальный счёт заблокирован, пока не решено иначе
+_TRADE_KEYS_PATH = os.path.join(JSONBANK_DIR, "trade_keys.json")
+_PANEL_MODES = ("off", "signals", "demo", "live")
+_TRADE_STRATEGIES = ("BOUNCE", "BUYBACK")
+
+
+def _trader():
+    try:
+        from backend.modules.cryptano.utils import trader
+        return trader
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"trader.py не загрузился: {e}")
+
+
+def _panel_mode(crypto: dict) -> str:
+    """off — бот остановлен; signals — сигналы на сайт, без ордеров; demo/live — ордера на биржу."""
+    if crypto.get("status", "STOPPED") != "RUNNING":
+        return "off"
+    t = crypto.get("trade") or {}
+    if not t.get("enabled", False):
+        return "signals"
+    m = str(t.get("mode", "dry")).lower()
+    return m if m in ("demo", "live", "testnet", "dry") else "dry"
+
+
+@app.get("/api/trading")
+def get_trading():
+    crypto = _read_json(CONFIG_FILE, default={}).get("crypto", {}) or {}
+    return {
+        "mode": _panel_mode(crypto),
+        "live_allowed": LIVE_TRADING_ALLOWED,
+        "keys": {m: bool((_read_json(_TRADE_KEYS_PATH, default={}).get(m) or {}).get("key")) for m in ("demo", "live")},
+        "sl_pct": crypto.get("bounce_sl_pct"),
+    }
+
+
+@app.post("/api/trading/mode")
+def set_trading_mode(payload: dict = Body(...)):
+    """{"mode": "off" | "signals" | "demo" | "live"} — переключатель сверху страницы."""
+    mode = str(payload.get("mode", "")).lower()
+    if mode not in _PANEL_MODES:
+        raise HTTPException(status_code=400, detail="mode: off | signals | demo | live")
+    if mode == "live" and not LIVE_TRADING_ALLOWED:
+        raise HTTPException(status_code=400, detail="Реальная торговля пока заблокирована")
+    config = _read_json(CONFIG_FILE, default={})
+    crypto = config.setdefault("crypto", {})
+    trade = crypto.setdefault("trade", {})
+    if mode in ("demo", "live"):
+        keys = (_read_json(_TRADE_KEYS_PATH, default={}).get(mode) or {})
+        if not keys.get("key") or not keys.get("secret"):
+            raise HTTPException(status_code=400, detail=f"Нет ключей '{mode}' в jsonbank/trade_keys.json")
+        if int(trade.get("leverage", 1)) > 1 and crypto.get("bounce_sl_pct") is None:
+            raise HTTPException(status_code=400, detail="Плечо больше 1 без SL не разрешено: задай SL в «⚙️ Конфиг»")
+    if mode == "off":
+        crypto["status"] = "STOPPED"
+    else:
+        crypto["status"] = "RUNNING"
+        trade["enabled"] = mode in ("demo", "live")
+        if trade["enabled"]:
+            trade["mode"] = mode
+    try:
+        _write_json_atomic(CONFIG_FILE, config)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Не удалось сохранить config.json: {e}")
+    return {"status": "ok", "mode": mode}
+
+
+@app.get("/api/trading/settings")
+def get_trading_settings():
+    return _trader().settings()
+
+
+@app.post("/api/trading/settings")
+def set_trading_settings(payload: dict = Body(...)):
+    """Частичное обновление crypto.trade: размер сделки, плечо, лимит открытых и т.д."""
+    def num(key, lo=None, allow_none=False) -> Optional[float]:
+        v = payload.get(key)
+        if v in (None, ""):
+            if allow_none:
+                return None
+            raise HTTPException(status_code=400, detail=f"{key}: нужно число")
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail=f"{key}: нужно число")
+        if lo is not None and v <= lo:
+            raise HTTPException(status_code=400, detail=f"{key}: должно быть больше {lo:g}")
+        return v
+
+    def req(key, lo=None) -> float:
+        v = num(key, lo)
+        assert v is not None
+        return v
+
+    upd = {}
+    if "amount_usd" in payload:
+        upd["amount_usd"] = req("amount_usd", 0)
+    if "amount_pct" in payload:
+        v = num("amount_pct", 0, allow_none=True)
+        if v is not None and v > 100:
+            raise HTTPException(status_code=400, detail="amount_pct: не больше 100")
+        upd["amount_pct"] = v
+    if "leverage" in payload:
+        v = int(req("leverage", 0))
+        if v > 20:
+            raise HTTPException(status_code=400, detail="leverage: не больше 20")
+        upd["leverage"] = v
+    if "max_open" in payload:
+        upd["max_open"] = int(req("max_open", 0))
+    if "max_signal_age_min" in payload:
+        upd["max_signal_age_min"] = req("max_signal_age_min", 0)
+    if "max_hold_days" in payload:
+        upd["max_hold_days"] = req("max_hold_days", 0)
+    if "strategies" in payload:
+        st = [str(s).upper() for s in (payload.get("strategies") or [])]
+        if not st or any(s not in _TRADE_STRATEGIES for s in st):
+            raise HTTPException(status_code=400, detail=f"strategies: из {', '.join(_TRADE_STRATEGIES)}, минимум одна")
+        upd["strategies"] = st
+    config = _read_json(CONFIG_FILE, default={})
+    crypto = config.setdefault("crypto", {})
+    trade = crypto.setdefault("trade", {})
+    trade.update(upd)
+    if int(trade.get("leverage", 1)) > 1 and crypto.get("bounce_sl_pct") is None:
+        raise HTTPException(status_code=400, detail="Плечо больше 1 без SL не разрешено: сначала задай SL в «⚙️ Конфиг»")
+    try:
+        _write_json_atomic(CONFIG_FILE, config)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Не удалось сохранить config.json: {e}")
+    return {"status": "ok"}
+
+
+@app.get("/api/exchange/status")
+def get_exchange_status():
+    """Баланс и живые позиции на бирже (то, что видит биржа сейчас) для вкладки «На бирже»."""
+    trader = _trader()
+    st = trader.settings()
+    out = {"mode": st["mode"], "enabled": st["enabled"], "max_open": st["max_open"], "balance": None, "positions": []}
+    if st["mode"] == "dry":
+        return out
+    try:
+        out["balance"] = trader.fetch_balance(st["mode"])
+        out["positions"] = trader.fetch_positions(st["mode"])
+    except Exception as e:
+        out["error"] = str(e)
+    return out
+
+
+@app.get("/api/exchange/trades")
+def get_exchange_trades(limit: int = Query(default=100, ge=1, le=500), offset: int = Query(default=0, ge=0)):
+    """Журнал сделок бота на бирже (jsonbank/exchange_trades.json), свежие сверху."""
+    return _trader().list_trades(limit, offset)
 
 
 @app.get("/api/sports/football")

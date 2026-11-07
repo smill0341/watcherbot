@@ -56,8 +56,8 @@ class BounceWatcher:
         'MIN_BODY_PCT': 20.0,         # Плотность свечи: тело должно занимать минимум 40% от всего размаха
         'MAX_WICKS_PCT': 60.0,        # Защита от отвержения: верхняя тень (для лонга) не больше 30%
         'FIXED_TP_PCT': 7.0,
-        'SL_PCT': 50.0,  # держим для отображения/справки — НЕ закрывает сделку (см. history.py::update_open_signals,
-                          # на тестах реального стоп-лосса не было, закрытие только по TP или по MAX_HOLD_DAYS).
+        'SL_PCT': 50.0,  # стоп от цены входа, %. None — без стопа (config.json: crypto.bounce_sl_pct = null).
+                          # Закрывает сделку одинаково в боевом боте (history.py) и в симуляторе (outcome.py).
         'MAX_HOLD_DAYS': 14,  # закрыть по текущей цене, если TP так и не дошёл за это время (см. history.py::update_open_signals)
         'MAX_TRADES_PER_PIERCE': 1,   # сколько сделок разрешено на ОДИН пробой, пока не случится новый
         'MAX_TRADES_PER_LEVEL': 1,    # сколько сделок разрешено за всю жизнь уровня (0 = без лимита). Пробоев может
@@ -115,7 +115,8 @@ class BounceWatcher:
             if "bounce_tp_pct" in live_cfg:
                 self.CONFIG['FIXED_TP_PCT'] = float(live_cfg["bounce_tp_pct"])
             if "bounce_sl_pct" in live_cfg:
-                self.CONFIG['SL_PCT'] = float(live_cfg["bounce_sl_pct"])
+                _sl_cfg = live_cfg["bounce_sl_pct"]
+                self.CONFIG['SL_PCT'] = None if _sl_cfg in (None, "") else float(_sl_cfg)
             if "bounce_entry_mode" in live_cfg:
                 _em = str(live_cfg["bounce_entry_mode"]).strip().lower()
                 if _em in ('volume', 'patterns', 'buyback'):
@@ -1011,14 +1012,15 @@ class BounceWatcher:
             return None
     def _enter(self, actual_entry, vol_mult, c_vol, logic_vol, baseline_vol, pattern_route=None, method=None, buyback_info=None):
         tp_pct = self.CONFIG['FIXED_TP_PCT'] / 100.0
-        sl_pct = self.CONFIG['SL_PCT'] / 100.0
+        _sl_cfg = self.CONFIG.get('SL_PCT')
+        sl_pct = None if _sl_cfg is None else _sl_cfg / 100.0
 
         if self.trade_type == 'LONG':
             tp = actual_entry * (1 + tp_pct)
-            sl = actual_entry * (1 - sl_pct)
+            sl = None if sl_pct is None else actual_entry * (1 - sl_pct)
         else:
             tp = actual_entry * (1 - tp_pct)
-            sl = actual_entry * (1 + sl_pct)
+            sl = None if sl_pct is None else actual_entry * (1 + sl_pct)
 
         self.trades_count += 1
         self.trades_since_pierce += 1

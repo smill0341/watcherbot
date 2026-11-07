@@ -579,6 +579,14 @@ def crypto_orchestrator():
                 except Exception as e:
                     print(f"[DISPATCHER ERROR] Не удалось обновить открытые сигналы: {e}")
 
+                # Позиции на бирже: закрылись ли, не пора ли закрыть по сроку (до скана,
+                # чтобы лимит открытых был актуален). Выключенная торговля — ничего не делает.
+                try:
+                    from backend.modules.cryptano.utils import trader
+                    trader.sync_results()
+                except Exception as e:
+                    print(f"[DISPATCHER ERROR] Не удалось обновить позиции на бирже: {e}")
+
                 try:
                     _scan_pass(strategies_cfg, allow_long, allow_short)
                 except Exception as e:

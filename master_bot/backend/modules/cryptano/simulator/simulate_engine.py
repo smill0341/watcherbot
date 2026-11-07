@@ -51,7 +51,7 @@ from backend.modules.cryptano.strategy.bounce_watcher import BounceWatcher
 from backend.modules.cryptano.strategy.bounce_manager_buyback import BounceManager as BuybackManager
 from backend.modules.cryptano.strategy.bounce_watcher_buyback import BounceWatcher as BuybackWatcher, BUYBACK
 from backend.modules.cryptano.strategy.v_manager import VManager
-from backend.modules.cryptano.backstage.watcher_plan import MIN_LEVEL_SCORE
+from backend.modules.cryptano.backstage.watcher_plan import MIN_LEVEL_SCORE, _calc_rr, _fmt_sl
 from backend.modules.cryptano.simulator.outcome import compute_trade_outcome, make_ema_dist_fn
 
 
@@ -249,13 +249,13 @@ def list_coins_with_levels(start_time_str, end_time_str=None):
 def _aggregate_trades(trades):
     """Схлопывает список сделок ОДНОЙ монеты (тот же формат, что уже строит
     _run_bounce в поле 'trades') в короткую сводку для строки
-    bulk-отчёта — та же честная разбивка по статусу (✅/🕐/⏳), что уже
+    bulk-отчёта — та же честная разбивка по статусу (✅/❌/🕐/⏳), что уже
     видна в таблице одиночного симулятора, просто посчитана числом."""
     long_trades = [t for t in trades if t["type"] == "LONG"]
     short_trades = [t for t in trades if t["type"] == "SHORT"]
 
     def _side_stats(side_trades):
-        closed = [t for t in side_trades if t["status"] in ("✅", "🕐")]
+        closed = [t for t in side_trades if t["status"] in ("✅", "🕐", "❌")]
         wins = [t for t in closed if (t.get("result_percent") or 0) > 0]
         avg_result = (sum(t["result_percent"] for t in closed) / len(closed)) if closed else None
         avg_mae = (sum(t["mae_pct"] for t in side_trades if t.get("mae_pct") is not None)
@@ -538,15 +538,16 @@ def _run_bounce(coin, start_time_str, end_time_str=None, top_up=True,
                     tp = entry * (1 + _tp / 100.0) if tt == "LONG" else entry * (1 - _tp / 100.0)
                 if _sl is not None:
                     sl = entry * (1 - _sl / 100.0) if tt == "LONG" else entry * (1 + _sl / 100.0)
-            rr = ((tp - entry) / (entry - sl)) if tt == "LONG" and entry > sl else \
-                 ((entry - tp) / (sl - entry)) if tt == "SHORT" and sl > entry else 0
+                else:
+                    sl = None  # в настройках симулятора SL пустой — без стопа
+            rr = _calc_rr(tt, entry, tp, sl)
 
             level_id_val = d.get("level_id", "") or ""
             mode = level_id_val.split("__")[-1] if "__" in level_id_val else None
             source_label = f"{strategy}_{tt}" + (f"_{mode}" if tt == "SHORT" and mode else "")
 
             outcome = compute_trade_outcome(
-                ts, entry, tp, tt, df_full, hold_days,
+                ts, entry, tp, tt, df_full, hold_days, stop_price=sl,
             )
 
             trades.append({
@@ -589,7 +590,7 @@ def _run_bounce(coin, start_time_str, end_time_str=None, top_up=True,
             emoji = "🟢" if tt == "LONG" else "🔴"
             messages.append(
                 f"{emoji} *{strategy} {tt}* _{coin}_ — {ts_naive.strftime('%Y-%m-%d %H:%M')}\n"
-                f"Entry: `{entry:.8f}`  SL: `{sl:.8f}`  TP: `{tp:.8f}`  R/R: `{rr:.2f}`\n"
+                f"Entry: `{entry:.8f}`  SL: `{_fmt_sl(sl)}`  TP: `{tp:.8f}`  R/R: `{rr:.2f}`\n"
                 f"{d.get('reason', '')}  Level: `{d.get('level_id', 'unknown')}`"
             )
 

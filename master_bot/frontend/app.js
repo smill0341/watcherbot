@@ -96,7 +96,12 @@ const STRATEGY_TAB_DEFS = [
 // null = ни одна закладка не выбрана -> показываем все стратегии разом
 // (по решению Jack закладки "Все" нет — повторный клик по активной снимает
 // фильтр сам). Хранит tag закладки.
+// Выбор запоминается в localStorage браузера (как chart_indicators) — переживает обновление страницы.
 let activeStrategyTab = null;
+try {
+  const _savedTab = localStorage.getItem("active_strategy_tab");
+  if (_savedTab && STRATEGY_TAB_DEFS.some((t) => t.tag === _savedTab)) activeStrategyTab = _savedTab;
+} catch (e) {}
 
 function filterActiveWatchers(query) {
   if (!activeListEl) return;
@@ -136,6 +141,7 @@ function renderActiveStrategyTabs() {
     chip.onclick = () => {
       const tag = chip.dataset.tag;
       activeStrategyTab = activeStrategyTab === tag ? null : tag;
+      try { localStorage.setItem("active_strategy_tab", activeStrategyTab || ""); } catch (e) {}
       renderActiveStrategyTabs();
       filterActiveWatchers(activeSearchEl ? activeSearchEl.value : "");
     };
@@ -1415,8 +1421,8 @@ async function loadEvents(coin, token = chartLoadToken) {
     // time/type, которые есть и в старых записях, ничего нового в
     // signals.json подкладывать не надо.
     if (isSignalView && currentSignal && currentSignal.time != null && globalCandles.length) {
-      const target = Number(currentSignal.target);
-      const stop = Number(currentSignal.stop);
+      const target = currentSignal.target == null ? NaN : Number(currentSignal.target);
+      const stop = currentSignal.stop == null ? NaN : Number(currentSignal.stop);
       const hasTarget = Number.isFinite(target);
       const hasStop = Number.isFinite(stop);
       const isShortSignal = currentSignal.type === "SHORT" || (focusedLevel && focusedLevel.direction === "SHORT");
@@ -3160,7 +3166,7 @@ function openTpSlModal() {
   ])
     .then(([data, lf, em]) => {
       document.getElementById("tpsl-tp").value = data.bounce_tp_pct;
-      document.getElementById("tpsl-sl").value = data.bounce_sl_pct;
+      document.getElementById("tpsl-sl").value = data.bounce_sl_pct != null ? data.bounce_sl_pct : "";
       const emSel = document.getElementById("tpsl-entry-mode");
       if (emSel) emSel.value = (em && em.bounce_entry_mode) || "volume";
       document.getElementById("lf-short").value = lf.short_min != null ? lf.short_min : "";
@@ -3259,9 +3265,9 @@ async function submitTpSl() {
   }
 
   const tpVal = parseFloat(tpRaw);
-  const slVal = parseFloat(slRaw);
-  if (!Number.isFinite(tpVal) || !Number.isFinite(slVal)) return showError("Значения должны быть числами");
-  if (tpVal <= 0 || slVal <= 0) return showError("Значения должны быть больше 0");
+  const slVal = slRaw === "" ? null : parseFloat(slRaw);  // пусто = без SL
+  if (!Number.isFinite(tpVal) || (slVal !== null && !Number.isFinite(slVal))) return showError("Значения должны быть числами");
+  if (tpVal <= 0 || (slVal !== null && slVal <= 0)) return showError("Значения должны быть больше 0");
 
   submitBtn.disabled = true;
   try {
@@ -3564,3 +3570,206 @@ if (toggleLevelsBtn) {
     toggleLevelsBtn.disabled = false;
   };
 }
+
+// === Режим бота (панель сверху) и вкладка «На бирже» (#trade-topbar, #exchange-wrapper) ===
+// Режимы: off — бот остановлен; signals — сигналы на сайт без ордеров; demo — ордера на Bybit Demo;
+// live — реальный счёт (пока заблокирован на сервере). Состояние хранится в config.json
+// (crypto.status / crypto.trade), страница только показывает и переключает его.
+(function () {
+  const bar = document.getElementById("trade-topbar");
+  if (!bar) return; // simulator.html и другие страницы — без панели
+
+  const modeBtns = Array.from(bar.querySelectorAll(".mode-btn"));
+  const infoEl = document.getElementById("trade-info");
+  const errEl = document.getElementById("trade-error");
+  const tabEls = Array.from(document.querySelectorAll(".sig-tab"));
+  const signalsWrapper = document.getElementById("signals-wrapper");
+  const exchangeWrapper = document.getElementById("exchange-wrapper");
+  const exchangeBody = document.getElementById("exchange-body");
+  const exchangeSummary = document.getElementById("exchange-summary");
+  const signalsOnlyIds = ["signals-page-label", "signals-prev-btn", "signals-next-btn", "delete-selected-signals-btn", "clear-signals-btn"];
+  let currentMode = null;
+  let activeTab = "signals";
+  let exchangeStatus = null;
+
+  const num = (v, d = 2) => (v === null || v === undefined || v === "" || Number.isNaN(Number(v))) ? "—" : Number(v).toFixed(d);
+  const showError = (t) => { if (errEl) errEl.textContent = t || ""; };
+
+  async function loadTradingState() {
+    try {
+      const res = await fetch("/api/trading");
+      const d = await res.json();
+      currentMode = d.mode;
+      modeBtns.forEach((b) => {
+        b.classList.toggle("active", b.dataset.mode === d.mode || (d.mode === "dry" && b.dataset.mode === "signals"));
+        if (b.dataset.mode === "live") { b.disabled = !d.live_allowed; b.title = d.live_allowed ? "Реальный счёт" : "Реальная торговля пока заблокирована"; }
+      });
+      if (!infoEl.dataset.keep) refreshInfo();
+    } catch (e) {
+      showError("нет связи с сервером");
+    }
+  }
+
+  async function setMode(mode) {
+    showError("");
+    try {
+      const res = await fetch("/api/trading/mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { showError(d.detail || "не удалось переключить"); return; }
+    } catch (e) {
+      showError("ошибка запроса"); return;
+    }
+    await loadTradingState();
+    loadExchange();
+  }
+
+  modeBtns.forEach((b) => { b.onclick = () => { if (!b.disabled && b.dataset.mode !== currentMode) setMode(b.dataset.mode); }; });
+
+  function refreshInfo() {
+    if (!infoEl) return;
+    const modeName = { off: "бот остановлен", signals: "только сигналы", demo: "Demo", live: "Real", dry: "dry" }[currentMode] || "";
+    let txt = modeName;
+    if (exchangeStatus && (currentMode === "demo" || currentMode === "live")) {
+      const bal = exchangeStatus.balance;
+      txt += bal ? ` · ${num(bal.total)} USDT` : "";
+      txt += ` · открыто ${(exchangeStatus.positions || []).length}/${exchangeStatus.max_open}`;
+    }
+    infoEl.textContent = txt;
+  }
+
+  function statusLabel(r) {
+    return { OPEN: "🟢 открыта", CLOSED: "закрыта", SKIP: "пропуск", ERROR: "❌ ошибка", DRY: "dry", SENDING: "отправка…" }[r.status] || r.status;
+  }
+
+  async function loadExchange() {
+    if (activeTab !== "exchange" && currentMode !== "demo" && currentMode !== "live") { exchangeStatus = null; refreshInfo(); return; }
+    let status = null, trades = null;
+    try {
+      [status, trades] = await Promise.all([
+        fetch("/api/exchange/status").then((r) => r.json()),
+        fetch("/api/exchange/trades?limit=200").then((r) => r.json()),
+      ]);
+    } catch (e) {
+      if (exchangeSummary) exchangeSummary.textContent = "нет связи с сервером";
+      return;
+    }
+    exchangeStatus = status;
+    refreshInfo();
+    if (activeTab !== "exchange") return;
+
+    const bal = status.balance;
+    exchangeSummary.innerHTML =
+      `Счёт: <b>${status.mode}</b> · баланс <b>${bal ? num(bal.total) : "—"}</b> USDT (свободно ${bal ? num(bal.free) : "—"}) · ` +
+      `открыто <b>${(status.positions || []).length}/${status.max_open}</b>` +
+      (status.error ? ` · <span style="color:#e5654f">биржа: ${String(status.error).replace(/</g, "&lt;")}</span>` : "");
+
+    const bySymbol = {};
+    (status.positions || []).forEach((p) => { bySymbol[p.symbol] = p; });
+    const items = (trades && trades.items) || [];
+    if (!items.length) { exchangeBody.innerHTML = "<tr><td colspan='11'>сделок на бирже пока нет</td></tr>"; return; }
+    exchangeBody.innerHTML = "";
+    items.forEach((r) => {
+      const tr = document.createElement("tr");
+      const live = r.status === "OPEN" ? bySymbol[r.symbol] : null;
+      let resText = "";
+      if (r.status === "CLOSED") {
+        const c = r.pnl_usd > 0 ? "#4caf7d" : r.pnl_usd < 0 ? "#e5654f" : "inherit";
+        resText = `<span style="color:${c}">${r.result_percent > 0 ? "+" : ""}${num(r.result_percent)}% · ${num(r.pnl_usd)}$</span>`;
+      } else if (live) {
+        const c = live.pnl_usd > 0 ? "#4caf7d" : live.pnl_usd < 0 ? "#e5654f" : "inherit";
+        resText = `<span style="color:${c}">≈ ${num(live.pnl_usd)}$ · цена ${formatPrice(live.mark)}</span>`;
+      }
+      const size = r.qty ? `${r.qty}${r.margin_usd ? ` · ${r.margin_usd}$ x${r.leverage}` : ""}` : "";
+      const dateStr = r.created_at ? new Date(r.created_at).toLocaleString("ru-RU", { hour12: false }) : "";
+      const closedStr = r.closed_at ? new Date(r.closed_at).toLocaleString("ru-RU", { hour12: false }) + (r.closed_by === "MAX_HOLD" ? " (срок)" : "") : "";
+      tr.innerHTML = `
+        <td>${dateStr}</td>
+        <td>${r.coin ?? ""}</td>
+        <td class="dir-${r.direction}">${r.direction ?? ""}</td>
+        <td>${r.source ?? ""}</td>
+        <td>${formatPrice(r.entry)}</td>
+        <td>${formatPrice(r.tp)}</td>
+        <td>${r.sl === null || r.sl === undefined ? "нет" : formatPrice(r.sl)}</td>
+        <td>${size}</td>
+        <td></td>
+        <td>${resText}</td>
+        <td>${closedStr}</td>`;
+      const st = tr.children[8];
+      st.textContent = statusLabel(r);
+      if (r.error) st.title = r.error;
+      if (r.status === "SKIP" || r.status === "ERROR") {
+        const reason = document.createElement("div");
+        reason.style.cssText = "font-size:11px;color:#6c7280;max-width:340px;white-space:normal;";
+        reason.textContent = r.error || "";
+        st.appendChild(reason);
+      }
+      if (r.coin && r.signal_time) {
+        tr.style.cursor = "pointer";
+        tr.title = "Открыть график в момент сигнала";
+        tr.onclick = () => {
+          try { loadChart(r.coin, null, { time: r.signal_time, entry: r.entry, target: r.tp, stop: r.sl, type: r.direction }); } catch (e) { console.error(e); }
+        };
+      }
+      exchangeBody.appendChild(tr);
+    });
+  }
+
+  function setTab(tab) {
+    activeTab = tab;
+    tabEls.forEach((t) => t.classList.toggle("active", t.dataset.stab === tab));
+    if (signalsWrapper) signalsWrapper.style.display = tab === "signals" ? "" : "none";
+    if (exchangeWrapper) exchangeWrapper.style.display = tab === "exchange" ? "" : "none";
+    if (exchangeSummary) exchangeSummary.style.display = tab === "exchange" ? "" : "none";
+    signalsOnlyIds.forEach((id) => { const el = document.getElementById(id); if (el) el.style.visibility = tab === "signals" ? "" : "hidden"; });
+    if (tab === "exchange") loadExchange();
+  }
+  tabEls.forEach((t) => { t.onclick = () => setTab(t.dataset.stab); });
+
+  // --- Настройки торговли ---
+  const overlay = document.getElementById("trade-settings-overlay");
+  const tsErr = document.getElementById("ts-error");
+  const tsVal = (id) => document.getElementById(id).value.trim();
+  const tsShowErr = (t) => { tsErr.textContent = t; tsErr.style.display = t ? "block" : "none"; };
+
+  document.getElementById("trade-settings-btn").onclick = async () => {
+    tsShowErr("");
+    try {
+      const s = await fetch("/api/trading/settings").then((r) => r.json());
+      document.getElementById("ts-amount-usd").value = s.amount_usd ?? "";
+      document.getElementById("ts-amount-pct").value = s.amount_pct ?? "";
+      document.getElementById("ts-leverage").value = s.leverage ?? 1;
+      document.getElementById("ts-max-open").value = s.max_open ?? 2;
+      document.getElementById("ts-max-age").value = s.max_signal_age_min ?? 30;
+      document.getElementById("ts-max-hold").value = s.max_hold_days ?? 14;
+      document.getElementById("ts-st-bounce").checked = (s.strategies || []).includes("BOUNCE");
+      document.getElementById("ts-st-buyback").checked = (s.strategies || []).includes("BUYBACK");
+      overlay.style.display = "flex";
+    } catch (e) {
+      showError("не удалось загрузить настройки");
+    }
+  };
+  document.getElementById("ts-cancel-btn").onclick = () => { overlay.style.display = "none"; };
+  document.getElementById("ts-save-btn").onclick = async () => {
+    const strategies = [];
+    if (document.getElementById("ts-st-bounce").checked) strategies.push("BOUNCE");
+    if (document.getElementById("ts-st-buyback").checked) strategies.push("BUYBACK");
+    const body = {
+      amount_usd: tsVal("ts-amount-usd"), amount_pct: tsVal("ts-amount-pct") === "" ? null : tsVal("ts-amount-pct"),
+      leverage: tsVal("ts-leverage"), max_open: tsVal("ts-max-open"),
+      max_signal_age_min: tsVal("ts-max-age"), max_hold_days: tsVal("ts-max-hold"), strategies,
+    };
+    try {
+      const res = await fetch("/api/trading/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { tsShowErr(d.detail || "ошибка сохранения"); return; }
+      overlay.style.display = "none";
+      loadExchange();
+    } catch (e) {
+      tsShowErr("ошибка запроса");
+    }
+  };
+
+  loadTradingState().then(() => loadExchange());
+  setInterval(loadTradingState, 15000);
+  setInterval(loadExchange, 30000);
+})();

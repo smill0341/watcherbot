@@ -1,4 +1,4 @@
-# Кэш Python (тот самый мусор)
+# Кэш Python 
 __pycache__/
 *.pyc
 *.pyo
@@ -26,3 +26,8 @@ healthyplayers.csv
 levels_timeline_*.json
 
 *.db
+
+**/trade_keys.json
+
+setup.sh
+bot.tgz

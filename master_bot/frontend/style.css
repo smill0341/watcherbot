@@ -273,7 +273,7 @@ body {
   padding: 0;
   border-top: 1px solid #262832;
   flex-shrink: 0;
-  max-height: 260px;
+  height: 260px;
   display: flex;
   flex-direction: column;
 }
@@ -637,3 +637,30 @@ th {
 .lm-row i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .lm-top { margin-top: 4px; padding-top: 6px; border-top: 1px solid #eceef1; cursor: default; color: #555b66; }
 .lm-top select { font-size: 12px; margin-left: 4px; }
+/* === Панель режима бота сверху (index.html, #trade-topbar) === */
+.layout.with-topbar { height: calc(100vh - 36px); }
+.topbar {
+  height: 36px; display: flex; align-items: center; justify-content: center; gap: 12px;
+  border-bottom: 1px solid #262832; background: #0e0f13; font-size: 12px; color: #9aa0ac;
+}
+.mode-switch { display: flex; gap: 4px; }
+.mode-btn {
+  background: #1b1d24; border: 1px solid #262832; color: #9aa0ac; font-size: 12px;
+  padding: 3px 12px; border-radius: 5px; cursor: pointer; white-space: nowrap;
+}
+.mode-btn:hover { color: #e6e6e6; }
+.mode-btn:disabled { opacity: 0.45; cursor: default; }
+.mode-btn.active { color: #e6e6e6; }
+.mode-btn[data-mode="off"].active { background: #3a2020; border-color: #6e2f2f; color: #e5928a; }
+.mode-btn[data-mode="signals"].active { background: #2a3550; border-color: #3a4a70; color: #9fb4e8; }
+.mode-btn[data-mode="demo"].active { background: #3a2f1f; border-color: #6e4f28; color: #e8b978; }
+.mode-btn[data-mode="live"].active { background: #1f3a26; border-color: #2f5c3a; color: #6fd699; }
+#trade-info { min-width: 170px; }
+#trade-error { color: #e5654f; }
+
+/* === Вкладки «Сигналы бота» / «На бирже» в нижней панели === */
+.sig-tab { cursor: pointer; padding: 0 2px 4px; margin-right: 14px; border-bottom: 2px solid transparent; }
+.sig-tab:hover { color: #e6e6e6; }
+.sig-tab.active { color: #e6e6e6; border-bottom-color: #3a4a70; }
+.exchange-summary { color: #9aa0ac; font-size: 12px; padding: 0 16px 8px; flex-shrink: 0; }
+.exchange-summary b { color: #e6e6e6; font-weight: 500; }

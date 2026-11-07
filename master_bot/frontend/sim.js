@@ -1033,8 +1033,9 @@ async function saveSimCfg() {
   const val = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ""; };
   const body = { mode: _simcfgMode };
   if (_simcfgMode === "sim") {
-    const tp = parseFloat(val("simcfg-tp")), sl = parseFloat(val("simcfg-sl")), hold = parseFloat(val("simcfg-hold"));
-    if (!(tp > 0) || !(sl > 0) || !(hold > 0)) { showErr("TP, SL и MAX_HOLD — числа больше 0"); return; }
+    const slRaw = val("simcfg-sl");
+    const tp = parseFloat(val("simcfg-tp")), sl = slRaw === "" ? null : parseFloat(slRaw), hold = parseFloat(val("simcfg-hold"));
+    if (!(tp > 0) || (sl !== null && !(sl > 0)) || !(hold > 0)) { showErr("TP и MAX_HOLD — числа больше 0; SL — число больше 0 или пусто (без SL)"); return; }
     body.tp = tp; body.sl = sl; body.max_hold_days = hold;
     body.entry_mode = val("simcfg-entry") || "volume";
     body.short_min = val("simcfg-short") === "" ? null : parseFloat(val("simcfg-short"));
@@ -1088,7 +1089,7 @@ function showSimSettingsNote(st) {
   if (!st || !st.mode) { el.textContent = ""; return; }
   if (st.mode === "watcher") { el.textContent = "Настройки: Watcher (как в бою)"; return; }
   const f = (v) => (v === null || v === undefined ? "—" : v);
-  el.textContent = `Настройки: Sim · TP ${f(st.tp)}% · SL ${f(st.sl)}% · SHORT ≥ ${f(st.short_min)}% · LONG ≤ ${f(st.long_max)}% · hold ${f(st.max_hold_days)}д · вход ${_simcfgEntryLabel(st.entry_mode)}`;
+  el.textContent = `Настройки: Sim · TP ${f(st.tp)}% · SL ${st.sl === null || st.sl === undefined ? "нет" : st.sl + "%"} · SHORT ≥ ${f(st.short_min)}% · LONG ≤ ${f(st.long_max)}% · hold ${f(st.max_hold_days)}д · вход ${_simcfgEntryLabel(st.entry_mode)}`;
 }
 
 // === Загрузка графика монеты — НИКОГДА не тянет боевые уровни/события/
@@ -1497,7 +1498,7 @@ function buildCloseMarker(trade) {
     color: win ? "#4caf7d" : "#e5654f",
     shape: "circle",
     size: 2,
-    text: trade.status === "🕐" ? "14д" : "TP",
+    text: trade.status === "🕐" ? "14д" : trade.status === "❌" ? "SL" : "TP",
   };
 }
 
@@ -2025,7 +2026,7 @@ function renderBulkReport(data) {
 
   // Просадка и общая сводка считаются тут же из плоского списка сделок
   // (data.trades) — только по ЗАКРЫТЫМ (✅/🕐); работает и для старых сохранённых прогонов.
-  const _isClosed = t => t.status === "✅" || t.status === "🕐";
+  const _isClosed = t => t.status === "✅" || t.status === "🕐" || t.status === "❌";
   const _allTrades = Array.isArray(data.trades) ? data.trades : [];
   const _maeCell = (coin, dir) => {
     const v = _allTrades
